@@ -1,0 +1,167 @@
+# Changelog
+
+All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
+
+## [1.2.0] — 2026-03-28
+
+### Added
+- **QualityOfLife module** — map coordinates, item levels, auto-repair, and auto-sell extracted from CleanSolo into their own dedicated module (`VeritasUI_QualityOfLife`)
+- **Macro support in Priority Rotation** — rotation slots now accept WoW macros in addition to spellbook spells; macro tooltips resolve the underlying spell via `#showtooltip` / `/cast` parsing
+- **Neutral nameplate hiding** in CleanSolo — hides nameplates for neutral mobs unless they are quest-related or in combat; re-evaluates on combat state changes
+
+### Fixed
+- **Priority Rotation profile header** showing "Vengeance 0" — replaced broken seventh return value from `GetSpecializationInfo` with `UnitClass("player")`
+- **Junk selling overcounting** — all `UseContainerItem` calls were firing in a single frame, hitting server throttle limits; rewritten to batch sells at 6 per frame with re-verification
+- **Map coordinates position not persisting** — `StartMoving()` silently re-anchors to `UIParent`; fixed by saving `GetLeft()`/`GetBottom()` screen-space coordinates normalized through effective scales
+- **Map coordinates box width** reduced from 146px to 126px to remove dead space
+- **Chat tab fade persistence** — tabs remaining visible after mouse leaves; replaced `OnUpdate` enforcer with synchronous `hooksecurefunc(tab, "SetAlpha")` three-state guard
+- **Item level display on legacy legendaries** (Heart of Azeroth showing 371 instead of 72) and junk items showing inflated values
+- **Addon compartment handlers** not opening settings panels — was passing string display names to `Settings.OpenToCategory()` instead of numeric category ID from `category:GetID()`
+
+### Changed
+- **Comprehensive code audit** across all 8 Lua files — adopted recommendations from external review including: `pcall` wrapping on chat tab `SetAlpha` hook, guild-vs-personal funding source reporting in auto-repair, `PR.db` alias for PriorityRotation, `sv` renamed to `db` in ZoneQuests for suite-wide consistency
+- **Reload UI button** moved from per-addon implementation to shared `VUI.RegisterSettingsLabel()` infrastructure in Lib.lua — only shows when a VeritasUI category is active
+- Character-specific macros now correctly resolve tab-relative vs. absolute index using `MAX_ACCOUNT_MACROS` offset
+
+---
+
+## [1.1.0] — 2026-03-26
+
+### Added
+- **Map Coordinates** display on the World Map — player and cursor coordinates using native tooltip backdrop textures
+- **Lock/unlock repositioning** for map coordinates — lock icon button (not right-click, which conflicts with map zoom); click to unlock (border turns cyan), drag freely, click to save and lock
+- **"Create / Update Macro" button** added to Priority Rotation Settings UI
+- **Static `SLOT_TO_FRAME` lookup table** for action bar detection in Priority Rotation — replaces unreliable `action` attribute polling
+
+### Fixed
+- **Action bar detection** in Priority Rotation — `SetOverrideBindingClick` requires a shown target; `PRAttackButton` made visible at 1×1px off-screen
+- **Map coordinates positioned bottom-right** to avoid Blizzard's faction icons (was bottom-left)
+- **`OnDragStop` firing on simple clicks** — removed auto-lock-on-drop; lock button is the sole toggle
+
+### Changed
+- Adopted external audit as new baseline — acknowledged missed bugs (SuppressFrame stacking, sparse array handling in HandleDrop, fade system inconsistency, AutoRepair fallback)
+- Quest reward item level display **fully removed** — fundamental async loading and base vs. effective ilvl mismatch makes reliable display impractical
+
+---
+
+## [1.0.0] — 2026-03-23
+
+### Added
+- **VeritasUI suite created** — unified CleanSolo, PriorityRotation, and ZoneQuests under a single package with shared library, following ElvUI's multi-folder pattern
+- **VeritasUI_Lib** — shared utilities: `VUI.Print()` formatter, `SmoothFade` per-frame fade manager, `HookPlayerFrameFade` with event-timing health detection, native settings panel helpers
+- **Hide Macro Names** on action bar buttons — hooks `SetText` and `Show` on button name fontstrings across all action bars
+- **Hide Error Text** — unregisters `UI_ERROR_MESSAGE` from `UIErrorsFrame`
+- **Auto Sell Junk** — sells gray items on `MERCHANT_SHOW` with `GetCoinTextureString` coin icon output
+- **Auto Repair** — repairs gear at repair merchants, guild funds first with fallback to personal gold
+- **Item Level Overlays** — universal `SetItemButtonQuality` hook covering bags, character panel, bank, and warband bank with full link resolution cascade
+- **Merchant item level scanner** — dedicated scanner using `GetMerchantItemLink(idx)` since `SetItemButtonQuality` doesn't fire on merchant buttons
+- **Native settings panels** for all modules using `Settings.RegisterVerticalLayoutCategory` + `Settings.RegisterAddOnSetting` + `Settings.CreateCheckbox`
+- **Addon Compartment** integration for all modules
+
+### Fixed
+- **"Interface action failed" combat errors** — Priority Rotation icon ticker was modifying secure button textures from tainted code; added `InCombatLockdown()` guard
+- **Player frame invisible at low health** — Midnight Secret Values block all health comparison from addon code; implemented event-timing via `UNIT_HEALTH` (~2s regen cadence) with 3-second idle timer
+- **Player frame stuck visible** — hover detection gap when mouse moves from parent to child frame; added 200ms poll ticker
+- **Overlapping fade conflicts** — replaced Blizzard's global `UIFrameFadeIn`/`UIFrameFadeOut` with custom per-frame `SmoothFade` manager
+- **False spec-switch messages** in Priority Rotation on battleground entry — track `PR._lastProfileKey` to only react on actual spec changes
+- **Bag button taint errors** — `Hide()` on SecureActionButton children guarded with `InCombatLockdown()`, `SetAlpha(0)` as visual fallback
+- **Item level showing base ilvl instead of effective** — added link resolution cascade: `GetItemLink()` → `GetBagID/GetID` → `GetBankTabID/GetContainerSlotID` → main bank check → `GetInventoryItemLink`
+- **Settings panel `SetValueChangedCallback`** — fixed 3-arg signature to correct 2-arg `(setting, value)` for Midnight
+
+### Changed
+- **Comprehensive code polish** — localized hot globals across all files, conditional event registration, extracted named functions from anonymous closures to reduce GC pressure
+
+---
+
+## Pre-VeritasUI History
+
+The addons below were developed as standalone projects before being unified into VeritasUI.
+
+### PriorityRotation (standalone)
+
+#### v2.2.0 — 2026-03-22
+- Final standalone version before VeritasUI consolidation
+- Clean verification pass: removed dead auto-mode code, unused debug flags, stale references
+- Macro renamed from "PriorityRot" to "Attack"
+
+#### v2.1.0 — 2026-03-22
+- Renamed macro and button from "PriorityRot" / "PriorityRotButton" to "Attack" / "PRAttackButton"
+- Added dynamic icon showing current spell on the action bar via 150ms ticker
+
+#### v2.0.0 — 2026-03-22
+- **Major rewrite** — discovered GSE's action bar override mechanism via source code analysis
+- Replaced broken `SecureActionButton` + `PreClick` approach with `SecureHandlerWrapScript` restricted snippet
+- Zero-taint combat execution: restricted snippet cycles macros via attributes only, no addon code contact
+- Discovered `GetCursorInfo()` returns 4 values for spells (spell ID is 4th, not 2nd)
+- Discovered Press and Hold Casting (`ActionButtonUseKeyDown` CVar) conflicts with override mechanism
+- Added weighted sequence compiler with zip-interleave distribution
+- Per-spec profiles with auto-switch on `PLAYER_SPECIALIZATION_CHANGED`
+- Drag-and-drop editor with spellbook integration
+- DPS tested: 32.5K (addon) vs 31K (raw G-Hub) vs 44.6K (Blizzard SBA with Press and Hold)
+
+#### v1.0.0 — 2026-03-21
+- Initial version with custom floating editor window
+- Broken: `/pr` command not working (frame GetWidth() returning 0 during construction)
+- Broken: Options panel (OptionsSliderTemplate deprecated, RegisterCanvasLayoutCategory wrong args)
+
+---
+
+### CleanSolo (standalone)
+
+#### v4.1 — 2026-03-22
+- Removed health check from player frame fade (too much friction with Secret Values)
+- Added `InCombatLockdown()` guards on all `Hide()` calls with `SetAlpha(0)` fallback
+
+#### v4.0 — 2026-03-22
+- Settings panel rewrite using `Settings.RegisterVerticalLayoutCategory`
+- Added Reload UI button anchored to Defaults button
+- Fixed `SetValueChangedCallback` 3-arg → 2-arg signature
+
+#### v3.7 — 2026-03-22
+- Stripped player frame fade to absolute minimum: `C_Timer.NewTicker(0.2)` with direct `SetAlpha`
+- Removed all `hooksecurefunc` and `UIFrameFadeIn/Out` calls that caused infinite loops
+
+#### v3.6 — 2026-03-22
+- Added `hooksecurefunc(pf, "SetAlpha")` — caused infinite recursion (thousands of errors/sec)
+
+#### v2.0 — 2026-03-22
+- Added fade micro menu, fade player frame, hide bag buttons
+- Settings panel with SavedVariables
+
+#### v1.1 — 2026-03-21
+- Changed chat tabs from hard-hide to fade-with-chat-window behavior
+- Tabs now visible and interactable on mouseover
+
+#### v1.0 — 2026-03-21
+- Initial version: hide chat tabs, social button, chat buttons, voice chat button
+
+---
+
+### ZoneQuests (standalone)
+
+#### v7.0 — 2026-03-21
+- Final standalone version — stable, full-featured
+- Always-show categories: Campaign, Important, Legendary, Meta, Repeatable
+- Important quests identified via `GetQuestTagInfo` returning tagID 282
+- Settings panel integrated into both floating panel and Options canvas
+
+#### v5.0–v6.0 — 2026-03-21
+- Added settings panel with always-show category checkboxes
+- Fixed Options canvas content overlap (`TOP_OFFSET` -16 → -72)
+- Fixed `UpdateState` not firing on panel open (added `OnShow` scripts)
+- Fixed blank toggle button text
+
+#### v3.0–v4.0 — 2026-03-21
+- Robust zone matching: `C_Map` hierarchy walk, directional prefix stripping
+- Infinite loop guard (visited set + hard cap of 20 iterations)
+- Nil map ID handling for loading screens
+- Event debouncing for `QUEST_LOG_UPDATE` bursts
+
+#### v2.0 — 2026-03-21
+- **Major rewrite** — switched from custom floating panel to managing the native Objective Tracker via quest watch state
+- Fixed SavedVariables initialization timing (must use `ADDON_LOADED`, not file scope)
+- Discovered `IsQuestWatched` removed in Midnight 12.0 — use `Add/RemoveQuestWatch` directly
+
+#### v1.0 — 2026-03-21
+- Initial version: custom floating panel showing zone-filtered quests
+- Basic zone matching with bidirectional substring check

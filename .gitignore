@@ -1,0 +1,18 @@
+# WoW SavedVariables (generated per-character, not part of the addon)
+*.lua.bak
+SavedVariables/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/settings.json
+.idea/
+
+# Zip packages (built artifacts)
+*.zip
