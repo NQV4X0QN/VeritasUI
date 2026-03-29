@@ -395,12 +395,19 @@ local function SetupHideNeutralPlates()
             return
         end
 
-        -- Neutral mob: also check combat state before hiding.
+        -- Neutral mob: also check combat / threat state before hiding.
         local cOk, inCombat = pcall(UnitAffectingCombat, unit)
         local isCombat = cOk and inCombat
             and not (issecretvalue and issecretvalue(inCombat))
 
-        if isCombat or questRelated then
+        -- UnitThreatSituation returns non-nil when the player has any
+        -- threat on the unit — catches the moment you attack a neutral
+        -- mob, even before UnitAffectingCombat updates.
+        local tOk, threat = pcall(UnitThreatSituation, "player", unit)
+        local hasThreat = tOk and threat ~= nil
+            and not (issecretvalue and issecretvalue(threat))
+
+        if isCombat or questRelated or hasThreat then
             RestoreNameplate(uf)
             return
         end
@@ -446,6 +453,7 @@ local function SetupHideNeutralPlates()
     npFrame:RegisterEvent("QUEST_REMOVED")
     npFrame:RegisterEvent("QUEST_LOG_UPDATE")
     npFrame:RegisterEvent("UNIT_FACTION")
+    npFrame:RegisterEvent("UNIT_THREAT_LIST_UPDATE")
     npFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     npFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 
@@ -471,8 +479,10 @@ local function SetupHideNeutralPlates()
                 -- recycled for a different unit next time.
                 uf._vui_questName = nil
             end
-        elseif event == "UNIT_FACTION" then
-            -- A unit's reaction changed (e.g. neutral mob aggro'd).
+        elseif event == "UNIT_FACTION"
+            or event == "UNIT_THREAT_LIST_UPDATE" then
+            -- A unit's reaction or threat state changed (e.g. neutral
+            -- mob aggro'd, or player attacked a neutral mob).
             if arg1 and arg1:find("nameplate") then
                 EvaluateNameplate(arg1)
             end
