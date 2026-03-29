@@ -39,6 +39,30 @@ local db
 local settingsCategoryID
 local frame = CreateFrame("Frame")
 
+-- ── /way — proximity auto-clear state ───────────────────────
+local wayTicker        = nil
+local WAY_ARRIVAL_YARDS = 10
+
+local function StopWaypointTracking()
+    if wayTicker then wayTicker:Cancel(); wayTicker = nil end
+end
+
+local function StartWaypointTracking()
+    StopWaypointTracking()
+    wayTicker = C_Timer.NewTicker(1, function()
+        if not C_Map.HasUserWaypoint() then
+            StopWaypointTracking(); return
+        end
+        local dist = C_Navigation.GetDistance()
+        if dist and dist <= WAY_ARRIVAL_YARDS then
+            C_Map.ClearUserWaypoint()
+            C_SuperTrack.SetSuperTrackedUserWaypoint(false)
+            StopWaypointTracking()
+            VUI.Print("Quality of Life", "Waypoint reached — cleared.")
+        end
+    end)
+end
+
 -- ── Feature: Auto Sell Junk ─────────────────────────────────
 -- Phase 1: Scan all bags and collect junk items.
 -- Phase 2: Sell in small batches (≤ 6 per frame) to stay within
@@ -631,6 +655,7 @@ end
 -- ── Events ──────────────────────────────────────────────────
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("USER_WAYPOINT_UPDATED")
 
 frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" then
@@ -659,6 +684,12 @@ frame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "MERCHANT_SHOW" then
         if db.autoRepair   then AutoRepair()  end
         if db.autoSellJunk then AutoSellJunk() end
+
+    elseif event == "USER_WAYPOINT_UPDATED" then
+        -- Fired when the waypoint is cleared externally (e.g. map right-click UI).
+        if not C_Map.HasUserWaypoint() then
+            StopWaypointTracking()
+        end
     end
 end)
 
@@ -689,6 +720,7 @@ SlashCmdList["VERITASUI_WAY"] = function(msg)
         if C_Map.HasUserWaypoint() then
             C_Map.ClearUserWaypoint()
             C_SuperTrack.SetSuperTrackedUserWaypoint(false)
+            StopWaypointTracking()
             VUI.Print("Quality of Life", "Waypoint cleared.")
         else
             VUI.Print("Quality of Life", "No waypoint is set.")
@@ -742,6 +774,7 @@ SlashCmdList["VERITASUI_WAY"] = function(msg)
     local mapPoint = UiMapPoint.CreateFromVector2D(mapID, CreateVector2D(nx, ny))
     C_Map.SetUserWaypoint(mapPoint)
     C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+    StartWaypointTracking()
 
     -- Build confirmation message.
     local zoneName = mapInfo.name or ("Map " .. mapID)
