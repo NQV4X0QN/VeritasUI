@@ -130,6 +130,9 @@ end
 -- ── Feature: Auto Repair ────────────────────────────────────
 -- Tries guild repair first, then falls back to personal gold.
 -- Reports funding source so the player knows who paid.
+-- NOTE (2a): GetRepairAllCost() after RepairAllItems(true) assumes
+-- the server updates cost within the same frame.  This is reliable
+-- in practice but not contractually guaranteed by the API.
 local function AutoRepair()
     if not CanMerchantRepair() then return end
     local cost, canRepair = GetRepairAllCost()
@@ -143,6 +146,20 @@ local function AutoRepair()
                 "Repaired for %s (guild bank)", GetCoinTextureString(cost)))
             return
         end
+        -- Guild only covered part — pay the rest from personal gold.
+        RepairAllItems(false)
+        local guildPaid = cost - remaining
+        if guildPaid > 0 then
+            VUI.Print("Quality of Life", format(
+                "Repaired for %s (%s guild, %s personal)",
+                GetCoinTextureString(cost),
+                GetCoinTextureString(guildPaid),
+                GetCoinTextureString(remaining)))
+        else
+            VUI.Print("Quality of Life", format(
+                "Repaired for %s (personal gold)", GetCoinTextureString(cost)))
+        end
+        return
     end
     RepairAllItems(false)
 
@@ -239,10 +256,10 @@ local function SetupItemLevels()
         if not itemIDOrLink then HideOverlay(btn); return end
         if quality ~= nil and quality == 0 then HideOverlay(btn); return end
         if IsQuestRewardButton(btn) then HideOverlay(btn); return end
-        local equippable, rawID = IsEquippableGear(itemIDOrLink)
-        if not equippable then HideOverlay(btn); return end
-        if rawID and SKIP_ITEMS[rawID] then HideOverlay(btn); return end
 
+        -- Resolve a full item link for accurate ilvl (effective vs base).
+        -- The passed itemIDOrLink may be a numeric ID; a full link gives
+        -- GetDetailedItemLevelInfo the effective (upgraded) ilvl.
         local link = type(itemIDOrLink) == "string" and itemIDOrLink or nil
         if not link then
             if btn.GetItemLink then
@@ -281,9 +298,8 @@ local function SetupItemLevels()
             end
         end
 
-        local ilvl = C_Item.GetDetailedItemLevelInfo(link or itemIDOrLink)
-        if not ilvl or ilvl <= 0 then HideOverlay(btn); return end
-        ApplyOverlay(btn, ilvl, quality)
+        -- Delegate to ProcessItem for equippability, skip, ilvl, and overlay.
+        ProcessItem(btn, link or itemIDOrLink, quality)
     end)
 
     ----------------------------------------------------------------
@@ -435,6 +451,7 @@ local function SetupMapCoordinates()
             -- normalise through screen-pixel space first.
             local bgScale        = bg:GetEffectiveScale()
             local containerScale = container:GetEffectiveScale()
+            if containerScale == 0 then return end
             local x = ((bg:GetLeft()   or 0) * bgScale
                        - (container:GetLeft()   or 0) * containerScale)
                       / containerScale

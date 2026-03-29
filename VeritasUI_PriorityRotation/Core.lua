@@ -30,7 +30,7 @@ local GetMacroIndexByName = GetMacroIndexByName
 ----------------------------------------------------------------
 --  Constants
 ----------------------------------------------------------------
-PR.VERSION          = "1.2.0"
+PR.VERSION          = VUI.VERSION
 PR.MAX_SLOTS        = 10
 PR.MACRO_NAME       = "Attack"
 PR.BUTTON_NAME      = "PRAttackButton"
@@ -39,6 +39,7 @@ PR.compiledNames    = {}      -- step → display name, built during compile
 PR.iconCache        = {}      -- step → iconID, built during compile
 PR.overriddenButton = nil
 PR.needsRecompile   = false
+PR.needsClearOverride = false
 
 ----------------------------------------------------------------
 --  Secure Action Button
@@ -213,7 +214,7 @@ end
 --  Slots 13-24 are action bar pages 2+ (stance/stealth) and
 --  are intentionally unmapped — macros are not placed there.
 ----------------------------------------------------------------
-local SECURE_HANDLER = CreateFrame("Frame", nil, nil, "SecureHandlerBaseTemplate")
+local SECURE_HANDLER = CreateFrame("Frame", "PRSecureHandler", nil, "SecureHandlerBaseTemplate")
 
 local SLOT_TO_FRAME = {}
 local FRAME_DEFS = {
@@ -451,6 +452,11 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         end)
 
     elseif event == "PLAYER_REGEN_ENABLED" then
+        if PR.needsClearOverride then
+            PR:ClearOverride()
+            PR:StopIconTicker()
+            PR.needsClearOverride = false
+        end
         if PR.needsRecompile then PR:CompileSequence() end
     end
 end)

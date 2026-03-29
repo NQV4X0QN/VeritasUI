@@ -199,6 +199,9 @@ local function BuildNativeSettingsPanel()
         else
             if not InCombatLockdown() then
                 PR:ClearOverride()
+            else
+                -- Defer override cleanup until combat ends.
+                PR.needsClearOverride = true
             end
             PR:StopIconTicker()
             VUI.Print("Priority Rotation", "|cFFFF4444Disabled.|r")

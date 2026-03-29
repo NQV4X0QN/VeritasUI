@@ -1,9 +1,10 @@
 ## Interface: 120001
 ## Title: VeritasUI — Quality of Life
 ## Notes: Map coordinates, item levels, auto-repair, and auto-sell junk. |cFF888888by NQV4X0QN|r
-## Version: 1.2.0
+## Version: 1.2.1
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
+## OptionalDeps: Blizzard_WorldMap
 ## SavedVariables: VeritasUI_QualityOfLifeDB
 ## AddonCompartmentFunc: VeritasUI_QualityOfLife_OnAddonCompartmentClick
 

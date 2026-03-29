@@ -225,17 +225,15 @@ local function SnapshotWatched()
 end
 
 local function RestoreWatched()
-    for i = 1, C_QuestLog.GetNumQuestLogEntries() do
-        local ok, info = pcall(C_QuestLog.GetInfo, i)
-        if ok and info and not info.isHeader and info.questID then
-            pcall(C_QuestLog.RemoveQuestWatch, info.questID)
-        end
-    end
     local watchType = GetWatchType()
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
         local ok, info = pcall(C_QuestLog.GetInfo, i)
-        if ok and info and not info.isHeader and info.questID and db.manualWatched[info.questID] then
-            pcall(C_QuestLog.AddQuestWatch, info.questID, watchType)
+        if ok and info and not info.isHeader and info.questID then
+            if db.manualWatched[info.questID] then
+                pcall(C_QuestLog.AddQuestWatch, info.questID, watchType)
+            else
+                pcall(C_QuestLog.RemoveQuestWatch, info.questID)
+            end
         end
     end
 end

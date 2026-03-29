@@ -295,6 +295,10 @@ end
 local function SetupHideNeutralPlates()
 
     -- Determine whether a nameplate unit is related to an active quest.
+    -- NOTE (3b): Quest detection relies on tooltip line color heuristic
+    -- (yellow: r≈1.0, g≈0.82, b≈0.0).  If Blizzard changes the quest
+    -- header color in tooltips, this will silently stop matching.
+    -- UnitIsQuestBoss provides a partial safety net.
     local function IsQuestRelated(unit)
         -- UnitIsQuestBoss covers kill-objective mobs.
         if UnitIsQuestBoss then
@@ -325,36 +329,43 @@ local function SetupHideNeutralPlates()
         return false
     end
 
+    -- Restore visibility on a previously hidden nameplate UnitFrame.
+    local function RestoreNameplate(uf)
+        if uf._vui_hideNeutral then
+            uf._vui_hideNeutral = nil
+            uf:SetAlpha(1)
+        end
+    end
+
     -- Apply or remove the hide on a single nameplate's UnitFrame.
+    -- UnitReaction and UnitAffectingCombat may return Secret Values
+    -- on nameplate units in Midnight — pcall-wrapped to degrade
+    -- gracefully (show the plate if uncertain).
     local function EvaluateNameplate(unit)
         local plate = C_NamePlate.GetNamePlateForUnit(unit)
         if not plate or not plate.UnitFrame then return end
         local uf = plate.UnitFrame
 
-        local reaction = UnitReaction(unit, "player")
+        -- Wrap UnitReaction: may return Secret in Midnight.
+        -- If it fails or returns a Secret, show the plate (safe default).
+        local ok, reaction = pcall(UnitReaction, unit, "player")
+        if not ok or issecretvalue and issecretvalue(reaction) then
+            RestoreNameplate(uf)
+            return
+        end
         if reaction ~= 4 then
-            -- Not neutral — ensure visible.
-            if uf._vui_hideNeutral then
-                uf._vui_hideNeutral = nil
-                uf:SetAlpha(1)
-            end
+            RestoreNameplate(uf)
             return
         end
 
         -- Neutral — show if in combat or quest-related.
-        if UnitAffectingCombat(unit) then
-            if uf._vui_hideNeutral then
-                uf._vui_hideNeutral = nil
-                uf:SetAlpha(1)
-            end
-            return
-        end
+        -- UnitAffectingCombat may also return a Secret in Midnight.
+        local cOk, inCombat = pcall(UnitAffectingCombat, unit)
+        local isCombat = cOk and inCombat
+            and not (issecretvalue and issecretvalue(inCombat))
 
-        if IsQuestRelated(unit) then
-            if uf._vui_hideNeutral then
-                uf._vui_hideNeutral = nil
-                uf:SetAlpha(1)
-            end
+        if isCombat or IsQuestRelated(unit) then
+            RestoreNameplate(uf)
             return
         end
 
@@ -376,6 +387,10 @@ local function SetupHideNeutralPlates()
 
     -- Hook CompactUnitFrame_UpdateAll so we re-apply the hide after
     -- every Blizzard refresh cycle (health updates, aura updates, etc.).
+    -- NOTE (3a): If Midnight restructures nameplate code and removes or
+    -- renames this global, the hook silently stops working.  The initial
+    -- SetAlpha(0) still applies, but Blizzard's periodic refresh would
+    -- override it until NAME_PLATE_UNIT_ADDED re-fires.
     if CompactUnitFrame_UpdateAll then
         hooksecurefunc("CompactUnitFrame_UpdateAll", function(uf)
             if uf and uf._vui_hideNeutral then
