@@ -276,35 +276,29 @@ local function HideErrorText()
 end
 
 -- ── Feature: Hide Neutral Nameplates ────────────────────────
--- Hides yellow (neutral) nameplates unless the unit is involved
--- in an active quest or the player is engaged with it.
+-- Hides yellow (neutral) creature nameplates (reaction == 4).
 --
--- Key implementation detail (TWW / Midnight):
---   SetAlpha() on plate.UnitFrame (a CompactUnitFrame) is a
---   protected action and triggers ADDON_ACTION_BLOCKED during
---   combat lockdown.  The fix is to operate on the plate frame
---   itself (not the UnitFrame).  NamePlateDriverFrame constantly
---   manages plate alpha for distance/occlusion — instead of
---   fighting that, we use an OnUpdate loop to keep suppressed
---   plates at alpha 0, and simply stop overriding when we want
---   the plate to show.  Blizzard's driver then restores it
---   naturally in the next frame.
+-- Design:
+--   • Out of combat: suppress neutral plates via plate:SetAlpha(0).
+--     An OnUpdate loop counters NamePlateDriverFrame, which resets
+--     plate alpha every frame for distance/occlusion.
+--   • On PLAYER_REGEN_DISABLED (entering combat): immediately clear
+--     ALL suppression so Blizzard's default combat display takes over
+--     untouched.  When a neutral mob is attacked Blizzard fires
+--     UNIT_FACTION and changes its reaction; our re-evaluation then
+--     keeps the plate visible naturally.
+--   • On PLAYER_REGEN_ENABLED (leaving combat): re-hide neutral plates.
+--   • plate:SetAlpha() is used — NOT plate.UnitFrame:SetAlpha().
+--     plate is a plain Frame; plate.UnitFrame is a CompactUnitFrame
+--     whose methods are protected during combat lockdown.
 -- ─────────────────────────────────────────────────────────────
 local function SetupHideNeutralPlates()
 
-    local engagedGUIDs = {}
-    local hiddenPlates = {}   -- plate frame → true for plates we suppress
+    local hiddenPlates = {}   -- plate frame → true
 
-    local DAMAGE_SUB = {
-        SWING_DAMAGE          = true, SWING_MISSED          = true,
-        SPELL_DAMAGE          = true, SPELL_MISSED          = true,
-        RANGE_DAMAGE          = true, RANGE_MISSED          = true,
-        SPELL_PERIODIC_DAMAGE = true, SPELL_PERIODIC_MISSED = true,
-    }
-
-    -- ── OnUpdate: continuously hold suppressed plates at alpha 0 ──
-    -- Idles (hidden) when no plates are suppressed so it has no
-    -- per-frame cost outside of combat near neutral mobs.
+    -- Hold suppressed plates at alpha 0.  NamePlateDriverFrame resets
+    -- plate alpha every frame; this loop counters that.  Stays hidden
+    -- (zero CPU cost) when nothing is suppressed.
     local overrideFrame = CreateFrame("Frame")
     overrideFrame:Hide()
     overrideFrame:SetScript("OnUpdate", function()
@@ -320,7 +314,6 @@ local function SetupHideNeutralPlates()
         if not any then overrideFrame:Hide() end
     end)
 
-    -- ── Hide / show helpers — operate on the plate, not UnitFrame ──
     local function HidePlate(plate)
         hiddenPlates[plate] = true
         plate:SetAlpha(0)
@@ -330,148 +323,62 @@ local function SetupHideNeutralPlates()
     local function ShowPlate(plate)
         if hiddenPlates[plate] then
             hiddenPlates[plate] = nil
-            -- Do NOT call plate:SetAlpha(1) — NamePlateDriverFrame
-            -- restores it automatically on the next frame.
             if not next(hiddenPlates) then overrideFrame:Hide() end
+            -- NamePlateDriverFrame restores the correct alpha
         end
     end
 
-    -- ── Quest detection ──────────────────────────────────────────
-    local function IsQuestRelated(unit)
-        if UnitIsQuestBoss then
-            local ok, result = pcall(UnitIsQuestBoss, unit)
-            if ok and result then return true end
-        end
-        if C_TooltipInfo and C_TooltipInfo.GetUnit then
-            local ok, data = pcall(C_TooltipInfo.GetUnit, unit)
-            if ok and data and data.lines then
-                for i = 2, #data.lines do
-                    local line = data.lines[i]
-                    if line and line.leftColor then
-                        local c = line.leftColor
-                        if c.r and c.r > 0.9
-                            and c.g and c.g > 0.7 and c.g < 0.9
-                            and c.b and c.b < 0.15 then
-                            return true
-                        end
-                    end
-                end
-            end
-        end
-        return false
-    end
-
-    -- ── Evaluate a single nameplate ──────────────────────────────
-    local function EvaluateNameplate(unit)
+    local function Evaluate(unit)
         local plate = C_NamePlate.GetNamePlateForUnit(unit)
         if not plate then return end
-
         local ok, reaction = pcall(UnitReaction, unit, "player")
-        if not ok or (issecretvalue and issecretvalue(reaction)) then
-            ShowPlate(plate); return
-        end
-
-        -- Non-neutral: never suppress.
-        if reaction ~= 4 then
-            ShowPlate(plate); return
-        end
-
-        -- Neutral: show if quest-related, in combat, or engaged.
-        local questRelated = IsQuestRelated(unit)
-
-        local cOk, unitInCombat = pcall(UnitAffectingCombat, unit)
-        local isCombat = cOk and unitInCombat
-            and not (issecretvalue and issecretvalue(unitInCombat))
-
-        local tOk, threat = pcall(UnitThreatSituation, "player", unit)
-        local hasThreat = tOk and threat ~= nil
-            and not (issecretvalue and issecretvalue(threat))
-
-        local guid = UnitGUID(unit)
-        local playerEngaged = guid and engagedGUIDs[guid]
-
-        if questRelated or isCombat or hasThreat or playerEngaged then
-            ShowPlate(plate)
-        else
+        if ok and not (issecretvalue and issecretvalue(reaction))
+            and reaction == 4 then
             HidePlate(plate)
+        else
+            ShowPlate(plate)
         end
     end
 
-    local function ReevaluateAll()
-        local plates = C_NamePlate.GetNamePlates()
-        if not plates then return end
-        for _, plate in ipairs(plates) do
-            local unit = plate.namePlateUnitToken
-                or (plate.UnitFrame and plate.UnitFrame.unit)
-            if unit then EvaluateNameplate(unit) end
-        end
-    end
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("NAME_PLATE_UNIT_ADDED")
+    f:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
+    f:RegisterEvent("UNIT_FACTION")
+    f:RegisterEvent("PLAYER_REGEN_DISABLED")
+    f:RegisterEvent("PLAYER_REGEN_ENABLED")
 
-    -- ── Event handler ────────────────────────────────────────────
-    local npFrame = CreateFrame("Frame")
-    npFrame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
-    npFrame:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
-    npFrame:RegisterEvent("QUEST_ACCEPTED")
-    npFrame:RegisterEvent("QUEST_REMOVED")
-    npFrame:RegisterEvent("QUEST_LOG_UPDATE")
-    npFrame:RegisterEvent("UNIT_FACTION")
-    npFrame:RegisterEvent("UNIT_THREAT_LIST_UPDATE")
-    npFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    npFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-
-    npFrame:SetScript("OnEvent", function(_, event, arg1)
+    f:SetScript("OnEvent", function(_, event, arg1)
         if event == "NAME_PLATE_UNIT_ADDED" then
-            EvaluateNameplate(arg1)
-            local unit = arg1
-            C_Timer.After(0.15, function() EvaluateNameplate(unit) end)
+            Evaluate(arg1)
 
         elseif event == "NAME_PLATE_UNIT_REMOVED" then
             local plate = C_NamePlate.GetNamePlateForUnit(arg1)
             if plate then ShowPlate(plate) end
 
-        elseif event == "UNIT_FACTION"
-            or event == "UNIT_THREAT_LIST_UPDATE" then
+        elseif event == "UNIT_FACTION" then
+            -- Blizzard fires this when a unit's reaction changes,
+            -- e.g. when a neutral mob is attacked and turns hostile.
             if arg1 and arg1:find("nameplate") then
-                EvaluateNameplate(arg1)
+                Evaluate(arg1)
             end
 
         elseif event == "PLAYER_REGEN_DISABLED" then
-            C_Timer.After(0.05, ReevaluateAll)
+            -- Entering combat: lift all suppression immediately.
+            -- Blizzard handles combat display; UNIT_FACTION will fire
+            -- for any mob whose reaction changes, keeping it visible.
+            wipe(hiddenPlates)
+            overrideFrame:Hide()
 
         elseif event == "PLAYER_REGEN_ENABLED" then
-            wipe(engagedGUIDs)
-            C_Timer.After(0.05, ReevaluateAll)
-
-        else
-            -- QUEST_ACCEPTED, QUEST_REMOVED, QUEST_LOG_UPDATE
-            C_Timer.After(0.1, ReevaluateAll)
-        end
-    end)
-
-    -- ── Combat log listener (isolated frame) ─────────────────────
-    -- On its own frame to keep CombatLogGetCurrentEventInfo() away
-    -- from any nameplate-adjacent execution path.
-    local clFrame = CreateFrame("Frame")
-    clFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-    clFrame:SetScript("OnEvent", function()
-        local _, subEvent, _, srcGUID, _, _, _, dstGUID =
-            CombatLogGetCurrentEventInfo()
-        if not DAMAGE_SUB[subEvent] then return end
-        local pGUID = UnitGUID("player")
-        local mobGUID
-        if srcGUID == pGUID then mobGUID = dstGUID
-        elseif dstGUID == pGUID then mobGUID = srcGUID end
-        if not mobGUID or engagedGUIDs[mobGUID] then return end
-        engagedGUIDs[mobGUID] = true
-        local plates = C_NamePlate.GetNamePlates()
-        if plates then
-            for _, plate in ipairs(plates) do
-                local u = plate.namePlateUnitToken
-                    or (plate.UnitFrame and plate.UnitFrame.unit)
-                if u and UnitGUID(u) == mobGUID then
-                    ShowPlate(plate); break
+            -- Leaving combat: re-hide neutral plates.
+            C_Timer.After(0.1, function()
+                local plates = C_NamePlate.GetNamePlates()
+                if not plates then return end
+                for _, plate in ipairs(plates) do
+                    local unit = plate.namePlateUnitToken
+                    if unit then Evaluate(unit) end
                 end
-            end
+            end)
         end
     end)
 end
@@ -500,7 +407,7 @@ local function InitializeOptions()
         { key = "hideErrorText",       name = "Hide Error Text",
           tip = "Hides the red error messages like 'Not enough energy' and 'You're facing the wrong way'." },
         { key = "hideNeutralPlates",   name = "Hide Neutral Nameplates",
-          tip = "Hides yellow (neutral) nameplates unless the unit is involved in one of your active quests." },
+          tip = "Hides yellow (neutral) creature nameplates. Plates reappear automatically when you enter combat." },
     }
 
     for _, opt in ipairs(options) do
