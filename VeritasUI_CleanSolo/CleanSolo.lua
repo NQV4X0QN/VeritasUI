@@ -474,7 +474,6 @@ local function SetupHideNeutralPlates()
     npFrame:RegisterEvent("QUEST_LOG_UPDATE")
     npFrame:RegisterEvent("UNIT_FACTION")
     npFrame:RegisterEvent("UNIT_THREAT_LIST_UPDATE")
-    npFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     npFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     npFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 
@@ -508,32 +507,6 @@ local function SetupHideNeutralPlates()
                 EvaluateNameplate(arg1)
             end
 
-        elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
-            -- Definitive proof: if the combat log shows damage between
-            -- the player and a mob, that mob's nameplate must show.
-            -- This catches cases where UnitReaction stays 4 (neutral)
-            -- and UnitThreatSituation returns nil (no threat table).
-            local _, subEvent, _, srcGUID, _, _, _, dstGUID =
-                CombatLogGetCurrentEventInfo()
-            if not DAMAGE_SUB[subEvent] then return end
-            local pGUID = UnitGUID("player")
-            local mobGUID
-            if srcGUID == pGUID then mobGUID = dstGUID
-            elseif dstGUID == pGUID then mobGUID = srcGUID end
-            if not mobGUID or engagedGUIDs[mobGUID] then return end
-            engagedGUIDs[mobGUID] = true
-            -- Find the nameplate for this GUID and re-evaluate.
-            local plates = C_NamePlate.GetNamePlates()
-            if plates then
-                for _, plate in ipairs(plates) do
-                    local u = plate.namePlateUnitToken
-                        or (plate.UnitFrame and plate.UnitFrame.unit)
-                    if u and UnitGUID(u) == mobGUID then
-                        EvaluateNameplate(u); break
-                    end
-                end
-            end
-
         elseif event == "PLAYER_REGEN_DISABLED" then
             -- Entering combat — re-evaluate all plates.
             C_Timer.After(0.05, ReevaluateAll)
@@ -546,6 +519,35 @@ local function SetupHideNeutralPlates()
         else
             -- QUEST_ACCEPTED, QUEST_REMOVED, QUEST_LOG_UPDATE
             C_Timer.After(0.1, ReevaluateAll)
+        end
+    end)
+
+    -- ── Combat log listener (isolated frame) ────────────────
+    -- COMBAT_LOG_EVENT_UNFILTERED must live on its own frame so
+    -- that CombatLogGetCurrentEventInfo() does not taint the
+    -- nameplate frame's secure event dispatch path.
+    local clFrame = CreateFrame("Frame")
+    clFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    clFrame:SetScript("OnEvent", function()
+        local _, subEvent, _, srcGUID, _, _, _, dstGUID =
+            CombatLogGetCurrentEventInfo()
+        if not DAMAGE_SUB[subEvent] then return end
+        local pGUID = UnitGUID("player")
+        local mobGUID
+        if srcGUID == pGUID then mobGUID = dstGUID
+        elseif dstGUID == pGUID then mobGUID = srcGUID end
+        if not mobGUID or engagedGUIDs[mobGUID] then return end
+        engagedGUIDs[mobGUID] = true
+        -- Find the nameplate for this GUID and re-evaluate.
+        local plates = C_NamePlate.GetNamePlates()
+        if plates then
+            for _, plate in ipairs(plates) do
+                local u = plate.namePlateUnitToken
+                    or (plate.UnitFrame and plate.UnitFrame.unit)
+                if u and UnitGUID(u) == mobGUID then
+                    EvaluateNameplate(u); break
+                end
+            end
         end
     end)
 end
