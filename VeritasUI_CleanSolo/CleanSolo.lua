@@ -294,6 +294,20 @@ end
 -- ─────────────────────────────────────────────────────────────
 local function SetupHideNeutralPlates()
 
+    -- GUIDs the player is actively fighting — filled from the combat
+    -- log, which is the only 100 % reliable signal.  UnitReaction
+    -- never changes on aggro (stays 4/neutral), and UnitThreatSituation
+    -- returns nil for mobs without a standard threat table.
+    local engagedGUIDs = {}
+
+    -- Sub-events that prove damage exchange between player and mob.
+    local DAMAGE_SUB = {
+        SWING_DAMAGE          = true, SWING_MISSED              = true,
+        SPELL_DAMAGE          = true, SPELL_MISSED              = true,
+        RANGE_DAMAGE          = true, RANGE_MISSED              = true,
+        SPELL_PERIODIC_DAMAGE = true, SPELL_PERIODIC_MISSED     = true,
+    }
+
     -- Determine whether a nameplate unit is related to an active quest.
     -- NOTE (3b): Quest detection relies on tooltip line color heuristic
     -- (yellow: r≈1.0, g≈0.82, b≈0.0).  If Blizzard changes the quest
@@ -407,7 +421,13 @@ local function SetupHideNeutralPlates()
         local hasThreat = tOk and threat ~= nil
             and not (issecretvalue and issecretvalue(threat))
 
-        if isCombat or questRelated or hasThreat then
+        -- Combat log proof: if we saw damage between the player and
+        -- this unit's GUID, it is definitely hostile regardless of
+        -- what UnitReaction / UnitThreatSituation report.
+        local guid = UnitGUID(unit)
+        local playerEngaged = guid and engagedGUIDs[guid]
+
+        if isCombat or questRelated or hasThreat or playerEngaged then
             RestoreNameplate(uf)
             return
         end
@@ -454,6 +474,7 @@ local function SetupHideNeutralPlates()
     npFrame:RegisterEvent("QUEST_LOG_UPDATE")
     npFrame:RegisterEvent("UNIT_FACTION")
     npFrame:RegisterEvent("UNIT_THREAT_LIST_UPDATE")
+    npFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     npFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     npFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 
@@ -486,10 +507,41 @@ local function SetupHideNeutralPlates()
             if arg1 and arg1:find("nameplate") then
                 EvaluateNameplate(arg1)
             end
-        elseif event == "PLAYER_REGEN_DISABLED"
-            or event == "PLAYER_REGEN_ENABLED" then
-            -- Combat state changed — neutral mobs may now be in
-            -- combat (or just left it).  Re-evaluate all plates.
+
+        elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
+            -- Definitive proof: if the combat log shows damage between
+            -- the player and a mob, that mob's nameplate must show.
+            -- This catches cases where UnitReaction stays 4 (neutral)
+            -- and UnitThreatSituation returns nil (no threat table).
+            local _, subEvent, _, srcGUID, _, _, _, dstGUID =
+                CombatLogGetCurrentEventInfo()
+            if not DAMAGE_SUB[subEvent] then return end
+            local pGUID = UnitGUID("player")
+            local mobGUID
+            if srcGUID == pGUID then mobGUID = dstGUID
+            elseif dstGUID == pGUID then mobGUID = srcGUID end
+            if not mobGUID or engagedGUIDs[mobGUID] then return end
+            engagedGUIDs[mobGUID] = true
+            -- Find the nameplate for this GUID and re-evaluate.
+            local plates = C_NamePlate.GetNamePlates()
+            if plates then
+                for _, plate in ipairs(plates) do
+                    local u = plate.namePlateUnitToken
+                        or (plate.UnitFrame and plate.UnitFrame.unit)
+                    if u and UnitGUID(u) == mobGUID then
+                        EvaluateNameplate(u); break
+                    end
+                end
+            end
+
+        elseif event == "PLAYER_REGEN_DISABLED" then
+            -- Entering combat — re-evaluate all plates.
+            C_Timer.After(0.05, ReevaluateAll)
+
+        elseif event == "PLAYER_REGEN_ENABLED" then
+            -- Leaving combat — clear engaged GUIDs and re-evaluate
+            -- so neutral plates that are no longer hostile get hidden.
+            wipe(engagedGUIDs)
             C_Timer.After(0.05, ReevaluateAll)
         else
             -- QUEST_ACCEPTED, QUEST_REMOVED, QUEST_LOG_UPDATE
