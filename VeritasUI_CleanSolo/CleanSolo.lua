@@ -351,32 +351,12 @@ local function SetupHideNeutralPlates()
         end
     end
 
-    -- Force the nameplate name text visible (quest-related units).
-    -- _vui_questName persists so the CompactUnitFrame_UpdateAll hook
-    -- can re-apply the override after each Blizzard refresh cycle.
-    local function ApplyQuestName(uf)
-        uf._vui_questName = true
-        if uf.name then uf.name:SetAlpha(1) end
-    end
-
-    -- Remove the forced-name-visible override.  Blizzard's own
-    -- CompactUnitFrame_UpdateAll refresh cycle will restore the
-    -- unit's normal name state; we must NOT call
-    -- CompactUnitFrame_UpdateName directly because it internally
-    -- calls Show() on nameplate sub-elements, which is a
-    -- protected action that triggers ADDON_ACTION_BLOCKED during
-    -- combat (TWW 11.0+).
-    local function ClearQuestName(uf)
-        uf._vui_questName = nil
-    end
-
-    -- Apply or remove the hide/name overrides on a single nameplate.
+    -- Apply or remove the hide override on a single nameplate.
     -- Behaviour summary:
-    --   Neutral  + quest-related  → show plate, force name visible
+    --   Neutral  + quest-related  → show plate
     --   Neutral  + not quest      → hide plate (alpha 0)
-    --   Neutral  + in combat      → show plate, normal name state
-    --   Enemy    + quest-related  → plate unchanged, force name visible
-    --   Enemy    + not quest      → plate unchanged, normal name state
+    --   Neutral  + in combat      → show plate
+    --   Enemy                     → plate unchanged
     -- UnitReaction and UnitAffectingCombat may return Secret Values
     -- in Midnight — pcall-wrapped to degrade gracefully.
     local function EvaluateNameplate(unit)
@@ -388,22 +368,10 @@ local function SetupHideNeutralPlates()
         local ok, reaction = pcall(UnitReaction, unit, "player")
         if not ok or issecretvalue and issecretvalue(reaction) then
             RestoreNameplate(uf)
-            ClearQuestName(uf)
             return
         end
 
-        -- Evaluate quest status once; used for both name and hide logic.
-        local questRelated = IsQuestRelated(unit)
-
-        -- Force name visible for any quest-related unit (neutral or enemy).
-        -- Clear the override for units that are no longer quest-related.
-        if questRelated then
-            ApplyQuestName(uf)
-        else
-            ClearQuestName(uf)
-        end
-
-        -- Non-neutral units: only the name override above applies.
+        -- Non-neutral units: nothing to do.
         if reaction ~= 4 then
             RestoreNameplate(uf)
             return
@@ -459,10 +427,6 @@ local function SetupHideNeutralPlates()
             if uf and uf._vui_hideNeutral then
                 uf:SetAlpha(0)
             end
-            -- Re-apply forced name visibility after Blizzard's refresh.
-            if uf and uf._vui_questName and uf.name then
-                uf.name:SetAlpha(1)
-            end
         end)
     end
 
@@ -480,11 +444,9 @@ local function SetupHideNeutralPlates()
     npFrame:SetScript("OnEvent", function(_, event, arg1)
         if event == "NAME_PLATE_UNIT_ADDED" then
             EvaluateNameplate(arg1)
-            -- Re-evaluate after a short delay: C_TooltipInfo data
-            -- (including quest objective lines used by IsQuestRelated)
-            -- is often incomplete on the very first frame a nameplate
-            -- token is assigned.  The deferred call corrects any false
-            -- "hide" that the immediate evaluation applied.
+            -- Re-evaluate after a short delay: quest status from
+            -- IsQuestRelated may not be accurate on the very first
+            -- frame a nameplate token is assigned.
             local unit = arg1
             C_Timer.After(0.15, function() EvaluateNameplate(unit) end)
         elseif event == "NAME_PLATE_UNIT_REMOVED" then
@@ -495,9 +457,6 @@ local function SetupHideNeutralPlates()
                     uf._vui_hideNeutral = nil
                     uf:SetAlpha(1)
                 end
-                -- Clear the quest-name flag; the UnitFrame may be
-                -- recycled for a different unit next time.
-                uf._vui_questName = nil
             end
         elseif event == "UNIT_FACTION"
             or event == "UNIT_THREAT_LIST_UPDATE" then
