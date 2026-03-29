@@ -523,9 +523,10 @@ local function SetupHideNeutralPlates()
     end)
 
     -- ── Combat log listener (isolated frame) ────────────────
-    -- COMBAT_LOG_EVENT_UNFILTERED must live on its own frame so
-    -- that CombatLogGetCurrentEventInfo() does not taint the
-    -- nameplate frame's secure event dispatch path.
+    -- Only job: if the player exchanged damage with a hidden
+    -- neutral plate, un-hide it.  Intentionally avoids calling
+    -- EvaluateNameplate (which calls C_TooltipInfo.GetUnit and
+    -- other APIs that can taint when run mid-combat).
     local clFrame = CreateFrame("Frame")
     clFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     clFrame:SetScript("OnEvent", function()
@@ -538,14 +539,19 @@ local function SetupHideNeutralPlates()
         elseif dstGUID == pGUID then mobGUID = srcGUID end
         if not mobGUID or engagedGUIDs[mobGUID] then return end
         engagedGUIDs[mobGUID] = true
-        -- Find the nameplate for this GUID and re-evaluate.
+        -- Find and directly restore the plate — no tooltip scanning.
         local plates = C_NamePlate.GetNamePlates()
         if plates then
             for _, plate in ipairs(plates) do
                 local u = plate.namePlateUnitToken
                     or (plate.UnitFrame and plate.UnitFrame.unit)
                 if u and UnitGUID(u) == mobGUID then
-                    EvaluateNameplate(u); break
+                    local uf = plate.UnitFrame
+                    if uf and uf._vui_hideNeutral then
+                        uf._vui_hideNeutral = nil
+                        uf:SetAlpha(1)
+                    end
+                    break
                 end
             end
         end
