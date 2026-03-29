@@ -359,15 +359,15 @@ local function SetupHideNeutralPlates()
         if uf.name then uf.name:SetAlpha(1) end
     end
 
-    -- Remove the forced-name-visible override and let Blizzard's own
-    -- CompactUnitFrame_UpdateName restore the unit's normal name state.
+    -- Remove the forced-name-visible override.  Blizzard's own
+    -- CompactUnitFrame_UpdateAll refresh cycle will restore the
+    -- unit's normal name state; we must NOT call
+    -- CompactUnitFrame_UpdateName directly because it internally
+    -- calls Show() on nameplate sub-elements, which is a
+    -- protected action that triggers ADDON_ACTION_BLOCKED during
+    -- combat (TWW 11.0+).
     local function ClearQuestName(uf)
-        if uf._vui_questName then
-            uf._vui_questName = nil
-            if CompactUnitFrame_UpdateName then
-                pcall(CompactUnitFrame_UpdateName, uf)
-            end
-        end
+        uf._vui_questName = nil
     end
 
     -- Apply or remove the hide/name overrides on a single nameplate.
