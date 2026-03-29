@@ -669,6 +669,88 @@ SlashCmdList["VERITASUI_QOL"] = function()
     Settings.OpenToCategory(settingsCategoryID)
 end
 
+-- ── /way — TomTom-compatible waypoint command ────────────────
+-- Supported formats (mirrors TomTom syntax):
+--   /way #2351 45.2 56.3              -- explicit map ID
+--   /way #2351 45.2 56.3 Some Label   -- with optional label
+--   /way 45.2 56.3                    -- current zone
+--   /way 45.2 56.3 Some Label         -- current zone with label
+--   /way clear                        -- remove waypoint
+--
+-- Uses Blizzard's native user-waypoint APIs so the pin appears on
+-- the World Map and the minimap arrow activates automatically
+-- (same behaviour as right-clicking the map and choosing "Set Waypoint").
+SLASH_VERITASUI_WAY1 = "/way"
+SlashCmdList["VERITASUI_WAY"] = function(msg)
+    msg = strtrim(msg or "")
+
+    -- ── Clear ──────────────────────────────────────────────
+    if msg:lower() == "clear" or msg == "" then
+        if C_Map.HasUserWaypoint() then
+            C_Map.ClearUserWaypoint()
+            C_SuperTrack.SetSuperTrackedUserWaypoint(false)
+            VUI.Print("Quality of Life", "Waypoint cleared.")
+        else
+            VUI.Print("Quality of Life", "No waypoint is set.")
+        end
+        return
+    end
+
+    -- ── Parse: /way #mapID x y [label] ────────────────────
+    local mapID, x, y, label
+    local mID, mX, mY, mLabel = msg:match("^#(%d+)%s+(%d+%.?%d*)%s+(%d+%.?%d*)%s*(.*)")
+    if mID then
+        mapID = tonumber(mID)
+        x     = tonumber(mX)
+        y     = tonumber(mY)
+        label = strtrim(mLabel or "")
+    else
+        -- ── Parse: /way x y [label] ───────────────────────
+        local cX, cY, cLabel = msg:match("^(%d+%.?%d*)%s+(%d+%.?%d*)%s*(.*)")
+        if cX then
+            mapID = C_Map.GetBestMapForUnit("player")
+            x     = tonumber(cX)
+            y     = tonumber(cY)
+            label = strtrim(cLabel or "")
+        end
+    end
+
+    if not (mapID and x and y) then
+        VUI.Print("Quality of Life",
+            "Usage: |cFFFFFF00/way #mapID x y|r or |cFFFFFF00/way x y|r  "
+            .. "(e.g. |cFFFFFF00/way #2351 45.2 56.3|r)  —  "
+            .. "|cFFFFFF00/way clear|r to remove.")
+        return
+    end
+
+    -- Validate map ID exists.
+    local mapInfo = C_Map.GetMapInfo(mapID)
+    if not mapInfo then
+        VUI.Print("Quality of Life",
+            string.format("Unknown map ID |cFFFFFF00%d|r.", mapID))
+        return
+    end
+
+    -- Coordinates are in 0-100 scale; WoW API expects 0-1.
+    local nx, ny = x / 100, y / 100
+    if nx < 0 or nx > 1 or ny < 0 or ny > 1 then
+        VUI.Print("Quality of Life", "Coordinates must be between 0 and 100.")
+        return
+    end
+
+    -- Set the native Blizzard user waypoint.
+    local mapPoint = UiMapPoint.CreateFromVector2D(mapID, CreateVector2D(nx, ny))
+    C_Map.SetUserWaypoint(mapPoint)
+    C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+
+    -- Build confirmation message.
+    local zoneName = mapInfo.name or ("Map " .. mapID)
+    local desc = (label ~= "") and string.format(" |cFFCCCCCC(%s)|r", label) or ""
+    VUI.Print("Quality of Life",
+        string.format("Waypoint set: |cFFFFD200%s|r — |cFF00FF00%.1f, %.1f|r%s",
+            zoneName, x, y, desc))
+end
+
 -- ── Addon Compartment (minimap dropdown) ────────────────────
 function VeritasUI_QualityOfLife_OnAddonCompartmentClick()
     C_Timer.After(0, function() Settings.OpenToCategory(settingsCategoryID) end)

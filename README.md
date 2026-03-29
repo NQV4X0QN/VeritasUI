@@ -31,8 +31,9 @@ Functional enhancements that don't fit the "hide/fade" category.
 - **Item Level Overlays** — shows color-coded item levels on gear in bags, character panel, bank, warband bank, and merchant windows; uses a universal `SetItemButtonQuality` hook with a dedicated merchant scanner
 - **Auto Sell Junk** — automatically sells gray items when visiting a merchant, with batched selling (6 per frame) and coin icon output
 - **Auto Repair** — automatically repairs gear at repair merchants, attempting guild funds first with source reporting
+- **TomTom-compatible Waypoints** — `/way #mapID x y [label]` or `/way x y [label]` places a native Blizzard waypoint pin on the World Map and activates the minimap directional arrow; `/way clear` removes it; reads the same format used by most online guides (e.g. `/way #2351 45.2 56.3`)
 
-Settings: **Options → AddOns → Quality of Life** | `/qol`
+Settings: **Options → AddOns → Quality of Life** | `/qol` | `/way`
 
 ### VeritasUI_PriorityRotation
 One-button spell cycling system for accessibility.
