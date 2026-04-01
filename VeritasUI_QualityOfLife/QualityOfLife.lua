@@ -64,91 +64,87 @@ local function StartWaypointTracking()
 end
 
 -- ── Feature: Auto Sell Junk ─────────────────────────────────
--- Phase 1: Scan all bags and collect junk items.
--- Phase 2: Sell in small batches (≤ 6 per frame) to stay within
---          the server's per-frame processing limit.  Each item is
---          re-verified before the sell call to handle any bag
---          shuffling from combined-bag cleanup.
--- Phase 3: Tally and announce after the last batch.
-local function AutoSellJunk()
-    -- Phase 1 — collect
-    local junk = {}
+-- Event-driven selling: sells up to SELL_BATCH items per cycle,
+-- then waits for BAG_UPDATE_DELAYED (fired after the client
+-- processes bag changes) before selling the next batch.  This
+-- lets the game's own event cadence throttle the sell rate,
+-- handling any number of junk items reliably.
+local SELL_BATCH = 12
+local sellState       -- nil when idle; table { count, items } when selling
+
+local function SellNextBatch()
+    if not sellState then return end
+    if not MerchantFrame or not MerchantFrame:IsShown() then
+        sellState = nil
+        frame:UnregisterEvent("BAG_UPDATE_DELAYED")
+        return
+    end
+
+    local sold = 0
     for bag = 0, (NUM_BAG_SLOTS or 4) do
         for slot = 1, C_Container.GetContainerNumSlots(bag) do
             local info = C_Container.GetContainerItemInfo(bag, slot)
-            if info and info.quality == 0 and not info.hasNoValue then
-                junk[#junk + 1] = {
-                    bag  = bag,
-                    slot = slot,
-                    id   = info.itemID,
-                    qty  = info.stackCount or 1,
+            if info and info.quality == 0 and not info.hasNoValue
+               and not info.isLocked then
+                C_Container.UseContainerItem(bag, slot)
+                sellState.count = sellState.count + 1
+                sellState.items[#sellState.items + 1] = {
+                    id  = info.itemID,
+                    qty = info.stackCount or 1,
                 }
+                sold = sold + 1
+                if sold >= SELL_BATCH then return end   -- pause; BAG_UPDATE_DELAYED will resume
             end
         end
     end
 
-    if #junk == 0 then return end
+    -- If we reach here, no more junk found — finish up.
+    frame:UnregisterEvent("BAG_UPDATE_DELAYED")
 
-    -- Phase 2 — sell in batches
-    local BATCH = 6
-    local idx   = 1
-    local soldItems = {}   -- only items we verified were sold
+    local items = sellState.items
+    local count = sellState.count
+    sellState = nil
 
-    local ticker
-    ticker = C_Timer.NewTicker(0, function()   -- 0 = next frame
-        local batchEnd = math.min(idx + BATCH - 1, #junk)
-        for i = idx, batchEnd do
-            local j = junk[i]
-            -- Re-verify: the item must still be at this bag/slot with the
-            -- same itemID and still be grey-quality.
-            local info = C_Container.GetContainerItemInfo(j.bag, j.slot)
-            if info and info.itemID == j.id and info.quality == 0 then
-                C_Container.UseContainerItem(j.bag, j.slot)
-                soldItems[#soldItems + 1] = { id = j.id, qty = j.qty }
-            end
+    if count == 0 then return end
+
+    -- Tally & announce
+    local function Tally()
+        local copper, pending = 0, 0
+        for _, s in ipairs(items) do
+            local _, _, _, _, _, _, _, _, _, _, vp = C_Item.GetItemInfo(s.id)
+            if vp then copper = copper + s.qty * vp
+            else pending = pending + 1 end
         end
-        idx = batchEnd + 1
+        return copper, pending
+    end
 
-        if idx > #junk then
-            ticker:Cancel()
+    local function Announce(copper)
+        VUI.Print("Quality of Life", format(
+            "Sold |cFFFFFF00%d|r junk item%s for %s",
+            count, count > 1 and "s" or "",
+            GetCoinTextureString(copper)))
+    end
 
-            -- Phase 3 — tally & announce
-            local count = #soldItems
-            if count == 0 then return end
+    local copper, pending = Tally()
+    if pending == 0 then Announce(copper); return end
 
-            local function Tally()
-                local copper, pending = 0, 0
-                for _, s in ipairs(soldItems) do
-                    local _, _, _, _, _, _, _, _, _, _, vp = C_Item.GetItemInfo(s.id)
-                    if vp then copper = copper + s.qty * vp
-                    else pending = pending + 1 end
-                end
-                return copper, pending
-            end
-
-            local function Announce(copper)
-                VUI.Print("Quality of Life", format(
-                    "Sold |cFFFFFF00%d|r junk item%s for %s",
-                    count, count > 1 and "s" or "",
-                    GetCoinTextureString(copper)))
-            end
-
-            local copper, pending = Tally()
-            if pending == 0 then Announce(copper); return end
-
-            -- Uncached prices — retry until all resolve (max 3 s).
-            local retries = 0
-            local priceTicker
-            priceTicker = C_Timer.NewTicker(0.5, function()
-                retries = retries + 1
-                copper, pending = Tally()
-                if pending == 0 or retries >= 6 then
-                    priceTicker:Cancel()
-                    Announce(copper)
-                end
-            end)
+    -- Uncached prices — retry until all resolve (max 3 s).
+    local retries = 0
+    local priceTicker
+    priceTicker = C_Timer.NewTicker(0.5, function()
+        retries = retries + 1
+        copper, pending = Tally()
+        if pending == 0 or retries >= 6 then
+            priceTicker:Cancel()
+            Announce(copper)
         end
     end)
+end
+
+local function AutoSellJunk()
+    sellState = { count = 0, items = {} }
+    frame:RegisterEvent("BAG_UPDATE_DELAYED")
+    SellNextBatch()
 end
 
 -- ── Feature: Auto Repair ────────────────────────────────────
@@ -676,6 +672,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 
         if db.autoSellJunk or db.autoRepair then
             self:RegisterEvent("MERCHANT_SHOW")
+            self:RegisterEvent("MERCHANT_CLOSED")
         end
 
         self:UnregisterEvent("PLAYER_LOGIN")
@@ -684,6 +681,15 @@ frame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "MERCHANT_SHOW" then
         if db.autoRepair   then AutoRepair()  end
         if db.autoSellJunk then AutoSellJunk() end
+
+    elseif event == "MERCHANT_CLOSED" then
+        if sellState then
+            frame:UnregisterEvent("BAG_UPDATE_DELAYED")
+            sellState = nil
+        end
+
+    elseif event == "BAG_UPDATE_DELAYED" then
+        SellNextBatch()
 
     elseif event == "USER_WAYPOINT_UPDATED" then
         -- Fired when the waypoint is cleared externally (e.g. map right-click UI).
