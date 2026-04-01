@@ -1,7 +1,7 @@
 ## Interface: 120001
 ## Title: VeritasUI Library
 ## Notes: Shared library for VeritasUI addons. |cFF888888Must load first.|r
-## Version: 1.3.11
+## Version: 1.3.12
 ## Author: NQV4X0QN
 ## IconTexture: Interface\Icons\INV_Misc_Gear_01
 
