@@ -38,8 +38,7 @@ local defaults = {
 }
 
 local db
-local inCombat = false
-local settingsCategoryID
+local inCombat = falselocal settingsCategoryID
 local frame = CreateFrame("Frame")
 
 -- ── Feature: Hide Social Button ─────────────────────────────
@@ -85,21 +84,17 @@ local function SetupChatTabFading()
             if self._vui_inHook then return end
             self._vui_inHook = true
 
-            pcall(function()
-                local state = self._vui_fadeState
-                if state == "HIDDEN" and a > 0 then
-                    self:SetAlpha(0)
-                elseif state == "FADING_OUT" then
-                    local prev = self._vui_prevAlpha or 0
-                    if a > prev + 0.001 then
-                        -- Blizzard trying to raise alpha — block it.
-                        self:SetAlpha(prev)
-                    else
-                        -- Our SmoothFade decreasing alpha — allow it.
-                        self._vui_prevAlpha = a
-                    end
+            local state = self._vui_fadeState
+            if state == "HIDDEN" and a > 0 then
+                self:SetAlpha(0)
+            elseif state == "FADING_OUT" then
+                local prev = self._vui_prevAlpha or 0
+                if a > prev + 0.001 then
+                    self:SetAlpha(prev)
+                else
+                    self._vui_prevAlpha = a
                 end
-            end)
+            end
 
             self._vui_inHook = false
         end)
@@ -202,7 +197,7 @@ end
 local function SetupPlayerFrameFade()
     local evaluate, healthPing = VUI.HookPlayerFrameFade(
         PlayerFrame,
-        function() return inCombat end
+        InCombatLockdown
     )
     frame._playerEvaluate   = evaluate
     frame._playerHealthPing = healthPing
@@ -274,7 +269,6 @@ local function HideErrorText()
     end
 end
 
--- ── Feature: Hide Social Button ─────────────────────────────
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
@@ -354,12 +348,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         self:UnregisterEvent("PLAYER_LOGIN")
         VUI.Print("Clean Solo", "Loaded. Type |cFFFFFF00/cleansolo|r to open settings.")
 
-    elseif event == "PLAYER_REGEN_DISABLED" then
-        inCombat = true
-        if self._playerEvaluate then self._playerEvaluate() end
-
-    elseif event == "PLAYER_REGEN_ENABLED" then
-        inCombat = false
+    elseif event == "PLAYER_REGEN_DISABLED"
+        or event == "PLAYER_REGEN_ENABLED" then
         if self._playerEvaluate then self._playerEvaluate() end
 
     elseif event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then

@@ -153,6 +153,7 @@ end
 -- immediately after a zone-change-triggered sync.
 local lastDirectSync = 0
 local SYNC_COOLDOWN  = 0.5
+local cachedNameSet  = nil   -- rebuilt on ZONE_CHANGED*, reused for QUEST_LOG_UPDATE
 
 local function SyncTracking(verbose)
     if not db or not db.enabled then
@@ -160,12 +161,11 @@ local function SyncTracking(verbose)
         return
     end
 
-    local nameSet   = BuildZoneNameSet()
+    local nameSet   = cachedNameSet or BuildZoneNameSet()
     local watchType = GetWatchType()
     local removed, added = 0, 0
     local currentHeader = nil
 
-    -- Pass 1: remove out-of-zone, unpinned quests
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
         local ok, info = pcall(C_QuestLog.GetInfo, i)
         if not ok or not info then
@@ -173,34 +173,22 @@ local function SyncTracking(verbose)
         elseif info.isHeader then
             currentHeader = info.title
         elseif not info.isHidden and info.questID then
-            local pinned = IsAlwaysTracked(info)
-            if not pinned and not HeaderMatches(currentHeader, nameSet) then
+            local pinned, tag = IsAlwaysTracked(info)
+            local inZone = HeaderMatches(currentHeader, nameSet)
+
+            if pinned or inZone then
+                local ok2 = pcall(C_QuestLog.AddQuestWatch, info.questID, watchType)
+                if verbose then
+                    local lbl = tag and (" (" .. tag .. ")") or ""
+                    print("[ZQ sync] ADD" .. lbl .. " '" .. tostring(info.title) .. "' ok=" .. tostring(ok2))
+                end
+                if ok2 then added = added + 1 end
+            else
                 local ok2 = pcall(C_QuestLog.RemoveQuestWatch, info.questID)
                 if verbose then
                     print("[ZQ sync] REMOVE '" .. tostring(info.title) .. "' ok=" .. tostring(ok2))
                 end
                 if ok2 then removed = removed + 1 end
-            end
-        end
-    end
-
-    -- Pass 2: add in-zone or pinned quests
-    currentHeader = nil
-    for i = 1, C_QuestLog.GetNumQuestLogEntries() do
-        local ok, info = pcall(C_QuestLog.GetInfo, i)
-        if ok and info then
-            if info.isHeader then
-                currentHeader = info.title
-            elseif not info.isHidden and info.questID then
-                local pinned, tag = IsAlwaysTracked(info)
-                if pinned or HeaderMatches(currentHeader, nameSet) then
-                    local ok2 = pcall(C_QuestLog.AddQuestWatch, info.questID, watchType)
-                    if verbose then
-                        local lbl = tag and (" (" .. tag .. ")") or ""
-                        print("[ZQ sync] ADD" .. lbl .. " '" .. tostring(info.title) .. "' ok=" .. tostring(ok2))
-                    end
-                    if ok2 then added = added + 1 end
-                end
             end
         end
     end
@@ -373,6 +361,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         or event == "ZONE_CHANGED_NEW_AREA"
         or event == "ZONE_CHANGED_INDOORS" then
         if debounceTimer then debounceTimer:Cancel(); debounceTimer = nil end
+        cachedNameSet = BuildZoneNameSet()
         lastDirectSync = GetTime()
         SyncTracking(false)
 

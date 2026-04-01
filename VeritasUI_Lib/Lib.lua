@@ -55,7 +55,9 @@ local fadeFrames = {}
 local fadeDriver = CreateFrame("Frame")
 
 fadeDriver:SetScript("OnUpdate", function(_, elapsed)
-    for f, info in pairs(fadeFrames) do
+    local f, info = next(fadeFrames)
+    while f do
+        local nxt = next(fadeFrames, f)
         info.timer = info.timer + elapsed
         if info.timer >= info.duration then
             f:SetAlpha(info.target)
@@ -64,6 +66,8 @@ fadeDriver:SetScript("OnUpdate", function(_, elapsed)
             local pct = info.timer / info.duration
             f:SetAlpha(info.start + (info.target - info.start) * pct)
         end
+        f = nxt
+        if f then info = fadeFrames[f] end
     end
     if not next(fadeFrames) then fadeDriver:Hide() end
 end)
@@ -326,16 +330,10 @@ function VUI._InitReloadButton()
         reloadBtn:Hide()
     end)
 
-    -- Throttled check: show button only when a VUI category is active.
+    -- Show reload button only when a VUI category is active.
     -- Uses pcall so unknown API shapes degrade to "button stays hidden".
-    local checker = CreateFrame("Frame", nil, SettingsPanel)
-    local checkT = 0
-    checker:SetScript("OnUpdate", function(_, dt)
-        checkT = checkT + dt
-        if checkT < 0.25 then return end
-        checkT = 0
+    local function UpdateReloadVisibility()
         if not reloadBtn then return end
-
         local show = false
         local ok, cat = pcall(SettingsPanel.GetCurrentCategory, SettingsPanel)
         if ok and cat then
@@ -345,7 +343,16 @@ function VUI._InitReloadButton()
             end
         end
         reloadBtn:SetShown(show)
-    end)
+    end
+
+    -- Hook category selection changes; fall back to throttled OnUpdate
+    -- if the callback API is unavailable.
+    if SettingsPanel.HookScript then
+        SettingsPanel:HookScript("OnShow", UpdateReloadVisibility)
+        hooksecurefunc(SettingsPanel, "SelectCategory", function()
+            C_Timer.After(0, UpdateReloadVisibility)
+        end)
+    end
 
     SettingsPanel:HookScript("OnHide", function()
         if reloadBtn then reloadBtn:Hide() end

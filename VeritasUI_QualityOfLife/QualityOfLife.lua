@@ -18,6 +18,8 @@ local C_Container      = C_Container
 local C_Item           = C_Item
 local C_Map            = C_Map
 local GetCoinTextureString = GetCoinTextureString
+local C_Navigation  = C_Navigation
+local C_SuperTrack  = C_SuperTrack
 
 local VUI = _G.VeritasUI
 if not VUI then
@@ -258,16 +260,27 @@ local function SetupItemLevels()
     ----------------------------------------------------------------
     --  SetItemButtonQuality hook
     ----------------------------------------------------------------
+    local questBtnCache = {}
     local function IsQuestRewardButton(btn)
         local name = btn.GetName and btn:GetName()
-        if name and name:find("QuestInfoItem") then return true end
+        if not name then return false end
+        local cached = questBtnCache[name]
+        if cached ~= nil then return cached end
+        if name:find("QuestInfoItem") then
+            questBtnCache[name] = true
+            return true
+        end
         local p = btn:GetParent()
         for _ = 1, 3 do
             if not p then break end
             local pn = p.GetName and p:GetName()
-            if pn and pn:find("QuestInfoRewardsFrame") then return true end
+            if pn and pn:find("QuestInfoRewardsFrame") then
+                questBtnCache[name] = true
+                return true
+            end
             p = p:GetParent()
         end
+        questBtnCache[name] = false
         return false
     end
 
@@ -719,7 +732,7 @@ end
 -- (same behaviour as right-clicking the map and choosing "Set Waypoint").
 SLASH_VERITASUI_WAY1 = "/way"
 SlashCmdList["VERITASUI_WAY"] = function(msg)
-    msg = strtrim(msg or "")
+    msg = strtrim(msg or ""):gsub(",", ".")
 
     -- ── Clear ──────────────────────────────────────────────
     if msg:lower() == "clear" or msg == "" then
