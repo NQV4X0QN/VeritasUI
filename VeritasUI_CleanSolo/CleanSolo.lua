@@ -38,7 +38,7 @@ local defaults = {
 }
 
 local db
-local inCombat = falselocal settingsCategoryID
+local settingsCategoryID
 local frame = CreateFrame("Frame")
 
 -- ── Feature: Hide Social Button ─────────────────────────────
