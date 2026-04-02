@@ -699,7 +699,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 
     elseif event == "MERCHANT_SHOW" then
         if db.autoRepair   then AutoRepair()  end
-        if db.autoSellJunk then AutoSellJunk() end
+        if db.autoSellJunk then C_Timer.After(0, AutoSellJunk) end
 
     elseif event == "MERCHANT_CLOSED" then
         if sellState then
