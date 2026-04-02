@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.14] — 2026-04-01
+
+### Fixed
+
+* **[QualityOfLife] Fix Auto Sell Junk stopping prematurely when server-throttled items remain locked mid-batch; reduce batch size from 12 to 9 to stay within WoW's server-side sell rate limit (matches Scrap addon's approach)**
+
+---
+
 ## [1.3.13] — 2026-03-31
 
 ### Fixed

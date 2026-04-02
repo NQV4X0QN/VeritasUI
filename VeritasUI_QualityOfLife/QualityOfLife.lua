@@ -71,7 +71,7 @@ end
 -- processes bag changes) before selling the next batch.  This
 -- lets the game's own event cadence throttle the sell rate,
 -- handling any number of junk items reliably.
-local SELL_BATCH = 12
+local SELL_BATCH = 9
 local sellState       -- nil when idle; table { count, items } when selling
 
 local function SellNextBatch()
@@ -83,24 +83,30 @@ local function SellNextBatch()
     end
 
     local sold = 0
+    local remaining = 0
     for bag = 0, (NUM_BAG_SLOTS or 4) do
         for slot = 1, C_Container.GetContainerNumSlots(bag) do
             local info = C_Container.GetContainerItemInfo(bag, slot)
-            if info and info.quality == 0 and not info.hasNoValue
-               and not info.isLocked then
-                C_Container.UseContainerItem(bag, slot)
-                sellState.count = sellState.count + 1
-                sellState.items[#sellState.items + 1] = {
-                    id  = info.itemID,
-                    qty = info.stackCount or 1,
-                }
-                sold = sold + 1
-                if sold >= SELL_BATCH then return end   -- pause; BAG_UPDATE_DELAYED will resume
+            if info and info.quality == 0 and not info.hasNoValue then
+                remaining = remaining + 1
+                if not info.isLocked then
+                    C_Container.UseContainerItem(bag, slot)
+                    sellState.count = sellState.count + 1
+                    sellState.items[#sellState.items + 1] = {
+                        id  = info.itemID,
+                        qty = info.stackCount or 1,
+                    }
+                    sold = sold + 1
+                    if sold >= SELL_BATCH then return end   -- pause; BAG_UPDATE_DELAYED will resume
+                end
             end
         end
     end
 
-    -- If we reach here, no more junk found — finish up.
+    -- If any items are still locked (pending server confirmation), wait for the next event.
+    if remaining > 0 then return end
+
+    -- No remaining junk — finish up.
     frame:UnregisterEvent("BAG_UPDATE_DELAYED")
 
     local items = sellState.items
