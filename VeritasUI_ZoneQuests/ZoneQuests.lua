@@ -25,6 +25,12 @@ local DEFAULTS = {
 
 local db = nil  -- assigned only after ADDON_LOADED
 
+-- ── Manual highlight tracking ─────────────────────────────────────
+-- Quests the player manually highlighted (clicked on map). Exempt from
+-- zone-based removal until the player explicitly un-highlights them.
+local manualPinned   = {}   -- { [questID] = true }
+local syncInProgress = false
+
 -- ── Directional prefix stripper ───────────────────────────────────
 local DIRECTIONAL = {
     ["northern "]=true, ["southern "]=true, ["eastern "]=true,
@@ -166,6 +172,8 @@ local function SyncTracking(verbose)
     local removed, added = 0, 0
     local currentHeader = nil
 
+    syncInProgress = true
+
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
         local ok, info = pcall(C_QuestLog.GetInfo, i)
         if not ok or not info then
@@ -175,11 +183,12 @@ local function SyncTracking(verbose)
         elseif not info.isHidden and info.questID then
             local pinned, tag = IsAlwaysTracked(info)
             local inZone = HeaderMatches(currentHeader, nameSet)
+            local manual = manualPinned[info.questID]
 
-            if pinned or inZone then
+            if pinned or inZone or manual then
                 local ok2 = pcall(C_QuestLog.AddQuestWatch, info.questID, watchType)
                 if verbose then
-                    local lbl = tag and (" (" .. tag .. ")") or ""
+                    local lbl = tag and (" (" .. tag .. ")") or (manual and " (manual)") or ""
                     print("[ZQ sync] ADD" .. lbl .. " '" .. tostring(info.title) .. "' ok=" .. tostring(ok2))
                 end
                 if ok2 then added = added + 1 end
@@ -192,6 +201,8 @@ local function SyncTracking(verbose)
             end
         end
     end
+
+    syncInProgress = false
 
     if verbose then print("[ZQ sync] Done. removed=" .. removed .. " added=" .. added) end
 end
@@ -322,6 +333,8 @@ ef:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 ef:RegisterEvent("ZONE_CHANGED_INDOORS")
 ef:RegisterEvent("QUEST_LOG_UPDATE")
 ef:RegisterEvent("QUEST_ACCEPTED")
+ef:RegisterEvent("QUEST_WATCH_LIST_CHANGED")
+ef:RegisterEvent("QUEST_REMOVED")
 
 ef:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
@@ -367,6 +380,20 @@ ef:SetScript("OnEvent", function(_, event, arg1)
 
     elseif event == "QUEST_ACCEPTED" then
         C_Timer.After(0.5, function() SyncTracking(false) end)
+
+    elseif event == "QUEST_WATCH_LIST_CHANGED" then
+        -- arg1=questID, arg2=true if added / false/nil if removed.
+        -- Ignore changes our own sync triggered; only react to player actions.
+        if not syncInProgress and arg1 then
+            if arg2 then
+                manualPinned[arg1] = true
+            else
+                manualPinned[arg1] = nil
+            end
+        end
+
+    elseif event == "QUEST_REMOVED" then
+        if arg1 then manualPinned[arg1] = nil end
 
     elseif event == "QUEST_LOG_UPDATE" then
         ScheduleSync()
