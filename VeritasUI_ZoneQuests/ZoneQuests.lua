@@ -25,12 +25,6 @@ local DEFAULTS = {
 
 local db = nil  -- assigned only after ADDON_LOADED
 
--- ── Manual highlight tracking ─────────────────────────────────────
--- Quests the player manually highlighted (clicked on map). Exempt from
--- zone-based removal until the player explicitly un-highlights them.
-local manualPinned   = {}   -- { [questID] = true }
-local syncInProgress = false
-
 -- ── Directional prefix stripper ───────────────────────────────────
 local DIRECTIONAL = {
     ["northern "]=true, ["southern "]=true, ["eastern "]=true,
@@ -172,7 +166,11 @@ local function SyncTracking(verbose)
     local removed, added = 0, 0
     local currentHeader = nil
 
-    syncInProgress = true
+    -- Preserve the quest the player is actively navigating to (minimap arrow).
+    -- Checking at sync time avoids event-ordering and arg-capture issues.
+    local superQuestID = (C_SuperTrack
+        and C_SuperTrack.GetSuperTrackedQuestID
+        and C_SuperTrack.GetSuperTrackedQuestID()) or 0
 
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
         local ok, info = pcall(C_QuestLog.GetInfo, i)
@@ -183,12 +181,12 @@ local function SyncTracking(verbose)
         elseif not info.isHidden and info.questID then
             local pinned, tag = IsAlwaysTracked(info)
             local inZone = HeaderMatches(currentHeader, nameSet)
-            local manual = manualPinned[info.questID]
+            local superTracked = superQuestID ~= 0 and info.questID == superQuestID
 
-            if pinned or inZone or manual then
+            if pinned or inZone or superTracked then
                 local ok2 = pcall(C_QuestLog.AddQuestWatch, info.questID, watchType)
                 if verbose then
-                    local lbl = tag and (" (" .. tag .. ")") or (manual and " (manual)") or ""
+                    local lbl = tag and (" (" .. tag .. ")") or (superTracked and " (super-tracked)") or ""
                     print("[ZQ sync] ADD" .. lbl .. " '" .. tostring(info.title) .. "' ok=" .. tostring(ok2))
                 end
                 if ok2 then added = added + 1 end
@@ -201,8 +199,6 @@ local function SyncTracking(verbose)
             end
         end
     end
-
-    syncInProgress = false
 
     if verbose then print("[ZQ sync] Done. removed=" .. removed .. " added=" .. added) end
 end
@@ -333,8 +329,7 @@ ef:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 ef:RegisterEvent("ZONE_CHANGED_INDOORS")
 ef:RegisterEvent("QUEST_LOG_UPDATE")
 ef:RegisterEvent("QUEST_ACCEPTED")
-ef:RegisterEvent("QUEST_WATCH_LIST_CHANGED")
-ef:RegisterEvent("QUEST_REMOVED")
+ef:RegisterEvent("SUPER_TRACKING_CHANGED")
 
 ef:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
@@ -381,19 +376,10 @@ ef:SetScript("OnEvent", function(_, event, arg1)
     elseif event == "QUEST_ACCEPTED" then
         C_Timer.After(0.5, function() SyncTracking(false) end)
 
-    elseif event == "QUEST_WATCH_LIST_CHANGED" then
-        -- arg1=questID, arg2=true if added / false/nil if removed.
-        -- Ignore changes our own sync triggered; only react to player actions.
-        if not syncInProgress and arg1 then
-            if arg2 then
-                manualPinned[arg1] = true
-            else
-                manualPinned[arg1] = nil
-            end
-        end
-
-    elseif event == "QUEST_REMOVED" then
-        if arg1 then manualPinned[arg1] = nil end
+    elseif event == "SUPER_TRACKING_CHANGED" then
+        -- Player set or cleared the minimap direction arrow. Re-sync so the
+        -- quest appears/disappears from the tracker promptly.
+        ScheduleSync()
 
     elseif event == "QUEST_LOG_UPDATE" then
         ScheduleSync()
