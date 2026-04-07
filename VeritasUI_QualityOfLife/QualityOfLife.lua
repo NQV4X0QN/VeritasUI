@@ -119,9 +119,15 @@ local function SellNextBatch()
     local function Tally()
         local copper, pending = 0, 0
         for _, s in ipairs(items) do
-            local _, _, _, _, _, _, _, _, _, _, vp = C_Item.GetItemInfo(s.id)
-            if vp then copper = copper + s.qty * vp
-            else pending = pending + 1 end
+            local infoOk, _, _, _, _, _, _, _, _, _, vp = pcall(C_Item.GetItemInfo, s.id)
+            if infoOk and vp then
+                -- vp (vendor price) is a secret value in Midnight; guard arithmetic.
+                local mathOk, val = pcall(function() return s.qty * vp end)
+                if mathOk and val then copper = copper + val
+                else pending = pending + 1 end
+            else
+                pending = pending + 1
+            end
         end
         return copper, pending
     end
@@ -240,9 +246,11 @@ local function SetupItemLevels()
         local ok, itemID, _, _, equipLoc, _, classID =
             pcall(C_Item.GetItemInfoInstant, itemIDOrLink)
         if not ok then return false end
-        if not (GEAR_CLASSES[classID] and equipLoc and equipLoc ~= "") then
-            return false
-        end
+        -- equipLoc/classID may be secret values in raid encounters; guard the comparison.
+        local ok2, gear = pcall(function()
+            return GEAR_CLASSES[classID] and equipLoc and equipLoc ~= ""
+        end)
+        if not ok2 or not gear then return false end
         return true, itemID
     end
 
@@ -253,7 +261,10 @@ local function SetupItemLevels()
         if not equippable then HideOverlay(btn); return end
         if rawID and SKIP_ITEMS[rawID] then HideOverlay(btn); return end
         local ok, ilvl = pcall(C_Item.GetDetailedItemLevelInfo, itemIDOrLink)
-        if not ok or not ilvl or ilvl <= 0 then HideOverlay(btn); return end
+        if not ok or not ilvl then HideOverlay(btn); return end
+        -- ilvl may be a secret value in raid encounters; guard the comparison.
+        local cmpOk, tooLow = pcall(function() return ilvl <= 0 end)
+        if not cmpOk or tooLow then HideOverlay(btn); return end
         ApplyOverlay(btn, ilvl, quality)
     end
 
