@@ -28,7 +28,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.3.19"
+VUI.VERSION = "1.3.20"
 
 ----------------------------------------------------------------
 --  Print helpers
@@ -330,9 +330,14 @@ function VUI._InitReloadButton()
         reloadBtn:Hide()
     end)
 
-    -- Show reload button only when a VUI category is active.
+    -- Poll every 0.25s to show the button only when a VUI category is active.
     -- Uses pcall so unknown API shapes degrade to "button stays hidden".
-    local function UpdateReloadVisibility()
+    local checker = CreateFrame("Frame", nil, SettingsPanel)
+    local checkT = 0
+    checker:SetScript("OnUpdate", function(_, dt)
+        checkT = checkT + dt
+        if checkT < 0.25 then return end
+        checkT = 0
         if not reloadBtn then return end
         local show = false
         local ok, cat = pcall(SettingsPanel.GetCurrentCategory, SettingsPanel)
@@ -343,16 +348,7 @@ function VUI._InitReloadButton()
             end
         end
         reloadBtn:SetShown(show)
-    end
-
-    -- Hook category selection changes; fall back to throttled OnUpdate
-    -- if the callback API is unavailable.
-    if SettingsPanel.HookScript then
-        SettingsPanel:HookScript("OnShow", UpdateReloadVisibility)
-        hooksecurefunc(SettingsPanel, "SelectCategory", function()
-            C_Timer.After(0, UpdateReloadVisibility)
-        end)
-    end
+    end)
 
     SettingsPanel:HookScript("OnHide", function()
         if reloadBtn then reloadBtn:Hide() end
