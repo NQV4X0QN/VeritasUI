@@ -191,6 +191,7 @@ local function BuildNativeSettingsPanel()
     )
     enableSetting:SetValueChangedCallback(function(_, value)
         if value then
+            C_CVar.SetCVar("ActionButtonUseKeyDown", "0")
             PR:CompileSequence()
             C_Timer.After(0.5, function()
                 if not InCombatLockdown() then PR:ScanAndOverrideBarButton() end
@@ -204,6 +205,7 @@ local function BuildNativeSettingsPanel()
                 PR.needsClearOverride = true
             end
             PR:StopIconTicker()
+            C_CVar.SetCVar("ActionButtonUseKeyDown", "1")
             VUI.Print("Priority Rotation", "|cFFFF4444Disabled.|r")
         end
     end)

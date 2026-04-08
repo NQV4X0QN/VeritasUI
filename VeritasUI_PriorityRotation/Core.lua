@@ -420,13 +420,9 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         ef:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
-        -- Warn about Press and Hold Casting conflict
-        if C_CVar.GetCVar("ActionButtonUseKeyDown") == "1" then
-            VUI.Print("Priority Rotation",
-                "|cFFFF8800Warning:|r Press and Hold Casting is enabled "
-                .. "and conflicts with the rotation cycler. "
-                .. "Disable it in Options > Combat for best results.")
-        end
+        -- Manage Press and Hold Casting CVar automatically.
+        -- PR requires key-up firing (0); disabling PR restores key-down (1).
+        C_CVar.SetCVar("ActionButtonUseKeyDown", PR:IsEnabled() and "0" or "1")
         PR:SwitchToCurrentSpec()
         PR:CompileSequence()
         PR._lastProfileKey = PR:GetProfileKey()
