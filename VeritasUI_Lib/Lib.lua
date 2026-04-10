@@ -28,7 +28,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.3.20"
+VUI.VERSION = "1.3.21"
 
 ----------------------------------------------------------------
 --  Print helpers
@@ -74,12 +74,7 @@ end)
 fadeDriver:Hide()
 
 local function SmoothFade(frame, duration, targetAlpha)
-    local ok, cur = pcall(frame.GetAlpha, frame)
-    if not ok or type(cur) ~= "number" then
-        frame:SetAlpha(targetAlpha)
-        fadeFrames[frame] = nil
-        return
-    end
+    local cur = frame:GetAlpha()
     if math_abs(cur - targetAlpha) < 0.01 then
         frame:SetAlpha(targetAlpha)
         fadeFrames[frame] = nil
@@ -158,7 +153,7 @@ function VUI.HookHoverFade(target, shouldStayVisible)
         for _, child in ipairs({ target:GetChildren() }) do HookChild(child) end
     end
 
-    target:HookScript("OnEnter", function() FadeIn(); HookAllChildren() end)
+    target:HookScript("OnEnter", FadeIn)
     target:HookScript("OnLeave", function() C_Timer.After(0.1, FadeOut) end)
     HookAllChildren()
 end

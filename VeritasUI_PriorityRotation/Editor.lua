@@ -102,7 +102,8 @@ local function BuildEntryFromCursor()
         if cName and cName ~= "" then
             -- If the MacroFrame is open on the character tab, prefer that
             if MacroFrame and MacroFrame:IsShown() then
-                local selTab = PanelTemplates_GetSelectedTab(MacroFrame)
+                local selTab = PanelTemplates_GetSelectedTab
+                    and PanelTemplates_GetSelectedTab(MacroFrame)
                 if selTab == 2 then
                     mName, mIcon, mBody = cName, cIcon, cBody
                     usedCharSlot = true

@@ -76,7 +76,7 @@ local function HeaderMatches(header, nameSet)
     local hs = StripDir(h)
     if nameSet[hs] then return true end
     for name in pairs(nameSet) do
-        if #name > 4 then
+        if #name > 2 then
             if h:find(name, 1, true) then return true end
             if name:find(hs, 1, true) then return true end
         end
@@ -206,9 +206,10 @@ end
 -- ── Snapshot / restore (uses questID for reliable matching) ───────
 -- NOTE: Midnight removed IsQuestWatched(), so there is no API to
 -- query which quests the player had manually tracked.  The snapshot
--- records ALL non-hidden quests as "watched".  This means disabling
--- Zone Quests will re-track everything rather than restoring the
--- exact pre-enable state.  This is an accepted Midnight limitation.
+-- records ALL non-hidden quests at the moment ZQ is enabled or at
+-- login, not at the moment it is disabled.  RestoreWatched restores
+-- that snapshot state, not the player's original pre-enable tracking.
+-- This is an accepted Midnight limitation.
 local function SnapshotWatched()
     db.manualWatched = {}
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
@@ -368,6 +369,9 @@ ef:SetScript("OnEvent", function(_, event, arg1)
     elseif event == "ZONE_CHANGED"
         or event == "ZONE_CHANGED_NEW_AREA"
         or event == "ZONE_CHANGED_INDOORS" then
+        -- Always invalidate the cache so the next sync uses fresh zone data.
+        cachedNameSet = nil
+        if not db or not db.enabled then return end
         if debounceTimer then debounceTimer:Cancel(); debounceTimer = nil end
         cachedNameSet = BuildZoneNameSet()
         lastDirectSync = GetTime()

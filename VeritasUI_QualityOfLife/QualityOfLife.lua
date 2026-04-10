@@ -162,41 +162,25 @@ local function AutoSellJunk()
 end
 
 -- ── Feature: Auto Repair ────────────────────────────────────
--- Tries guild repair first, then falls back to personal gold.
--- Reports funding source so the player knows who paid.
--- NOTE (2a): GetRepairAllCost() after RepairAllItems(true) assumes
--- the server updates cost within the same frame.  This is reliable
--- in practice but not contractually guaranteed by the API.
+-- Tries guild repair first, then personal gold covers any remainder.
+-- GetRepairAllCost() after RepairAllItems(true) reflects a client-cached
+-- value that updates asynchronously from the server, so we cannot reliably
+-- split costs between guild and personal in the same frame.  Instead, we
+-- always call RepairAllItems(false) after the guild attempt to cover any
+-- shortfall, and report the original total cost.
 local function AutoRepair()
     if not CanMerchantRepair() then return end
     local cost, canRepair = GetRepairAllCost()
     if not canRepair or cost == 0 then return end
 
     if IsInGuild() and CanGuildBankRepair() then
-        RepairAllItems(true)
-        local remaining = GetRepairAllCost()
-        if remaining == 0 then
-            VUI.Print("Quality of Life", format(
-                "Repaired for %s (guild bank)", GetCoinTextureString(cost)))
-            return
-        end
-        -- Guild only covered part — pay the rest from personal gold.
-        RepairAllItems(false)
-        local guildPaid = cost - remaining
-        if guildPaid > 0 then
-            VUI.Print("Quality of Life", format(
-                "Repaired for %s (%s guild, %s personal)",
-                GetCoinTextureString(cost),
-                GetCoinTextureString(guildPaid),
-                GetCoinTextureString(remaining)))
-        else
-            VUI.Print("Quality of Life", format(
-                "Repaired for %s (personal gold)", GetCoinTextureString(cost)))
-        end
+        RepairAllItems(true)   -- guild funds first
+        RepairAllItems(false)  -- personal gold covers any remainder
+        VUI.Print("Quality of Life", format(
+            "Repaired for %s (guild bank)", GetCoinTextureString(cost)))
         return
     end
     RepairAllItems(false)
-
     VUI.Print("Quality of Life", format(
         "Repaired for %s", GetCoinTextureString(cost)))
 end
@@ -332,6 +316,7 @@ local function SetupItemLevels()
                 local pName = btn:GetParent()
                     and btn:GetParent().GetName
                     and btn:GetParent():GetName() or ""
+                -- Blizzard bank container (-1) has slots 1–28 in Midnight.
                 if slotID >= 1 and slotID <= 28 and pName:find("Bank") then
                     local ok, r = pcall(C_Container.GetContainerItemLink,
                         -1, slotID)

@@ -66,38 +66,40 @@ local function SetupChatTabFading()
     local chatFrames = {}
     local tabs       = {}
 
-    for i = 1, NUM_CHAT_WINDOWS do
+    for i = 1, (NUM_CHAT_WINDOWS or 10) do
         local cf  = _G["ChatFrame" .. i]
         local tab = _G["ChatFrame" .. i .. "Tab"]
-        if not cf or not tab then break end
-        chatFrames[#chatFrames + 1] = cf
-        tabs[#tabs + 1] = tab
+        -- Skip missing slots rather than aborting; frames may be non-contiguous.
+        if cf and tab then
+            chatFrames[#chatFrames + 1] = cf
+            tabs[#tabs + 1] = tab
 
-        tab:SetAlpha(0)
+            tab:SetAlpha(0)
 
-        -- State: "VISIBLE", "FADING_OUT", or "HIDDEN"
-        tab._vui_fadeState = "HIDDEN"
-        tab._vui_prevAlpha = 0
-        tab._vui_inHook    = false
+            -- State: "VISIBLE", "FADING_OUT", or "HIDDEN"
+            tab._vui_fadeState = "HIDDEN"
+            tab._vui_prevAlpha = 0
+            tab._vui_inHook    = false
 
-        hooksecurefunc(tab, "SetAlpha", function(self, a)
-            if self._vui_inHook then return end
-            self._vui_inHook = true
+            hooksecurefunc(tab, "SetAlpha", function(self, a)
+                if self._vui_inHook then return end
+                self._vui_inHook = true
 
-            local state = self._vui_fadeState
-            if state == "HIDDEN" and a > 0 then
-                self:SetAlpha(0)
-            elseif state == "FADING_OUT" then
-                local prev = self._vui_prevAlpha or 0
-                if a > prev + 0.001 then
-                    self:SetAlpha(prev)
-                else
-                    self._vui_prevAlpha = a
+                local state = self._vui_fadeState
+                if state == "HIDDEN" and a > 0 then
+                    self:SetAlpha(0)
+                elseif state == "FADING_OUT" then
+                    local prev = self._vui_prevAlpha or 0
+                    if a > prev + 0.001 then
+                        self:SetAlpha(prev)
+                    else
+                        self._vui_prevAlpha = a
+                    end
                 end
-            end
 
-            self._vui_inHook = false
-        end)
+                self._vui_inHook = false
+            end)
+        end
     end
 
     local hideTimer
@@ -203,10 +205,17 @@ local function SetupPlayerFrameFade()
     frame._playerHealthPing = healthPing
     frame:RegisterUnitEvent("UNIT_HEALTH", "player")
     frame:RegisterUnitEvent("UNIT_MAXHEALTH", "player")
+    -- Combat events are only needed when this feature is active.
+    frame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 end
 
 -- ── Feature: Hide Bag Buttons ───────────────────────────────
 -- SuppressFrame is idempotent, so repeated calls are safe.
+-- KillAll runs immediately and again at 0.5 s and 2.0 s because
+-- MainMenuBarBackpackButton and BagBarExpandToggle re-show themselves
+-- asynchronously during the login sequence; SuppressFrame's Show-hook
+-- keeps them permanently hidden after the login burst settles.
 local function HideBagButtons()
     local function KillAll()
         VUI.SuppressFrame(BagsBar)
@@ -318,8 +327,6 @@ end
 -- ── Events ──────────────────────────────────────────────────
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
-frame:RegisterEvent("PLAYER_REGEN_DISABLED")
-frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 
 frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" then

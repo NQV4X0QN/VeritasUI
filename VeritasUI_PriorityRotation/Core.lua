@@ -66,7 +66,6 @@ rotBtn:WrapScript(rotBtn, "OnClick", [=[
     if not macros or #macros == 0 then return end
     self:SetAttribute('macrotext', macros[step] or '')
     step = step % #macros + 1
-    if not step or not macros[step] then step = 1 end
     self:SetAttribute('step', step)
 ]=])
 
@@ -162,14 +161,24 @@ function PR:CompileSequence()
     end)
 end
 
+-- Returns a Lua long-string literal that safely embeds any string content,
+-- including those containing ]] or ]=] sequences.  Scans for the minimum
+-- nesting level whose closing delimiter does not appear in the string.
+local function SafeQuote(s)
+    local level = 0
+    while s:find("]" .. string.rep("=", level) .. "]", 1, true) do
+        level = level + 1
+    end
+    local eq = string.rep("=", level)
+    return "[" .. eq .. "[" .. s .. "]" .. eq .. "]"
+end
+
 function PR:InjectSequence(seq)
     if InCombatLockdown() then return end
     if #seq > 0 then
         local lines = { "macros = newtable()" }
         for i, macro in ipairs(seq) do
-            -- Level-2 long-string delimiters [==[...]==] safely embed
-            -- any macro body, including those containing ]] or ]=].
-            lines[#lines + 1] = "macros[" .. i .. "] = [==[" .. macro .. "]==]"
+            lines[#lines + 1] = "macros[" .. i .. "] = " .. SafeQuote(macro)
         end
         rotBtn:Execute(tconcat(lines, "\n"))
         rotBtn:SetAttribute("macrotext", seq[1])
@@ -197,7 +206,7 @@ function PR:UpdateMacroStub()
     if idx > 0 then
         EditMacro(idx, self.MACRO_NAME, macroIcon, macroBody)
     else
-        if GetNumMacros() < MAX_ACCOUNT_MACROS then
+        if GetNumMacros() < (MAX_ACCOUNT_MACROS or 120) then
             CreateMacro(self.MACRO_NAME, macroIcon, macroBody)
         end
     end
@@ -349,7 +358,9 @@ function PR:ScanAndOverrideBarButton()
 
     self.overriddenKeys = #boundKeys > 0 and boundKeys or nil
 
-    if self.overriddenButton or self.overriddenKeys then
+    -- Icon ticker only makes sense when a bar button is directly overridden;
+    -- keybind-only mode (Strategy 3) has no button whose icon to update.
+    if self.overriddenButton then
         self:StartIconTicker()
     end
 end
