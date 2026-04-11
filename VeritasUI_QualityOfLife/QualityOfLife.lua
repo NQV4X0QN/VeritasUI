@@ -71,8 +71,10 @@ end
 -- processes bag changes) before selling the next batch.  This
 -- lets the game's own event cadence throttle the sell rate,
 -- handling any number of junk items reliably.
+-- Gold reporting uses GetMoney() delta (before/after) rather than
+-- item price lookups, which are unreliable with Midnight secret values.
 local SELL_BATCH = 9
-local sellState       -- nil when idle; table { count, items } when selling
+local sellState       -- nil when idle; table { count, startMoney } when selling
 
 local function SellNextBatch()
     if not sellState then return end
@@ -92,10 +94,6 @@ local function SellNextBatch()
                 if not info.isLocked then
                     C_Container.UseContainerItem(bag, slot)
                     sellState.count = sellState.count + 1
-                    sellState.items[#sellState.items + 1] = {
-                        id  = info.itemID,
-                        qty = info.stackCount or 1,
-                    }
                     sold = sold + 1
                     if sold >= SELL_BATCH then return end   -- pause; BAG_UPDATE_DELAYED will resume
                 end
@@ -109,54 +107,26 @@ local function SellNextBatch()
     -- No remaining junk — finish up.
     frame:UnregisterEvent("BAG_UPDATE_DELAYED")
 
-    local items = sellState.items
-    local count = sellState.count
+    local count      = sellState.count
+    local startMoney = sellState.startMoney
     sellState = nil
 
     if count == 0 then return end
 
-    -- Tally & announce
-    local function Tally()
-        local copper, pending = 0, 0
-        for _, s in ipairs(items) do
-            local infoOk, _, _, _, _, _, _, _, _, _, vp = pcall(C_Item.GetItemInfo, s.id)
-            if infoOk and vp then
-                -- vp (vendor price) is a secret value in Midnight; guard arithmetic.
-                local mathOk, val = pcall(function() return s.qty * vp end)
-                if mathOk and val then copper = copper + val
-                else pending = pending + 1 end
-            else
-                pending = pending + 1
-            end
-        end
-        return copper, pending
-    end
-
-    local function Announce(copper)
+    -- Use GetMoney() delta for accurate reporting; wait one frame so the
+    -- server-side money update is reflected in the client value.
+    C_Timer.After(0, function()
+        local earned = GetMoney() - startMoney
+        if earned < 0 then earned = 0 end
         VUI.Print("Quality of Life", format(
             "Sold |cFFFFFF00%d|r junk item%s for %s",
             count, count > 1 and "s" or "",
-            GetCoinTextureString(copper)))
-    end
-
-    local copper, pending = Tally()
-    if pending == 0 then Announce(copper); return end
-
-    -- Uncached prices — retry until all resolve (max 3 s).
-    local retries = 0
-    local priceTicker
-    priceTicker = C_Timer.NewTicker(0.5, function()
-        retries = retries + 1
-        copper, pending = Tally()
-        if pending == 0 or retries >= 6 then
-            priceTicker:Cancel()
-            Announce(copper)
-        end
+            GetCoinTextureString(earned)))
     end)
 end
 
 local function AutoSellJunk()
-    sellState = { count = 0, items = {} }
+    sellState = { count = 0, startMoney = GetMoney() }
     frame:RegisterEvent("BAG_UPDATE_DELAYED")
     SellNextBatch()
 end
