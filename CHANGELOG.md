@@ -2,6 +2,12 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.25] — 2026-04-21
+
+### Changed
+
+* **TOC bump to Interface 120005** — WoW patch 12.0.5 is now live; updated all module TOC files from 120001 to 120005 for full compatibility.
+
 ## [1.3.24] — 2026-04-16
 
 ### Fixed
