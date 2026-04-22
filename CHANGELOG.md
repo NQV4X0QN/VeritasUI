@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.37] — 2026-04-21
+
+### Changed
+
+* **[HUDFrame] Center bar corners and side edges hidden for clean thin rendering** — `CreateCenterBar` remains `ButtonFrameTemplate` but the four NineSlice corner pieces and left/right edge bars are explicitly hidden after frame creation. Only the top and bottom UIFrameMetal chrome strips render, running the full bar width with no geometry at the ends. This avoids corner distortion at 22px height without texture coordinate hacks.
+
+* **[HUDFrame] Move-mode tinting unified across all three frames** — `ApplyMoveTint`/`ApplyNormalTint` now dispatch on `NineSlice` presence for all hudFrames entries. Since all three frames (left anchor, right anchor, center bar) are `ButtonFrameTemplate`, the `isAnchor`/`SetBackdropColor` branch is removed entirely.
+
 ## [1.3.36] — 2026-04-21
 
 ### Fixed

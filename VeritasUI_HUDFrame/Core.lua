@@ -58,8 +58,6 @@ local function ApplyMoveTint()
     for _, entry in ipairs(hudFrames) do
         if entry.frame.NineSlice then
             entry.frame.NineSlice:SetVertexColor(1, 0.85, 0.3)
-        else
-            entry.frame:SetBackdropColor(0.15, 0.12, 0.05, 0.95)
         end
     end
 end
@@ -68,12 +66,6 @@ local function ApplyNormalTint()
     for _, entry in ipairs(hudFrames) do
         if entry.frame.NineSlice then
             entry.frame.NineSlice:SetVertexColor(1, 1, 1)
-        else
-            entry.frame:SetBackdropColor(
-                TOOLTIP_DEFAULT_BACKGROUND_COLOR.r,
-                TOOLTIP_DEFAULT_BACKGROUND_COLOR.g,
-                TOOLTIP_DEFAULT_BACKGROUND_COLOR.b,
-                0.92)
         end
     end
 end
@@ -162,38 +154,26 @@ local function CreateChatAnchor(name, width, height)
 end
 
 -- Returns a center bar frame styled with ButtonFrameTemplate.
--- NineSlice corners are resized to half the bar height so they
--- cannot overlap at thin heights (e.g. 22px → cornerSize 11).
+-- Corners and side edges are hidden so only the top and bottom
+-- UIFrameMetal chrome strips render across the full bar width.
 local function CreateCenterBar(width, height)
     local bar = CreateFrame("Frame", nil, UIParent, "ButtonFrameTemplate")
     ButtonFrameTemplate_HidePortrait(bar)
     bar:SetSize(width, height)
     bar:SetFrameStrata("MEDIUM")
 
-    if bar.TitleContainer then
-        bar.TitleContainer:Hide()
-    end
-    if bar.CloseButton then
-        bar.CloseButton:Hide()
-    end
+    if bar.TitleContainer then bar.TitleContainer:Hide() end
+    if bar.CloseButton    then bar.CloseButton:Hide()    end
 
-    local function ResizeCorner(nineSlice, cornerName, newX, newY)
-        local corner = nineSlice[cornerName]
-        if not corner then return end
-        local oldX, oldY = corner:GetSize()
-        local L, R, T, B = 0, newX / oldX, 0, newY / oldY
-        if cornerName:match("Right")  then L, R = 1 - R, 1 end
-        if cornerName:match("Bottom") then T, B = 1 - B, 1 end
-        corner:SetSize(newX, newY)
-        corner:SetTexCoord(L, R, T, B)
+    local ns = bar.NineSlice
+    if ns then
+        if ns.TopLeftCorner     then ns.TopLeftCorner:Hide()     end
+        if ns.TopRightCorner    then ns.TopRightCorner:Hide()    end
+        if ns.BottomLeftCorner  then ns.BottomLeftCorner:Hide()  end
+        if ns.BottomRightCorner then ns.BottomRightCorner:Hide() end
+        if ns.LeftEdge          then ns.LeftEdge:Hide()          end
+        if ns.RightEdge         then ns.RightEdge:Hide()         end
     end
-
-    local ns         = bar.NineSlice
-    local cornerSize = math.floor(height / 2)
-    ResizeCorner(ns, "TopLeftCorner",     cornerSize, cornerSize)
-    ResizeCorner(ns, "TopRightCorner",    cornerSize, cornerSize)
-    ResizeCorner(ns, "BottomLeftCorner",  cornerSize, cornerSize)
-    ResizeCorner(ns, "BottomRightCorner", cornerSize, cornerSize)
 
     return bar
 end
