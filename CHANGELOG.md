@@ -2,6 +2,20 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.35] — 2026-04-21
+
+### Changed
+
+* **[HUDFrame] Left/right data text embedded into chat anchor bottom chrome** — Eliminated the separate left and right `BackdropTemplate` data bar frames entirely. Data text `FontStrings` for the left and right bars are now created directly on the `ButtonFrameTemplate` chat anchor frames, positioned at `BOTTOM+8` so they render inside the bottom chrome strip. This makes the data text an integral part of each chat panel, matching Blizzard's own design language.
+
+* **[HUDFrame] Center bar data text unchanged** — Center bar remains a standalone `ButtonFrameTemplate` frame with data text centered vertically, unchanged from v1.3.34.
+
+* **[HUDFrame] DataText.lua BuildBar takes mount-point parameters** — `BuildBar()` now accepts optional `mountPoint` and `yOffset` arguments. Left/right bars pass `"BOTTOM", 8`; center bar uses the default `"CENTER", 0`. The `_vuiSlots` table and ticker now reference `leftAnchor`/`rightAnchor` directly rather than the removed bar frames.
+
+* **[HUDFrame] Frame Sizes slider section in config panel** — `/hud config` now includes a "Frame Sizes" section with `OptionsSliderTemplate` sliders for left chat width (200–700), left chat height (80–500), right chat width (200–700), right chat height (80–500), and center bar width (300–800). Each slider updates live, saves to `VeritasUI_HUDFrameDB`, and immediately resizes the frame. Chat frames track anchor size changes via `MirrorAnchorToChatFrame`. Center bar width triggers a full `RebuildAllBars()` so FontStrings redistribute. Panel height extended to 580px.
+
+* **[HUDFrame] Saved size defaults** — New DB keys (`leftAnchorWidth`, `leftAnchorHeight`, `rightAnchorWidth`, `rightAnchorHeight`, `centerBarWidth`) initialized from `defaults` table on ADDON_LOADED. Matching constants added to `Config.lua`. `SetupHUDFrame` reads these values from DB so saved sizes persist across sessions.
+
 ## [1.3.34] — 2026-04-21
 
 ### Changed

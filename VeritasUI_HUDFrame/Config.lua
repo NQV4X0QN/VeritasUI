@@ -37,4 +37,11 @@ HUF.Config = {
     -- Data warning thresholds
     WARN_DURABILITY_PCT = 20,   -- durability below this % → red
     WARN_MEMORY_MB      = 80,   -- memory above this MB  → red
+
+    -- Default frame dimensions used by the Frame Sizes slider system
+    leftAnchorWidth  = 380,
+    leftAnchorHeight = 220,
+    rightAnchorWidth = 380,
+    rightAnchorHeight = 220,
+    centerBarWidth   = 500,
 }

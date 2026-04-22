@@ -13,7 +13,7 @@ local ipairs, pairs = ipairs, pairs
 local format        = string.format
 
 local PNL_W = 520
-local PNL_H = 420
+local PNL_H = 580
 
 -- All created dropdown frames, for RefreshConfigPanel
 local dropdownEntries = {}   -- { barKey, slotIdx, dd }
@@ -142,6 +142,121 @@ local function BuildCenterSection(parent, hdrY)
 end
 
 ----------------------------------------------------------------
+--  Frame Sizes section — sliders for anchor and center bar dimensions
+----------------------------------------------------------------
+local SLIDER_W   = 220
+local LEFT_COL   = 4
+local RIGHT_COL  = 264
+
+local function MakeSlider(parent, frameName, x, yFromSep, sep, w, minVal, maxVal, step, initVal, labelFmt, onChange)
+    local slider = CreateFrame("Slider", frameName, parent, "OptionsSliderTemplate")
+    slider:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", x, yFromSep)
+    slider:SetWidth(w)
+    slider:SetMinMaxValues(minVal, maxVal)
+    slider:SetValueStep(step)
+    slider.Low:SetText(tostring(minVal))
+    slider.High:SetText(tostring(maxVal))
+    slider:SetScript("OnValueChanged", function(self, val, userInput)
+        self.Text:SetText(format(labelFmt, val))
+        if not userInput then return end
+        if onChange then onChange(val) end
+    end)
+    slider:SetValue(initVal)
+    return slider
+end
+
+local function BuildSizesSection(parent, startY)
+    local db = HUF.db
+
+    local hdr = parent:CreateFontString(nil, "OVERLAY")
+    hdr:SetFont("Fonts\\FRIZQT__.TTF", 13)
+    hdr:SetTextColor(1, 0.82, 0)
+    hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", LEFT_COL, startY)
+    hdr:SetText("Frame Sizes")
+
+    local sep = parent:CreateTexture(nil, "ARTWORK")
+    sep:SetHeight(1)
+    sep:SetWidth(500)
+    sep:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 0, -3)
+    sep:SetColorTexture(1, 0.82, 0, 0.5)
+
+    -- Sub-headers
+    local leftLbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    leftLbl:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", LEFT_COL, -8)
+    leftLbl:SetText("Left Chat Frame")
+    leftLbl:SetTextColor(0.9, 0.9, 0.9)
+
+    local rightLbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    rightLbl:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", RIGHT_COL, -8)
+    rightLbl:SetText("Right Chat Frame")
+    rightLbl:SetTextColor(0.9, 0.9, 0.9)
+
+    local lw = (db and db.leftAnchorWidth)   or 380
+    local lh = (db and db.leftAnchorHeight)  or 220
+    local rw = (db and db.rightAnchorWidth)  or 380
+    local rh = (db and db.rightAnchorHeight) or 220
+    local cw = (db and db.centerBarWidth)    or 500
+
+    -- Width sliders (left / right)
+    MakeSlider(parent, "VUI_HUD_Slider_LeftW",  LEFT_COL,  -52, sep, SLIDER_W,
+        200, 700, 10, lw, "Width: %dpx",
+        function(val)
+            if HUF.db then HUF.db.leftAnchorWidth = val end
+            if HUF.leftAnchor then
+                HUF.leftAnchor:SetWidth(val)
+                if HUF.MirrorAnchorToChatFrame then HUF.MirrorAnchorToChatFrame(HUF.leftAnchor) end
+            end
+        end)
+
+    MakeSlider(parent, "VUI_HUD_Slider_RightW", RIGHT_COL, -52, sep, SLIDER_W,
+        200, 700, 10, rw, "Width: %dpx",
+        function(val)
+            if HUF.db then HUF.db.rightAnchorWidth = val end
+            if HUF.rightAnchor then
+                HUF.rightAnchor:SetWidth(val)
+                if HUF.MirrorAnchorToChatFrame then HUF.MirrorAnchorToChatFrame(HUF.rightAnchor) end
+            end
+        end)
+
+    -- Height sliders (left / right)
+    MakeSlider(parent, "VUI_HUD_Slider_LeftH",  LEFT_COL,  -114, sep, SLIDER_W,
+        80, 500, 10, lh, "Height: %dpx",
+        function(val)
+            if HUF.db then HUF.db.leftAnchorHeight = val end
+            if HUF.leftAnchor then
+                HUF.leftAnchor:SetHeight(val)
+                if HUF.MirrorAnchorToChatFrame then HUF.MirrorAnchorToChatFrame(HUF.leftAnchor) end
+            end
+        end)
+
+    MakeSlider(parent, "VUI_HUD_Slider_RightH", RIGHT_COL, -114, sep, SLIDER_W,
+        80, 500, 10, rh, "Height: %dpx",
+        function(val)
+            if HUF.db then HUF.db.rightAnchorHeight = val end
+            if HUF.rightAnchor then
+                HUF.rightAnchor:SetHeight(val)
+                if HUF.MirrorAnchorToChatFrame then HUF.MirrorAnchorToChatFrame(HUF.rightAnchor) end
+            end
+        end)
+
+    -- Center bar sub-header and width slider
+    local centerLbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    centerLbl:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", LEFT_COL, -170)
+    centerLbl:SetText("Center Bar")
+    centerLbl:SetTextColor(0.9, 0.9, 0.9)
+
+    MakeSlider(parent, "VUI_HUD_Slider_CenterW", LEFT_COL, -210, sep, 460,
+        300, 800, 10, cw, "Width: %dpx",
+        function(val)
+            if HUF.db then HUF.db.centerBarWidth = val end
+            if HUF.centerBar then
+                HUF.centerBar:SetWidth(val)
+                if HUF.RebuildAllBars then HUF.RebuildAllBars() end
+            end
+        end)
+end
+
+----------------------------------------------------------------
 --  Build the panel
 ----------------------------------------------------------------
 local function BuildConfigPanel()
@@ -186,6 +301,9 @@ local function BuildConfigPanel()
     -- 3 rows × SLOT_ROW_H + header+sep ≈ 90+30 = ~120px from top
     local centerY = -8 - 20 - 3 * SLOT_ROW_H - 20   -- header(20) + 3 rows + gap
     BuildCenterSection(CONT, centerY)
+
+    -- ── Frame Sizes section ────────────────────────────────────
+    BuildSizesSection(CONT, centerY - 90)
 
     -- ── Bottom buttons ────────────────────────────────────────
     local resetBtn = CreateFrame("Button", nil, CONT, "UIPanelButtonTemplate")

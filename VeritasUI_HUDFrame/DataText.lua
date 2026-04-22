@@ -39,8 +39,13 @@ end
 --  the bar's width.  Old FontStrings are hidden but not freed
 --  (WoW has no GC for widget objects).
 ----------------------------------------------------------------
-local function BuildBar(barFrame, slotKeys)
+-- mountPoint / yOffset control where FontStrings anchor on the frame.
+-- Left/right bars pass "BOTTOM", 8 so text sits in the bottom chrome strip.
+-- Center bar uses the defaults ("CENTER", 0) for vertical centering.
+local function BuildBar(barFrame, slotKeys, mountPoint, yOffset)
     if not barFrame then return end
+    mountPoint = mountPoint or "CENTER"
+    yOffset    = yOffset    or 0
 
     -- Hide previous FontStrings
     if barFrame._vuiSlots then
@@ -61,9 +66,8 @@ local function BuildBar(barFrame, slotKeys)
         local fs = barFrame:CreateFontString(nil, "OVERLAY")
         fs:SetFont("Fonts\\FRIZQT__.TTF", 11)
         fs:SetJustifyH("CENTER")
-        -- Distribute evenly: slot i occupies the i-th equal segment
         local xOff = w * (i - 0.5) / n - w * 0.5
-        fs:SetPoint("CENTER", barFrame, "CENTER", xOff, 0)
+        fs:SetPoint(mountPoint, barFrame, mountPoint, xOff, yOffset)
         fs:Show()
         barFrame._vuiSlots[i] = { fs = fs, key = key }
     end
@@ -93,8 +97,8 @@ end
 local function UpdateAllBars()
     local enabled = HUF.db and HUF.db.enabled ~= false
     if not enabled then return end
-    UpdateBar(HUF.leftBar)
-    UpdateBar(HUF.rightBar)
+    UpdateBar(HUF.leftAnchor)
+    UpdateBar(HUF.rightAnchor)
     UpdateBar(HUF.centerBar)
 end
 
@@ -117,9 +121,9 @@ function HUF.RebuildAllBars()
         end
     end
 
-    BuildBar(HUF.leftBar,   db.layout.leftBar)
-    BuildBar(HUF.rightBar,  db.layout.rightBar)
-    BuildBar(HUF.centerBar, db.layout.centerBar)
+    BuildBar(HUF.leftAnchor,  db.layout.leftBar,   "BOTTOM", 8)
+    BuildBar(HUF.rightAnchor, db.layout.rightBar,  "BOTTOM", 8)
+    BuildBar(HUF.centerBar,   db.layout.centerBar)
 
     UpdateAllBars()
 
@@ -135,9 +139,9 @@ dtFrame:RegisterEvent("PLAYER_LOGIN")
 dtFrame:SetScript("OnEvent", function(self)
     self:UnregisterEvent("PLAYER_LOGIN")
 
-    -- Guard: Core.lua must have created the bars first
-    if not HUF.leftBar or not HUF.rightBar or not HUF.centerBar then
-        VUI.Print("HUD Frame", "|cFFFF4444DataText: bars not ready. Try /reload.|r")
+    -- Guard: Core.lua must have created the frames first
+    if not HUF.leftAnchor or not HUF.rightAnchor or not HUF.centerBar then
+        VUI.Print("HUD Frame", "|cFFFF4444DataText: frames not ready. Try /reload.|r")
         return
     end
 

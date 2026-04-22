@@ -20,15 +20,20 @@ end
 ----------------------------------------------------------------
 --  Module state
 ----------------------------------------------------------------
-local defaults = { enabled = true }
+local defaults = {
+    enabled          = true,
+    leftAnchorWidth  = 380,
+    leftAnchorHeight = 220,
+    rightAnchorWidth = 380,
+    rightAnchorHeight = 220,
+    centerBarWidth   = 500,
+}
 local db
 local settingsCategoryID
 
 -- Frame references — set in SetupHUDFrame, exposed on HUF for other files
 HUF.leftAnchor  = nil
 HUF.rightAnchor = nil
-HUF.leftBar     = nil
-HUF.rightBar    = nil
 HUF.centerBar   = nil
 
 -- Move-mode
@@ -87,6 +92,7 @@ local function MirrorAnchorToChatFrame(anchor)
         cf:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", -12,  12)
     end)
 end
+HUF.MirrorAnchorToChatFrame = MirrorAnchorToChatFrame
 
 local function SyncOneAnchor(anchor, chatFrame, savedPos)
     if not anchor or not chatFrame then return end
@@ -173,33 +179,6 @@ local function CreateCenterBar(width, height)
     return bar
 end
 
--- Returns a bar frame styled with BackdropTemplate (left/right bars).
--- DataText.lua populates FontStrings via HUF.BuildBar.
-local function CreateDataBar(width, height)
-    local bar = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-    bar:SetSize(width, height)
-    bar:SetFrameStrata("MEDIUM")
-    bar.backdropInfo = {
-        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile     = true,
-        tileSize = 16,
-        edgeSize = 10,
-        insets   = { left = 3, right = 3, top = 3, bottom = 3 },
-    }
-    bar:ApplyBackdrop()
-    bar:SetBackdropColor(
-        TOOLTIP_DEFAULT_BACKGROUND_COLOR.r,
-        TOOLTIP_DEFAULT_BACKGROUND_COLOR.g,
-        TOOLTIP_DEFAULT_BACKGROUND_COLOR.b,
-        0.92)
-    bar:SetBackdropBorderColor(
-        TOOLTIP_DEFAULT_COLOR.r,
-        TOOLTIP_DEFAULT_COLOR.g,
-        TOOLTIP_DEFAULT_COLOR.b,
-        1)
-    return bar
-end
 
 ----------------------------------------------------------------
 --  HUD setup (called on PLAYER_LOGIN)
@@ -210,31 +189,22 @@ local function SetupHUDFrame()
     local CFG = HUF.Config
 
     -- ── Chat anchor frames ──────────────────────────────────
-    -- Start at default position; PLAYER_ENTERING_WORLD syncs to actual chat frame.
-    HUF.leftAnchor = CreateChatAnchor("VUI_HUD_LeftAnchor", CFG.CHAT_FRAME_W, CFG.CHAT_FRAME_H)
+    -- Sized from saved DB values (defaulted on ADDON_LOADED from defaults table).
+    -- PLAYER_ENTERING_WORLD syncs chat frame positions to the anchor.
+    HUF.leftAnchor = CreateChatAnchor("VUI_HUD_LeftAnchor", db.leftAnchorWidth, db.leftAnchorHeight)
     HUF.leftAnchor:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", CFG.CHAT_LEFT_X, CFG.CHAT_BOTTOM_Y)
     MakeDraggable(HUF.leftAnchor, "leftAnchorPos", true)
     hudFrames[#hudFrames + 1] = { frame = HUF.leftAnchor, isAnchor = true }
     chatFrameMap[HUF.leftAnchor] = _G.ChatFrame1
 
-    HUF.rightAnchor = CreateChatAnchor("VUI_HUD_RightAnchor", CFG.CHAT_FRAME_W, CFG.CHAT_FRAME_H)
+    HUF.rightAnchor = CreateChatAnchor("VUI_HUD_RightAnchor", db.rightAnchorWidth, db.rightAnchorHeight)
     HUF.rightAnchor:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -CFG.CHAT_RIGHT_X, CFG.CHAT_BOTTOM_Y)
     MakeDraggable(HUF.rightAnchor, "rightAnchorPos", true)
     hudFrames[#hudFrames + 1] = { frame = HUF.rightAnchor, isAnchor = true }
     chatFrameMap[HUF.rightAnchor] = _G.ChatFrame2
 
-    -- ── Data text bars ──────────────────────────────────────
-    -- Left and right bars follow their anchor via relative SetPoint.
-    HUF.leftBar = CreateDataBar(CFG.CHAT_FRAME_W, CFG.BAR_HEIGHT)
-    HUF.leftBar:SetPoint("TOPLEFT", HUF.leftAnchor, "BOTTOMLEFT", 0, 0)
-    hudFrames[#hudFrames + 1] = { frame = HUF.leftBar, isAnchor = false }
-
-    HUF.rightBar = CreateDataBar(CFG.CHAT_FRAME_W, CFG.BAR_HEIGHT)
-    HUF.rightBar:SetPoint("TOPRIGHT", HUF.rightAnchor, "BOTTOMRIGHT", 0, 0)
-    hudFrames[#hudFrames + 1] = { frame = HUF.rightBar, isAnchor = false }
-
     -- Center bar is independently positioned and draggable.
-    HUF.centerBar = CreateCenterBar(CFG.CENTER_BAR_W, CFG.BAR_HEIGHT)
+    HUF.centerBar = CreateCenterBar(db.centerBarWidth, CFG.BAR_HEIGHT)
     local cp = db and db.centerBarPos
     if cp then
         HUF.centerBar:SetPoint(cp.point, UIParent, cp.relPoint, cp.x, cp.y)
@@ -248,8 +218,6 @@ local function SetupHUDFrame()
     local show = db and db.enabled ~= false
     HUF.leftAnchor:SetShown(show)
     HUF.rightAnchor:SetShown(show)
-    HUF.leftBar:SetShown(show)
-    HUF.rightBar:SetShown(show)
     HUF.centerBar:SetShown(show)
 end
 
@@ -271,8 +239,6 @@ local function InitializeOptions()
     setting:SetValueChangedCallback(function(_, value)
         if HUF.leftAnchor  then HUF.leftAnchor:SetShown(value)  end
         if HUF.rightAnchor then HUF.rightAnchor:SetShown(value) end
-        if HUF.leftBar     then HUF.leftBar:SetShown(value)     end
-        if HUF.rightBar    then HUF.rightBar:SetShown(value)    end
         if HUF.centerBar   then HUF.centerBar:SetShown(value)   end
         VUI.PrintOnOff("HUD Frame", "HUD Frame", value)
     end)
