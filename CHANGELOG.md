@@ -2,6 +2,12 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.36] — 2026-04-21
+
+### Fixed
+
+* **[HUDFrame] Center bar NineSlice corner overlap at thin heights** — Added `ResizeCorner` logic inside `CreateCenterBar`. All four NineSlice corner pieces are resized to `math.floor(BAR_HEIGHT / 2)` pixels (11px at the default 22px height), preventing corners from overlapping each other at the center of the bar. Texture coordinates are adjusted to preserve the correct corner slice of the atlas.
+
 ## [1.3.35] — 2026-04-21
 
 ### Changed

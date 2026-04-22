@@ -162,7 +162,8 @@ local function CreateChatAnchor(name, width, height)
 end
 
 -- Returns a center bar frame styled with ButtonFrameTemplate.
--- Matches the chat anchor frame template exactly.
+-- NineSlice corners are resized to half the bar height so they
+-- cannot overlap at thin heights (e.g. 22px → cornerSize 11).
 local function CreateCenterBar(width, height)
     local bar = CreateFrame("Frame", nil, UIParent, "ButtonFrameTemplate")
     ButtonFrameTemplate_HidePortrait(bar)
@@ -175,6 +176,24 @@ local function CreateCenterBar(width, height)
     if bar.CloseButton then
         bar.CloseButton:Hide()
     end
+
+    local function ResizeCorner(nineSlice, cornerName, newX, newY)
+        local corner = nineSlice[cornerName]
+        if not corner then return end
+        local oldX, oldY = corner:GetSize()
+        local L, R, T, B = 0, newX / oldX, 0, newY / oldY
+        if cornerName:match("Right")  then L, R = 1 - R, 1 end
+        if cornerName:match("Bottom") then T, B = 1 - B, 1 end
+        corner:SetSize(newX, newY)
+        corner:SetTexCoord(L, R, T, B)
+    end
+
+    local ns         = bar.NineSlice
+    local cornerSize = math.floor(height / 2)
+    ResizeCorner(ns, "TopLeftCorner",     cornerSize, cornerSize)
+    ResizeCorner(ns, "TopRightCorner",    cornerSize, cornerSize)
+    ResizeCorner(ns, "BottomLeftCorner",  cornerSize, cornerSize)
+    ResizeCorner(ns, "BottomRightCorner", cornerSize, cornerSize)
 
     return bar
 end
