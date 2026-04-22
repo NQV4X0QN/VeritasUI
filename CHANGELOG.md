@@ -2,6 +2,21 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.26] — 2026-04-21
+
+### Added
+
+* **[HUDFrame] New module: VeritasUI_HUDFrame** — Blizzard Midnight-style HUD with chat anchor frames and data text bars.
+  * Two chat anchor frames (left and right) using `UI-DialogBox-Background-Dark` and the gold filigree `UI-DialogBox-Border`, matching the Journeys/Appearances panel aesthetic. ChatFrame1 docks into the left anchor; ChatFrame2 into the right. Native chat functionality (tabs, scrolling, right-click menus) is fully preserved.
+  * Three DataText bars in Friz Quadrata TT at 11pt with a warm dark background and a single 1px gold hairline top edge:
+    * **Left bar** (below left chat): Memory (MB), Durability (lowest slot %), Gold (g/s/c)
+    * **Right bar** (below right chat): Guild online, Friends online, Current zone
+    * **Center bar** (above action bar area): Haste %, Mastery %, Crit %, Armor (base), Avg item level
+  * Labels in Blizzard gold `|cffffd100`, values in white `|cffffffff`, warnings (durability < 20%, memory > 80 MB) in red `|cffff4444`. Data points separated by an ornamental `•` glyph.
+  * All values update on a 2-second `C_Timer.NewTicker`. All stats using `GetCombatRatingBonus`, `GetMasteryBonus`, `UnitArmor`, and `GetInventoryItemDurability` are pcall-wrapped against Midnight secret value errors.
+  * Positions and thresholds are all named constants in `Config.lua`; `CENTER_BAR_Y` controls the center bar height above the action bar cluster.
+  * Settings panel at Options → AddOns → HUD Frame with enable/disable toggle. `/hud` slash command. Addon Compartment integration.
+
 ## [1.3.25] — 2026-04-21
 
 ### Changed
