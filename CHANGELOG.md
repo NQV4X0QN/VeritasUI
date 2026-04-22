@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.34] — 2026-04-21
+
+### Changed
+
+* **[HUDFrame] Center data bar switched to ButtonFrameTemplate** — `CreateCenterBar()` replaces the `BackdropTemplate` approach used previously. Portrait, `TitleContainer`, and `CloseButton` hidden so only the NineSlice metallic border renders, matching the two chat anchor frames exactly. All three elements now share the same border treatment.
+
+* **[HUDFrame] Move-mode tinting uses NineSlice presence check** — `ApplyMoveTint`/`ApplyNormalTint` now detect frame type by checking `entry.frame.NineSlice` rather than the `isAnchor` flag. Any `ButtonFrameTemplate` frame (both chat anchors and center bar) tints via `NineSlice:SetVertexColor`; `BackdropTemplate` frames (left/right bars) continue to use `SetBackdropColor`.
+
 ## [1.3.33] — 2026-04-21
 
 ### Changed

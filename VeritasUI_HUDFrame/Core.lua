@@ -51,10 +51,8 @@ end
 ----------------------------------------------------------------
 local function ApplyMoveTint()
     for _, entry in ipairs(hudFrames) do
-        if entry.isAnchor then
-            if entry.frame.NineSlice then
-                entry.frame.NineSlice:SetVertexColor(1, 0.85, 0.3)
-            end
+        if entry.frame.NineSlice then
+            entry.frame.NineSlice:SetVertexColor(1, 0.85, 0.3)
         else
             entry.frame:SetBackdropColor(0.15, 0.12, 0.05, 0.95)
         end
@@ -63,10 +61,8 @@ end
 
 local function ApplyNormalTint()
     for _, entry in ipairs(hudFrames) do
-        if entry.isAnchor then
-            if entry.frame.NineSlice then
-                entry.frame.NineSlice:SetVertexColor(1, 1, 1)
-            end
+        if entry.frame.NineSlice then
+            entry.frame.NineSlice:SetVertexColor(1, 1, 1)
         else
             entry.frame:SetBackdropColor(
                 TOOLTIP_DEFAULT_BACKGROUND_COLOR.r,
@@ -159,7 +155,25 @@ local function CreateChatAnchor(name, width, height)
     return anchor
 end
 
--- Returns a bar frame styled with BackdropTemplate.
+-- Returns a center bar frame styled with ButtonFrameTemplate.
+-- Matches the chat anchor frame template exactly.
+local function CreateCenterBar(width, height)
+    local bar = CreateFrame("Frame", nil, UIParent, "ButtonFrameTemplate")
+    ButtonFrameTemplate_HidePortrait(bar)
+    bar:SetSize(width, height)
+    bar:SetFrameStrata("MEDIUM")
+
+    if bar.TitleContainer then
+        bar.TitleContainer:Hide()
+    end
+    if bar.CloseButton then
+        bar.CloseButton:Hide()
+    end
+
+    return bar
+end
+
+-- Returns a bar frame styled with BackdropTemplate (left/right bars).
 -- DataText.lua populates FontStrings via HUF.BuildBar.
 local function CreateDataBar(width, height)
     local bar = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
@@ -220,7 +234,7 @@ local function SetupHUDFrame()
     hudFrames[#hudFrames + 1] = { frame = HUF.rightBar, isAnchor = false }
 
     -- Center bar is independently positioned and draggable.
-    HUF.centerBar = CreateDataBar(CFG.CENTER_BAR_W, CFG.BAR_HEIGHT)
+    HUF.centerBar = CreateCenterBar(CFG.CENTER_BAR_W, CFG.BAR_HEIGHT)
     local cp = db and db.centerBarPos
     if cp then
         HUF.centerBar:SetPoint(cp.point, UIParent, cp.relPoint, cp.x, cp.y)
