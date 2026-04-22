@@ -51,21 +51,13 @@ end
 ----------------------------------------------------------------
 local function ApplyMoveTint()
     for _, entry in ipairs(hudFrames) do
-        if entry.isAnchor then
-            entry.frame:SetBackdropColor(0.15, 0.12, 0.05, 0.95)
-        elseif entry.frame.bgTex then
-            entry.frame.bgTex:SetVertexColor(0.9, 0.7, 0.15)
-        end
+        entry.frame:SetBackdropColor(0.15, 0.12, 0.05, 0.95)
     end
 end
 
 local function ApplyNormalTint()
     for _, entry in ipairs(hudFrames) do
-        if entry.isAnchor then
-            entry.frame:SetBackdropColor(0.06, 0.05, 0.04, 0.92)
-        elseif entry.frame.bgTex then
-            entry.frame.bgTex:SetVertexColor(1, 1, 1)
-        end
+        entry.frame:SetBackdropColor(0.06, 0.05, 0.04, 0.92)
     end
 end
 
@@ -160,24 +152,23 @@ local function CreateChatAnchor(name, width, height)
     return anchor
 end
 
--- Returns a bare frame with layered textures.
+-- Returns a bar frame styled with BackdropTemplate.
 -- DataText.lua populates FontStrings via HUF.BuildBar.
 local function CreateDataBar(width, height)
-    local bar = CreateFrame("Frame", nil, UIParent)
+    local bar = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     bar:SetSize(width, height)
     bar:SetFrameStrata("MEDIUM")
-
-    local bgTex = bar:CreateTexture(nil, "BACKGROUND", nil, 0)
-    bgTex:SetColorTexture(0.04, 0.03, 0.02, 0.82)
-    bgTex:SetAllPoints(bar)
-    bar.bgTex = bgTex
-
-    local topEdge = bar:CreateTexture(nil, "BORDER", nil, 1)
-    topEdge:SetHeight(1)
-    topEdge:SetPoint("TOPLEFT",  bar, "TOPLEFT",  0, 0)
-    topEdge:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
-    topEdge:SetColorTexture(0.35, 0.28, 0.15, 0.9)
-
+    bar.backdropInfo = {
+        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile     = true,
+        tileSize = 16,
+        edgeSize = 10,
+        insets   = { left = 3, right = 3, top = 3, bottom = 3 },
+    }
+    bar:ApplyBackdrop()
+    bar:SetBackdropColor(0.06, 0.05, 0.04, 0.92)
+    bar:SetBackdropBorderColor(0.3, 0.25, 0.2, 0.85)
     return bar
 end
 

@@ -159,7 +159,11 @@ local function BuildConfigPanel()
     win:SetFrameStrata("DIALOG")
     win:SetToplevel(true)
 
-    win.TitleText:SetText("HUD Frame — Layout Configuration")
+    if win.TitleContainer and win.TitleContainer.TitleText then
+        win.TitleContainer.TitleText:SetText("HUD Frame — Layout Configuration")
+    elseif win.TitleText then
+        win.TitleText:SetText("HUD Frame — Layout Configuration")
+    end
 
     win.CloseButton:SetScript("OnClick", function() win:Hide() end)
 

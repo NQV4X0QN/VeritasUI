@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.31] — 2026-04-21
+
+### Fixed
+
+* **[HUDFrame] SettingsPanel TitleText nil error** — Guarded the title text assignment against both `ButtonFrameTemplate` structures: tries `win.TitleContainer.TitleText` first (current retail), falls back to `win.TitleText` (older structure).
+
+* **[HUDFrame] Data bars switched to BackdropTemplate** — Replaced manual texture approach on all three data bars with `BackdropTemplate` + `ApplyBackdrop()`, matching the chat anchor style. Uses `edgeSize 10` (vs 16 on anchors) for appropriate weight at 22px bar height. Move-mode tinting simplified: all five HUD frames now call `SetBackdropColor` uniformly — the `isAnchor`/`bgTex` branch distinction is removed.
+
 ## [1.3.30] — 2026-04-21
 
 ### Changed
