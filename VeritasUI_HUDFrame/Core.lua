@@ -59,6 +59,9 @@ local function ApplyMoveTint()
         if entry.frame.NineSlice then
             entry.frame.NineSlice:SetVertexColor(1, 0.85, 0.3)
         end
+        if entry.frame.bgTex then
+            entry.frame.bgTex:SetVertexColor(0.8, 0.6, 0.1)
+        end
     end
 end
 
@@ -66,6 +69,9 @@ local function ApplyNormalTint()
     for _, entry in ipairs(hudFrames) do
         if entry.frame.NineSlice then
             entry.frame.NineSlice:SetVertexColor(1, 1, 1)
+        end
+        if entry.frame.bgTex then
+            entry.frame.bgTex:SetVertexColor(1, 1, 1)
         end
     end
 end
@@ -167,13 +173,24 @@ local function CreateCenterBar(width, height)
 
     local ns = bar.NineSlice
     if ns then
-        if ns.TopLeftCorner     then ns.TopLeftCorner:Hide()     end
-        if ns.TopRightCorner    then ns.TopRightCorner:Hide()    end
-        if ns.BottomLeftCorner  then ns.BottomLeftCorner:Hide()  end
-        if ns.BottomRightCorner then ns.BottomRightCorner:Hide() end
-        if ns.LeftEdge          then ns.LeftEdge:Hide()          end
-        if ns.RightEdge         then ns.RightEdge:Hide()         end
+        local toHide = {
+            "TopLeftCorner", "TopRightCorner",
+            "BottomLeftCorner", "BottomRightCorner",
+            "LeftEdge", "RightEdge",
+            "Center",
+        }
+        for _, key in ipairs(toHide) do
+            if ns[key] then ns[key]:Hide() end
+        end
     end
+
+    -- Replace the hidden NineSlice Center fill with a plain BACKGROUND
+    -- texture so FontStrings render above it.
+    local bg = bar:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Background-Dark")
+    bg:SetAllPoints()
+    bg:SetAlpha(0.85)
+    bar.bgTex = bg
 
     return bar
 end

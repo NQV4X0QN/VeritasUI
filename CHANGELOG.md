@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.38] — 2026-04-21
+
+### Fixed
+
+* **[HUDFrame] Center bar NineSlice Center hidden; background texture restored** — `ns.Center` (the NineSlice's internal fill, which rendered above FontStrings at high frame level) is now included in the hide list alongside corners and side edges. A plain `BACKGROUND`-layer texture using `UI-DialogBox-Background-Dark` is created directly on the bar frame and stored as `bar.bgTex`, restoring the dark fill at a draw layer that FontStrings render above.
+
+* **[HUDFrame] Move-mode tinting covers bgTex** — `ApplyMoveTint`/`ApplyNormalTint` now also tint `entry.frame.bgTex` when present (warm yellow on unlock, white on lock), guarded by a nil check so the chat anchor frames are unaffected.
+
 ## [1.3.37] — 2026-04-21
 
 ### Changed
