@@ -11,15 +11,17 @@ local format         = string.format
 local math_floor     = math.floor
 local collectgarbage = collectgarbage
 
-local GetMoney                   = GetMoney
-local GetZoneText                = GetZoneText
-local GetMasteryBonus            = GetMasteryBonus
-local GetCombatRatingBonus       = GetCombatRatingBonus
+local GetHaste                   = GetHaste
+local GetCritChance              = GetCritChance
+local GetMasteryEffect           = GetMasteryEffect
 local GetInventoryItemDurability = GetInventoryItemDurability
 local UnitArmor                  = UnitArmor
 local GetAverageItemLevel        = GetAverageItemLevel
-local IsInGuild                  = IsInGuild
 local GetNumGuildMembers         = GetNumGuildMembers
+local GetMoney                   = GetMoney
+local GetZoneText                = GetZoneText
+local GetSpecialization          = GetSpecialization
+local GetSpecializationInfo      = GetSpecializationInfo
 local C_FriendList               = C_FriendList
 
 ----------------------------------------------------------------
@@ -42,21 +44,6 @@ local function GetLowestDurability()
     return lowest
 end
 
-local function FormatGold(copper)
-    if copper <= 0 then return "0|cffffaa00g|r" end
-    local g = math_floor(copper / 10000)
-    local s = math_floor((copper % 10000) / 100)
-    if g >= 1000 then
-        return format("%d,%03d|cffffaa00g|r", math_floor(g / 1000), g % 1000)
-    elseif g > 0 then
-        return format("%d|cffffaa00g|r %d|cffc0c0c0s|r", g, s)
-    elseif s > 0 then
-        return format("%d|cffc0c0c0s|r %d|cffb87333c|r", s, copper % 100)
-    else
-        return format("%d|cffb87333c|r", copper % 100)
-    end
-end
-
 ----------------------------------------------------------------
 --  Registry
 ----------------------------------------------------------------
@@ -66,7 +53,8 @@ HUF.DataPoints = {
         label    = "Haste",
         getValue = function()
             local ok, r = pcall(function()
-                return format("%.1f%%", GetCombatRatingBonus(CR_HASTE_MELEE))
+                local h = GetHaste()
+                return h and format("%.1f%%", h) or "—"
             end)
             return ok and r or "—"
         end,
@@ -76,7 +64,8 @@ HUF.DataPoints = {
         label    = "Mastery",
         getValue = function()
             local ok, r = pcall(function()
-                return format("%.1f%%", GetMasteryBonus())
+                local effect = select(1, GetMasteryEffect())
+                return effect and format("%.1f%%", effect) or "—"
             end)
             return ok and r or "—"
         end,
@@ -86,7 +75,8 @@ HUF.DataPoints = {
         label    = "Crit",
         getValue = function()
             local ok, r = pcall(function()
-                return format("%.1f%%", GetCombatRatingBonus(CR_CRIT_MELEE))
+                local c = GetCritChance()
+                return c and format("%.1f%%", c) or "—"
             end)
             return ok and r or "—"
         end,
@@ -96,8 +86,8 @@ HUF.DataPoints = {
         label    = "Armor",
         getValue = function()
             local ok, r = pcall(function()
-                local base = UnitArmor("player")
-                return format("%d", base)
+                local _, effective = UnitArmor("player")
+                return effective and tostring(math_floor(effective)) or "—"
             end)
             return ok and r or "—"
         end,
@@ -107,8 +97,8 @@ HUF.DataPoints = {
         label    = "ilvl",
         getValue = function()
             local ok, r = pcall(function()
-                local avg = GetAverageItemLevel()
-                return format("%.0f", avg)
+                local _, equipped = GetAverageItemLevel()
+                return equipped and format("%.0f", equipped) or "—"
             end)
             return ok and r or "—"
         end,
@@ -117,8 +107,11 @@ HUF.DataPoints = {
     memory = {
         label    = "Mem",
         getValue = function()
-            local mb = collectgarbage("count") / 1024
-            return format("%.1f MB", mb)
+            local ok, r = pcall(function()
+                local mem = collectgarbage("count")
+                return format("%.1f MB", mem / 1024)
+            end)
+            return ok and r or "—"
         end,
         warnThreshold = function()
             local mb = collectgarbage("count") / 1024
@@ -131,8 +124,18 @@ HUF.DataPoints = {
     durability = {
         label    = "Dur",
         getValue = function()
-            local pct = GetLowestDurability()
-            return pct and format("%.0f%%", pct) or "—"
+            local ok, r = pcall(function()
+                local lowest = 100
+                for slot = 1, 18 do
+                    local cur, max = GetInventoryItemDurability(slot)
+                    if cur and max and max > 0 then
+                        local pct = (cur / max) * 100
+                        if pct < lowest then lowest = pct end
+                    end
+                end
+                return format("%.0f%%", lowest)
+            end)
+            return ok and r or "—"
         end,
         warnThreshold = function()
             local pct = GetLowestDurability()
@@ -145,37 +148,50 @@ HUF.DataPoints = {
     gold = {
         label    = "Gold",
         getValue = function()
-            return FormatGold(GetMoney())
+            local ok, r = pcall(function()
+                local copper = GetMoney()
+                local gold = math_floor(copper / 10000)
+                if gold >= 1000000 then
+                    return format("%.1fM g", gold / 1000000)
+                elseif gold >= 1000 then
+                    return format("%d,%03dg", math_floor(gold / 1000), gold % 1000)
+                else
+                    return format("%dg", gold)
+                end
+            end)
+            return ok and r or "—"
         end,
     },
 
     guild = {
         label    = "Guild",
         getValue = function()
-            if not IsInGuild() then return "—" end
             local ok, r = pcall(function()
-                local _, online = GetNumGuildMembers()
-                return tostring(online)
+                local _, numOnline = GetNumGuildMembers()
+                return numOnline and tostring(numOnline) or "—"
             end)
-            return (ok and r) or "—"
+            return ok and r or "—"
         end,
     },
 
     friends = {
         label    = "Friends",
         getValue = function()
-            if not (C_FriendList and C_FriendList.GetNumOnlineFriends) then return "—" end
             local ok, r = pcall(function()
-                return tostring(C_FriendList.GetNumOnlineFriends())
+                local online = C_FriendList.GetNumOnlineFriends()
+                return online and tostring(online) or "—"
             end)
-            return (ok and r) or "—"
+            return ok and r or "—"
         end,
     },
 
     zone = {
         label    = "Zone",
         getValue = function()
-            return GetZoneText() or "—"
+            local ok, r = pcall(function()
+                return GetZoneText() or "—"
+            end)
+            return ok and r or "—"
         end,
     },
 
@@ -183,12 +199,12 @@ HUF.DataPoints = {
         label    = "Spec",
         getValue = function()
             local ok, r = pcall(function()
-                local idx = C_SpecializationInfo.GetSpecialization()
-                if not idx then return "—" end
-                local _, name = C_SpecializationInfo.GetSpecializationInfo(idx)
+                local specIndex = GetSpecialization()
+                if not specIndex then return "—" end
+                local _, name = GetSpecializationInfo(specIndex)
                 return name or "—"
             end)
-            return (ok and r) or "—"
+            return ok and r or "—"
         end,
     },
 

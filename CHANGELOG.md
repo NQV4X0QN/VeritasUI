@@ -2,6 +2,20 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.30] — 2026-04-21
+
+### Changed
+
+* **[HUDFrame] Chat anchors: BackdropTemplate** — Replaced manual texture layering on chat anchor frames with Blizzard's `BackdropTemplate` + `ApplyBackdrop()`. Uses `UI-DialogBox-Background-Dark` fill and `UI-Tooltip-Border` edge, tinted dark warm (`SetBackdropBorderColor(0.3, 0.25, 0.2, 0.85)`). Move-mode tinting now calls `SetBackdropColor` on anchors (`0.15, 0.12, 0.05, 0.95`) and restores on lock (`0.06, 0.05, 0.04, 0.92`); `ApplyMoveTint`/`ApplyNormalTint` now diverge by `isAnchor`.
+
+* **[HUDFrame] Data bars: simplified to single top edge** — Removed bottom edge texture from data bars. Top edge layer changed to `BORDER` sublevel 1 with a warm-tinted color `(0.35, 0.28, 0.15, 0.9)` matching Blizzard's thin bar strip treatment. Base fill alpha bumped to 0.82.
+
+* **[HUDFrame] Settings panel: ButtonFrameTemplate** — Replaced `BasicFrameTemplate` with `ButtonFrameTemplate` for the layout config panel. Frame renamed to `VeritasUI_HUDFrameSettingsPanel`. Portrait hidden via `ButtonFrameTemplate_HidePortrait`. Title set via `win.TitleText`. Template's built-in `CloseButton` wired to hide the panel; manually created close button removed. Content area top inset adjusted from 26px to 32px to clear the taller title bar.
+
+* **[HUDFrame] DataPoints: updated API calls** — All `getValue` functions updated to current Midnight APIs: `GetHaste()`, `GetCritChance()`, `GetMasteryEffect()` (first return), `UnitArmor` second return (effective armor), `GetAverageItemLevel` second return (equipped ilvl), simplified gold format without color codes. Durability loops slots 1–18 directly. Spec uses `GetSpecialization`/`GetSpecializationInfo`. Guild drops `IsInGuild` guard, calls `GetNumGuildMembers` directly. All `getValue` bodies wrapped in `pcall`.
+
+* **[HUDFrame] Guild roster primed on load** — Added `pcall(C_GuildInfo.GuildRoster)` in the `ADDON_LOADED` handler so guild online count is available immediately without waiting for a manual query.
+
 ## [1.3.29] — 2026-04-21
 
 ### Changed

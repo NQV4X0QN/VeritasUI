@@ -51,7 +51,9 @@ end
 ----------------------------------------------------------------
 local function ApplyMoveTint()
     for _, entry in ipairs(hudFrames) do
-        if entry.frame.bgTex then
+        if entry.isAnchor then
+            entry.frame:SetBackdropColor(0.15, 0.12, 0.05, 0.95)
+        elseif entry.frame.bgTex then
             entry.frame.bgTex:SetVertexColor(0.9, 0.7, 0.15)
         end
     end
@@ -59,7 +61,9 @@ end
 
 local function ApplyNormalTint()
     for _, entry in ipairs(hudFrames) do
-        if entry.frame.bgTex then
+        if entry.isAnchor then
+            entry.frame:SetBackdropColor(0.06, 0.05, 0.04, 0.92)
+        elseif entry.frame.bgTex then
             entry.frame.bgTex:SetVertexColor(1, 1, 1)
         end
     end
@@ -138,46 +142,21 @@ end
 --  Frame builders
 ----------------------------------------------------------------
 local function CreateChatAnchor(name, width, height)
-    local anchor = CreateFrame("Frame", name, UIParent)
+    local anchor = CreateFrame("Frame", name, UIParent, "BackdropTemplate")
     anchor:SetSize(width, height)
     anchor:SetFrameStrata("BACKGROUND")
     anchor:SetFrameLevel(1)
-
-    local bgTex = anchor:CreateTexture(nil, "BACKGROUND", nil, 0)
-    bgTex:SetColorTexture(0.05, 0.04, 0.03, 0.85)
-    bgTex:SetAllPoints(anchor)
-    anchor.bgTex = bgTex
-
-    local topLine = anchor:CreateTexture(nil, "ARTWORK", nil, 0)
-    topLine:SetHeight(1)
-    topLine:SetPoint("TOPLEFT",  anchor, "TOPLEFT",  0, 0)
-    topLine:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", 0, 0)
-    topLine:SetColorTexture(1, 1, 1, 0.12)
-
-    local topGold = anchor:CreateTexture(nil, "ARTWORK", nil, 1)
-    topGold:SetHeight(1)
-    topGold:SetPoint("TOPLEFT",  anchor, "TOPLEFT",  0, -1)
-    topGold:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", 0, -1)
-    topGold:SetColorTexture(0.8, 0.65, 0.2, 0.25)
-
-    local leftLine = anchor:CreateTexture(nil, "ARTWORK", nil, 0)
-    leftLine:SetWidth(1)
-    leftLine:SetPoint("TOPLEFT",    anchor, "TOPLEFT",    0,  0)
-    leftLine:SetPoint("BOTTOMLEFT", anchor, "BOTTOMLEFT", 0,  0)
-    leftLine:SetColorTexture(1, 1, 1, 0.06)
-
-    local rightLine = anchor:CreateTexture(nil, "ARTWORK", nil, 0)
-    rightLine:SetWidth(1)
-    rightLine:SetPoint("TOPRIGHT",    anchor, "TOPRIGHT",    0, 0)
-    rightLine:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", 0, 0)
-    rightLine:SetColorTexture(1, 1, 1, 0.06)
-
-    local botLine = anchor:CreateTexture(nil, "ARTWORK", nil, 0)
-    botLine:SetHeight(1)
-    botLine:SetPoint("BOTTOMLEFT",  anchor, "BOTTOMLEFT",  0, 0)
-    botLine:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", 0, 0)
-    botLine:SetColorTexture(0, 0, 0, 0.4)
-
+    anchor.backdropInfo = {
+        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile     = true,
+        tileSize = 16,
+        edgeSize = 16,
+        insets   = { left = 4, right = 4, top = 4, bottom = 4 },
+    }
+    anchor:ApplyBackdrop()
+    anchor:SetBackdropColor(0.06, 0.05, 0.04, 0.92)
+    anchor:SetBackdropBorderColor(0.3, 0.25, 0.2, 0.85)
     return anchor
 end
 
@@ -189,21 +168,15 @@ local function CreateDataBar(width, height)
     bar:SetFrameStrata("MEDIUM")
 
     local bgTex = bar:CreateTexture(nil, "BACKGROUND", nil, 0)
-    bgTex:SetColorTexture(0.04, 0.03, 0.02, 0.80)
+    bgTex:SetColorTexture(0.04, 0.03, 0.02, 0.82)
     bgTex:SetAllPoints(bar)
     bar.bgTex = bgTex
 
-    local topEdge = bar:CreateTexture(nil, "ARTWORK", nil, 0)
+    local topEdge = bar:CreateTexture(nil, "BORDER", nil, 1)
     topEdge:SetHeight(1)
     topEdge:SetPoint("TOPLEFT",  bar, "TOPLEFT",  0, 0)
     topEdge:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
-    topEdge:SetColorTexture(1, 1, 1, 0.15)
-
-    local botEdge = bar:CreateTexture(nil, "ARTWORK", nil, 0)
-    botEdge:SetHeight(1)
-    botEdge:SetPoint("BOTTOMLEFT",  bar, "BOTTOMLEFT",  0, 0)
-    botEdge:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
-    botEdge:SetColorTexture(0, 0, 0, 0.5)
+    topEdge:SetColorTexture(0.35, 0.28, 0.15, 0.9)
 
     return bar
 end
@@ -310,6 +283,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         end
         db     = VeritasUI_HUDFrameDB
         HUF.db = db   -- expose for DataText and SettingsPanel
+        pcall(C_GuildInfo.GuildRoster)
         InitializeOptions()
         self:UnregisterEvent("ADDON_LOADED")
 

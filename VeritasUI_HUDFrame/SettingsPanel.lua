@@ -145,7 +145,8 @@ end
 --  Build the panel
 ----------------------------------------------------------------
 local function BuildConfigPanel()
-    local win = CreateFrame("Frame", "VUI_HUD_ConfigPanel", UIParent, "BasicFrameTemplate")
+    local win = CreateFrame("Frame", "VeritasUI_HUDFrameSettingsPanel", UIParent, "ButtonFrameTemplate")
+    ButtonFrameTemplate_HidePortrait(win)
     win:SetSize(PNL_W, PNL_H)
     win:SetPoint("CENTER")
     win:SetMovable(true)
@@ -153,23 +154,21 @@ local function BuildConfigPanel()
     win:RegisterForDrag("LeftButton")
     win:SetScript("OnDragStart", win.StartMoving)
     win:SetScript("OnDragStop",  win.StopMovingOrSizing)
+    win:SetClampedToScreen(true)
     win:Hide()
     win:SetFrameStrata("DIALOG")
     win:SetToplevel(true)
 
-    -- Title
-    if win.TitleText then
-        win.TitleText:SetText("HUD Frame — Layout Configuration")
-    elseif win.TitleBar and win.TitleBar.TitleText then
-        win.TitleBar.TitleText:SetText("HUD Frame — Layout Configuration")
-    end
+    win.TitleText:SetText("HUD Frame — Layout Configuration")
+
+    win.CloseButton:SetScript("OnClick", function() win:Hide() end)
 
     -- Register with UISpecialFrames so Escape closes it
-    table.insert(UISpecialFrames, "VUI_HUD_ConfigPanel")
+    table.insert(UISpecialFrames, "VeritasUI_HUDFrameSettingsPanel")
 
-    -- Content area (matches PriorityRotation insets)
+    -- Content area — 12px inset sides, 32px from top to clear title bar
     local CONT = CreateFrame("Frame", nil, win)
-    CONT:SetPoint("TOPLEFT",     win, "TOPLEFT",     8,  -26)
+    CONT:SetPoint("TOPLEFT",     win, "TOPLEFT",     8,  -32)
     CONT:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -6,    6)
 
     -- ── Left Bar section (top-left quadrant) ─────────────────
@@ -193,16 +192,9 @@ local function BuildConfigPanel()
         local db = HUF.db
         if db then db.layout = nil end
         if HUF.RebuildAllBars then HUF.RebuildAllBars() end
-        -- Refresh dropdowns to show new values
         if HUF.RefreshConfigPanel then HUF.RefreshConfigPanel() end
         VUI.Print("HUD Frame", "|cffffd100Layout reset to defaults.|r")
     end)
-
-    local closeBtn = CreateFrame("Button", nil, CONT, "UIPanelButtonTemplate")
-    closeBtn:SetSize(80, 24)
-    closeBtn:SetPoint("BOTTOMRIGHT", CONT, "BOTTOMRIGHT", -4, 8)
-    closeBtn:SetText("Close")
-    closeBtn:SetScript("OnClick", function() win:Hide() end)
 
     HUF.ConfigPanel = win
 end
