@@ -2,6 +2,22 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.28] — 2026-04-21
+
+### Changed
+
+* **[HUDFrame] Data bar visual restyle (Fix 1)** — Removed all `SetBackdrop`/`BackdropTemplate` from data bar frames. Visuals now built from raw textures: `BACKGROUND` sublevel 0 uses `UI-DialogBox-Background-Dark` in REPEAT wrap mode (alpha 0.85); `BORDER` sublevel 1 adds a 2px gold top edge and 1px dark bottom edge via `SetColorTexture`. Move-mode tinting uses `bar.bgTex:SetVertexColor` instead of `SetBackdropColor`.
+
+* **[HUDFrame] Chat anchor rearchitecture (Fix 2)** — Stopped repositioning ChatFrame1/ChatFrame2 directly (which caused ChatFrameEditBox misalignment on zone transitions). Anchor frames now mirror chat frame position/size on `PLAYER_ENTERING_WORLD`. On DragStop, the anchor's new position is mirrored back to the corresponding chat frame. Chat frames are never re-parented or force-repositioned.
+
+* **[HUDFrame] Data point registry + slot system (Part 3)** — New `DataPoints.lua` file with `HUF.DataPoints` registry of 13 configurable data points: haste, mastery, crit, armor, ilvl, memory, durability, gold, guild, friends, zone, spec, empty. Each of the three bars has independently configurable numbered slots. Layout is persisted in `VeritasUI_HUDFrameDB`. `BuildBar` distributes FontStrings evenly; `RebuildAllBars` rebuilds from the current layout.
+
+* **[HUDFrame] Settings panel (Part 4)** — New `SettingsPanel.lua` with a standalone drag-to-move config panel (matches PriorityRotation's `BasicFrameTemplate` pattern). Opens via `/hud config`. UIDropDownMenu dropdowns for each slot across three sections (Left Bar, Right Bar, Center Bar). Escape closes via `UISpecialFrames` registration. Reset to Defaults + Close buttons.
+
+* **[HUDFrame] New file structure** — TOC now loads: `Core.lua`, `Config.lua`, `DataPoints.lua`, `SettingsPanel.lua`, `DataText.lua`. `HUDFrame.lua` is superseded by `Core.lua` and removed from the TOC load list (left on disk).
+
+* **[HUDFrame] New slash commands** — `/hud config` opens the settings panel; `/hud set <bar> <slot> <key>` sets a slot from the command line; `/hud list` lists registered data point keys; `/hud layout` prints the current layout.
+
 ## [1.3.27] — 2026-04-21
 
 ### Changed
