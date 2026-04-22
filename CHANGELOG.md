@@ -2,6 +2,21 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.27] — 2026-04-21
+
+### Changed
+
+* **[HUDFrame] Drag-to-move scaffolding** — All five HUD frames are now repositionable at runtime.
+  * `/hud move` enters move mode: frames receive a gold tint (anchors via `SetBackdropColor`, bars via `SetVertexColor` on the base texture) to signal they are draggable. Dragging snaps to screen edge via `SetClampedToScreen`.
+  * `/hud lock` exits move mode and restores normal tint. Dragging is a no-op while locked (default on login).
+  * `/hud reset` clears all saved positions, moves frames back to their default layout, and locks.
+  * Positions (point, relPoint, x, y relative to UIParent) are persisted in `VeritasUI_HUDFrameDB` and restored on login. The left and right data bars follow their anchor frames automatically — only the two chat anchors and the center bar have independent drag handles.
+* **[HUDFrame] Bar texture restyle** — Replaced the flat `UI-Tooltip-Background` backdrop on data bars with a layered raw-texture approach:
+  * `BACKGROUND` layer: `UI-DialogBox-Background-Dark` in `REPEAT`/`REPEAT` wrap mode — matches the warm charcoal-brown of the chat anchor interiors.
+  * `BORDER` layer: 2px gold top edge (`SetColorTexture(1, 0.82, 0, 0.6)`) and 1px gold bottom edge at reduced opacity (0.3) for depth.
+  * Center bar only: thin 1px vertical gold end-caps on the left and right edges.
+  * `BAR_HEIGHT` raised from 20 → 22 px in `Config.lua`.
+
 ## [1.3.26] — 2026-04-21
 
 ### Added

@@ -40,6 +40,8 @@ local CFG = HUF.Config
 --  Defaults & state
 ----------------------------------------------------------------
 local defaults = { enabled = true }
+-- Position keys (leftAnchorPos, rightAnchorPos, centerBarPos) are stored in db
+-- when the user drags a frame; absent key = use default layout.
 local db
 local settingsCategoryID
 local frame = CreateFrame("Frame")
@@ -49,6 +51,10 @@ local leftAnchor, rightAnchor
 local leftBar, rightBar, centerBar
 local leftBarText, rightBarText, centerBarText
 local ticker
+
+-- Move-mode state
+local isLocked  = true   -- true = dragging disabled; toggled by /hud move|lock
+local hudFrames = {}     -- { frame, baseTex|nil, isAnchor } — for tinting
 
 ----------------------------------------------------------------
 --  Data helpers
@@ -206,6 +212,58 @@ local function UpdateAllBars()
 end
 
 ----------------------------------------------------------------
+--  Move-mode helpers
+----------------------------------------------------------------
+local function SavePos(key, f)
+    local point, _, relPoint, x, y = f:GetPoint(1)
+    db[key] = { point = point, relPoint = relPoint, x = x, y = y }
+end
+
+local function ApplyPos(key, f, defaultFn)
+    local p = db and db[key]
+    if p then
+        f:ClearAllPoints()
+        f:SetPoint(p.point, UIParent, p.relPoint, p.x, p.y)
+    else
+        defaultFn()
+    end
+end
+
+local function MakeDraggable(f, posKey)
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:SetClampedToScreen(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", function(self)
+        if not isLocked then self:StartMoving() end
+    end)
+    f:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        if not isLocked then SavePos(posKey, self) end
+    end)
+end
+
+local function ApplyMoveTint()
+    for _, entry in ipairs(hudFrames) do
+        if entry.isAnchor then
+            entry.frame:SetBackdropColor(1, 0.75, 0, 0.55)
+        elseif entry.baseTex then
+            entry.baseTex:SetVertexColor(1, 0.75, 0, 1)
+        end
+    end
+end
+
+local function ApplyNormalTint()
+    for _, entry in ipairs(hudFrames) do
+        if entry.isAnchor then
+            entry.frame:SetBackdropColor(1, 1, 1, 0.95)
+        elseif entry.baseTex then
+            entry.baseTex:SetVertexColor(1, 1, 1, 1)
+        end
+    end
+end
+
+----------------------------------------------------------------
 --  Frame builders
 ----------------------------------------------------------------
 local function CreateChatAnchor(name, width, height)
@@ -234,32 +292,35 @@ local function CreateChatAnchor(name, width, height)
     return anchor
 end
 
+-- Returns bar, text, baseTex.
+-- baseTex is stored in hudFrames for move-mode tinting via SetVertexColor.
 local function CreateDataBar(width, height)
-    local bar = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    local bar = CreateFrame("Frame", nil, UIParent)
     bar:SetSize(width, height)
     bar:SetFrameStrata("MEDIUM")
-    bar:SetBackdrop({
-        bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
-        tile     = true,
-        tileSize = 16,
-        insets   = { left = 0, right = 0, top = 0, bottom = 0 },
-    })
-    -- Warm dark tint at 70% opacity — matches the bottom-panel tab aesthetic.
-    bar:SetBackdropColor(0.10, 0.08, 0.06, 0.70)
 
-    -- Single 1px gold hairline along the top edge.
-    local topEdge = bar:CreateTexture(nil, "ARTWORK")
-    topEdge:SetHeight(1)
-    topEdge:SetPoint("TOPLEFT",  bar, "TOPLEFT",  0, 0)
-    topEdge:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
-    topEdge:SetColorTexture(1, 0.843, 0, 0.7)   -- #FFD700 at 70% alpha
+    local baseTex = bar:CreateTexture(nil, "BACKGROUND")
+    baseTex:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Background-Dark", "REPEAT", "REPEAT")
+    baseTex:SetAllPoints(bar)
+
+    local topEdge = bar:CreateTexture(nil, "BORDER")
+    topEdge:SetHeight(2)
+    topEdge:SetPoint("TOPLEFT",  bar, "TOPLEFT",  0,  0)
+    topEdge:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0,  0)
+    topEdge:SetColorTexture(1, 0.82, 0, 0.6)
+
+    local botEdge = bar:CreateTexture(nil, "BORDER")
+    botEdge:SetHeight(1)
+    botEdge:SetPoint("BOTTOMLEFT",  bar, "BOTTOMLEFT",  0, 0)
+    botEdge:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
+    botEdge:SetColorTexture(1, 0.82, 0, 0.3)
 
     local text = bar:CreateFontString(nil, "OVERLAY")
     text:SetFont("Fonts\\FRIZQT__.TTF", 11)
     text:SetPoint("CENTER", bar, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
 
-    return bar, text
+    return bar, text, baseTex
 end
 
 -- Repositions chatFrame so it fills the interior of anchor (inside the border inset).
@@ -285,31 +346,57 @@ end
 local function SetupHUDFrame()
     -- ── Chat anchor frames ──────────────────────────────────
     leftAnchor = CreateChatAnchor("VUI_HUD_LeftAnchor", CFG.CHAT_FRAME_W, CFG.CHAT_FRAME_H)
-    leftAnchor:SetPoint(
-        "BOTTOMLEFT", UIParent, "BOTTOMLEFT",
-        CFG.CHAT_LEFT_X, CFG.CHAT_BOTTOM_Y)
+    ApplyPos("leftAnchorPos", leftAnchor, function()
+        leftAnchor:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", CFG.CHAT_LEFT_X, CFG.CHAT_BOTTOM_Y)
+    end)
+    MakeDraggable(leftAnchor, "leftAnchorPos")
+    hudFrames[#hudFrames + 1] = { frame = leftAnchor, baseTex = nil, isAnchor = true }
 
     rightAnchor = CreateChatAnchor("VUI_HUD_RightAnchor", CFG.CHAT_FRAME_W, CFG.CHAT_FRAME_H)
-    rightAnchor:SetPoint(
-        "BOTTOMRIGHT", UIParent, "BOTTOMRIGHT",
-        -CFG.CHAT_RIGHT_X, CFG.CHAT_BOTTOM_Y)
+    ApplyPos("rightAnchorPos", rightAnchor, function()
+        rightAnchor:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -CFG.CHAT_RIGHT_X, CFG.CHAT_BOTTOM_Y)
+    end)
+    MakeDraggable(rightAnchor, "rightAnchorPos")
+    hudFrames[#hudFrames + 1] = { frame = rightAnchor, baseTex = nil, isAnchor = true }
 
     -- ── Dock native chat frames ─────────────────────────────
     DockChatFrame(ChatFrame1, leftAnchor)
     DockChatFrame(ChatFrame2, rightAnchor)
 
     -- ── Data text bars ──────────────────────────────────────
-    -- Left bar — top edge flush with left anchor's bottom edge
-    leftBar, leftBarText = CreateDataBar(CFG.CHAT_FRAME_W, CFG.BAR_HEIGHT)
+    -- Left bar follows leftAnchor automatically (SetPoint relative to it).
+    local leftBaseTex
+    leftBar, leftBarText, leftBaseTex = CreateDataBar(CFG.CHAT_FRAME_W, CFG.BAR_HEIGHT)
     leftBar:SetPoint("TOPLEFT", leftAnchor, "BOTTOMLEFT", 0, 0)
+    hudFrames[#hudFrames + 1] = { frame = leftBar, baseTex = leftBaseTex, isAnchor = false }
 
-    -- Right bar — top edge flush with right anchor's bottom edge
-    rightBar, rightBarText = CreateDataBar(CFG.CHAT_FRAME_W, CFG.BAR_HEIGHT)
+    -- Right bar follows rightAnchor automatically.
+    local rightBaseTex
+    rightBar, rightBarText, rightBaseTex = CreateDataBar(CFG.CHAT_FRAME_W, CFG.BAR_HEIGHT)
     rightBar:SetPoint("TOPRIGHT", rightAnchor, "BOTTOMRIGHT", 0, 0)
+    hudFrames[#hudFrames + 1] = { frame = rightBar, baseTex = rightBaseTex, isAnchor = false }
 
-    -- Center bar — bottom edge at CENTER_BAR_Y above the screen bottom
-    centerBar, centerBarText = CreateDataBar(CFG.CENTER_BAR_W, CFG.BAR_HEIGHT)
-    centerBar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, CFG.CENTER_BAR_Y)
+    -- Center bar — independently draggable.
+    local centerBaseTex
+    centerBar, centerBarText, centerBaseTex = CreateDataBar(CFG.CENTER_BAR_W, CFG.BAR_HEIGHT)
+    ApplyPos("centerBarPos", centerBar, function()
+        centerBar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, CFG.CENTER_BAR_Y)
+    end)
+    MakeDraggable(centerBar, "centerBarPos")
+    hudFrames[#hudFrames + 1] = { frame = centerBar, baseTex = centerBaseTex, isAnchor = false }
+
+    -- Thin vertical end-caps on the center bar only.
+    local leftCap = centerBar:CreateTexture(nil, "BORDER")
+    leftCap:SetWidth(1)
+    leftCap:SetPoint("TOPLEFT",    centerBar, "TOPLEFT",    0, 0)
+    leftCap:SetPoint("BOTTOMLEFT", centerBar, "BOTTOMLEFT", 0, 0)
+    leftCap:SetColorTexture(1, 0.82, 0, 0.5)
+
+    local rightCap = centerBar:CreateTexture(nil, "BORDER")
+    rightCap:SetWidth(1)
+    rightCap:SetPoint("TOPRIGHT",    centerBar, "TOPRIGHT",    0, 0)
+    rightCap:SetPoint("BOTTOMRIGHT", centerBar, "BOTTOMRIGHT", 0, 0)
+    rightCap:SetColorTexture(1, 0.82, 0, 0.5)
 
     -- ── Initial visibility based on saved setting ───────────
     local show = db and db.enabled ~= false
@@ -380,17 +467,58 @@ frame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "PLAYER_LOGIN" then
         SetupHUDFrame()
         self:UnregisterEvent("PLAYER_LOGIN")
-        VUI.Print("HUD Frame", "Loaded. Type |cFFFFFF00/hud|r to open settings.")
+        VUI.Print("HUD Frame", "Loaded. /hud move • /hud lock • /hud reset • /hud (settings)")
     end
 end)
 
 ----------------------------------------------------------------
 --  Slash commands
+--    /hud move   — enter move mode (gold tint, draggable)
+--    /hud lock   — exit move mode  (normal tint, locked)
+--    /hud reset  — reset all frames to default positions
+--    /hud        — open settings panel
 ----------------------------------------------------------------
 SLASH_VERITASUI_HUDFRAME1 = "/hud"
 SLASH_VERITASUI_HUDFRAME2 = "/hudframe"
-SlashCmdList["VERITASUI_HUDFRAME"] = function()
-    Settings.OpenToCategory(settingsCategoryID)
+SlashCmdList["VERITASUI_HUDFRAME"] = function(msg)
+    local sub = msg and msg:match("^%s*(%S*)") or ""
+    sub = sub:lower()
+
+    if sub == "move" then
+        isLocked = false
+        ApplyMoveTint()
+        VUI.Print("HUD Frame", "Move mode |cFF00FF00ON|r — drag frames to reposition. /hud lock when done.")
+
+    elseif sub == "lock" then
+        isLocked = true
+        ApplyNormalTint()
+        VUI.Print("HUD Frame", "Move mode |cFFFF4444OFF|r — frames locked.")
+
+    elseif sub == "reset" then
+        isLocked = true
+        ApplyNormalTint()
+        if db then
+            db.leftAnchorPos  = nil
+            db.rightAnchorPos = nil
+            db.centerBarPos   = nil
+        end
+        if leftAnchor then
+            leftAnchor:ClearAllPoints()
+            leftAnchor:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", CFG.CHAT_LEFT_X, CFG.CHAT_BOTTOM_Y)
+        end
+        if rightAnchor then
+            rightAnchor:ClearAllPoints()
+            rightAnchor:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -CFG.CHAT_RIGHT_X, CFG.CHAT_BOTTOM_Y)
+        end
+        if centerBar then
+            centerBar:ClearAllPoints()
+            centerBar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, CFG.CENTER_BAR_Y)
+        end
+        VUI.Print("HUD Frame", "Frame positions reset to defaults.")
+
+    else
+        Settings.OpenToCategory(settingsCategoryID)
+    end
 end
 
 ----------------------------------------------------------------
