@@ -2,6 +2,16 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.29] — 2026-04-21
+
+### Changed
+
+* **[HUDFrame] Midnight-era visual restyle — chat anchors and data bars** — Removed all `SetBackdrop`/`BackdropTemplate`/DialogBox border and background textures from chat anchor frames and data bars. Replaced with pure `SetColorTexture` layering matching the Midnight UI aesthetic (Map & Quest Log, Journeys, Appearances panels):
+  * **Chat anchors**: near-black warm fill `(0.05, 0.04, 0.03, 0.85)`; 1px white top highlight at 12% opacity; 1px warm gold accent at -1px offset at 25% opacity; 1px left/right edges at 6% white; 1px dark bottom edge. No border texture files. No gold filigree.
+  * **Data bars**: near-black fill `(0.04, 0.03, 0.02, 0.80)` for a lighter-weight read; 1px white top edge at 15% opacity; 1px black bottom edge at 50% opacity. No side edges. Move-mode highlight uses `SetVertexColor(0.9, 0.7, 0.15)` on the base fill only.
+  * **Center bar end-caps removed** — previously had gold side edges; bars now bleed to natural width.
+  * Move-mode tinting unified: both anchors and bars now use `bgTex:SetVertexColor` (anchors no longer called `SetBackdropColor`).
+
 ## [1.3.28] — 2026-04-21
 
 ### Changed

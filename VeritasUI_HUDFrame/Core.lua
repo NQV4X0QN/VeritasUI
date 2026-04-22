@@ -51,19 +51,15 @@ end
 ----------------------------------------------------------------
 local function ApplyMoveTint()
     for _, entry in ipairs(hudFrames) do
-        if entry.isAnchor then
-            entry.frame:SetBackdropColor(1, 0.75, 0, 0.55)
-        elseif entry.frame.bgTex then
-            entry.frame.bgTex:SetVertexColor(0.8, 0.6, 0.1)
+        if entry.frame.bgTex then
+            entry.frame.bgTex:SetVertexColor(0.9, 0.7, 0.15)
         end
     end
 end
 
 local function ApplyNormalTint()
     for _, entry in ipairs(hudFrames) do
-        if entry.isAnchor then
-            entry.frame:SetBackdropColor(1, 1, 1, 0.95)
-        elseif entry.frame.bgTex then
+        if entry.frame.bgTex then
             entry.frame.bgTex:SetVertexColor(1, 1, 1)
         end
     end
@@ -142,26 +138,46 @@ end
 --  Frame builders
 ----------------------------------------------------------------
 local function CreateChatAnchor(name, width, height)
-    local CFG    = HUF.Config
-    local anchor = CreateFrame("Frame", name, UIParent, "BackdropTemplate")
+    local anchor = CreateFrame("Frame", name, UIParent)
     anchor:SetSize(width, height)
     anchor:SetFrameStrata("BACKGROUND")
     anchor:SetFrameLevel(1)
-    anchor:SetBackdrop({
-        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile     = true,
-        tileSize = 32,
-        edgeSize = 32,
-        insets   = {
-            left   = CFG.BORDER_INSET,
-            right  = CFG.BORDER_INSET,
-            top    = CFG.BORDER_INSET,
-            bottom = CFG.BORDER_INSET,
-        },
-    })
-    anchor:SetBackdropColor(1, 1, 1, 0.95)
-    anchor:SetBackdropBorderColor(1, 1, 1, 1)
+
+    local bgTex = anchor:CreateTexture(nil, "BACKGROUND", nil, 0)
+    bgTex:SetColorTexture(0.05, 0.04, 0.03, 0.85)
+    bgTex:SetAllPoints(anchor)
+    anchor.bgTex = bgTex
+
+    local topLine = anchor:CreateTexture(nil, "ARTWORK", nil, 0)
+    topLine:SetHeight(1)
+    topLine:SetPoint("TOPLEFT",  anchor, "TOPLEFT",  0, 0)
+    topLine:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", 0, 0)
+    topLine:SetColorTexture(1, 1, 1, 0.12)
+
+    local topGold = anchor:CreateTexture(nil, "ARTWORK", nil, 1)
+    topGold:SetHeight(1)
+    topGold:SetPoint("TOPLEFT",  anchor, "TOPLEFT",  0, -1)
+    topGold:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", 0, -1)
+    topGold:SetColorTexture(0.8, 0.65, 0.2, 0.25)
+
+    local leftLine = anchor:CreateTexture(nil, "ARTWORK", nil, 0)
+    leftLine:SetWidth(1)
+    leftLine:SetPoint("TOPLEFT",    anchor, "TOPLEFT",    0,  0)
+    leftLine:SetPoint("BOTTOMLEFT", anchor, "BOTTOMLEFT", 0,  0)
+    leftLine:SetColorTexture(1, 1, 1, 0.06)
+
+    local rightLine = anchor:CreateTexture(nil, "ARTWORK", nil, 0)
+    rightLine:SetWidth(1)
+    rightLine:SetPoint("TOPRIGHT",    anchor, "TOPRIGHT",    0, 0)
+    rightLine:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", 0, 0)
+    rightLine:SetColorTexture(1, 1, 1, 0.06)
+
+    local botLine = anchor:CreateTexture(nil, "ARTWORK", nil, 0)
+    botLine:SetHeight(1)
+    botLine:SetPoint("BOTTOMLEFT",  anchor, "BOTTOMLEFT",  0, 0)
+    botLine:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", 0, 0)
+    botLine:SetColorTexture(0, 0, 0, 0.4)
+
     return anchor
 end
 
@@ -173,18 +189,17 @@ local function CreateDataBar(width, height)
     bar:SetFrameStrata("MEDIUM")
 
     local bgTex = bar:CreateTexture(nil, "BACKGROUND", nil, 0)
-    bgTex:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Background-Dark", "REPEAT", "REPEAT")
+    bgTex:SetColorTexture(0.04, 0.03, 0.02, 0.80)
     bgTex:SetAllPoints(bar)
-    bgTex:SetAlpha(0.85)
-    bar.bgTex = bgTex   -- stored directly for SetVertexColor tinting
+    bar.bgTex = bgTex
 
-    local topEdge = bar:CreateTexture(nil, "BORDER", nil, 1)
-    topEdge:SetHeight(2)
+    local topEdge = bar:CreateTexture(nil, "ARTWORK", nil, 0)
+    topEdge:SetHeight(1)
     topEdge:SetPoint("TOPLEFT",  bar, "TOPLEFT",  0, 0)
     topEdge:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
-    topEdge:SetColorTexture(1, 0.82, 0, 0.7)
+    topEdge:SetColorTexture(1, 1, 1, 0.15)
 
-    local botEdge = bar:CreateTexture(nil, "BORDER", nil, 1)
+    local botEdge = bar:CreateTexture(nil, "ARTWORK", nil, 0)
     botEdge:SetHeight(1)
     botEdge:SetPoint("BOTTOMLEFT",  bar, "BOTTOMLEFT",  0, 0)
     botEdge:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 0, 0)
@@ -235,19 +250,6 @@ local function SetupHUDFrame()
     end
     MakeDraggable(HUF.centerBar, "centerBarPos", false)
     hudFrames[#hudFrames + 1] = { frame = HUF.centerBar, isAnchor = false }
-
-    -- Thin vertical end-caps on center bar only.
-    local lc = HUF.centerBar:CreateTexture(nil, "BORDER", nil, 1)
-    lc:SetWidth(1)
-    lc:SetPoint("TOPLEFT",    HUF.centerBar, "TOPLEFT",    0, 0)
-    lc:SetPoint("BOTTOMLEFT", HUF.centerBar, "BOTTOMLEFT", 0, 0)
-    lc:SetColorTexture(1, 0.82, 0, 0.5)
-
-    local rc = HUF.centerBar:CreateTexture(nil, "BORDER", nil, 1)
-    rc:SetWidth(1)
-    rc:SetPoint("TOPRIGHT",    HUF.centerBar, "TOPRIGHT",    0, 0)
-    rc:SetPoint("BOTTOMRIGHT", HUF.centerBar, "BOTTOMRIGHT", 0, 0)
-    rc:SetColorTexture(1, 0.82, 0, 0.5)
 
     -- ── Visibility ──────────────────────────────────────────
     local show = db and db.enabled ~= false
