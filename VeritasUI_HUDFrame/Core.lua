@@ -56,7 +56,9 @@ end
 ----------------------------------------------------------------
 local function ApplyMoveTint()
     for _, entry in ipairs(hudFrames) do
-        if entry.frame.NineSlice then
+        if entry.frame.stripTex then
+            entry.frame.stripTex:SetVertexColor(1, 0.85, 0.3)
+        elseif entry.frame.NineSlice then
             entry.frame.NineSlice:SetVertexColor(1, 0.85, 0.3)
         end
     end
@@ -64,7 +66,9 @@ end
 
 local function ApplyNormalTint()
     for _, entry in ipairs(hudFrames) do
-        if entry.frame.NineSlice then
+        if entry.frame.stripTex then
+            entry.frame.stripTex:SetVertexColor(1, 1, 1)
+        elseif entry.frame.NineSlice then
             entry.frame.NineSlice:SetVertexColor(1, 1, 1)
         end
     end
@@ -169,19 +173,35 @@ local function CreateCenterBar(width, height)
     local ns = bar.NineSlice
     if ns then
         local toHide = {
+            "TopEdge", "BottomEdge", "LeftEdge", "RightEdge",
             "TopLeftCorner", "TopRightCorner",
             "BottomLeftCorner", "BottomRightCorner",
-            "LeftEdge", "RightEdge",
-            "TopEdge", "Center",
+            "Center",
         }
         for _, key in ipairs(toHide) do
             if ns[key] then ns[key]:Hide() end
         end
+        ns:Hide()
     end
 
-    bar.textFrame = CreateFrame("Frame", nil, bar)
-    bar.textFrame:SetAllPoints()
-    bar.textFrame:SetFrameLevel(bar:GetFrameLevel() + 600)
+    local strip = bar:CreateTexture(nil, "OVERLAY")
+    strip:SetAtlas("_UI-Frame-Metal-EdgeTop", true)
+    strip:SetPoint("TOPLEFT",  bar, "TOPLEFT",  0, 0)
+    strip:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
+    bar.stripTex = strip
+
+    local cleanupKeys = {
+        "Inset", "Bg", "bgTex",
+        "TopTileStreaks", "TitleBg",
+        "PortraitFrame", "PortraitFrameBg", "Portrait",
+        "Shadow", "shadowTex",
+    }
+    for _, key in ipairs(cleanupKeys) do
+        local obj = bar[key]
+        if obj and obj.Hide then obj:Hide() end
+    end
+
+    bar.blizzBar = bar.PortraitContainer
 
     return bar
 end

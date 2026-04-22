@@ -2,6 +2,26 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.4.0] — 2026-04-22
+
+### Changed
+
+* **[HUDFrame] Center bar chrome strip reworked** — `_UI-Frame-Metal-EdgeTop` atlas strip is anchored via explicit two-point `TOPLEFT`/`TOPRIGHT` rather than `SetAllPoints`; `true` flag passed to `SetAtlas` for correct atlas sizing. All NineSlice pieces plus the parent `NineSlice` frame are now fully hidden via `ns:Hide()`.
+
+* **[HUDFrame] ButtonFrameTemplate residual regions cleaned up** — A `cleanupKeys` loop hides `Inset`, `Bg`, `bgTex`, `TopTileStreaks`, `TitleBg`, `PortraitFrame`, `PortraitFrameBg`, `Portrait`, `Shadow`, and `shadowTex` on the center bar, removing any leftover template chrome.
+
+* **[HUDFrame] `bar.blizzBar` alias added** — `bar.blizzBar = bar.PortraitContainer` stored for potential use as a data-text host frame.
+
+* **[HUDFrame] `textFrame` child removed from center bar** — FontStrings are now created directly on the bar frame at OVERLAY sublevel 7, which clears all NineSlice draw layers without requiring a separate high-level child frame.
+
+* **[HUDFrame] Center bar FontStrings anchored `BOTTOM, -7`** — Places data text on the chrome strip rather than at the geometric center of the bar frame.
+
+* **[HUDFrame] `BAR_HEIGHT` increased to 26px** — Provides enough height for the chrome strip plus readable data text.
+
+* **[HUDFrame] Move-mode tint checks `stripTex` first** — `ApplyMoveTint`/`ApplyNormalTint` now tint `bar.stripTex` when present before falling back to `NineSlice`.
+
+* **[Repo] `.gitattributes` added** — Enforces LF line endings for all `.lua`, `.toc`, `.md`, and `.xml` files, eliminating CRLF conversion warnings on Windows.
+
 ## [1.3.39] — 2026-04-21
 
 ### Changed

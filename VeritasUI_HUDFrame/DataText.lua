@@ -59,16 +59,15 @@ local function BuildBar(barFrame, slotKeys, mountPoint, yOffset)
     if not slotKeys or #slotKeys == 0 then return end
 
     local n = #slotKeys
+    local fsParent = barFrame
     local w = barFrame:GetWidth()
-    if not w or w <= 0 then w = 380 end   -- fallback if frame not yet laid out
-
-    local fsParent = barFrame.textFrame or barFrame
+    if not w or w <= 0 then w = 380 end
     for i, key in ipairs(slotKeys) do
-        local fs = fsParent:CreateFontString(nil, "OVERLAY")
+        local fs = fsParent:CreateFontString(nil, "OVERLAY", nil, 7)
         fs:SetFont("Fonts\\FRIZQT__.TTF", 11)
         fs:SetJustifyH("CENTER")
         local xOff = w * (i - 0.5) / n - w * 0.5
-        fs:SetPoint(mountPoint, barFrame, mountPoint, xOff, yOffset)
+        fs:SetPoint(mountPoint, fsParent, mountPoint, xOff, yOffset)
         fs:Show()
         barFrame._vuiSlots[i] = { fs = fs, key = key }
     end
@@ -124,7 +123,7 @@ function HUF.RebuildAllBars()
 
     BuildBar(HUF.leftAnchor,  db.layout.leftBar,   "BOTTOM", 8)
     BuildBar(HUF.rightAnchor, db.layout.rightBar,  "BOTTOM", 8)
-    BuildBar(HUF.centerBar,   db.layout.centerBar)
+    BuildBar(HUF.centerBar,   db.layout.centerBar, "BOTTOM", -7)
 
     UpdateAllBars()
 
