@@ -2,6 +2,12 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.32] — 2026-04-21
+
+### Changed
+
+* **[HUDFrame] Backdrop colors use Blizzard globals** — `SetBackdropColor` and `SetBackdropBorderColor` on all five HUD frames (two chat anchors, three data bars) now reference `TOOLTIP_DEFAULT_BACKGROUND_COLOR` and `TOOLTIP_DEFAULT_COLOR` instead of hardcoded warm-dark values. Frames automatically match every other native Blizzard UI element and inherit any future Blizzard color changes. Move-mode warm highlight (`0.15, 0.12, 0.05, 0.95`) remains intentional and unchanged. `ApplyNormalTint` restores using `TOOLTIP_DEFAULT_BACKGROUND_COLOR`.
+
 ## [1.3.31] — 2026-04-21
 
 ### Fixed

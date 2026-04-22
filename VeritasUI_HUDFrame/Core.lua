@@ -57,7 +57,11 @@ end
 
 local function ApplyNormalTint()
     for _, entry in ipairs(hudFrames) do
-        entry.frame:SetBackdropColor(0.06, 0.05, 0.04, 0.92)
+        entry.frame:SetBackdropColor(
+            TOOLTIP_DEFAULT_BACKGROUND_COLOR.r,
+            TOOLTIP_DEFAULT_BACKGROUND_COLOR.g,
+            TOOLTIP_DEFAULT_BACKGROUND_COLOR.b,
+            0.92)
     end
 end
 
@@ -147,8 +151,16 @@ local function CreateChatAnchor(name, width, height)
         insets   = { left = 4, right = 4, top = 4, bottom = 4 },
     }
     anchor:ApplyBackdrop()
-    anchor:SetBackdropColor(0.06, 0.05, 0.04, 0.92)
-    anchor:SetBackdropBorderColor(0.3, 0.25, 0.2, 0.85)
+    anchor:SetBackdropColor(
+        TOOLTIP_DEFAULT_BACKGROUND_COLOR.r,
+        TOOLTIP_DEFAULT_BACKGROUND_COLOR.g,
+        TOOLTIP_DEFAULT_BACKGROUND_COLOR.b,
+        0.92)
+    anchor:SetBackdropBorderColor(
+        TOOLTIP_DEFAULT_COLOR.r,
+        TOOLTIP_DEFAULT_COLOR.g,
+        TOOLTIP_DEFAULT_COLOR.b,
+        1)
     return anchor
 end
 
@@ -167,8 +179,16 @@ local function CreateDataBar(width, height)
         insets   = { left = 3, right = 3, top = 3, bottom = 3 },
     }
     bar:ApplyBackdrop()
-    bar:SetBackdropColor(0.06, 0.05, 0.04, 0.92)
-    bar:SetBackdropBorderColor(0.3, 0.25, 0.2, 0.85)
+    bar:SetBackdropColor(
+        TOOLTIP_DEFAULT_BACKGROUND_COLOR.r,
+        TOOLTIP_DEFAULT_BACKGROUND_COLOR.g,
+        TOOLTIP_DEFAULT_BACKGROUND_COLOR.b,
+        0.92)
+    bar:SetBackdropBorderColor(
+        TOOLTIP_DEFAULT_COLOR.r,
+        TOOLTIP_DEFAULT_COLOR.g,
+        TOOLTIP_DEFAULT_COLOR.b,
+        1)
     return bar
 end
 
