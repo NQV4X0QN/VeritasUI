@@ -2,6 +2,16 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.39] — 2026-04-21
+
+### Changed
+
+* **[HUDFrame] Center bar simplified to single BottomEdge chrome strip** — `TopEdge` added to the NineSlice hide list; only `BottomEdge` (the gray UIFrameMetal strip) now renders. `bgTex` background texture removed entirely — the bar is transparent except for the chrome strip. `ApplyMoveTint`/`ApplyNormalTint` `bgTex` branches removed accordingly.
+
+* **[HUDFrame] Center bar textFrame overlay for reliable FontString rendering** — A child `Frame` (`bar.textFrame`) set to `bar:GetFrameLevel() + 600` is created on the center bar. `DataText.lua` parents FontStrings to `barFrame.textFrame` when present so they render above all NineSlice layers.
+
+* **[HUDFrame] BAR_HEIGHT reduced to 20px** — Matches the BottomEdge chrome strip height on UIFrameMetal so the center bar frame is exactly the strip with no extra space.
+
 ## [1.3.38] — 2026-04-21
 
 ### Fixed

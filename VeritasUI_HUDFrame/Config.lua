@@ -24,7 +24,8 @@ HUF.Config = {
     BORDER_INSET    = 11,
 
     -- Height of each data text bar (pixels)
-    BAR_HEIGHT      = 22,
+    -- 20px matches the BottomEdge chrome strip height on UIFrameMetal.
+    BAR_HEIGHT      = 20,
 
     -- Center bar: total width and position of its bottom edge above the screen bottom.
     -- Raise CENTER_BAR_Y if your action bar cluster is taller than the default layout.

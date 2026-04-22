@@ -62,8 +62,9 @@ local function BuildBar(barFrame, slotKeys, mountPoint, yOffset)
     local w = barFrame:GetWidth()
     if not w or w <= 0 then w = 380 end   -- fallback if frame not yet laid out
 
+    local fsParent = barFrame.textFrame or barFrame
     for i, key in ipairs(slotKeys) do
-        local fs = barFrame:CreateFontString(nil, "OVERLAY")
+        local fs = fsParent:CreateFontString(nil, "OVERLAY")
         fs:SetFont("Fonts\\FRIZQT__.TTF", 11)
         fs:SetJustifyH("CENTER")
         local xOff = w * (i - 0.5) / n - w * 0.5

@@ -59,9 +59,6 @@ local function ApplyMoveTint()
         if entry.frame.NineSlice then
             entry.frame.NineSlice:SetVertexColor(1, 0.85, 0.3)
         end
-        if entry.frame.bgTex then
-            entry.frame.bgTex:SetVertexColor(0.8, 0.6, 0.1)
-        end
     end
 end
 
@@ -69,9 +66,6 @@ local function ApplyNormalTint()
     for _, entry in ipairs(hudFrames) do
         if entry.frame.NineSlice then
             entry.frame.NineSlice:SetVertexColor(1, 1, 1)
-        end
-        if entry.frame.bgTex then
-            entry.frame.bgTex:SetVertexColor(1, 1, 1)
         end
     end
 end
@@ -160,8 +154,9 @@ local function CreateChatAnchor(name, width, height)
 end
 
 -- Returns a center bar frame styled with ButtonFrameTemplate.
--- Corners and side edges are hidden so only the top and bottom
--- UIFrameMetal chrome strips render across the full bar width.
+-- Only BottomEdge (the gray UIFrameMetal chrome strip) remains visible.
+-- A high-frameLevel textFrame child ensures FontStrings render above all
+-- NineSlice layers.
 local function CreateCenterBar(width, height)
     local bar = CreateFrame("Frame", nil, UIParent, "ButtonFrameTemplate")
     ButtonFrameTemplate_HidePortrait(bar)
@@ -177,20 +172,16 @@ local function CreateCenterBar(width, height)
             "TopLeftCorner", "TopRightCorner",
             "BottomLeftCorner", "BottomRightCorner",
             "LeftEdge", "RightEdge",
-            "Center",
+            "TopEdge", "Center",
         }
         for _, key in ipairs(toHide) do
             if ns[key] then ns[key]:Hide() end
         end
     end
 
-    -- Replace the hidden NineSlice Center fill with a plain BACKGROUND
-    -- texture so FontStrings render above it.
-    local bg = bar:CreateTexture(nil, "BACKGROUND")
-    bg:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Background-Dark")
-    bg:SetAllPoints()
-    bg:SetAlpha(0.85)
-    bar.bgTex = bg
+    bar.textFrame = CreateFrame("Frame", nil, bar)
+    bar.textFrame:SetAllPoints()
+    bar.textFrame:SetFrameLevel(bar:GetFrameLevel() + 600)
 
     return bar
 end
