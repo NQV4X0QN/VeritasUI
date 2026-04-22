@@ -2,6 +2,16 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.3.33] — 2026-04-21
+
+### Changed
+
+* **[HUDFrame] Chat anchors switched to ButtonFrameTemplate** — Replaced `BackdropTemplate` on the two chat anchor frames with `ButtonFrameTemplate` (the same template used by Journeys, Appearances, bags, and other Blizzard panels). Portrait hidden via `ButtonFrameTemplate_HidePortrait`; `TitleContainer` and `CloseButton` hidden so only the NineSlice metallic border renders. `SetFrameStrata("BACKGROUND")` and `SetFrameLevel(1)` preserved.
+
+* **[HUDFrame] Chat frame 12px inset from ButtonFrameTemplate border** — `MirrorAnchorToChatFrame` (drag-stop) and both paths of `SyncOneAnchor` (PLAYER_ENTERING_WORLD) updated to position chat frames 12px inset inside their anchor using two-point anchor-relative positioning. On first load with no saved position, the anchor wraps 12px outside the Blizzard-placed chat frame.
+
+* **[HUDFrame] Move-mode tinting split for anchors vs bars** — `ApplyMoveTint`/`ApplyNormalTint` re-diverged by `isAnchor`: anchors tint via `NineSlice:SetVertexColor(1, 0.85, 0.3)` / restore `(1, 1, 1)`; bars keep `SetBackdropColor` as before.
+
 ## [1.3.32] — 2026-04-21
 
 ### Changed

@@ -51,17 +51,29 @@ end
 ----------------------------------------------------------------
 local function ApplyMoveTint()
     for _, entry in ipairs(hudFrames) do
-        entry.frame:SetBackdropColor(0.15, 0.12, 0.05, 0.95)
+        if entry.isAnchor then
+            if entry.frame.NineSlice then
+                entry.frame.NineSlice:SetVertexColor(1, 0.85, 0.3)
+            end
+        else
+            entry.frame:SetBackdropColor(0.15, 0.12, 0.05, 0.95)
+        end
     end
 end
 
 local function ApplyNormalTint()
     for _, entry in ipairs(hudFrames) do
-        entry.frame:SetBackdropColor(
-            TOOLTIP_DEFAULT_BACKGROUND_COLOR.r,
-            TOOLTIP_DEFAULT_BACKGROUND_COLOR.g,
-            TOOLTIP_DEFAULT_BACKGROUND_COLOR.b,
-            0.92)
+        if entry.isAnchor then
+            if entry.frame.NineSlice then
+                entry.frame.NineSlice:SetVertexColor(1, 1, 1)
+            end
+        else
+            entry.frame:SetBackdropColor(
+                TOOLTIP_DEFAULT_BACKGROUND_COLOR.r,
+                TOOLTIP_DEFAULT_BACKGROUND_COLOR.g,
+                TOOLTIP_DEFAULT_BACKGROUND_COLOR.b,
+                0.92)
+        end
     end
 end
 
@@ -73,37 +85,30 @@ end
 local function MirrorAnchorToChatFrame(anchor)
     local cf = chatFrameMap[anchor]
     if not cf then return end
-    local point, _, relPoint, x, y = anchor:GetPoint(1)
-    if not point then return end
     pcall(function()
         cf:ClearAllPoints()
-        cf:SetSize(anchor:GetWidth(), anchor:GetHeight())
-        cf:SetPoint(point, UIParent, relPoint, x, y)
+        cf:SetPoint("TOPLEFT",     anchor, "TOPLEFT",     12, -12)
+        cf:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", -12,  12)
     end)
 end
 
 local function SyncOneAnchor(anchor, chatFrame, savedPos)
     if not anchor or not chatFrame then return end
     if savedPos then
-        -- Restore saved drag position to both anchor and chat frame.
+        -- Restore saved anchor position; chat frame sits 12px inset inside it.
         anchor:ClearAllPoints()
         anchor:SetPoint(savedPos.point, UIParent, savedPos.relPoint, savedPos.x, savedPos.y)
         pcall(function()
             chatFrame:ClearAllPoints()
-            chatFrame:SetPoint(savedPos.point, UIParent, savedPos.relPoint, savedPos.x, savedPos.y)
+            chatFrame:SetPoint("TOPLEFT",     anchor, "TOPLEFT",     12, -12)
+            chatFrame:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", -12,  12)
         end)
     else
-        -- Mirror anchor to wherever Blizzard placed the chat frame.
+        -- Wrap anchor around wherever Blizzard placed the chat frame (12px outset).
         pcall(function()
-            local point, relativeTo, relPoint, x, y = chatFrame:GetPoint(1)
-            local w = chatFrame:GetWidth()
-            local h = chatFrame:GetHeight()
-            if point then
-                anchor:ClearAllPoints()
-                anchor:SetPoint(point, relativeTo or UIParent, relPoint, x, y)
-            end
-            if w and w > 0 then anchor:SetWidth(w) end
-            if h and h > 0 then anchor:SetHeight(h) end
+            anchor:ClearAllPoints()
+            anchor:SetPoint("TOPLEFT",     chatFrame, "TOPLEFT",     -12,  12)
+            anchor:SetPoint("BOTTOMRIGHT", chatFrame, "BOTTOMRIGHT",  12, -12)
         end)
     end
 end
@@ -138,29 +143,19 @@ end
 --  Frame builders
 ----------------------------------------------------------------
 local function CreateChatAnchor(name, width, height)
-    local anchor = CreateFrame("Frame", name, UIParent, "BackdropTemplate")
+    local anchor = CreateFrame("Frame", name, UIParent, "ButtonFrameTemplate")
+    ButtonFrameTemplate_HidePortrait(anchor)
     anchor:SetSize(width, height)
     anchor:SetFrameStrata("BACKGROUND")
     anchor:SetFrameLevel(1)
-    anchor.backdropInfo = {
-        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile     = true,
-        tileSize = 16,
-        edgeSize = 16,
-        insets   = { left = 4, right = 4, top = 4, bottom = 4 },
-    }
-    anchor:ApplyBackdrop()
-    anchor:SetBackdropColor(
-        TOOLTIP_DEFAULT_BACKGROUND_COLOR.r,
-        TOOLTIP_DEFAULT_BACKGROUND_COLOR.g,
-        TOOLTIP_DEFAULT_BACKGROUND_COLOR.b,
-        0.92)
-    anchor:SetBackdropBorderColor(
-        TOOLTIP_DEFAULT_COLOR.r,
-        TOOLTIP_DEFAULT_COLOR.g,
-        TOOLTIP_DEFAULT_COLOR.b,
-        1)
+
+    if anchor.TitleContainer then
+        anchor.TitleContainer:Hide()
+    end
+    if anchor.CloseButton then
+        anchor.CloseButton:Hide()
+    end
+
     return anchor
 end
 
