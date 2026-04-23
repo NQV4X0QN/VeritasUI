@@ -154,6 +154,12 @@ local function CreateChatAnchor(name, width, height)
         anchor.CloseButton:Hide()
     end
 
+    if anchor.Inset then
+        anchor.Inset:ClearAllPoints()
+        anchor.Inset:SetPoint("TOPLEFT",     anchor, "TOPLEFT",     10, -25)
+        anchor.Inset:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", -5,  26)
+    end
+
     return anchor
 end
 

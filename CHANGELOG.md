@@ -2,6 +2,12 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.4.1] — 2026-04-22
+
+### Changed
+
+* **[HUDFrame] Chat anchor Inset repositioned** — `ButtonFrameTemplate`'s `Inset` region on left/right chat anchor frames is now explicitly repositioned to `TOPLEFT 10, -25` / `BOTTOMRIGHT -5, 26`, aligning the dark interior fill with the visible chrome border edges.
+
 ## [1.4.0] — 2026-04-22
 
 ### Changed
