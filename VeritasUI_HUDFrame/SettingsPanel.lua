@@ -18,6 +18,11 @@ local PNL_H = 780
 -- All created dropdown frames, for RefreshConfigPanel
 local dropdownEntries = {}   -- { barKey, slotIdx, dd }
 
+-- Panel bar width slider references, keyed by bar index. Populated by
+-- BuildSizesSection and read by BuildPanelSection's mode dropdown callback
+-- (for Enable/Disable) as well as RefreshConfigPanel.
+local widthSliderRefs = {}   -- { [1]=slider, [2]=slider, [3]=slider }
+
 ----------------------------------------------------------------
 --  Sorted data point key list
 ----------------------------------------------------------------
@@ -138,6 +143,60 @@ local function BuildPanelSection(parent, barIdx, hdrY)
     hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, hdrY)
     hdr:SetText("Panel Bar " .. barIdx)
 
+    -- Mode dropdown on the header row (right side)
+    local modeLbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    modeLbl:SetPoint("TOPLEFT", parent, "TOPLEFT", 290, hdrY)
+    modeLbl:SetText("Mode:")
+    modeLbl:SetTextColor(0.9, 0.9, 0.9)
+
+    local modeDD = CreateFrame("Frame",
+        format("VUI_HUD_DD_PanelMode_%d", barIdx),
+        parent, "UIDropDownMenuTemplate")
+    modeDD:SetPoint("TOPLEFT", parent, "TOPLEFT", 320, hdrY + 4)
+    UIDropDownMenu_SetWidth(modeDD, 110)
+
+    local capturedIdx = barIdx
+    UIDropDownMenu_Initialize(modeDD, function(_, level)
+        for _, m in ipairs({ "normal", "fullwidth" }) do
+            local info = {}
+            info.text  = (m == "normal") and "Normal" or "Full-width"
+            info.value = m
+            info.func  = function(btn)
+                UIDropDownMenu_SetSelectedValue(modeDD, btn.value)
+                UIDropDownMenu_SetText(modeDD,
+                    btn.value == "normal" and "Normal" or "Full-width")
+                local db = HUF.db
+                if not db then return end
+                db.panelBars = db.panelBars or {}
+                db.panelBars[capturedIdx] = db.panelBars[capturedIdx] or {}
+                db.panelBars[capturedIdx].mode = btn.value
+                if HUF.ApplyPanelBarMode then
+                    HUF.ApplyPanelBarMode(capturedIdx)
+                end
+                -- Width slider is meaningless in fullwidth mode; reflect that.
+                if widthSliderRefs[capturedIdx] then
+                    if btn.value == "fullwidth" then
+                        widthSliderRefs[capturedIdx]:Disable()
+                    else
+                        widthSliderRefs[capturedIdx]:Enable()
+                    end
+                end
+            end
+            info.checked =
+                (UIDropDownMenu_GetSelectedValue(modeDD) == m)
+            UIDropDownMenu_AddButton(info, level)
+        end
+    end)
+
+    -- Set initial display to match current DB mode
+    local db = HUF.db
+    local initMode = (db and db.panelBars and db.panelBars[barIdx]
+                      and db.panelBars[barIdx].mode) or "normal"
+    UIDropDownMenu_SetSelectedValue(modeDD, initMode)
+    UIDropDownMenu_SetText(modeDD,
+        initMode == "normal" and "Normal" or "Full-width")
+
+    -- Slot separator and slot dropdowns
     local sep = parent:CreateTexture(nil, "ARTWORK")
     sep:SetHeight(1)
     sep:SetWidth(500)
@@ -263,7 +322,7 @@ local function BuildSizesSection(parent, startY)
     for i = 1, 3 do
         local pw_i = (db and db.panelBarWidth and db.panelBarWidth[i]) or 500
         local capturedIdx = i
-        MakeSlider(parent, "VUI_HUD_Slider_PanelW" .. i,
+        local slider = MakeSlider(parent, "VUI_HUD_Slider_PanelW" .. i,
             LEFT_COL, panelYBase - (i - 1) * 32, sep, 460,
             300, 1200, 10, pw_i,
             "Panel Bar " .. i .. " Width: %dpx",
@@ -276,6 +335,13 @@ local function BuildSizesSection(parent, startY)
                     if HUF.RebuildAllBars then HUF.RebuildAllBars() end
                 end
             end)
+        widthSliderRefs[i] = slider
+        -- Disable slider if the bar is currently in fullwidth mode.
+        -- Width is still persisted; it just has no visible effect until
+        -- the bar returns to normal mode.
+        local mode = (db and db.panelBars and db.panelBars[i]
+                      and db.panelBars[i].mode) or "normal"
+        if mode == "fullwidth" then slider:Disable() end
     end
 end
 
@@ -337,8 +403,23 @@ local function BuildConfigPanel()
     resetBtn:SetText("Reset to Defaults")
     resetBtn:SetScript("OnClick", function()
         local db = HUF.db
-        if db then db.layout = nil end
+        if db then
+            db.layout = nil
+            -- Also reset per-bar mode so the UI matches fresh-install state
+            if db.panelBars then
+                for i = 1, 3 do
+                    if db.panelBars[i] then
+                        db.panelBars[i].mode = "normal"
+                    end
+                end
+            end
+        end
         if HUF.RebuildAllBars then HUF.RebuildAllBars() end
+        if HUF.panelBars then
+            for i = 1, 3 do
+                if HUF.ApplyPanelBarMode then HUF.ApplyPanelBarMode(i) end
+            end
+        end
         if HUF.RefreshConfigPanel then HUF.RefreshConfigPanel() end
         VUI.Print("HUD Frame", "|cffffd100Layout reset to defaults.|r")
     end)
@@ -347,18 +428,40 @@ local function BuildConfigPanel()
 end
 
 ----------------------------------------------------------------
---  RefreshConfigPanel — syncs dropdown displays to current layout
+--  RefreshConfigPanel — syncs dropdowns, mode selectors, and
+--  width-slider enable state to the current DB.
 ----------------------------------------------------------------
 function HUF.RefreshConfigPanel()
     local db = HUF.db
     if not db or not db.layout then return end
     local dp = HUF.DataPoints
+
+    -- Slot dropdowns
     for _, entry in ipairs(dropdownEntries) do
         local slots = GetLayoutSlots(entry.barKey)
         local key   = slots and slots[entry.slotIdx]
         if key and dp and dp[key] then
             UIDropDownMenu_SetSelectedValue(entry.dd, key)
             UIDropDownMenu_SetText(entry.dd, dp[key].label)
+        end
+    end
+
+    -- Panel bar mode dropdowns + width slider enable state
+    for i = 1, 3 do
+        local modeDD = _G["VUI_HUD_DD_PanelMode_" .. i]
+        if modeDD then
+            local mode = (db.panelBars and db.panelBars[i]
+                          and db.panelBars[i].mode) or "normal"
+            UIDropDownMenu_SetSelectedValue(modeDD, mode)
+            UIDropDownMenu_SetText(modeDD,
+                mode == "normal" and "Normal" or "Full-width")
+            if widthSliderRefs[i] then
+                if mode == "fullwidth" then
+                    widthSliderRefs[i]:Disable()
+                else
+                    widthSliderRefs[i]:Enable()
+                end
+            end
         end
     end
 end

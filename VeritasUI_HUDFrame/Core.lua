@@ -34,6 +34,13 @@ local defaults = {
         panelBar2   = false,
         panelBar3   = false,
     },
+    -- Per-bar state (mode, and later zones in Stage 4). Distinct from
+    -- db.layout.panelBars (slot lists) and db.panelBarPos (positions).
+    panelBars = {
+        [1] = { mode = "normal" },
+        [2] = { mode = "normal" },
+        [3] = { mode = "normal" },
+    },
 }
 local db
 local settingsCategoryID
@@ -112,13 +119,30 @@ local function MakeDraggable(f, posKey, isChatAnchor)
     f:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
         if isLocked then return end
-        local point, _, relPoint, x, y = self:GetPoint(1)
-        if not point then return end
         if type(posKey) == "table" and posKey.panelBarIdx then
-            db.panelBarPos = db.panelBarPos or {}
-            db.panelBarPos[posKey.panelBarIdx] =
-                { point = point, relPoint = relPoint, x = x, y = y }
+            local idx = posKey.panelBarIdx
+            local mode = (db.panelBars and db.panelBars[idx]
+                          and db.panelBars[idx].mode) or "normal"
+            if mode == "fullwidth" then
+                -- Capture only Y; re-apply fullwidth anchors so the bar
+                -- snaps back edge-to-edge at the new vertical position.
+                local _, centerY = self:GetCenter()
+                local yFromBottom = centerY - (self:GetHeight() / 2)
+                db.panelBarPos = db.panelBarPos or {}
+                db.panelBarPos[idx] = db.panelBarPos[idx] or {}
+                db.panelBarPos[idx].y = yFromBottom
+                ApplyPanelBarMode(idx)
+            else
+                local point, _, relPoint, x, y = self:GetPoint(1)
+                if not point then return end
+                db.panelBarPos = db.panelBarPos or {}
+                db.panelBarPos[idx] = {
+                    point = point, relPoint = relPoint, x = x, y = y
+                }
+            end
         else
+            local point, _, relPoint, x, y = self:GetPoint(1)
+            if not point then return end
             db[posKey] = { point = point, relPoint = relPoint, x = x, y = y }
             if isChatAnchor then MirrorAnchorToChatFrame(self) end
         end
@@ -221,6 +245,45 @@ end
 HUF.ApplyVisibility = ApplyVisibility
 
 ----------------------------------------------------------------
+--  Per-bar mode (normal vs fullwidth)
+--  Reads db.panelBars[idx].mode and re-anchors + re-widths the bar.
+--    "normal"    → saved pos (or default stacked Y), saved width
+--    "fullwidth" → LEFT/RIGHT anchored to UIParent BOTTOMLEFT/RIGHT;
+--                  only Y is adjustable via drag. Width is implicit
+--                  from the anchor pair; saved panelBarWidth[idx] is
+--                  preserved for when the bar returns to "normal".
+----------------------------------------------------------------
+local function ApplyPanelBarMode(idx)
+    local bar = HUF.panelBars and HUF.panelBars[idx]
+    if not bar or not db then return end
+    local CFG = HUF.Config
+    local mode = (db.panelBars and db.panelBars[idx]
+                  and db.panelBars[idx].mode) or "normal"
+    bar:ClearAllPoints()
+    if mode == "fullwidth" then
+        local pos = db.panelBarPos and db.panelBarPos[idx]
+        local y = (pos and pos.y) or (CFG.PANEL_BAR_Y + (idx - 1) * 30)
+        bar:SetPoint("LEFT",  UIParent, "BOTTOMLEFT",  0, y)
+        bar:SetPoint("RIGHT", UIParent, "BOTTOMRIGHT", 0, y)
+        -- Height stays at CFG.BAR_HEIGHT from CreatePanelBar.
+        -- Width is implicit from LEFT+RIGHT anchor pair.
+    else
+        local pos = db.panelBarPos and db.panelBarPos[idx]
+        if pos and pos.point then
+            bar:SetPoint(pos.point, UIParent, pos.relPoint, pos.x, pos.y)
+        else
+            bar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0,
+                CFG.PANEL_BAR_Y + (idx - 1) * 30)
+        end
+        local w = (db.panelBarWidth and db.panelBarWidth[idx]) or 500
+        bar:SetWidth(w)
+    end
+    -- Rebuild FontStrings so slot spacing matches the new width.
+    if HUF.RebuildAllBars then HUF.RebuildAllBars() end
+end
+HUF.ApplyPanelBarMode = ApplyPanelBarMode
+
+----------------------------------------------------------------
 --  HUD setup (called on PLAYER_LOGIN)
 --  Chat position sync deferred to PLAYER_ENTERING_WORLD so
 --  ChatFrame1/2 have their final Blizzard-placed positions.
@@ -244,20 +307,17 @@ local function SetupHUDFrame()
     chatFrameMap[HUF.rightAnchor] = _G.ChatFrame2
 
     -- ── Three panel bars — independently positioned & draggable ──
+    -- Positioning + width is delegated to ApplyPanelBarMode, which reads
+    -- the bar's mode (normal/fullwidth) from db.panelBars[i].mode and
+    -- sets anchors accordingly.
     HUF.panelBars = {}
     for i = 1, 3 do
         local w = (db.panelBarWidth and db.panelBarWidth[i]) or 500
         local bar = CreatePanelBar(w, CFG.BAR_HEIGHT)
-        local pos = db.panelBarPos and db.panelBarPos[i]
-        if pos then
-            bar:SetPoint(pos.point, UIParent, pos.relPoint, pos.x, pos.y)
-        else
-            bar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0,
-                CFG.PANEL_BAR_Y + (i - 1) * 30)
-        end
         MakeDraggable(bar, { panelBarIdx = i }, false)
         hudFrames[#hudFrames + 1] = { frame = bar, isAnchor = false }
         HUF.panelBars[i] = bar
+        ApplyPanelBarMode(i)
     end
 
     -- ── Apply master + per-frame visibility ─────────────────
@@ -386,6 +446,18 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             VeritasUI_HUDFrameDB.layout.panelBar = nil
         end
 
+        -- Stage 3 migration: ensure db.panelBars exists with mode field.
+        -- Fills in { mode = "normal" } for any bar index that is missing
+        -- or lacks the mode key. No-op for fully-populated installs.
+        VeritasUI_HUDFrameDB.panelBars = VeritasUI_HUDFrameDB.panelBars or {}
+        for i = 1, 3 do
+            if not VeritasUI_HUDFrameDB.panelBars[i] then
+                VeritasUI_HUDFrameDB.panelBars[i] = { mode = "normal" }
+            elseif not VeritasUI_HUDFrameDB.panelBars[i].mode then
+                VeritasUI_HUDFrameDB.panelBars[i].mode = "normal"
+            end
+        end
+
         db     = VeritasUI_HUDFrameDB
         HUF.db = db   -- expose for DataText and SettingsPanel
         pcall(C_GuildInfo.GuildRoster)
@@ -395,7 +467,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "PLAYER_LOGIN" then
         SetupHUDFrame()
         self:UnregisterEvent("PLAYER_LOGIN")
-        VUI.Print("HUD Frame", "/hud config · /hud move · /hud lock · /hud reset")
+        VUI.Print("HUD Frame", "/hud config · /hud move · /hud lock · /hud reset · /hud mode")
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         -- Chat frames are fully positioned by now; sync anchors.
@@ -406,14 +478,15 @@ end)
 
 ----------------------------------------------------------------
 --  Slash commands
---    /hud              → open Blizzard settings category
---    /hud config       → toggle layout config panel
---    /hud move         → unlock frames for dragging
---    /hud lock         → lock frames
---    /hud reset        → reset all positions to Config defaults
---    /hud set b s key  → set bar b, slot s to data key
---    /hud list         → print all registered data point keys
---    /hud layout       → print current layout of all three bars
+--    /hud                    → open Blizzard settings category
+--    /hud config             → toggle layout config panel
+--    /hud move               → unlock frames for dragging
+--    /hud lock               → lock frames
+--    /hud reset              → reset all positions/modes to defaults
+--    /hud set b s key        → set bar b, slot s to data key
+--    /hud mode <idx> <mode>  → set panel bar idx to normal|fullwidth
+--    /hud list               → print all registered data point keys
+--    /hud layout             → print current layout + mode of each bar
 ----------------------------------------------------------------
 SLASH_VERITASUI_HUDFRAME1 = "/hud"
 SLASH_VERITASUI_HUDFRAME2 = "/hudframe"
@@ -439,6 +512,14 @@ SlashCmdList["VERITASUI_HUDFRAME"] = function(msg)
             db.leftAnchorPos  = nil
             db.rightAnchorPos = nil
             db.panelBarPos    = nil
+            -- Reset per-bar mode back to "normal"
+            if db.panelBars then
+                for i = 1, 3 do
+                    if db.panelBars[i] then
+                        db.panelBars[i].mode = "normal"
+                    end
+                end
+            end
         end
         if HUF.leftAnchor then
             HUF.leftAnchor:ClearAllPoints()
@@ -455,9 +536,11 @@ SlashCmdList["VERITASUI_HUDFRAME"] = function(msg)
                     HUF.panelBars[i]:SetPoint("BOTTOM", UIParent, "BOTTOM", 0,
                         CFG.PANEL_BAR_Y + (i - 1) * 30)
                 end
+                if HUF.ApplyPanelBarMode then HUF.ApplyPanelBarMode(i) end
             end
         end
         SyncAnchorsToChatFrames()
+        if HUF.RefreshConfigPanel then HUF.RefreshConfigPanel() end
         VUI.Print("HUD Frame", "Positions reset to defaults.")
 
     elseif sub == "config" then
@@ -485,8 +568,32 @@ SlashCmdList["VERITASUI_HUDFRAME"] = function(msg)
         end
         for i = 1, 3 do
             local slots = (layout.panelBars and layout.panelBars[i]) or {}
-            print(format("  |cffffd100panelBar%d:|r %s", i, table.concat(slots, " · ")))
+            local mode = (db.panelBars and db.panelBars[i]
+                          and db.panelBars[i].mode) or "normal"
+            print(format("  |cffffd100panelBar%d|r (%s): %s",
+                i, mode, table.concat(slots, " · ")))
         end
+
+    elseif sub == "mode" then
+        -- /hud mode <1|2|3> <normal|fullwidth>
+        local idxStr, modeStr = rest:match("^(%S+)%s+(%S+)")
+        local idx = tonumber(idxStr)
+        if not idx or idx < 1 or idx > 3 then
+            VUI.Print("HUD Frame",
+                "Usage: /hud mode <1|2|3> <normal|fullwidth>")
+            return
+        end
+        if modeStr ~= "normal" and modeStr ~= "fullwidth" then
+            VUI.Print("HUD Frame", "Mode must be 'normal' or 'fullwidth'.")
+            return
+        end
+        db.panelBars = db.panelBars or {}
+        db.panelBars[idx] = db.panelBars[idx] or { mode = "normal" }
+        db.panelBars[idx].mode = modeStr
+        if HUF.ApplyPanelBarMode then HUF.ApplyPanelBarMode(idx) end
+        if HUF.RefreshConfigPanel then HUF.RefreshConfigPanel() end
+        VUI.Print("HUD Frame",
+            format("Panel Bar %d → |cffffd100%s|r", idx, modeStr))
 
     elseif sub == "set" then
         -- /hud set <left|right> <slot#> <key>
