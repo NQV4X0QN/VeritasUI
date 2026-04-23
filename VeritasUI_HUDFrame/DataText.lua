@@ -18,7 +18,11 @@ if not VUI then return end
 local DEFAULT_LAYOUT = {
     leftBar  = { "memory", "durability", "gold" },
     rightBar = { "guild",  "friends",    "zone" },
-    panelBar = { "haste",  "mastery",    "crit", "armor", "ilvl" },
+    panelBars = {
+        [1] = { "haste", "mastery",      "crit",    "armor",      "ilvl"  },
+        [2] = { "fps",   "latencyWorld", "memory",  "durability", "gold"  },
+        [3] = { "spec",  "zone",         "friends", "guild",      "empty" },
+    },
 }
 
 local ticker
@@ -144,7 +148,9 @@ local function UpdateAllBars()
     if not enabled then return end
     UpdateBar(HUF.leftAnchor)
     UpdateBar(HUF.rightAnchor)
-    UpdateBar(HUF.panelBar)
+    if HUF.panelBars then
+        for i = 1, 3 do UpdateBar(HUF.panelBars[i]) end
+    end
 end
 
 ----------------------------------------------------------------
@@ -157,18 +163,37 @@ function HUF.RebuildAllBars()
     if not db then return end
 
     if not db.layout then db.layout = {} end
-    for barKey, defaultSlots in pairs(DEFAULT_LAYOUT) do
-        if not db.layout[barKey] then
-            db.layout[barKey] = {}
-            for i, v in ipairs(defaultSlots) do
-                db.layout[barKey][i] = v
+
+    -- Left / right bars: copy defaults only if absent
+    if not db.layout.leftBar then
+        db.layout.leftBar = {}
+        for i, v in ipairs(DEFAULT_LAYOUT.leftBar) do db.layout.leftBar[i] = v end
+    end
+    if not db.layout.rightBar then
+        db.layout.rightBar = {}
+        for i, v in ipairs(DEFAULT_LAYOUT.rightBar) do db.layout.rightBar[i] = v end
+    end
+
+    -- Panel bars (3): each index copies defaults only if absent
+    if not db.layout.panelBars then db.layout.panelBars = {} end
+    for i = 1, 3 do
+        if not db.layout.panelBars[i] then
+            db.layout.panelBars[i] = {}
+            for k, v in ipairs(DEFAULT_LAYOUT.panelBars[i]) do
+                db.layout.panelBars[i][k] = v
             end
         end
     end
 
-    BuildBar(HUF.leftAnchor,  db.layout.leftBar,   "BOTTOM", 8)
-    BuildBar(HUF.rightAnchor, db.layout.rightBar,  "BOTTOM", 8)
-    BuildBar(HUF.panelBar,    db.layout.panelBar,  "BOTTOM", -7)
+    BuildBar(HUF.leftAnchor,  db.layout.leftBar,  "BOTTOM", 8)
+    BuildBar(HUF.rightAnchor, db.layout.rightBar, "BOTTOM", 8)
+    if HUF.panelBars then
+        for i = 1, 3 do
+            if HUF.panelBars[i] then
+                BuildBar(HUF.panelBars[i], db.layout.panelBars[i], "BOTTOM", -7)
+            end
+        end
+    end
 
     UpdateAllBars()
 
@@ -185,7 +210,7 @@ dtFrame:SetScript("OnEvent", function(self)
     self:UnregisterEvent("PLAYER_LOGIN")
 
     -- Guard: Core.lua must have created the frames first
-    if not HUF.leftAnchor or not HUF.rightAnchor or not HUF.panelBar then
+    if not HUF.leftAnchor or not HUF.rightAnchor or not HUF.panelBars then
         VUI.Print("HUD Frame", "|cFFFF4444DataText: frames not ready. Try /reload.|r")
         return
     end

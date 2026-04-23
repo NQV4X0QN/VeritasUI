@@ -13,7 +13,7 @@ local ipairs, pairs = ipairs, pairs
 local format        = string.format
 
 local PNL_W = 520
-local PNL_H = 580
+local PNL_H = 780
 
 -- All created dropdown frames, for RefreshConfigPanel
 local dropdownEntries = {}   -- { barKey, slotIdx, dd }
@@ -32,7 +32,22 @@ end
 
 ----------------------------------------------------------------
 --  Create one slot dropdown
+--  barKey conventions:
+--    "leftBar" / "rightBar"  — writes to db.layout[barKey][slot]
+--    "panelBar<N>" (1..3)    — writes to db.layout.panelBars[N][slot]
 ----------------------------------------------------------------
+local function GetLayoutSlots(barKey)
+    local layout = HUF.db and HUF.db.layout
+    if not layout then return nil end
+    local idx = tonumber(barKey:match("^panelBar(%d)$"))
+    if idx then
+        if not layout.panelBars then layout.panelBars = {} end
+        if not layout.panelBars[idx] then layout.panelBars[idx] = {} end
+        return layout.panelBars[idx]
+    end
+    return layout[barKey]
+end
+
 local function MakeDropdown(parent, barKey, slotIdx, xOff, yOff, ddWidth)
     local ddName = format("VUI_HUD_DD_%s_%d", barKey, slotIdx)
     local dd = CreateFrame("Frame", ddName, parent, "UIDropDownMenuTemplate")
@@ -42,8 +57,8 @@ local function MakeDropdown(parent, barKey, slotIdx, xOff, yOff, ddWidth)
     UIDropDownMenu_Initialize(dd, function(ddFrame, level)
         local dp = HUF.DataPoints
         if not dp then return end
-        local capturedDD  = ddFrame
-        local capturedBar = barKey
+        local capturedDD   = ddFrame
+        local capturedBar  = barKey
         local capturedSlot = slotIdx
         for _, k in ipairs(GetSortedKeys()) do
             local info = {}
@@ -52,10 +67,8 @@ local function MakeDropdown(parent, barKey, slotIdx, xOff, yOff, ddWidth)
             info.func    = function(btn)
                 UIDropDownMenu_SetSelectedValue(capturedDD, btn.value)
                 UIDropDownMenu_SetText(capturedDD, btn.text)
-                local layout = HUF.db and HUF.db.layout
-                if layout and layout[capturedBar] then
-                    layout[capturedBar][capturedSlot] = btn.value
-                end
+                local slots = GetLayoutSlots(capturedBar)
+                if slots then slots[capturedSlot] = btn.value end
                 if HUF.RebuildAllBars then HUF.RebuildAllBars() end
             end
             info.checked  = (UIDropDownMenu_GetSelectedValue(ddFrame) == k)
@@ -64,8 +77,8 @@ local function MakeDropdown(parent, barKey, slotIdx, xOff, yOff, ddWidth)
     end)
 
     -- Set initial displayed value
-    local layout = HUF.db and HUF.db.layout
-    local initKey = layout and layout[barKey] and layout[barKey][slotIdx]
+    local slots = GetLayoutSlots(barKey)
+    local initKey = slots and slots[slotIdx]
     if initKey and HUF.DataPoints and HUF.DataPoints[initKey] then
         UIDropDownMenu_SetSelectedValue(dd, initKey)
         UIDropDownMenu_SetText(dd, HUF.DataPoints[initKey].label)
@@ -112,16 +125,18 @@ local function BuildSection(parent, barKey, numSlots, hdrText, hdrX, hdrY, secW,
 end
 
 ----------------------------------------------------------------
---  Build the panel bar section (5 slots in a horizontal row)
+--  Build one panel bar section (5 slots in a horizontal row)
 ----------------------------------------------------------------
-local PANEL_SLOT_W = 96   -- width per slot column (5 × 96 = 480 < 506 content width)
+local PANEL_SLOT_W    = 96   -- width per slot column (5 × 96 = 480 < 506 content width)
+local PANEL_SECTION_H = 80   -- height of one panel-bar section (header + sep + row + margin)
 
-local function BuildPanelSection(parent, hdrY)
+local function BuildPanelSection(parent, barIdx, hdrY)
+    local barKey = "panelBar" .. barIdx
     local hdr = parent:CreateFontString(nil, "OVERLAY")
     hdr:SetFont("Fonts\\FRIZQT__.TTF", 13)
     hdr:SetTextColor(1, 0.82, 0)
     hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, hdrY)
-    hdr:SetText("Panel Bar")
+    hdr:SetText("Panel Bar " .. barIdx)
 
     local sep = parent:CreateTexture(nil, "ARTWORK")
     sep:SetHeight(1)
@@ -137,7 +152,7 @@ local function BuildPanelSection(parent, hdrY)
         lbl:SetText("Slot " .. i)
         lbl:SetTextColor(0.9, 0.9, 0.9)
 
-        MakeDropdown(parent, "panelBar", i, xPos - 14, hdrY - 22, 70)
+        MakeDropdown(parent, barKey, i, xPos - 14, hdrY - 22, 70)
     end
 end
 
@@ -195,7 +210,6 @@ local function BuildSizesSection(parent, startY)
     local lh = (db and db.leftAnchorHeight)  or 220
     local rw = (db and db.rightAnchorWidth)  or 380
     local rh = (db and db.rightAnchorHeight) or 220
-    local pw = (db and db.panelBarWidth)     or 500
 
     -- Width sliders (left / right)
     MakeSlider(parent, "VUI_HUD_Slider_LeftW",  LEFT_COL,  -52, sep, SLIDER_W,
@@ -239,21 +253,30 @@ local function BuildSizesSection(parent, startY)
             end
         end)
 
-    -- Panel bar sub-header and width slider
+    -- Panel bar width sliders (three, stacked)
     local panelLbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     panelLbl:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", LEFT_COL, -170)
-    panelLbl:SetText("Panel Bar")
+    panelLbl:SetText("Panel Bars")
     panelLbl:SetTextColor(0.9, 0.9, 0.9)
 
-    MakeSlider(parent, "VUI_HUD_Slider_PanelW", LEFT_COL, -210, sep, 460,
-        300, 800, 10, pw, "Width: %dpx",
-        function(val)
-            if HUF.db then HUF.db.panelBarWidth = val end
-            if HUF.panelBar then
-                HUF.panelBar:SetWidth(val)
-                if HUF.RebuildAllBars then HUF.RebuildAllBars() end
-            end
-        end)
+    local panelYBase = -200
+    for i = 1, 3 do
+        local pw_i = (db and db.panelBarWidth and db.panelBarWidth[i]) or 500
+        local capturedIdx = i
+        MakeSlider(parent, "VUI_HUD_Slider_PanelW" .. i,
+            LEFT_COL, panelYBase - (i - 1) * 32, sep, 460,
+            300, 1200, 10, pw_i,
+            "Panel Bar " .. i .. " Width: %dpx",
+            function(val)
+                if HUF.db and HUF.db.panelBarWidth then
+                    HUF.db.panelBarWidth[capturedIdx] = val
+                end
+                if HUF.panelBars and HUF.panelBars[capturedIdx] then
+                    HUF.panelBars[capturedIdx]:SetWidth(val)
+                    if HUF.RebuildAllBars then HUF.RebuildAllBars() end
+                end
+            end)
+    end
 end
 
 ----------------------------------------------------------------
@@ -296,14 +319,16 @@ local function BuildConfigPanel()
     -- ── Right Bar section (top-right quadrant) ────────────────
     BuildSection(CONT, "rightBar", 3, "Right Bar", 264, -8, 240, 140)
 
-    -- ── Panel Bar section (lower half, horizontal row) ────────
+    -- ── Three Panel Bar sections (lower half, each a horizontal row) ─
     -- Top of panel section is below the 3-slot left/right sections.
     -- 3 rows × SLOT_ROW_H + header+sep ≈ 90+30 = ~120px from top
-    local panelY = -8 - 20 - 3 * SLOT_ROW_H - 20   -- header(20) + 3 rows + gap
-    BuildPanelSection(CONT, panelY)
+    local panel1Y = -8 - 20 - 3 * SLOT_ROW_H - 20   -- header(20) + 3 rows + gap
+    BuildPanelSection(CONT, 1, panel1Y)
+    BuildPanelSection(CONT, 2, panel1Y - PANEL_SECTION_H)
+    BuildPanelSection(CONT, 3, panel1Y - PANEL_SECTION_H * 2)
 
-    -- ── Frame Sizes section ────────────────────────────────────
-    BuildSizesSection(CONT, panelY - 90)
+    -- ── Frame Sizes section (below all three panel sections) ──
+    BuildSizesSection(CONT, panel1Y - PANEL_SECTION_H * 3)
 
     -- ── Bottom buttons ────────────────────────────────────────
     local resetBtn = CreateFrame("Button", nil, CONT, "UIPanelButtonTemplate")
@@ -329,8 +354,8 @@ function HUF.RefreshConfigPanel()
     if not db or not db.layout then return end
     local dp = HUF.DataPoints
     for _, entry in ipairs(dropdownEntries) do
-        local layout = db.layout[entry.barKey]
-        local key    = layout and layout[entry.slotIdx]
+        local slots = GetLayoutSlots(entry.barKey)
+        local key   = slots and slots[entry.slotIdx]
         if key and dp and dp[key] then
             UIDropDownMenu_SetSelectedValue(entry.dd, key)
             UIDropDownMenu_SetText(entry.dd, dp[key].label)
