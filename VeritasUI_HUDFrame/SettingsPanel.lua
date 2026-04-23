@@ -13,7 +13,7 @@ local ipairs, pairs = ipairs, pairs
 local format        = string.format
 
 local PNL_W = 520
-local PNL_H = 780
+local PNL_H = 1000
 
 -- All created dropdown frames, for RefreshConfigPanel
 local dropdownEntries = {}   -- { barKey, slotIdx, dd }
@@ -22,6 +22,11 @@ local dropdownEntries = {}   -- { barKey, slotIdx, dd }
 -- BuildSizesSection and read by BuildPanelSection's mode dropdown callback
 -- (for Enable/Disable) as well as RefreshConfigPanel.
 local widthSliderRefs = {}   -- { [1]=slider, [2]=slider, [3]=slider }
+
+-- Per-panel-bar slot-editor container frames. Each panel section has two
+-- stacked containers at the same position; mode toggles visibility.
+local normalSlotContainers = {}   -- [barIdx] = Frame (5 slot dropdowns)
+local zoneSlotContainers   = {}   -- [barIdx] = Frame (3 rows × 4 dropdowns)
 
 ----------------------------------------------------------------
 --  Sorted data point key list
@@ -38,18 +43,38 @@ end
 ----------------------------------------------------------------
 --  Create one slot dropdown
 --  barKey conventions:
---    "leftBar" / "rightBar"  — writes to db.layout[barKey][slot]
---    "panelBar<N>" (1..3)    — writes to db.layout.panelBars[N][slot]
+--    "leftBar" / "rightBar"        — writes to db.layout[barKey][slot]
+--    "panelBar<N>" (1..3)          — writes to db.layout.panelBars[N][slot]
+--    "panelBar<N>Zone<L|C|R>"      — writes to
+--                                    db.layout.panelBarZones[N].<zone>[slot]
 ----------------------------------------------------------------
 local function GetLayoutSlots(barKey)
     local layout = HUF.db and HUF.db.layout
     if not layout then return nil end
+
+    -- Zone key: panelBar<N>Zone<Left|Center|Right>
+    local zIdx, zName = barKey:match("^panelBar(%d)Zone(%a+)$")
+    if zIdx and zName then
+        zIdx = tonumber(zIdx)
+        local zone = zName:lower()
+        if not layout.panelBarZones then layout.panelBarZones = {} end
+        if not layout.panelBarZones[zIdx] then
+            layout.panelBarZones[zIdx] = { left = {}, center = {}, right = {} }
+        end
+        if not layout.panelBarZones[zIdx][zone] then
+            layout.panelBarZones[zIdx][zone] = {}
+        end
+        return layout.panelBarZones[zIdx][zone]
+    end
+
+    -- Normal panel bar: panelBar<N>
     local idx = tonumber(barKey:match("^panelBar(%d)$"))
     if idx then
         if not layout.panelBars then layout.panelBars = {} end
         if not layout.panelBars[idx] then layout.panelBars[idx] = {} end
         return layout.panelBars[idx]
     end
+
     return layout[barKey]
 end
 
@@ -132,8 +157,9 @@ end
 ----------------------------------------------------------------
 --  Build one panel bar section (5 slots in a horizontal row)
 ----------------------------------------------------------------
-local PANEL_SLOT_W    = 96   -- width per slot column (5 × 96 = 480 < 506 content width)
-local PANEL_SECTION_H = 80   -- height of one panel-bar section (header + sep + row + margin)
+local PANEL_SLOT_W    = 96    -- width per slot column (5 × 96 = 480 < 506 content width)
+local PANEL_SECTION_H = 150   -- height of one panel-bar section (header + sep + 3 zone rows + margin)
+local ZONE_ROW_H      = 32    -- pixels per zone row (Left / Center / Right)
 
 local function BuildPanelSection(parent, barIdx, hdrY)
     local barKey = "panelBar" .. barIdx
@@ -173,6 +199,17 @@ local function BuildPanelSection(parent, barIdx, hdrY)
                 if HUF.ApplyPanelBarMode then
                     HUF.ApplyPanelBarMode(capturedIdx)
                 end
+                -- Swap the slot-editor containers to match the new mode
+                if normalSlotContainers[capturedIdx]
+                   and zoneSlotContainers[capturedIdx] then
+                    if btn.value == "fullwidth" then
+                        normalSlotContainers[capturedIdx]:Hide()
+                        zoneSlotContainers[capturedIdx]:Show()
+                    else
+                        zoneSlotContainers[capturedIdx]:Hide()
+                        normalSlotContainers[capturedIdx]:Show()
+                    end
+                end
                 -- Width slider is meaningless in fullwidth mode; reflect that.
                 if widthSliderRefs[capturedIdx] then
                     if btn.value == "fullwidth" then
@@ -196,22 +233,57 @@ local function BuildPanelSection(parent, barIdx, hdrY)
     UIDropDownMenu_SetText(modeDD,
         initMode == "normal" and "Normal" or "Full-width")
 
-    -- Slot separator and slot dropdowns
+    -- Separator below header
     local sep = parent:CreateTexture(nil, "ARTWORK")
     sep:SetHeight(1)
     sep:SetWidth(500)
     sep:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 0, -3)
     sep:SetColorTexture(1, 0.82, 0, 0.5)
 
+    -- ── Normal slot container (5 slots in a single row) ──
+    -- Anchored below sep; only one container is shown at a time.
+    local normalContainer = CreateFrame("Frame", nil, parent)
+    normalContainer:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", 0, 0)
+    normalContainer:SetSize(500, ZONE_ROW_H)
     for i = 1, 5 do
         local xPos = 4 + (i - 1) * PANEL_SLOT_W
-
-        local lbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        lbl:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", xPos, -6)
+        local lbl = normalContainer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        lbl:SetPoint("TOPLEFT", normalContainer, "TOPLEFT", xPos, -6)
         lbl:SetText("Slot " .. i)
         lbl:SetTextColor(0.9, 0.9, 0.9)
+        MakeDropdown(normalContainer, barKey, i, xPos - 14, -22, 70)
+    end
+    normalSlotContainers[barIdx] = normalContainer
 
-        MakeDropdown(parent, barKey, i, xPos - 14, hdrY - 22, 70)
+    -- ── Zone slot container (3 rows × 4 slots) ──
+    local zoneContainer = CreateFrame("Frame", nil, parent)
+    zoneContainer:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", 0, 0)
+    zoneContainer:SetSize(500, 3 * ZONE_ROW_H)
+    for rowIdx, zoneName in ipairs({ "Left", "Center", "Right" }) do
+        local rowY = -6 - (rowIdx - 1) * ZONE_ROW_H
+
+        local rowLbl = zoneContainer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        rowLbl:SetPoint("TOPLEFT", zoneContainer, "TOPLEFT", 4, rowY)
+        rowLbl:SetText(zoneName .. ":")
+        rowLbl:SetTextColor(0.9, 0.9, 0.9)
+
+        local zoneBarKey = format("panelBar%dZone%s", barIdx, zoneName)
+        for slot = 1, 4 do
+            -- 4 dropdowns spaced 110px apart starting after the label
+            local xPos = 50 + (slot - 1) * 110
+            MakeDropdown(zoneContainer, zoneBarKey, slot,
+                xPos - 14, rowY - 4, 80)
+        end
+    end
+    zoneSlotContainers[barIdx] = zoneContainer
+
+    -- Initial visibility: show the container matching the bar's current mode
+    if initMode == "fullwidth" then
+        normalContainer:Hide()
+        zoneContainer:Show()
+    else
+        zoneContainer:Hide()
+        normalContainer:Show()
     end
 end
 
@@ -414,6 +486,7 @@ local function BuildConfigPanel()
                 end
             end
         end
+        if HUF.SeedDefaultPanelBarZones then HUF.SeedDefaultPanelBarZones() end
         if HUF.RebuildAllBars then HUF.RebuildAllBars() end
         if HUF.panelBars then
             for i = 1, 3 do
@@ -428,39 +501,59 @@ local function BuildConfigPanel()
 end
 
 ----------------------------------------------------------------
---  RefreshConfigPanel — syncs dropdowns, mode selectors, and
---  width-slider enable state to the current DB.
+--  RefreshConfigPanel — syncs dropdowns, mode selectors, slot-editor
+--  container visibility, and width-slider enable state to the current DB.
 ----------------------------------------------------------------
 function HUF.RefreshConfigPanel()
     local db = HUF.db
     if not db or not db.layout then return end
     local dp = HUF.DataPoints
 
-    -- Slot dropdowns
+    -- Slot dropdowns (normal-mode slot lists AND zone dropdowns — routed
+    -- through GetLayoutSlots which handles both shapes)
     for _, entry in ipairs(dropdownEntries) do
         local slots = GetLayoutSlots(entry.barKey)
         local key   = slots and slots[entry.slotIdx]
         if key and dp and dp[key] then
             UIDropDownMenu_SetSelectedValue(entry.dd, key)
             UIDropDownMenu_SetText(entry.dd, dp[key].label)
+        else
+            -- Zone dropdowns are allowed to be empty; clear stale text.
+            if entry.barKey:match("^panelBar%dZone%a+$") then
+                UIDropDownMenu_SetText(entry.dd, "")
+            end
         end
     end
 
-    -- Panel bar mode dropdowns + width slider enable state
+    -- Per-panel-bar UI state: mode dropdown, container visibility,
+    -- and width slider enable state.
     for i = 1, 3 do
+        local mode = (db.panelBars and db.panelBars[i]
+                      and db.panelBars[i].mode) or "normal"
+
         local modeDD = _G["VUI_HUD_DD_PanelMode_" .. i]
         if modeDD then
-            local mode = (db.panelBars and db.panelBars[i]
-                          and db.panelBars[i].mode) or "normal"
             UIDropDownMenu_SetSelectedValue(modeDD, mode)
             UIDropDownMenu_SetText(modeDD,
                 mode == "normal" and "Normal" or "Full-width")
-            if widthSliderRefs[i] then
-                if mode == "fullwidth" then
-                    widthSliderRefs[i]:Disable()
-                else
-                    widthSliderRefs[i]:Enable()
-                end
+        end
+
+        -- Swap the slot-editor containers to match the current mode.
+        if normalSlotContainers[i] and zoneSlotContainers[i] then
+            if mode == "fullwidth" then
+                normalSlotContainers[i]:Hide()
+                zoneSlotContainers[i]:Show()
+            else
+                zoneSlotContainers[i]:Hide()
+                normalSlotContainers[i]:Show()
+            end
+        end
+
+        if widthSliderRefs[i] then
+            if mode == "fullwidth" then
+                widthSliderRefs[i]:Disable()
+            else
+                widthSliderRefs[i]:Enable()
             end
         end
     end

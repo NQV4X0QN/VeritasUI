@@ -284,6 +284,27 @@ end
 HUF.ApplyPanelBarMode = ApplyPanelBarMode
 
 ----------------------------------------------------------------
+--  Recreate empty panelBarZones after /hud reset. Mirrors the
+--  Stage 4 ADDON_LOADED migration but without the fullwidth-seed
+--  logic, since reset also sets every bar back to "normal" mode.
+----------------------------------------------------------------
+local function SeedDefaultPanelBarZones()
+    if not db or not db.layout then return end
+    local z = db.layout
+    z.panelBarZones = z.panelBarZones or {}
+    for i = 1, 3 do
+        if not z.panelBarZones[i] then
+            z.panelBarZones[i] = { left = {}, center = {}, right = {} }
+        else
+            z.panelBarZones[i].left   = z.panelBarZones[i].left   or {}
+            z.panelBarZones[i].center = z.panelBarZones[i].center or {}
+            z.panelBarZones[i].right  = z.panelBarZones[i].right  or {}
+        end
+    end
+end
+HUF.SeedDefaultPanelBarZones = SeedDefaultPanelBarZones
+
+----------------------------------------------------------------
 --  HUD setup (called on PLAYER_LOGIN)
 --  Chat position sync deferred to PLAYER_ENTERING_WORLD so
 --  ChatFrame1/2 have their final Blizzard-placed positions.
@@ -458,6 +479,41 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             end
         end
 
+        -- Stage 4 migration: initialize db.layout.panelBarZones structure.
+        -- NOTE: two distinct keys share the 'panelBars' name — disambiguate:
+        --   VeritasUI_HUDFrameDB.panelBars[i].mode   = per-bar mode state
+        --   VeritasUI_HUDFrameDB.layout.panelBars[i] = slot list (Stage 2)
+        --   VeritasUI_HUDFrameDB.layout.panelBarZones[i].{left,center,right}
+        --     = zoned slot lists for fullwidth bars (Stage 4 — new)
+        -- If a bar is already in fullwidth at migration time, seed its
+        -- center zone from the existing single slot list so the bar
+        -- keeps showing something after the upgrade.
+        if not VeritasUI_HUDFrameDB.layout then
+            VeritasUI_HUDFrameDB.layout = {}
+        end
+        local zdb = VeritasUI_HUDFrameDB.layout
+        zdb.panelBarZones = zdb.panelBarZones or {}
+        for i = 1, 3 do
+            if not zdb.panelBarZones[i] then
+                zdb.panelBarZones[i] = { left = {}, center = {}, right = {} }
+                local barMode = (VeritasUI_HUDFrameDB.panelBars
+                                 and VeritasUI_HUDFrameDB.panelBars[i]
+                                 and VeritasUI_HUDFrameDB.panelBars[i].mode)
+                                or "normal"
+                if barMode == "fullwidth"
+                   and zdb.panelBars and zdb.panelBars[i] then
+                    for k = 1, math.min(4, #zdb.panelBars[i]) do
+                        zdb.panelBarZones[i].center[k] = zdb.panelBars[i][k]
+                    end
+                end
+            else
+                -- Partial DB state: ensure all three zone keys exist
+                zdb.panelBarZones[i].left   = zdb.panelBarZones[i].left   or {}
+                zdb.panelBarZones[i].center = zdb.panelBarZones[i].center or {}
+                zdb.panelBarZones[i].right  = zdb.panelBarZones[i].right  or {}
+            end
+        end
+
         db     = VeritasUI_HUDFrameDB
         HUF.db = db   -- expose for DataText and SettingsPanel
         pcall(C_GuildInfo.GuildRoster)
@@ -478,15 +534,16 @@ end)
 
 ----------------------------------------------------------------
 --  Slash commands
---    /hud                    → open Blizzard settings category
---    /hud config             → toggle layout config panel
---    /hud move               → unlock frames for dragging
---    /hud lock               → lock frames
---    /hud reset              → reset all positions/modes to defaults
---    /hud set b s key        → set bar b, slot s to data key
---    /hud mode <idx> <mode>  → set panel bar idx to normal|fullwidth
---    /hud list               → print all registered data point keys
---    /hud layout             → print current layout + mode of each bar
+--    /hud                           → open Blizzard settings category
+--    /hud config                    → toggle layout config panel
+--    /hud move                      → unlock frames for dragging
+--    /hud lock                      → lock frames
+--    /hud reset                     → reset positions/modes/zones to defaults
+--    /hud set b s key               → set bar b (left|right|panel), slot s to data key
+--    /hud set panelzone i z s key   → set panel bar i zone z (left|center|right) slot s
+--    /hud mode <idx> <mode>         → set panel bar idx to normal|fullwidth
+--    /hud list                      → print all registered data point keys
+--    /hud layout                    → print current layout + mode of each bar
 ----------------------------------------------------------------
 SLASH_VERITASUI_HUDFRAME1 = "/hud"
 SLASH_VERITASUI_HUDFRAME2 = "/hudframe"
@@ -520,6 +577,9 @@ SlashCmdList["VERITASUI_HUDFRAME"] = function(msg)
                     end
                 end
             end
+            -- Clear zones and re-seed as empty (Stage 4)
+            if db.layout then db.layout.panelBarZones = nil end
+            SeedDefaultPanelBarZones()
         end
         if HUF.leftAnchor then
             HUF.leftAnchor:ClearAllPoints()
@@ -567,11 +627,22 @@ SlashCmdList["VERITASUI_HUDFRAME"] = function(msg)
             print(format("  |cffffd100%s:|r %s", barName, table.concat(slots, " · ")))
         end
         for i = 1, 3 do
-            local slots = (layout.panelBars and layout.panelBars[i]) or {}
             local mode = (db.panelBars and db.panelBars[i]
                           and db.panelBars[i].mode) or "normal"
-            print(format("  |cffffd100panelBar%d|r (%s): %s",
-                i, mode, table.concat(slots, " · ")))
+            if mode == "fullwidth" then
+                local zones = (layout.panelBarZones and layout.panelBarZones[i]) or {}
+                local L = table.concat(zones.left   or {}, " · ")
+                local C = table.concat(zones.center or {}, " · ")
+                local R = table.concat(zones.right  or {}, " · ")
+                print(format("  |cffffd100panelBar%d|r (fullwidth)", i))
+                print(format("    left:   %s", L == "" and "—" or L))
+                print(format("    center: %s", C == "" and "—" or C))
+                print(format("    right:  %s", R == "" and "—" or R))
+            else
+                local slots = (layout.panelBars and layout.panelBars[i]) or {}
+                print(format("  |cffffd100panelBar%d|r (normal): %s",
+                    i, table.concat(slots, " · ")))
+            end
         end
 
     elseif sub == "mode" then
@@ -630,6 +701,43 @@ SlashCmdList["VERITASUI_HUDFRAME"] = function(msg)
             if HUF.RebuildAllBars then HUF.RebuildAllBars() end
             VUI.Print("HUD Frame", format("%s slot %d → |cffffd100%s|r", barKey, slot, dp[arg2].label))
 
+        elseif barArg == "panelzone" then
+            -- /hud set panelzone <idx> <left|center|right> <slot> <key>
+            local _, idxStr, zoneStr, slotStr, key =
+                rest:match("^(panelzone)%s+(%S+)%s+(%S+)%s+(%S+)%s+(.+)$")
+            if not idxStr then
+                VUI.Print("HUD Frame", "Usage: /hud set panelzone <1|2|3> <left|center|right> <slot#> <datakey>")
+                return
+            end
+            local idx = tonumber(idxStr)
+            local slot = tonumber(slotStr)
+            if not idx or idx < 1 or idx > 3 then
+                VUI.Print("HUD Frame", "Bar index must be 1, 2, or 3.")
+                return
+            end
+            if zoneStr ~= "left" and zoneStr ~= "center" and zoneStr ~= "right" then
+                VUI.Print("HUD Frame", "Zone must be left, center, or right.")
+                return
+            end
+            if not slot or slot < 1 or slot > 4 then
+                VUI.Print("HUD Frame", "Slot must be 1-4.")
+                return
+            end
+            if not dp or not dp[key] then
+                VUI.Print("HUD Frame", "Unknown key '" .. tostring(key) .. "' — use /hud list.")
+                return
+            end
+            layout.panelBarZones = layout.panelBarZones or {}
+            layout.panelBarZones[idx] = layout.panelBarZones[idx]
+                or { left = {}, center = {}, right = {} }
+            layout.panelBarZones[idx][zoneStr] = layout.panelBarZones[idx][zoneStr] or {}
+            layout.panelBarZones[idx][zoneStr][slot] = key
+            if HUF.RebuildAllBars then HUF.RebuildAllBars() end
+            if HUF.RefreshConfigPanel then HUF.RefreshConfigPanel() end
+            VUI.Print("HUD Frame",
+                format("panelBar%d zone %s slot %d → |cffffd100%s|r",
+                       idx, zoneStr, slot, dp[key].label))
+
         elseif barArg == "panel" or barArg == "center" then
             -- Resolve (barIdx, slot, key) from the variable-arity form.
             -- "center" alias is always bar 1 with the 2-arg form.
@@ -664,7 +772,7 @@ SlashCmdList["VERITASUI_HUDFRAME"] = function(msg)
                 barIdx, slot, dp[key].label))
 
         else
-            VUI.Print("HUD Frame", "Unknown bar '" .. barArg .. "' (use left, right, panel).")
+            VUI.Print("HUD Frame", "Unknown bar '" .. barArg .. "' (use left, right, panel, panelzone).")
         end
 
     else

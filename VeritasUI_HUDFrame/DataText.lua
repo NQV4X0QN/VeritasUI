@@ -43,15 +43,109 @@ local function FormatSlot(dp, rawValue)
 end
 
 ----------------------------------------------------------------
+--  CreateInteractiveSlot — attaches click/hover handlers and a
+--  HIGHLIGHT texture to a FontString, returning the click frame
+--  (or nil if the data point has no interactive handlers).
+--  Extracted so BuildBar and BuildZone can share the same wiring.
+----------------------------------------------------------------
+local function CreateInteractiveSlot(barFrame, fs, dp)
+    if not (dp and (dp.onClick or dp.onEnter)) then return nil end
+
+    local clickFrame = CreateFrame("Button", nil, barFrame)
+    clickFrame:SetPoint("CENTER", fs, "CENTER", 0, 0)
+    clickFrame:RegisterForClicks("AnyUp")
+    clickFrame:SetSize(1, 1)
+
+    local hl = clickFrame:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints(clickFrame)
+    hl:SetColorTexture(1, 1, 1, 0.15)
+    hl:SetBlendMode("ADD")
+
+    if dp.onClick then
+        clickFrame:SetScript("OnClick", function(_, button)
+            dp.onClick(button)
+        end)
+    end
+
+    clickFrame:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(dp.label, 1, 0.82, 0)
+        if dp.onEnter then dp.onEnter(GameTooltip) end
+        if dp.onClick then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("|cff40ff40Click to " ..
+                (dp.clickHint or "interact") .. "|r")
+        end
+        GameTooltip:Show()
+    end)
+    clickFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    return clickFrame
+end
+
+----------------------------------------------------------------
+--  BuildZone (fullwidth bars only)
+--  Distributes up to 4 FontStrings within a single zone:
+--    LEFT   — anchored to BOTTOMLEFT, slot 1 closest to edge
+--    RIGHT  — anchored to BOTTOMRIGHT, last slot closest to edge
+--    CENTER — anchored to BOTTOM, evenly spaced around centerline
+----------------------------------------------------------------
+local ZONE_EDGE_PADDING = 20    -- px from screen edge to first slot
+local ZONE_SLOT_GAP     = 180   -- px between consecutive slots in a zone
+                                -- (comfortable for data text up to ~150px wide)
+
+local function BuildZone(barFrame, zoneSlots, zoneType, mountPoint, yOffset)
+    if not zoneSlots or #zoneSlots == 0 then return end
+    mountPoint = mountPoint or "BOTTOM"
+    yOffset    = yOffset    or 0
+
+    local bottomPrefix = (mountPoint == "BOTTOM") and "BOTTOM" or ""
+
+    for i, key in ipairs(zoneSlots) do
+        if key and key ~= "" then
+            local fs = barFrame:CreateFontString(nil, "OVERLAY", nil, 7)
+            fs:SetFont("Fonts\\FRIZQT__.TTF", 11)
+
+            local xOff, anchor
+            if zoneType == "LEFT" then
+                xOff   = ZONE_EDGE_PADDING + (i - 1) * ZONE_SLOT_GAP
+                anchor = bottomPrefix .. "LEFT"
+                fs:SetJustifyH("LEFT")
+            elseif zoneType == "RIGHT" then
+                xOff   = -(ZONE_EDGE_PADDING + (#zoneSlots - i) * ZONE_SLOT_GAP)
+                anchor = bottomPrefix .. "RIGHT"
+                fs:SetJustifyH("RIGHT")
+            else -- CENTER
+                local n = #zoneSlots
+                xOff   = ZONE_SLOT_GAP * (i - (n + 1) / 2)
+                anchor = (mountPoint == "BOTTOM") and "BOTTOM" or "CENTER"
+                fs:SetJustifyH("CENTER")
+            end
+            fs:SetPoint(anchor, barFrame, anchor, xOff, yOffset)
+            fs:Show()
+
+            local dp = HUF.DataPoints and HUF.DataPoints[key]
+            local clickFrame = CreateInteractiveSlot(barFrame, fs, dp)
+
+            barFrame._vuiSlots[#barFrame._vuiSlots + 1] =
+                { fs = fs, key = key, clickFrame = clickFrame }
+        end
+    end
+end
+
+----------------------------------------------------------------
 --  BuildBar
---  Creates one FontString per slot, distributed evenly across
---  the bar's width.  Old FontStrings are hidden but not freed
---  (WoW has no GC for widget objects).
+--  Creates FontStrings for one bar. Two rendering modes:
+--    normal:    slotKeys distributed evenly across barFrame:GetWidth()
+--    fullwidth: zones table with { left, center, right } lists —
+--               renders via BuildZone instead of the normal loop.
+--  Old FontStrings are hidden but not freed (WoW has no GC for
+--  widget objects).
 ----------------------------------------------------------------
 -- mountPoint / yOffset control where FontStrings anchor on the frame.
 -- Left/right bars pass "BOTTOM", 8 so text sits in the bottom chrome strip.
 -- Panel bar passes "BOTTOM", -7 so text sits on the chrome strip.
-local function BuildBar(barFrame, slotKeys, mountPoint, yOffset)
+local function BuildBar(barFrame, slotKeys, mountPoint, yOffset, zones)
     if not barFrame then return end
     mountPoint = mountPoint or "CENTER"
     yOffset    = yOffset    or 0
@@ -65,6 +159,15 @@ local function BuildBar(barFrame, slotKeys, mountPoint, yOffset)
     end
     barFrame._vuiSlots = {}
 
+    if zones then
+        -- Fullwidth mode: render three zones anchored to bar edges.
+        BuildZone(barFrame, zones.left,   "LEFT",   mountPoint, yOffset)
+        BuildZone(barFrame, zones.center, "CENTER", mountPoint, yOffset)
+        BuildZone(barFrame, zones.right,  "RIGHT",  mountPoint, yOffset)
+        return
+    end
+
+    -- Normal mode: single slot list distributed evenly across width.
     if not slotKeys or #slotKeys == 0 then return end
 
     local n = #slotKeys
@@ -80,37 +183,7 @@ local function BuildBar(barFrame, slotKeys, mountPoint, yOffset)
         fs:Show()
 
         local dp = HUF.DataPoints and HUF.DataPoints[key]
-        local clickFrame
-        if dp and (dp.onClick or dp.onEnter) then
-            clickFrame = CreateFrame("Button", nil, barFrame)
-            clickFrame:SetPoint("CENTER", fs, "CENTER", 0, 0)
-            clickFrame:RegisterForClicks("AnyUp")
-            clickFrame:SetSize(1, 1)
-
-            local hl = clickFrame:CreateTexture(nil, "HIGHLIGHT")
-            hl:SetAllPoints(clickFrame)
-            hl:SetColorTexture(1, 1, 1, 0.15)
-            hl:SetBlendMode("ADD")
-
-            if dp.onClick then
-                clickFrame:SetScript("OnClick", function(_, button)
-                    dp.onClick(button)
-                end)
-            end
-
-            clickFrame:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText(dp.label, 1, 0.82, 0)
-                if dp.onEnter then dp.onEnter(GameTooltip) end
-                if dp.onClick then
-                    GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine("|cff40ff40Click to " ..
-                        (dp.clickHint or "interact") .. "|r")
-                end
-                GameTooltip:Show()
-            end)
-            clickFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        end
+        local clickFrame = CreateInteractiveSlot(barFrame, fs, dp)
 
         barFrame._vuiSlots[i] = { fs = fs, key = key, clickFrame = clickFrame }
     end
@@ -190,7 +263,15 @@ function HUF.RebuildAllBars()
     if HUF.panelBars then
         for i = 1, 3 do
             if HUF.panelBars[i] then
-                BuildBar(HUF.panelBars[i], db.layout.panelBars[i], "BOTTOM", -7)
+                local mode = (db.panelBars and db.panelBars[i]
+                              and db.panelBars[i].mode) or "normal"
+                if mode == "fullwidth" then
+                    local zones = db.layout.panelBarZones
+                                  and db.layout.panelBarZones[i]
+                    BuildBar(HUF.panelBars[i], nil, "BOTTOM", -7, zones)
+                else
+                    BuildBar(HUF.panelBars[i], db.layout.panelBars[i], "BOTTOM", -7)
+                end
             end
         end
     end
