@@ -112,16 +112,16 @@ local function BuildSection(parent, barKey, numSlots, hdrText, hdrX, hdrY, secW,
 end
 
 ----------------------------------------------------------------
---  Build the center bar section (5 slots in a horizontal row)
+--  Build the panel bar section (5 slots in a horizontal row)
 ----------------------------------------------------------------
-local CENTER_SLOT_W = 96   -- width per slot column (5 × 96 = 480 < 506 content width)
+local PANEL_SLOT_W = 96   -- width per slot column (5 × 96 = 480 < 506 content width)
 
-local function BuildCenterSection(parent, hdrY)
+local function BuildPanelSection(parent, hdrY)
     local hdr = parent:CreateFontString(nil, "OVERLAY")
     hdr:SetFont("Fonts\\FRIZQT__.TTF", 13)
     hdr:SetTextColor(1, 0.82, 0)
     hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, hdrY)
-    hdr:SetText("Center Bar")
+    hdr:SetText("Panel Bar")
 
     local sep = parent:CreateTexture(nil, "ARTWORK")
     sep:SetHeight(1)
@@ -130,19 +130,19 @@ local function BuildCenterSection(parent, hdrY)
     sep:SetColorTexture(1, 0.82, 0, 0.5)
 
     for i = 1, 5 do
-        local xPos = 4 + (i - 1) * CENTER_SLOT_W
+        local xPos = 4 + (i - 1) * PANEL_SLOT_W
 
         local lbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         lbl:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", xPos, -6)
         lbl:SetText("Slot " .. i)
         lbl:SetTextColor(0.9, 0.9, 0.9)
 
-        MakeDropdown(parent, "centerBar", i, xPos - 14, hdrY - 22, 70)
+        MakeDropdown(parent, "panelBar", i, xPos - 14, hdrY - 22, 70)
     end
 end
 
 ----------------------------------------------------------------
---  Frame Sizes section — sliders for anchor and center bar dimensions
+--  Frame Sizes section — sliders for anchor and panel bar dimensions
 ----------------------------------------------------------------
 local SLIDER_W   = 220
 local LEFT_COL   = 4
@@ -195,7 +195,7 @@ local function BuildSizesSection(parent, startY)
     local lh = (db and db.leftAnchorHeight)  or 220
     local rw = (db and db.rightAnchorWidth)  or 380
     local rh = (db and db.rightAnchorHeight) or 220
-    local cw = (db and db.centerBarWidth)    or 500
+    local pw = (db and db.panelBarWidth)     or 500
 
     -- Width sliders (left / right)
     MakeSlider(parent, "VUI_HUD_Slider_LeftW",  LEFT_COL,  -52, sep, SLIDER_W,
@@ -239,18 +239,18 @@ local function BuildSizesSection(parent, startY)
             end
         end)
 
-    -- Center bar sub-header and width slider
-    local centerLbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    centerLbl:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", LEFT_COL, -170)
-    centerLbl:SetText("Center Bar")
-    centerLbl:SetTextColor(0.9, 0.9, 0.9)
+    -- Panel bar sub-header and width slider
+    local panelLbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    panelLbl:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", LEFT_COL, -170)
+    panelLbl:SetText("Panel Bar")
+    panelLbl:SetTextColor(0.9, 0.9, 0.9)
 
-    MakeSlider(parent, "VUI_HUD_Slider_CenterW", LEFT_COL, -210, sep, 460,
-        300, 800, 10, cw, "Width: %dpx",
+    MakeSlider(parent, "VUI_HUD_Slider_PanelW", LEFT_COL, -210, sep, 460,
+        300, 800, 10, pw, "Width: %dpx",
         function(val)
-            if HUF.db then HUF.db.centerBarWidth = val end
-            if HUF.centerBar then
-                HUF.centerBar:SetWidth(val)
+            if HUF.db then HUF.db.panelBarWidth = val end
+            if HUF.panelBar then
+                HUF.panelBar:SetWidth(val)
                 if HUF.RebuildAllBars then HUF.RebuildAllBars() end
             end
         end)
@@ -296,14 +296,14 @@ local function BuildConfigPanel()
     -- ── Right Bar section (top-right quadrant) ────────────────
     BuildSection(CONT, "rightBar", 3, "Right Bar", 264, -8, 240, 140)
 
-    -- ── Center Bar section (lower half, horizontal row) ───────
-    -- Top of center section is below the 3-slot left/right sections.
+    -- ── Panel Bar section (lower half, horizontal row) ────────
+    -- Top of panel section is below the 3-slot left/right sections.
     -- 3 rows × SLOT_ROW_H + header+sep ≈ 90+30 = ~120px from top
-    local centerY = -8 - 20 - 3 * SLOT_ROW_H - 20   -- header(20) + 3 rows + gap
-    BuildCenterSection(CONT, centerY)
+    local panelY = -8 - 20 - 3 * SLOT_ROW_H - 20   -- header(20) + 3 rows + gap
+    BuildPanelSection(CONT, panelY)
 
     -- ── Frame Sizes section ────────────────────────────────────
-    BuildSizesSection(CONT, centerY - 90)
+    BuildSizesSection(CONT, panelY - 90)
 
     -- ── Bottom buttons ────────────────────────────────────────
     local resetBtn = CreateFrame("Button", nil, CONT, "UIPanelButtonTemplate")

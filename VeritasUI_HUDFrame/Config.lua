@@ -27,10 +27,10 @@ HUF.Config = {
     -- 20px matches the BottomEdge chrome strip height on UIFrameMetal.
     BAR_HEIGHT      = 26,
 
-    -- Center bar: total width and position of its bottom edge above the screen bottom.
-    -- Raise CENTER_BAR_Y if your action bar cluster is taller than the default layout.
-    CENTER_BAR_W    = 500,
-    CENTER_BAR_Y    = 190,
+    -- Panel bar: total width and position of its bottom edge above the screen bottom.
+    -- Raise PANEL_BAR_Y if your action bar cluster is taller than the default layout.
+    PANEL_BAR_W    = 500,
+    PANEL_BAR_Y    = 190,
 
     -- Seconds between full bar refreshes
     TICKER_INTERVAL = 2,
@@ -44,5 +44,5 @@ HUF.Config = {
     leftAnchorHeight = 220,
     rightAnchorWidth = 380,
     rightAnchorHeight = 220,
-    centerBarWidth   = 500,
+    panelBarWidth   = 500,
 }

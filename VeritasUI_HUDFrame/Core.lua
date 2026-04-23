@@ -26,7 +26,7 @@ local defaults = {
     leftAnchorHeight = 220,
     rightAnchorWidth = 380,
     rightAnchorHeight = 220,
-    centerBarWidth   = 500,
+    panelBarWidth    = 500,
 }
 local db
 local settingsCategoryID
@@ -34,7 +34,7 @@ local settingsCategoryID
 -- Frame references — set in SetupHUDFrame, exposed on HUF for other files
 HUF.leftAnchor  = nil
 HUF.rightAnchor = nil
-HUF.centerBar   = nil
+HUF.panelBar    = nil
 
 -- Move-mode
 local isLocked  = true
@@ -145,11 +145,11 @@ local function CreateChatAnchor(name, width, height)
     return anchor
 end
 
--- Returns a center bar frame styled with ButtonFrameTemplate.
+-- Returns a panel bar frame styled with ButtonFrameTemplate.
 -- Only BottomEdge (the gray UIFrameMetal chrome strip) remains visible.
 -- A high-frameLevel textFrame child ensures FontStrings render above all
 -- NineSlice layers.
-local function CreateCenterBar(width, height)
+local function CreatePanelBar(width, height)
     local bar = CreateFrame("Frame", nil, UIParent, "ButtonFrameTemplate")
     ButtonFrameTemplate_HidePortrait(bar)
     bar:SetSize(width, height)
@@ -218,22 +218,22 @@ local function SetupHUDFrame()
     hudFrames[#hudFrames + 1] = { frame = HUF.rightAnchor, isAnchor = true }
     chatFrameMap[HUF.rightAnchor] = _G.ChatFrame2
 
-    -- Center bar is independently positioned and draggable.
-    HUF.centerBar = CreateCenterBar(db.centerBarWidth, CFG.BAR_HEIGHT)
-    local cp = db and db.centerBarPos
+    -- Panel bar is independently positioned and draggable.
+    HUF.panelBar = CreatePanelBar(db.panelBarWidth, CFG.BAR_HEIGHT)
+    local cp = db and db.panelBarPos
     if cp then
-        HUF.centerBar:SetPoint(cp.point, UIParent, cp.relPoint, cp.x, cp.y)
+        HUF.panelBar:SetPoint(cp.point, UIParent, cp.relPoint, cp.x, cp.y)
     else
-        HUF.centerBar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, CFG.CENTER_BAR_Y)
+        HUF.panelBar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, CFG.PANEL_BAR_Y)
     end
-    MakeDraggable(HUF.centerBar, "centerBarPos", false)
-    hudFrames[#hudFrames + 1] = { frame = HUF.centerBar, isAnchor = false }
+    MakeDraggable(HUF.panelBar, "panelBarPos", false)
+    hudFrames[#hudFrames + 1] = { frame = HUF.panelBar, isAnchor = false }
 
     -- ── Visibility ──────────────────────────────────────────
     local show = db and db.enabled ~= false
     HUF.leftAnchor:SetShown(show)
     HUF.rightAnchor:SetShown(show)
-    HUF.centerBar:SetShown(show)
+    HUF.panelBar:SetShown(show)
 end
 
 ----------------------------------------------------------------
@@ -254,7 +254,7 @@ local function InitializeOptions()
     setting:SetValueChangedCallback(function(_, value)
         if HUF.leftAnchor  then HUF.leftAnchor:SetShown(value)  end
         if HUF.rightAnchor then HUF.rightAnchor:SetShown(value) end
-        if HUF.centerBar   then HUF.centerBar:SetShown(value)   end
+        if HUF.panelBar    then HUF.panelBar:SetShown(value)    end
         VUI.PrintOnOff("HUD Frame", "HUD Frame", value)
     end)
     Settings.CreateCheckbox(category, setting,
@@ -282,6 +282,22 @@ frame:SetScript("OnEvent", function(self, event, arg1)
                 VeritasUI_HUDFrameDB[k] = v
             end
         end
+
+        -- One-time migration: centerBar → panelBar (Stage 1 rename)
+        if VeritasUI_HUDFrameDB.centerBarPos and not VeritasUI_HUDFrameDB.panelBarPos then
+            VeritasUI_HUDFrameDB.panelBarPos = VeritasUI_HUDFrameDB.centerBarPos
+            VeritasUI_HUDFrameDB.centerBarPos = nil
+        end
+        if VeritasUI_HUDFrameDB.centerBarWidth and not VeritasUI_HUDFrameDB.panelBarWidth then
+            VeritasUI_HUDFrameDB.panelBarWidth = VeritasUI_HUDFrameDB.centerBarWidth
+            VeritasUI_HUDFrameDB.centerBarWidth = nil
+        end
+        if VeritasUI_HUDFrameDB.layout and VeritasUI_HUDFrameDB.layout.centerBar
+           and not VeritasUI_HUDFrameDB.layout.panelBar then
+            VeritasUI_HUDFrameDB.layout.panelBar = VeritasUI_HUDFrameDB.layout.centerBar
+            VeritasUI_HUDFrameDB.layout.centerBar = nil
+        end
+
         db     = VeritasUI_HUDFrameDB
         HUF.db = db   -- expose for DataText and SettingsPanel
         pcall(C_GuildInfo.GuildRoster)
@@ -334,7 +350,7 @@ SlashCmdList["VERITASUI_HUDFRAME"] = function(msg)
         if db then
             db.leftAnchorPos  = nil
             db.rightAnchorPos = nil
-            db.centerBarPos   = nil
+            db.panelBarPos    = nil
         end
         if HUF.leftAnchor then
             HUF.leftAnchor:ClearAllPoints()
@@ -344,9 +360,9 @@ SlashCmdList["VERITASUI_HUDFRAME"] = function(msg)
             HUF.rightAnchor:ClearAllPoints()
             HUF.rightAnchor:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -CFG.CHAT_RIGHT_X, CFG.CHAT_BOTTOM_Y)
         end
-        if HUF.centerBar then
-            HUF.centerBar:ClearAllPoints()
-            HUF.centerBar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, CFG.CENTER_BAR_Y)
+        if HUF.panelBar then
+            HUF.panelBar:ClearAllPoints()
+            HUF.panelBar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, CFG.PANEL_BAR_Y)
         end
         SyncAnchorsToChatFrames()
         VUI.Print("HUD Frame", "Positions reset to defaults.")
@@ -370,24 +386,24 @@ SlashCmdList["VERITASUI_HUDFRAME"] = function(msg)
         local layout = db and db.layout
         if not layout then VUI.Print("HUD Frame", "No layout in DB."); return end
         VUI.Print("HUD Frame", "Current layout:")
-        for _, barName in ipairs({ "leftBar", "rightBar", "centerBar" }) do
+        for _, barName in ipairs({ "leftBar", "rightBar", "panelBar" }) do
             local slots = layout[barName] or {}
             print(format("  |cffffd100%s:|r %s", barName, table.concat(slots, " · ")))
         end
 
     elseif sub == "set" then
-        -- /hud set <left|right|center> <slot#> <key>
+        -- /hud set <left|right|panel|center> <slot#> <key>  ("center" is an alias for "panel")
         local barArg, slotStr, key = rest:match("^(%S+)%s+(%S+)%s+(%S+)")
         if not barArg then
-            VUI.Print("HUD Frame", "Usage: /hud set <left|right|center> <slot#> <datakey>")
+            VUI.Print("HUD Frame", "Usage: /hud set <left|right|panel> <slot#> <datakey>")
             return
         end
-        local barKey = barArg == "left"   and "leftBar"
-                    or barArg == "right"  and "rightBar"
-                    or barArg == "center" and "centerBar"
+        local barKey = barArg == "left"  and "leftBar"
+                    or barArg == "right" and "rightBar"
+                    or (barArg == "panel" or barArg == "center") and "panelBar"
                     or nil
         if not barKey then
-            VUI.Print("HUD Frame", "Unknown bar '" .. barArg .. "' (use left, right, center).")
+            VUI.Print("HUD Frame", "Unknown bar '" .. barArg .. "' (use left, right, panel).")
             return
         end
         local layout = db and db.layout

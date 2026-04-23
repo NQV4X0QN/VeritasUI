@@ -16,9 +16,9 @@ if not VUI then return end
 --  Layout defaults (applied when db.layout is absent)
 ----------------------------------------------------------------
 local DEFAULT_LAYOUT = {
-    leftBar   = { "memory", "durability", "gold" },
-    rightBar  = { "guild",  "friends",    "zone" },
-    centerBar = { "haste",  "mastery",    "crit", "armor", "ilvl" },
+    leftBar  = { "memory", "durability", "gold" },
+    rightBar = { "guild",  "friends",    "zone" },
+    panelBar = { "haste",  "mastery",    "crit", "armor", "ilvl" },
 }
 
 local ticker
@@ -46,7 +46,7 @@ end
 ----------------------------------------------------------------
 -- mountPoint / yOffset control where FontStrings anchor on the frame.
 -- Left/right bars pass "BOTTOM", 8 so text sits in the bottom chrome strip.
--- Center bar uses the defaults ("CENTER", 0) for vertical centering.
+-- Panel bar passes "BOTTOM", -7 so text sits on the chrome strip.
 local function BuildBar(barFrame, slotKeys, mountPoint, yOffset)
     if not barFrame then return end
     mountPoint = mountPoint or "CENTER"
@@ -144,7 +144,7 @@ local function UpdateAllBars()
     if not enabled then return end
     UpdateBar(HUF.leftAnchor)
     UpdateBar(HUF.rightAnchor)
-    UpdateBar(HUF.centerBar)
+    UpdateBar(HUF.panelBar)
 end
 
 ----------------------------------------------------------------
@@ -168,7 +168,7 @@ function HUF.RebuildAllBars()
 
     BuildBar(HUF.leftAnchor,  db.layout.leftBar,   "BOTTOM", 8)
     BuildBar(HUF.rightAnchor, db.layout.rightBar,  "BOTTOM", 8)
-    BuildBar(HUF.centerBar,   db.layout.centerBar, "BOTTOM", -7)
+    BuildBar(HUF.panelBar,    db.layout.panelBar,  "BOTTOM", -7)
 
     UpdateAllBars()
 
@@ -185,7 +185,7 @@ dtFrame:SetScript("OnEvent", function(self)
     self:UnregisterEvent("PLAYER_LOGIN")
 
     -- Guard: Core.lua must have created the frames first
-    if not HUF.leftAnchor or not HUF.rightAnchor or not HUF.centerBar then
+    if not HUF.leftAnchor or not HUF.rightAnchor or not HUF.panelBar then
         VUI.Print("HUD Frame", "|cFFFF4444DataText: frames not ready. Try /reload.|r")
         return
     end
