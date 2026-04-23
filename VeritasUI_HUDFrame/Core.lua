@@ -80,34 +80,16 @@ end
 --  never re-parented or repositioned except by mirroring drags.
 ----------------------------------------------------------------
 local function MirrorAnchorToChatFrame(anchor)
-    local cf = chatFrameMap[anchor]
-    if not cf then return end
-    pcall(function()
-        cf:ClearAllPoints()
-        cf:SetPoint("TOPLEFT",     anchor, "TOPLEFT",     12, -12)
-        cf:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", -12,  12)
-    end)
+    -- intentionally disabled: chat frame is user-positioned via Blizzard
 end
 HUF.MirrorAnchorToChatFrame = MirrorAnchorToChatFrame
 
 local function SyncOneAnchor(anchor, chatFrame, savedPos)
-    if not anchor or not chatFrame then return end
+    if not anchor then return end
     if savedPos then
-        -- Restore saved anchor position; chat frame sits 12px inset inside it.
         anchor:ClearAllPoints()
-        anchor:SetPoint(savedPos.point, UIParent, savedPos.relPoint, savedPos.x, savedPos.y)
-        pcall(function()
-            chatFrame:ClearAllPoints()
-            chatFrame:SetPoint("TOPLEFT",     anchor, "TOPLEFT",     12, -12)
-            chatFrame:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", -12,  12)
-        end)
-    else
-        -- Wrap anchor around wherever Blizzard placed the chat frame (12px outset).
-        pcall(function()
-            anchor:ClearAllPoints()
-            anchor:SetPoint("TOPLEFT",     chatFrame, "TOPLEFT",     -12,  12)
-            anchor:SetPoint("BOTTOMRIGHT", chatFrame, "BOTTOMRIGHT",  12, -12)
-        end)
+        anchor:SetPoint(savedPos.point, UIParent,
+            savedPos.relPoint, savedPos.x, savedPos.y)
     end
 end
 

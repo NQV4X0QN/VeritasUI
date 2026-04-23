@@ -28,8 +28,13 @@ local ticker
 ----------------------------------------------------------------
 local function FormatSlot(dp, rawValue)
     if rawValue == "" then return "" end
-    local warn = dp.warnThreshold and dp.warnThreshold()
-    local col  = (warn and dp.warnColor) or "|cffffffff"
+    local col
+    if dp.tierColor then
+        col = dp.tierColor() or "|cffffffff"
+    else
+        local warn = dp.warnThreshold and dp.warnThreshold()
+        col = (warn and dp.warnColor) or "|cffffffff"
+    end
     return "|cffffd100" .. dp.label .. ":|r " .. col .. rawValue .. "|r"
 end
 
@@ -69,7 +74,41 @@ local function BuildBar(barFrame, slotKeys, mountPoint, yOffset)
         local xOff = w * (i - 0.5) / n - w * 0.5
         fs:SetPoint(mountPoint, fsParent, mountPoint, xOff, yOffset)
         fs:Show()
-        barFrame._vuiSlots[i] = { fs = fs, key = key }
+
+        local dp = HUF.DataPoints and HUF.DataPoints[key]
+        local clickFrame
+        if dp and (dp.onClick or dp.onEnter) then
+            clickFrame = CreateFrame("Button", nil, barFrame)
+            clickFrame:SetPoint("CENTER", fs, "CENTER", 0, 0)
+            clickFrame:RegisterForClicks("AnyUp")
+            clickFrame:SetSize(1, 1)
+
+            local hl = clickFrame:CreateTexture(nil, "HIGHLIGHT")
+            hl:SetAllPoints(clickFrame)
+            hl:SetColorTexture(1, 1, 1, 0.15)
+            hl:SetBlendMode("ADD")
+
+            if dp.onClick then
+                clickFrame:SetScript("OnClick", function(_, button)
+                    dp.onClick(button)
+                end)
+            end
+
+            clickFrame:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText(dp.label, 1, 0.82, 0)
+                if dp.onEnter then dp.onEnter(GameTooltip) end
+                if dp.onClick then
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine("|cff40ff40Click to " ..
+                        (dp.clickHint or "interact") .. "|r")
+                end
+                GameTooltip:Show()
+            end)
+            clickFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        end
+
+        barFrame._vuiSlots[i] = { fs = fs, key = key, clickFrame = clickFrame }
     end
 end
 
@@ -88,6 +127,12 @@ local function UpdateBar(barFrame)
         if point then
             local val = point.getValue()
             entry.fs:SetText(val ~= "" and FormatSlot(point, val) or "")
+            if entry.clickFrame then
+                local tw, th = entry.fs:GetStringWidth(), entry.fs:GetStringHeight()
+                if tw and tw > 0 then
+                    entry.clickFrame:SetSize(tw + 4, (th or 14) + 4)
+                end
+            end
         else
             entry.fs:SetText("")
         end

@@ -102,6 +102,16 @@ HUF.DataPoints = {
             end)
             return ok and r or "—"
         end,
+        onClick = function() ToggleCharacter("PaperDollFrame") end,
+        onEnter = function(tooltip)
+            local overall, equipped, pvp = GetAverageItemLevel()
+            tooltip:AddDoubleLine("Overall",  format("%.1f", overall or 0))
+            tooltip:AddDoubleLine("Equipped", format("%.1f", equipped or 0))
+            if pvp and pvp > 0 then
+                tooltip:AddDoubleLine("PvP", format("%.1f", pvp))
+            end
+        end,
+        clickHint = "open character panel",
     },
 
     memory = {
@@ -113,12 +123,95 @@ HUF.DataPoints = {
             end)
             return ok and r or "—"
         end,
-        warnThreshold = function()
+        tierColor = function()
             local mb = collectgarbage("count") / 1024
-            local thresh = HUF.Config and HUF.Config.WARN_MEMORY_MB or 80
-            return mb > thresh
+            if mb < 200 then return "|cff40ff40" end
+            if mb < 500 then return "|cffffd100" end
+            return "|cffff4444"
         end,
-        warnColor = "|cffff4444",
+        onClick = function()
+            local before = collectgarbage("count")
+            collectgarbage("collect")
+            local freed = (before - collectgarbage("count")) / 1024
+            DEFAULT_CHAT_FRAME:AddMessage(format(
+                "|cffffd100[HUD Frame]|r Freed |cff40ff40%.2f MB|r of Lua memory.",
+                freed))
+        end,
+        onEnter = function(tooltip)
+            UpdateAddOnMemoryUsage()
+            local addons = {}
+            for i = 1, C_AddOns.GetNumAddOns() do
+                local name = C_AddOns.GetAddOnInfo(i)
+                local kb = GetAddOnMemoryUsage(i)
+                if kb > 0 then addons[#addons+1] = { name = name, kb = kb } end
+            end
+            table.sort(addons, function(a, b) return a.kb > b.kb end)
+            tooltip:AddLine(" ")
+            for i = 1, math.min(10, #addons) do
+                local a = addons[i]
+                local c = a.kb > 10000 and "|cffff4444"
+                       or a.kb > 2000  and "|cffffd100" or "|cff40ff40"
+                local val = a.kb > 1024
+                    and format("%.1f MB", a.kb / 1024)
+                    or  format("%.0f KB", a.kb)
+                tooltip:AddDoubleLine(a.name, c .. val .. "|r")
+            end
+        end,
+        clickHint = "force garbage collection",
+    },
+
+    fps = {
+        label    = "FPS",
+        getValue = function()
+            local ok, r = pcall(function()
+                local fps = GetFramerate()
+                return fps and format("%.0f", fps) or "—"
+            end)
+            return ok and r or "—"
+        end,
+        tierColor = function()
+            local ok, fps = pcall(GetFramerate)
+            if not ok or not fps then return "|cffffffff" end
+            if fps >= 60 then return "|cff40ff40" end
+            if fps >= 30 then return "|cffffd100" end
+            return "|cffff4444"
+        end,
+    },
+
+    latencyWorld = {
+        label    = "Latency",
+        getValue = function()
+            local ok, r = pcall(function()
+                local _, _, _, world = GetNetStats()
+                return world and format("%d ms", world) or "—"
+            end)
+            return ok and r or "—"
+        end,
+        tierColor = function()
+            local ok, _, _, _, world = pcall(GetNetStats)
+            if not ok or not world then return "|cffffffff" end
+            if world < 100 then return "|cff40ff40" end
+            if world < 200 then return "|cffffd100" end
+            return "|cffff4444"
+        end,
+    },
+
+    latencyHome = {
+        label    = "Home Latency",
+        getValue = function()
+            local ok, r = pcall(function()
+                local _, _, home = GetNetStats()
+                return home and format("%d ms", home) or "—"
+            end)
+            return ok and r or "—"
+        end,
+        tierColor = function()
+            local ok, _, _, home = pcall(GetNetStats)
+            if not ok or not home then return "|cffffffff" end
+            if home < 100 then return "|cff40ff40" end
+            if home < 200 then return "|cffffd100" end
+            return "|cffff4444"
+        end,
     },
 
     durability = {
@@ -137,12 +230,40 @@ HUF.DataPoints = {
             end)
             return ok and r or "—"
         end,
-        warnThreshold = function()
-            local pct = GetLowestDurability()
-            local thresh = HUF.Config and HUF.Config.WARN_DURABILITY_PCT or 20
-            return pct ~= nil and pct < thresh
+        tierColor = function()
+            local lowest
+            for _, s in ipairs({1,3,5,6,7,8,9,10,15,16,17}) do
+                local cur, max = GetInventoryItemDurability(s)
+                if cur and max and max > 0 then
+                    local p = (cur/max)*100
+                    if not lowest or p < lowest then lowest = p end
+                end
+            end
+            if not lowest then return "|cffffffff" end
+            if lowest >= 50 then return "|cff40ff40" end
+            if lowest >= 20 then return "|cffffd100" end
+            return "|cffff4444"
         end,
-        warnColor = "|cffff4444",
+        onClick = function() ToggleCharacter("PaperDollFrame") end,
+        onEnter = function(tooltip)
+            local slotNames = {
+                [1]="Head", [3]="Shoulders", [5]="Chest", [6]="Waist",
+                [7]="Legs", [8]="Feet", [9]="Wrist", [10]="Hands",
+                [15]="Back", [16]="Main Hand", [17]="Off Hand",
+            }
+            tooltip:AddLine(" ")
+            for _, s in ipairs({1,3,5,6,7,8,9,10,15,16,17}) do
+                local cur, max = GetInventoryItemDurability(s)
+                if cur and max and max > 0 then
+                    local p = (cur/max)*100
+                    local c = p >= 50 and "|cff40ff40"
+                           or p >= 20 and "|cffffd100" or "|cffff4444"
+                    tooltip:AddDoubleLine(slotNames[s] or ("Slot "..s),
+                        c .. format("%.0f%%|r", p))
+                end
+            end
+        end,
+        clickHint = "open character panel",
     },
 
     gold = {
@@ -150,17 +271,28 @@ HUF.DataPoints = {
         getValue = function()
             local ok, r = pcall(function()
                 local copper = GetMoney()
-                local gold = math_floor(copper / 10000)
-                if gold >= 1000000 then
-                    return format("%.1fM g", gold / 1000000)
-                elseif gold >= 1000 then
-                    return format("%d,%03dg", math_floor(gold / 1000), gold % 1000)
+                local g = math.floor(copper / 10000)
+                if g >= 1000000 then
+                    return format("%.1fM g", g / 1000000)
+                elseif g >= 1000 then
+                    return format("%d,%03dg", math.floor(g/1000), g%1000)
                 else
-                    return format("%dg", gold)
+                    return format("%dg", g)
                 end
             end)
             return ok and r or "—"
         end,
+        onClick = function() ToggleCharacter("TokenFrame") end,
+        onEnter = function(tooltip)
+            local copper = GetMoney()
+            local g = math.floor(copper / 10000)
+            local s = math.floor((copper % 10000) / 100)
+            local c = copper % 100
+            tooltip:AddDoubleLine("Gold",   format("%d|cffffaa00g|r", g))
+            tooltip:AddDoubleLine("Silver", format("%d|cffc0c0c0s|r", s))
+            tooltip:AddDoubleLine("Copper", format("%d|cffb87333c|r", c))
+        end,
+        clickHint = "open currency",
     },
 
     guild = {
@@ -172,26 +304,60 @@ HUF.DataPoints = {
             end)
             return ok and r or "—"
         end,
+        onClick = function()
+            if IsInGuild() then ToggleGuildFrame() end
+        end,
+        onEnter = function(tooltip)
+            if not IsInGuild() then
+                tooltip:AddLine("Not in a guild", 1, 1, 1)
+                return
+            end
+            local name = GetGuildInfo("player")
+            local total, _, online = GetNumGuildMembers()
+            if name then tooltip:AddLine(name, 1, 0.82, 0) end
+            tooltip:AddDoubleLine("Online",
+                format("%d / %d", online or 0, total or 0))
+        end,
+        clickHint = "open guild panel",
     },
 
     friends = {
         label    = "Friends",
         getValue = function()
             local ok, r = pcall(function()
-                local online = C_FriendList.GetNumOnlineFriends()
-                return online and tostring(online) or "—"
+                return tostring(C_FriendList.GetNumOnlineFriends() or 0)
             end)
             return ok and r or "—"
         end,
+        onClick = function() ToggleFriendsFrame() end,
+        onEnter = function(tooltip)
+            local online = C_FriendList.GetNumOnlineFriends() or 0
+            local total  = C_FriendList.GetNumFriends() or 0
+            tooltip:AddDoubleLine("Online", format("%d / %d", online, total))
+        end,
+        clickHint = "open friends list",
     },
 
     zone = {
         label    = "Zone",
         getValue = function()
-            local ok, r = pcall(function()
-                return GetZoneText() or "—"
-            end)
+            local ok, r = pcall(function() return GetZoneText() or "—" end)
             return ok and r or "—"
+        end,
+        onEnter = function(tooltip)
+            local z = GetZoneText() or "—"
+            local sz = GetSubZoneText() or ""
+            tooltip:AddLine(z, 1, 0.82, 0)
+            if sz ~= "" and sz ~= z then
+                tooltip:AddLine(sz, 1, 1, 1)
+            end
+            local mapID = C_Map.GetBestMapForUnit("player")
+            local pos = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
+            if pos then
+                local x, y = pos:GetXY()
+                tooltip:AddDoubleLine("Position",
+                    format("%.1f, %.1f", x*100, y*100))
+            end
         end,
     },
 
@@ -206,6 +372,41 @@ HUF.DataPoints = {
             end)
             return ok and r or "—"
         end,
+        onClick = function()
+            if InCombatLockdown() then
+                UIErrorsFrame:AddMessage("Can't change spec in combat",
+                    1.0, 0.1, 0.1, 1.0)
+                return
+            end
+            local numSpecs = GetNumSpecializations()
+            if not numSpecs or numSpecs < 2 then return end
+            local currentSpec = GetSpecialization()
+            MenuUtil.CreateContextMenu(UIParent, function(_, rootDescription)
+                rootDescription:CreateTitle("Switch Specialization")
+                for i = 1, numSpecs do
+                    local _, name = GetSpecializationInfo(i)
+                    if name then
+                        local lbl = (i == currentSpec)
+                            and ("|cff40ff40" .. name .. " (current)|r") or name
+                        local b = rootDescription:CreateButton(lbl, function()
+                            C_SpecializationInfo.SetSpecialization(i)
+                        end)
+                        if i == currentSpec then b:SetEnabled(false) end
+                    end
+                end
+            end)
+        end,
+        onEnter = function(tooltip)
+            local idx = GetSpecialization()
+            if not idx then return end
+            local _, _, _, _, role, primary = GetSpecializationInfo(idx)
+            if role then tooltip:AddDoubleLine("Role", role) end
+            local stats = { [1]="Strength", [2]="Agility", [4]="Intellect" }
+            if primary and stats[primary] then
+                tooltip:AddDoubleLine("Primary stat", stats[primary])
+            end
+        end,
+        clickHint = "switch specialization",
     },
 
     empty = {

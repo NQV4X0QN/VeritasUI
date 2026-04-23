@@ -2,6 +2,34 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.4.2] — 2026-04-22
+
+### Changed
+
+* **[HUDFrame] Chat frame decoupled from anchor frames** — `MirrorAnchorToChatFrame` is now a no-op; `SyncOneAnchor` only restores the anchor's own saved position. Chat frames are left entirely to Blizzard's native position management.
+
+* **[HUDFrame] Interactive data points with hover tooltips** — `BuildBar` now creates a `Button` click surface for any data point declaring `onClick` or `onEnter`. Hovering shows a `GameTooltip` with the data point label, optional detail lines, and a click hint. A subtle `ADD`-blend highlight texture appears on hover.
+
+* **[HUDFrame] Tiered color system expanded** — `FormatSlot` checks `tierColor` before `warnThreshold`/`warnColor`. `fps`, `latencyWorld`, `latencyHome`, `memory`, and `durability` now use green/yellow/red tier coloring based on thresholds.
+
+* **[HUDFrame] New data points: `fps`, `latencyWorld`, `latencyHome`** — Display framerate and world/home latency with tiered colors.
+
+* **[HUDFrame] `spec` — click to switch specialization** — Opens a `MenuUtil` context menu listing all available specs; blocked in combat with an error frame message. Hover shows role and primary stat.
+
+* **[HUDFrame] `durability` — click opens character panel; hover shows per-slot breakdown** — Replaced `warnThreshold`/`warnColor` with `tierColor` (≥50% green, ≥20% yellow, below red).
+
+* **[HUDFrame] `gold` — click opens currency tab; hover shows gold/silver/copper** — `math_floor` usage normalized to `math.floor`.
+
+* **[HUDFrame] `guild` — click opens guild panel; hover shows name and online count.**
+
+* **[HUDFrame] `friends` — click opens friends list; hover shows online/total count.**
+
+* **[HUDFrame] `zone` — hover shows zone, subzone, and player map coordinates.**
+
+* **[HUDFrame] `memory` — click forces garbage collection; hover shows top-10 addon memory usage.**
+
+* **[HUDFrame] `ilvl` — click opens character panel; hover shows overall, equipped, and PvP item levels.**
+
 ## [1.4.1] — 2026-04-22
 
 ### Changed
