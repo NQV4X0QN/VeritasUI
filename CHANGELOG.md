@@ -2,6 +2,54 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.5.0] - 2026-04-23
+
+### Added
+
+- **[HUDFrame] Three independent panel bars** — the single panel bar is replaced with a three-bar system (`HUF.panelBars[1..3]`). Each bar has its own position, width (300–1200px slider), slot layout, and visibility. Default slot layouts: bar 1 = stats (`haste`/`mastery`/`crit`/`armor`/`ilvl`), bar 2 = performance + currency (`fps`/`latencyWorld`/`memory`/`durability`/`gold`), bar 3 = social + zone (`spec`/`zone`/`friends`/`guild`/`empty`). Bars 2 and 3 default to hidden
+
+- **[HUDFrame] Per-frame visibility checkboxes** — Blizzard AddOn settings panel now has a master "Enable HUD Frame" toggle plus five sub-checkboxes: Show Left Chat Frame, Show Right Chat Frame, Show Panel Bar 1, Show Panel Bar 2, Show Panel Bar 3. Master toggle gates the sub-toggles
+
+- **[HUDFrame] Per-bar full-width mode** — each panel bar can be toggled between `normal` (anchored width from slider) and `fullwidth` (edge-to-edge `LEFT`/`RIGHT` anchors across the screen). Controlled via a new Mode dropdown in `/hud config` or the new `/hud mode <idx> <normal|fullwidth>` slash subcommand. In fullwidth mode the bar is draggable vertically but X position is locked to screen edges; the width slider for that bar is automatically disabled while preserving its stored value
+
+- **[HUDFrame] Zones for full-width bars** — fullwidth bars support three named zones (left, center, right), each holding up to 4 slots. Left-zone slots anchor to the left screen edge; right-zone slots anchor to the right screen edge; center-zone slots center on the bar midline. Normal-mode bars continue to use the existing single slot list unchanged. Mode toggle preserves both layouts — switching back to normal restores the pre-fullwidth slot list; switching back to fullwidth restores the pre-normal zones. No data loss in either direction
+
+- **[HUDFrame] `/hud mode <1|2|3> <normal|fullwidth>`** — new slash subcommand to toggle a panel bar's display mode from the command line
+
+- **[HUDFrame] `/hud set panelzone <idx> <left|center|right> <slot#> <key>`** — new slash subcommand to set zone slots on fullwidth bars
+
+- **[Repo] `PANELBAR_DESIGN_CONSTRAINTS.md`** — companion document (stored alongside the VeritasUI AI development skill) captures the load-bearing rationale for `CreatePanelBar`'s `ButtonFrameTemplate`-plus-hidden-chrome approach and the `PortraitContainer` repurposing. Protects the rendering internals from future "simplification" passes
+
+### Changed
+
+- **[HUDFrame] Internal rename `centerBar` → `panelBar`** — function names (`CreateCenterBar` → `CreatePanelBar`), DB keys (`centerBarPos` → `panelBarPos`, `centerBarWidth` → `panelBarWidth`, `layout.centerBar` → `layout.panelBar`), Config constants (`CENTER_BAR_W`/`Y` → `PANEL_BAR_W`/`Y`), settings labels, and slash commands are all updated. One-time DB migration handles the rename automatically on first load after upgrade. `/hud set center` retained as a back-compat alias that resolves to panel bar 1
+
+- **[HUDFrame] `/hud set panel`** — accepts both 2-arg (`panel <slot> <key>`, back-compat targeting bar 1) and 3-arg (`panel <barIdx> <slot> <key>`, target specific bar) forms
+
+- **[HUDFrame] `/hud layout`** — output now shows each panel bar's mode alongside its slot list; fullwidth bars print a three-line zone breakdown (left/center/right, em-dash for empty zones)
+
+- **[HUDFrame] `/hud reset`** — now also resets per-bar mode back to `normal` and re-seeds empty zone subtables, producing an immediately-consistent runtime state without requiring `/reload`
+
+- **[HUDFrame] Settings panel** — window resized to 520×1000 to accommodate three stacked Panel Bar sections with Mode dropdown and mode-aware slot editor (5 slots in normal mode, 3×4 zone grid in fullwidth mode). Frame Sizes section now has three independent width sliders, one per bar (300–1200px range)
+
+- **[HUDFrame] Rendering pipeline refactor** — `BuildBar` extended with an optional `zones` parameter; fullwidth bars render via a new `BuildZone` helper that distributes FontStrings at edge-aligned positions. Interactive slot wiring (clickFrame, highlight texture, tooltip handlers) extracted into a shared `CreateInteractiveSlot` helper used by both rendering paths
+
+- **[HUDFrame] Zone slot spacing** — `ZONE_SLOT_GAP` tuned to 180px after in-game verification. 100px caused overlap on wider data text (`Mastery: 69.3%`, `Zone: Silvermoon City`); 180px gives comfortable margin for the widest data points
+
+- **[Repo] CHANGELOG normalization** — historical entries (v1.0.0–v1.4.2) retroactively conformed to the skill's formatting rules: hyphen date separators, `-` bullet markers, trailing periods removed, redundant `---` dividers collapsed. The `## Pre-VeritasUI History` appendix is preserved at `####` subheader level
+
+- **[Repo] README rewrite** — updated for Interface 120005, added the `VeritasUI_HUDFrame` module documentation (previously missing), refreshed all module feature lists, removed the stale "Press and Hold Casting must be disabled" note (v1.3.19 made `PriorityRotation` auto-manage the CVar), clarified GitHub-only distribution
+
+- **[Repo] GitHub Releases normalization** — all 46 prior releases (v1.0.0–v1.4.2) had their bodies and titles normalized to the current format (`**Added**` bold section headers, `-` bullet markers). Releases that previously had bare `vX.Y.Z` titles gained descriptive suffixes
+
+### Fixed
+
+- **[HUDFrame] Shared-reference bug in defaults table** — first-time DB init now deep-copies subtable defaults (`visibility`, `panelBarWidth`, `panelBars`) rather than sharing references with the `defaults` constant. Prevents silent state leaks across reloads if a user mutated a subtable value
+
+### Requires
+
+- World of Warcraft: Midnight (Patch 12.0.5, Interface 120005) — unchanged from v1.4.2
+
 ## [1.4.2] - 2026-04-22
 
 ### Changed
