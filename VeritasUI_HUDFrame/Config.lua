@@ -23,11 +23,12 @@ HUF.Config = {
     -- The docked chat frame is inset by this amount on all four sides.
     BORDER_INSET    = 11,
 
-    -- Height of each data text bar (pixels)
-    -- 20px matches the BottomEdge chrome strip height on UIFrameMetal.
+    -- Height of each data text bar (pixels).
+    -- 26px accommodates the _UI-Frame-Metal-EdgeTop chrome strip plus
+    -- readable 11pt data text (v1.4.0).
     BAR_HEIGHT      = 26,
 
-    -- Panel bar: total width and position of its bottom edge above the screen bottom.
+    -- Panel bar: default width and position of its bottom edge above the screen bottom.
     -- Raise PANEL_BAR_Y if your action bar cluster is taller than the default layout.
     PANEL_BAR_W    = 500,
     PANEL_BAR_Y    = 190,
@@ -38,11 +39,4 @@ HUF.Config = {
     -- Data warning thresholds
     WARN_DURABILITY_PCT = 20,   -- durability below this % → red
     WARN_MEMORY_MB      = 80,   -- memory above this MB  → red
-
-    -- Default frame dimensions used by the Frame Sizes slider system
-    leftAnchorWidth  = 380,
-    leftAnchorHeight = 220,
-    rightAnchorWidth = 380,
-    rightAnchorHeight = 220,
-    panelBarWidth   = 500,
 }

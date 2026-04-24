@@ -53,7 +53,59 @@ HUF.panelBars   = nil   -- { [1]=frame, [2]=frame, [3]=frame }
 -- Move-mode
 local isLocked  = true
 local hudFrames = {}          -- { frame, isAnchor } — for tinting
-local chatFrameMap = {}       -- anchor → WoW chat frame — for drag mirroring
+
+----------------------------------------------------------------
+--  Recursive deep-copy helper (used only for defaults-seeding).
+--  Blizzard SavedVariables preserve table shape across reloads, so
+--  this only runs on a truly fresh install — cost is negligible.
+--  Required because defaults.panelBars[i] is itself a table; a
+--  single-level copy would share nested references with the
+--  `defaults` constant.
+----------------------------------------------------------------
+local function DeepCopyTable(src)
+    local dst = {}
+    for k, v in pairs(src) do
+        if type(v) == "table" then
+            dst[k] = DeepCopyTable(v)
+        else
+            dst[k] = v
+        end
+    end
+    return dst
+end
+
+----------------------------------------------------------------
+--  Ensure db.layout.panelBarZones[1..3] has {left, center, right}
+--  subtables. Used by both Stage 4 migration and /hud reset paths.
+--  If seedFromFullwidth is true, seed a bar's center zone from the
+--  existing single slot list when the bar is already in fullwidth
+--  mode (Stage 4 upgrade path only; /hud reset passes false).
+----------------------------------------------------------------
+local function EnsurePanelBarZones(zdb, seedFromFullwidth)
+    if not zdb then return end
+    zdb.panelBarZones = zdb.panelBarZones or {}
+    for i = 1, 3 do
+        if not zdb.panelBarZones[i] then
+            zdb.panelBarZones[i] = { left = {}, center = {}, right = {} }
+            if seedFromFullwidth then
+                local barMode = (VeritasUI_HUDFrameDB.panelBars
+                                 and VeritasUI_HUDFrameDB.panelBars[i]
+                                 and VeritasUI_HUDFrameDB.panelBars[i].mode)
+                                or "normal"
+                if barMode == "fullwidth"
+                   and zdb.panelBars and zdb.panelBars[i] then
+                    for k = 1, math.min(4, #zdb.panelBars[i]) do
+                        zdb.panelBarZones[i].center[k] = zdb.panelBars[i][k]
+                    end
+                end
+            end
+        else
+            zdb.panelBarZones[i].left   = zdb.panelBarZones[i].left   or {}
+            zdb.panelBarZones[i].center = zdb.panelBarZones[i].center or {}
+            zdb.panelBarZones[i].right  = zdb.panelBarZones[i].right  or {}
+        end
+    end
+end
 
 ----------------------------------------------------------------
 --  Move-mode tinting
@@ -79,15 +131,10 @@ local function ApplyNormalTint()
 end
 
 ----------------------------------------------------------------
---  Chat frame mirroring (Fix 2)
---  Anchors are backdrop-behind decorations; ChatFrame1/2 are
---  never re-parented or repositioned except by mirroring drags.
+--  Chat anchor position sync
+--  Anchors are decorative; ChatFrame1/2 are positioned by Blizzard.
+--  On login we only restore the anchor's own saved position.
 ----------------------------------------------------------------
-local function MirrorAnchorToChatFrame(anchor)
-    -- intentionally disabled: chat frame is user-positioned via Blizzard
-end
-HUF.MirrorAnchorToChatFrame = MirrorAnchorToChatFrame
-
 local function SyncOneAnchor(anchor, chatFrame, savedPos)
     if not anchor then return end
     if savedPos then
@@ -197,7 +244,7 @@ local function MakeDraggable(f, posKey, isChatAnchor)
             db.panelBarPos = db.panelBarPos or {}
             db.panelBarPos[idx] = db.panelBarPos[idx] or {}
             db.panelBarPos[idx].y = centerY
-            ApplyPanelBarMode(idx)
+            HUF.ApplyPanelBarMode(idx)
             return
         end
 
@@ -205,7 +252,6 @@ local function MakeDraggable(f, posKey, isChatAnchor)
         local point, _, relPoint, x, y = self:GetPoint(1)
         if not point then return end
         db[posKey] = { point = point, relPoint = relPoint, x = x, y = y }
-        if isChatAnchor then MirrorAnchorToChatFrame(self) end
     end)
 end
 
@@ -344,23 +390,13 @@ end
 HUF.ApplyPanelBarMode = ApplyPanelBarMode
 
 ----------------------------------------------------------------
---  Recreate empty panelBarZones after /hud reset. Mirrors the
---  Stage 4 ADDON_LOADED migration but without the fullwidth-seed
---  logic, since reset also sets every bar back to "normal" mode.
+--  Seed empty zones for /hud reset. Delegates to EnsurePanelBarZones
+--  (never seeds from fullwidth — reset also drops every bar back to
+--  normal mode, so zones start empty).
 ----------------------------------------------------------------
 local function SeedDefaultPanelBarZones()
     if not db or not db.layout then return end
-    local z = db.layout
-    z.panelBarZones = z.panelBarZones or {}
-    for i = 1, 3 do
-        if not z.panelBarZones[i] then
-            z.panelBarZones[i] = { left = {}, center = {}, right = {} }
-        else
-            z.panelBarZones[i].left   = z.panelBarZones[i].left   or {}
-            z.panelBarZones[i].center = z.panelBarZones[i].center or {}
-            z.panelBarZones[i].right  = z.panelBarZones[i].right  or {}
-        end
-    end
+    EnsurePanelBarZones(db.layout, false)
 end
 HUF.SeedDefaultPanelBarZones = SeedDefaultPanelBarZones
 
@@ -379,13 +415,11 @@ local function SetupHUDFrame()
     HUF.leftAnchor:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", CFG.CHAT_LEFT_X, CFG.CHAT_BOTTOM_Y)
     MakeDraggable(HUF.leftAnchor, "leftAnchorPos", true)
     hudFrames[#hudFrames + 1] = { frame = HUF.leftAnchor, isAnchor = true }
-    chatFrameMap[HUF.leftAnchor] = _G.ChatFrame1
 
     HUF.rightAnchor = CreateChatAnchor("VUI_HUD_RightAnchor", db.rightAnchorWidth, db.rightAnchorHeight)
     HUF.rightAnchor:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -CFG.CHAT_RIGHT_X, CFG.CHAT_BOTTOM_Y)
     MakeDraggable(HUF.rightAnchor, "rightAnchorPos", true)
     hudFrames[#hudFrames + 1] = { frame = HUF.rightAnchor, isAnchor = true }
-    chatFrameMap[HUF.rightAnchor] = _G.ChatFrame2
 
     -- ── Three panel bars — independently positioned & draggable ──
     -- Positioning + width is delegated to ApplyPanelBarMode, which reads
@@ -468,14 +502,12 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if arg1 ~= ADDON_NAME then return end
         VeritasUI_HUDFrameDB = VeritasUI_HUDFrameDB or {}
 
-        -- Scalar + shallow-table defaults. For table defaults we deep-copy
-        -- so we don't share references with the `defaults` constant.
+        -- Scalar + table defaults. Table defaults are deep-copied so we don't
+        -- share references with the `defaults` constant at any nesting level.
         for k, v in pairs(defaults) do
             if VeritasUI_HUDFrameDB[k] == nil then
                 if type(v) == "table" then
-                    local copy = {}
-                    for kk, vv in pairs(v) do copy[kk] = vv end
-                    VeritasUI_HUDFrameDB[k] = copy
+                    VeritasUI_HUDFrameDB[k] = DeepCopyTable(v)
                 else
                     VeritasUI_HUDFrameDB[k] = v
                 end
@@ -544,35 +576,13 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         --   VeritasUI_HUDFrameDB.panelBars[i].mode   = per-bar mode state
         --   VeritasUI_HUDFrameDB.layout.panelBars[i] = slot list (Stage 2)
         --   VeritasUI_HUDFrameDB.layout.panelBarZones[i].{left,center,right}
-        --     = zoned slot lists for fullwidth bars (Stage 4 — new)
-        -- If a bar is already in fullwidth at migration time, seed its
-        -- center zone from the existing single slot list so the bar
-        -- keeps showing something after the upgrade.
+        --     = zoned slot lists for fullwidth bars (Stage 4)
+        -- Pass seedFromFullwidth=true so bars already in fullwidth at migration
+        -- time get their existing single slot list seeded into the center zone.
         if not VeritasUI_HUDFrameDB.layout then
             VeritasUI_HUDFrameDB.layout = {}
         end
-        local zdb = VeritasUI_HUDFrameDB.layout
-        zdb.panelBarZones = zdb.panelBarZones or {}
-        for i = 1, 3 do
-            if not zdb.panelBarZones[i] then
-                zdb.panelBarZones[i] = { left = {}, center = {}, right = {} }
-                local barMode = (VeritasUI_HUDFrameDB.panelBars
-                                 and VeritasUI_HUDFrameDB.panelBars[i]
-                                 and VeritasUI_HUDFrameDB.panelBars[i].mode)
-                                or "normal"
-                if barMode == "fullwidth"
-                   and zdb.panelBars and zdb.panelBars[i] then
-                    for k = 1, math.min(4, #zdb.panelBars[i]) do
-                        zdb.panelBarZones[i].center[k] = zdb.panelBars[i][k]
-                    end
-                end
-            else
-                -- Partial DB state: ensure all three zone keys exist
-                zdb.panelBarZones[i].left   = zdb.panelBarZones[i].left   or {}
-                zdb.panelBarZones[i].center = zdb.panelBarZones[i].center or {}
-                zdb.panelBarZones[i].right  = zdb.panelBarZones[i].right  or {}
-            end
-        end
+        EnsurePanelBarZones(VeritasUI_HUDFrameDB.layout, true)
 
         db     = VeritasUI_HUDFrameDB
         HUF.db = db   -- expose for DataText and SettingsPanel

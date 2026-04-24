@@ -2,6 +2,29 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.5.3] - 2026-04-23
+
+### Fixed
+
+- **[HUDFrame] Fullwidth panel bar drag-stop no longer errors on the first drop** — `OnDragStop` called `ApplyPanelBarMode(idx)` as a forward-reference local that was still `nil` at closure-capture time; changed to `HUF.ApplyPanelBarMode(idx)` which resolves through the module table
+- **[HUDFrame] `defaults.panelBars[i]` no longer shares references with the `defaults` constant** — v1.5.0's defaults-seeding copy was one level deep; a recursive `DeepCopyTable` now runs for table defaults so nested tables are fully owned by the DB
+
+### Changed
+
+- **[HUDFrame] Removed dead `MirrorAnchorToChatFrame` function and its 5 callsites** — v1.4.2 made this a no-op; removing it eliminates unused call overhead and a leftover export on `HUF`
+- **[HUDFrame] Removed dead `chatFrameMap` table** — leftover from the pre-1.4.2 mirroring design; was written during setup but never read
+- **[HUDFrame] Deleted the unlisted legacy `HUDFrame.lua`** — pre-refactor implementation superseded by `Core.lua` + `Config.lua` + `DataPoints.lua` + `SettingsPanel.lua` + `DataText.lua` as of v1.3.28; the file was kept on disk during active development but is no longer needed. Git history preserves it if reference is ever required
+- **[HUDFrame] `Config.lua` cleaned up** — removed 5 dead default constants (`leftAnchorWidth`/`Height`, `rightAnchorWidth`/`Height`, `panelBarWidth`) that were never read and duplicated — and in the case of `panelBarWidth`, actively contradicted — the authoritative `Core.lua` defaults. Corrected the stale `BAR_HEIGHT` comment that still referenced the pre-1.4.0 20px value
+- **[HUDFrame] `SeedDefaultPanelBarZones` + Stage 4 migration consolidated** — both paths now share a single `EnsurePanelBarZones(zdb, seedFromFullwidth)` helper, removing a drift risk between the two implementations
+- **[HUDFrame] `BuildSection` dropdown Y derived from `rowY`** — dropdown and label positions now come from the same expression (`hdrY + rowY - 14`), so any future spacing edit tracks both; visually identical to prior layout
+- **[HUDFrame] Durability scan cached per frame** — `getValue` and `tierColor` are called back-to-back via `FormatSlot`; a `GetTime()`-keyed cache in `GetLowestDurability` ensures the 11-slot inventory scan runs once per tick, not twice. Both functions now share the single `DUR_SLOTS` constant and `GetLowestDurability` helper; `getValue`'s redundant 1-18 scan removed
+- **[QualityOfLife] Merchant item-level refresh debounced** — opening a vendor fires 5–6 triggers (hooks, events, button clicks) in quick succession; a single `pendingTimer` now coalesces them into one scan per interaction instead of scheduling an independent `C_Timer.After` per trigger
+- **[PriorityRotation] Strategy 3 keybind scan skipped when Strategies 1/2 succeed** — `GetBindingKey` lookup and `self.overriddenKeys` assignment now live inside the `if not self.overriddenButton` gate; when a bar button is directly overridden, no vestigial "potential keys" work runs
+
+### Requires
+
+- World of Warcraft: Midnight (Patch 12.0.5, Interface 120005) — unchanged from v1.5.2
+
 ## [1.5.2] - 2026-04-23
 
 ### Fixed

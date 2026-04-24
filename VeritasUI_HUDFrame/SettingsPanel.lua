@@ -138,17 +138,20 @@ local function BuildSection(parent, barKey, numSlots, hdrText, hdrX, hdrY, secW,
     sep:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 0, -3)
     sep:SetColorTexture(1, 0.82, 0, 0.5)
 
-    -- Slot rows
+    -- Slot rows — label and dropdown both derive Y from rowY so that edits
+    -- to spacing track consistently between the two.
     for i = 1, numSlots do
-        local rowY = -6 - (i - 1) * SLOT_ROW_H   -- offset from sep's BOTTOMLEFT
+        local rowY = -6 - (i - 1) * SLOT_ROW_H
 
         local lbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         lbl:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", 4, rowY)
         lbl:SetText("Slot " .. i)
         lbl:SetTextColor(0.9, 0.9, 0.9)
 
-        -- Dropdown positioned to the right of label; y+4 to vertically center with label
-        MakeDropdown(parent, barKey, i, hdrX + 48, hdrY - 20 - (i - 1) * SLOT_ROW_H, ddW or 140)
+        -- Dropdown anchors to parent TOPLEFT (original behaviour); Y is
+        -- derived from rowY so label and dropdown move together. The -14
+        -- visually centers the dropdown with the label text.
+        MakeDropdown(parent, barKey, i, hdrX + 48, hdrY + rowY - 14, ddW or 140)
     end
 
     return sep
@@ -347,20 +350,14 @@ local function BuildSizesSection(parent, startY)
         200, 700, 10, lw, "Width: %dpx",
         function(val)
             if HUF.db then HUF.db.leftAnchorWidth = val end
-            if HUF.leftAnchor then
-                HUF.leftAnchor:SetWidth(val)
-                if HUF.MirrorAnchorToChatFrame then HUF.MirrorAnchorToChatFrame(HUF.leftAnchor) end
-            end
+            if HUF.leftAnchor then HUF.leftAnchor:SetWidth(val) end
         end)
 
     MakeSlider(parent, "VUI_HUD_Slider_RightW", RIGHT_COL, -52, sep, SLIDER_W,
         200, 700, 10, rw, "Width: %dpx",
         function(val)
             if HUF.db then HUF.db.rightAnchorWidth = val end
-            if HUF.rightAnchor then
-                HUF.rightAnchor:SetWidth(val)
-                if HUF.MirrorAnchorToChatFrame then HUF.MirrorAnchorToChatFrame(HUF.rightAnchor) end
-            end
+            if HUF.rightAnchor then HUF.rightAnchor:SetWidth(val) end
         end)
 
     -- Height sliders (left / right)
@@ -368,20 +365,14 @@ local function BuildSizesSection(parent, startY)
         80, 500, 10, lh, "Height: %dpx",
         function(val)
             if HUF.db then HUF.db.leftAnchorHeight = val end
-            if HUF.leftAnchor then
-                HUF.leftAnchor:SetHeight(val)
-                if HUF.MirrorAnchorToChatFrame then HUF.MirrorAnchorToChatFrame(HUF.leftAnchor) end
-            end
+            if HUF.leftAnchor then HUF.leftAnchor:SetHeight(val) end
         end)
 
     MakeSlider(parent, "VUI_HUD_Slider_RightH", RIGHT_COL, -114, sep, SLIDER_W,
         80, 500, 10, rh, "Height: %dpx",
         function(val)
             if HUF.db then HUF.db.rightAnchorHeight = val end
-            if HUF.rightAnchor then
-                HUF.rightAnchor:SetHeight(val)
-                if HUF.MirrorAnchorToChatFrame then HUF.MirrorAnchorToChatFrame(HUF.rightAnchor) end
-            end
+            if HUF.rightAnchor then HUF.rightAnchor:SetHeight(val) end
         end)
 
     -- Panel bar width sliders (three, stacked)

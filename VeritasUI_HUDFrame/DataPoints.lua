@@ -26,10 +26,17 @@ local C_FriendList               = C_FriendList
 
 ----------------------------------------------------------------
 --  Shared helpers
+--
+--  Durability scan result is cached for 100ms because the ticker
+--  invokes both getValue and tierColor back-to-back via FormatSlot
+--  — without the cache each tick would scan the 11 gear slots twice.
 ----------------------------------------------------------------
 local DUR_SLOTS = { 1, 3, 5, 6, 7, 8, 9, 10, 15, 16, 17 }
 
+local _durCacheTime, _durCacheValue = -1, nil
 local function GetLowestDurability()
+    local now = GetTime()
+    if _durCacheTime == now then return _durCacheValue end
     local lowest
     for _, slot in ipairs(DUR_SLOTS) do
         local ok, result = pcall(function()
@@ -41,6 +48,7 @@ local function GetLowestDurability()
             if not lowest or result < lowest then lowest = result end
         end
     end
+    _durCacheTime, _durCacheValue = now, lowest
     return lowest
 end
 
@@ -217,28 +225,11 @@ HUF.DataPoints = {
     durability = {
         label    = "Dur",
         getValue = function()
-            local ok, r = pcall(function()
-                local lowest = 100
-                for slot = 1, 18 do
-                    local cur, max = GetInventoryItemDurability(slot)
-                    if cur and max and max > 0 then
-                        local pct = (cur / max) * 100
-                        if pct < lowest then lowest = pct end
-                    end
-                end
-                return format("%.0f%%", lowest)
-            end)
-            return ok and r or "—"
+            local lowest = GetLowestDurability()
+            return lowest and format("%.0f%%", lowest) or "—"
         end,
         tierColor = function()
-            local lowest
-            for _, s in ipairs({1,3,5,6,7,8,9,10,15,16,17}) do
-                local cur, max = GetInventoryItemDurability(s)
-                if cur and max and max > 0 then
-                    local p = (cur/max)*100
-                    if not lowest or p < lowest then lowest = p end
-                end
-            end
+            local lowest = GetLowestDurability()
             if not lowest then return "|cffffffff" end
             if lowest >= 50 then return "|cff40ff40" end
             if lowest >= 20 then return "|cffffd100" end
@@ -252,7 +243,7 @@ HUF.DataPoints = {
                 [15]="Back", [16]="Main Hand", [17]="Off Hand",
             }
             tooltip:AddLine(" ")
-            for _, s in ipairs({1,3,5,6,7,8,9,10,15,16,17}) do
+            for _, s in ipairs(DUR_SLOTS) do
                 local cur, max = GetInventoryItemDurability(s)
                 if cur and max and max > 0 then
                     local p = (cur/max)*100
