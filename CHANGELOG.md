@@ -2,6 +2,16 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.5.2] - 2026-04-23
+
+### Fixed
+- HUDFrame — fullwidth panel bars no longer drift downward on each `/reload`. `OnDragStop` was saving the bar's bottom edge Y while `ApplyPanelBarMode` used the same value as the LEFT anchor's vertical-center offset, shifting the bar down by `BAR_HEIGHT/2` per apply
+- HUDFrame — normal-mode panel bars no longer disappear off-screen during drag. A continuous `OnUpdate` clamp using the bar's own rect (not `ButtonFrameTemplate`'s inflated `GetBoundsRect`) keeps the bar on-screen while dragging
+- HUDFrame — dropping a panel bar within 30px of a side screen edge now snaps it flush to that edge for easier alignment
+
+### Known Limitations
+- HUDFrame — normal-mode panel bars cannot reach the true top edge of the screen. `ButtonFrameTemplate`'s hidden NineSlice children contribute to `GetBoundsRect`, leaving a small gap. Deferred to a future release
+
 ## [1.5.1] - 2026-04-23
 
 ### Fixed

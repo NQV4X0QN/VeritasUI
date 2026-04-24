@@ -108,44 +108,104 @@ end
 --          table { panelBarIdx = N } (db.panelBarPos[N] = {...})
 --  isChatAnchor=true → DragStop mirrors position to chat frame
 ----------------------------------------------------------------
+-- Compute clamped + edge-snapped BOTTOMLEFT offsets for a panel bar.
+-- Used both by the continuous drag clamp and the drag-stop final snap.
+local SNAP_THRESHOLD = 30   -- px from edge to trigger flush snap
+local function ComputePanelBarClamp(frame)
+    local uiW, uiH = UIParent:GetWidth(), UIParent:GetHeight()
+    local left     = frame:GetLeft()   or 0
+    local bottom   = frame:GetBottom() or 0
+    local w, h     = frame:GetWidth(), frame:GetHeight()
+    -- Clamp to on-screen rect
+    left   = math.max(0, math.min(uiW - w, left))
+    bottom = math.max(0, math.min(uiH - h, bottom))
+    return left, bottom, w, h, uiW, uiH
+end
+
 local function MakeDraggable(f, posKey, isChatAnchor)
     f:SetMovable(true)
     f:EnableMouse(true)
-    f:SetClampedToScreen(true)
+    -- Chat anchors: native SetClampedToScreen works fine.
+    -- Panel bars: hidden ButtonFrameTemplate children inflate GetBoundsRect,
+    -- so native clamp prevents reaching the true screen top. We use a
+    -- manual OnUpdate clamp during drag + drag-stop snap instead.
+    f:SetClampedToScreen(isChatAnchor and true or false)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", function(self)
-        if not isLocked then self:StartMoving() end
+        if isLocked then return end
+        self:StartMoving()
+        -- Panel bars only: install a continuous clamp that keeps the bar
+        -- on-screen during drag. StartMoving re-anchors the frame as it
+        -- tracks the mouse; our clamp uses the frame's own rect, and when
+        -- it fires we stop/reposition/restart StartMoving so the drag
+        -- continues smoothly from the clamped position.
+        if not isChatAnchor then
+            self:SetScript("OnUpdate", function(self)
+                local cLeft, cBottom, w, h = ComputePanelBarClamp(self)
+                local left   = self:GetLeft()   or cLeft
+                local bottom = self:GetBottom() or cBottom
+                if cLeft ~= left or cBottom ~= bottom then
+                    self:StopMovingOrSizing()
+                    self:ClearAllPoints()
+                    self:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT",
+                                  cLeft, cBottom)
+                    self:StartMoving()
+                end
+            end)
+        end
     end)
     f:SetScript("OnDragStop", function(self)
+        self:SetScript("OnUpdate", nil)
         self:StopMovingOrSizing()
         if isLocked then return end
-        if type(posKey) == "table" and posKey.panelBarIdx then
+
+        local isPanelBar  = (type(posKey) == "table" and posKey.panelBarIdx)
+        local isFullwidth = false
+        if isPanelBar then
             local idx = posKey.panelBarIdx
-            local mode = (db.panelBars and db.panelBars[idx]
-                          and db.panelBars[idx].mode) or "normal"
-            if mode == "fullwidth" then
-                -- Capture only Y; re-apply fullwidth anchors so the bar
-                -- snaps back edge-to-edge at the new vertical position.
-                local _, centerY = self:GetCenter()
-                local yFromBottom = centerY - (self:GetHeight() / 2)
-                db.panelBarPos = db.panelBarPos or {}
-                db.panelBarPos[idx] = db.panelBarPos[idx] or {}
-                db.panelBarPos[idx].y = yFromBottom
-                ApplyPanelBarMode(idx)
-            else
-                local point, _, relPoint, x, y = self:GetPoint(1)
-                if not point then return end
-                db.panelBarPos = db.panelBarPos or {}
-                db.panelBarPos[idx] = {
-                    point = point, relPoint = relPoint, x = x, y = y
-                }
-            end
-        else
-            local point, _, relPoint, x, y = self:GetPoint(1)
-            if not point then return end
-            db[posKey] = { point = point, relPoint = relPoint, x = x, y = y }
-            if isChatAnchor then MirrorAnchorToChatFrame(self) end
+            isFullwidth = (db.panelBars and db.panelBars[idx]
+                           and db.panelBars[idx].mode) == "fullwidth"
         end
+
+        -- Normal-mode panel bars: edge-snap flush + clamp. Save the
+        -- EXACT values we set via SetPoint (don't re-read GetPoint(1),
+        -- which can return slightly-off values in some template states).
+        if isPanelBar and not isFullwidth then
+            local left, bottom, w, h, uiW, uiH = ComputePanelBarClamp(self)
+            if left < SNAP_THRESHOLD                 then left   = 0       end
+            if (uiW - (left + w)) < SNAP_THRESHOLD   then left   = uiW - w end
+            if bottom < SNAP_THRESHOLD               then bottom = 0       end
+            if (uiH - (bottom + h)) < SNAP_THRESHOLD then bottom = uiH - h end
+            self:ClearAllPoints()
+            self:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left, bottom)
+
+            local idx = posKey.panelBarIdx
+            db.panelBarPos = db.panelBarPos or {}
+            db.panelBarPos[idx] = {
+                point = "BOTTOMLEFT", relPoint = "BOTTOMLEFT",
+                x = left, y = bottom
+            }
+            return
+        end
+
+        if isPanelBar and isFullwidth then
+            local idx = posKey.panelBarIdx
+            local _, centerY = self:GetCenter()
+            local h   = self:GetHeight()
+            local uiH = UIParent:GetHeight()
+            centerY = math.max(h/2, math.min(uiH - h/2, centerY))
+            db.panelBarPos = db.panelBarPos or {}
+            db.panelBarPos[idx] = db.panelBarPos[idx] or {}
+            db.panelBarPos[idx].y = centerY
+            ApplyPanelBarMode(idx)
+            return
+        end
+
+        -- Chat anchor path
+        local point, _, relPoint, x, y = self:GetPoint(1)
+        if not point then return end
+        db[posKey] = { point = point, relPoint = relPoint, x = x, y = y }
+        if isChatAnchor then MirrorAnchorToChatFrame(self) end
     end)
 end
 
