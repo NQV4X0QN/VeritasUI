@@ -1,7 +1,7 @@
 ## Interface: 120005
 ## Title: VeritasUI — Zone Quests
 ## Notes: Auto-tracks only quests for your current zone in the Objective Tracker. |cFF888888by NQV4X0QN|r
-## Version: 1.5.3
+## Version: 1.5.4
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
 ## SavedVariables: VeritasUI_ZoneQuestsDB

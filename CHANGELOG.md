@@ -2,6 +2,16 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.5.4] - 2026-04-23
+
+### Changed
+
+- **[HUDFrame] Latency data text now mirrors Blizzard's Game Menu format** — shows `55 ms (h) / 57 ms (w)` with each value colored independently by its own latency tier, so a spike on one side isn't masked by the other being fine
+- **[HUDFrame] Memory data text now matches the microbar AddOns tooltip** — sums `GetAddOnMemoryUsage` across all addons instead of reading `collectgarbage("count")`, which included the Blizzard UI and every framework; tier thresholds rescaled to 50/150 MB
+- **[HUDFrame] Gold data text is hover-only** — removed the click-to-open-Currency-panel action since the Currency panel doesn't actually list raw gold; tooltip now uses `GetMoneyString(copper, true)` for native g/s/c coin icon textures
+- **[HUDFrame] Zone data text opens the World Map on click** — previously hover-only
+- **[HUDFrame] Fullwidth panel bar layout now uses a uniform 12-position stride across the entire bar width** — all three zones share a single step interval so every label's left edge sits at an equidistant x-coordinate regardless of value content width; `BuildZone` replaced with `BuildZones` and `ZONE_SLOT_GAP` replaced with a computed step from `(W - 2*PADDING - LAST_RESERVE) / 11`. Eliminates the "Spec overlaps ilvl" crowding at zone boundaries and the trailing gap after the rightmost slot
+
 ## [1.5.3] - 2026-04-23
 
 ### Fixed

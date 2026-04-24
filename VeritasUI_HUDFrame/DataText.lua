@@ -84,51 +84,73 @@ local function CreateInteractiveSlot(barFrame, fs, dp)
 end
 
 ----------------------------------------------------------------
---  BuildZone (fullwidth bars only)
---  Distributes up to 4 FontStrings within a single zone:
---    LEFT   — anchored to BOTTOMLEFT, slot 1 closest to edge
---    RIGHT  — anchored to BOTTOMRIGHT, last slot closest to edge
---    CENTER — anchored to BOTTOM, evenly spaced around centerline
+--  BuildZones (fullwidth bars only)
+--  Distributes up to 4 FontStrings per zone (12 total) across the
+--  entire bar width using a SINGLE uniform stride so every label's
+--  left edge sits at an equidistant x-coordinate regardless of
+--  value content width.
+--
+--  Layout math:
+--    PADDING       = 20px margin at left/right screen edges
+--    LAST_RESERVE  = 180px reserved after position 12 for the
+--                    rightmost label's value text to expand into
+--                    before the screen edge
+--    N             = 12 total slot positions (4 per zone × 3 zones)
+--    step          = (W - 2*PADDING - LAST_RESERVE) / (N - 1)
+--
+--    Position p's LEFT = PADDING + (p - 1) * step
+--
+--  Zone offsets: LEFT → positions 1..4, CENTER → 5..8, RIGHT → 9..12.
+--  Skipped slots in a zone leave visible gaps at their position,
+--  which preserves the left/center/right grouping semantics when
+--  zones aren't fully populated.
+--
+--  Every FontString is LEFT-justified so its ANCHOR is the label's
+--  left edge — that's what guarantees the word spacing stays uniform
+--  regardless of how long "Silvermoon City" or "909,829g" render.
 ----------------------------------------------------------------
-local ZONE_EDGE_PADDING = 20    -- px from screen edge to first slot
-local ZONE_SLOT_GAP     = 180   -- px between consecutive slots in a zone
-                                -- (comfortable for data text up to ~150px wide)
+local ZONE_EDGE_PADDING = 20     -- px margin at each bar edge
+local ZONE_LAST_RESERVE = 180    -- px reserved for last label's value text
+local ZONE_MAX_PER_ZONE = 4
+local ZONE_TOTAL_SLOTS  = ZONE_MAX_PER_ZONE * 3
 
-local function BuildZone(barFrame, zoneSlots, zoneType, mountPoint, yOffset)
-    if not zoneSlots or #zoneSlots == 0 then return end
+local function BuildZones(barFrame, zones, mountPoint, yOffset)
+    if not zones then return end
     mountPoint = mountPoint or "BOTTOM"
     yOffset    = yOffset    or 0
 
-    local bottomPrefix = (mountPoint == "BOTTOM") and "BOTTOM" or ""
+    local w = barFrame:GetWidth()
+    if not w or w <= 0 then w = UIParent:GetWidth() end
 
-    for i, key in ipairs(zoneSlots) do
-        if key and key ~= "" then
-            local fs = barFrame:CreateFontString(nil, "OVERLAY", nil, 7)
-            fs:SetFont("Fonts\\FRIZQT__.TTF", 11)
+    local usable = w - 2 * ZONE_EDGE_PADDING - ZONE_LAST_RESERVE
+    local step   = usable / (ZONE_TOTAL_SLOTS - 1)
 
-            local xOff, anchor
-            if zoneType == "LEFT" then
-                xOff   = ZONE_EDGE_PADDING + (i - 1) * ZONE_SLOT_GAP
-                anchor = bottomPrefix .. "LEFT"
+    local anchor = (mountPoint == "BOTTOM") and "BOTTOMLEFT" or "LEFT"
+
+    local zoneOrder = {
+        { list = zones.left   or {}, offset = 0 },
+        { list = zones.center or {}, offset = ZONE_MAX_PER_ZONE },
+        { list = zones.right  or {}, offset = ZONE_MAX_PER_ZONE * 2 },
+    }
+
+    for _, z in ipairs(zoneOrder) do
+        for i, key in ipairs(z.list) do
+            if key and key ~= "" and i <= ZONE_MAX_PER_ZONE then
+                local pos  = z.offset + i        -- 1..12
+                local xOff = ZONE_EDGE_PADDING + (pos - 1) * step
+
+                local fs = barFrame:CreateFontString(nil, "OVERLAY", nil, 7)
+                fs:SetFont("Fonts\\FRIZQT__.TTF", 11)
                 fs:SetJustifyH("LEFT")
-            elseif zoneType == "RIGHT" then
-                xOff   = -(ZONE_EDGE_PADDING + (#zoneSlots - i) * ZONE_SLOT_GAP)
-                anchor = bottomPrefix .. "RIGHT"
-                fs:SetJustifyH("RIGHT")
-            else -- CENTER
-                local n = #zoneSlots
-                xOff   = ZONE_SLOT_GAP * (i - (n + 1) / 2)
-                anchor = (mountPoint == "BOTTOM") and "BOTTOM" or "CENTER"
-                fs:SetJustifyH("CENTER")
+                fs:SetPoint(anchor, barFrame, anchor, xOff, yOffset)
+                fs:Show()
+
+                local dp = HUF.DataPoints and HUF.DataPoints[key]
+                local clickFrame = CreateInteractiveSlot(barFrame, fs, dp)
+
+                barFrame._vuiSlots[#barFrame._vuiSlots + 1] =
+                    { fs = fs, key = key, clickFrame = clickFrame }
             end
-            fs:SetPoint(anchor, barFrame, anchor, xOff, yOffset)
-            fs:Show()
-
-            local dp = HUF.DataPoints and HUF.DataPoints[key]
-            local clickFrame = CreateInteractiveSlot(barFrame, fs, dp)
-
-            barFrame._vuiSlots[#barFrame._vuiSlots + 1] =
-                { fs = fs, key = key, clickFrame = clickFrame }
         end
     end
 end
@@ -171,10 +193,8 @@ local function BuildBar(barFrame, slotKeys, mountPoint, yOffset, zones)
     barFrame._vuiSlots = {}
 
     if zones then
-        -- Fullwidth mode: render three zones anchored to bar edges.
-        BuildZone(barFrame, zones.left,   "LEFT",   mountPoint, yOffset)
-        BuildZone(barFrame, zones.center, "CENTER", mountPoint, yOffset)
-        BuildZone(barFrame, zones.right,  "RIGHT",  mountPoint, yOffset)
+        -- Fullwidth mode: unified 12-position stride across the whole bar.
+        BuildZones(barFrame, zones, mountPoint, yOffset)
         return
     end
 

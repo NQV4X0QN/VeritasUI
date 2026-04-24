@@ -124,17 +124,34 @@ HUF.DataPoints = {
 
     memory = {
         label    = "Mem",
+        -- Sums per-addon memory via GetAddOnMemoryUsage to match the
+        -- microbar AddOns tooltip. collectgarbage("count") returns the
+        -- entire Lua heap (Blizzard UI + every framework + every addon),
+        -- which is accurate but larger than what users expect when they
+        -- see "AddOn Memory" reported elsewhere.
         getValue = function()
             local ok, r = pcall(function()
-                local mem = collectgarbage("count")
-                return format("%.1f MB", mem / 1024)
+                UpdateAddOnMemoryUsage()
+                local total = 0
+                for i = 1, C_AddOns.GetNumAddOns() do
+                    total = total + (GetAddOnMemoryUsage(i) or 0)
+                end
+                if total >= 1024 then
+                    return format("%.1f MB", total / 1024)
+                end
+                return format("%.0f KB", total)
             end)
             return ok and r or "—"
         end,
         tierColor = function()
-            local mb = collectgarbage("count") / 1024
-            if mb < 200 then return "|cff40ff40" end
-            if mb < 500 then return "|cffffd100" end
+            UpdateAddOnMemoryUsage()
+            local total = 0
+            for i = 1, C_AddOns.GetNumAddOns() do
+                total = total + (GetAddOnMemoryUsage(i) or 0)
+            end
+            local mb = total / 1024
+            if mb < 50  then return "|cff40ff40" end
+            if mb < 150 then return "|cffffd100" end
             return "|cffff4444"
         end,
         onClick = function()
@@ -188,20 +205,30 @@ HUF.DataPoints = {
 
     latencyWorld = {
         label    = "Latency",
+        -- Format matches Blizzard's Game Menu tooltip: "55 ms (home) / 57 ms (world)"
+        -- Each value is colored independently so a spike on one side isn't
+        -- masked by the other being fine.
         getValue = function()
             local ok, r = pcall(function()
-                local _, _, _, world = GetNetStats()
-                return world and format("%d ms", world) or "—"
+                local _, _, home, world = GetNetStats()
+                if not home and not world then return "—" end
+                local function tier(ms)
+                    if not ms or ms <= 0 then return "|cffffffff" end
+                    if ms < 100 then return "|cff40ff40" end
+                    if ms < 200 then return "|cffffd100" end
+                    return "|cffff4444"
+                end
+                return format("%s%d ms|r (h) / %s%d ms|r (w)",
+                    tier(home),  home  or 0,
+                    tier(world), world or 0)
             end)
             return ok and r or "—"
         end,
-        tierColor = function()
-            local ok, _, _, _, world = pcall(GetNetStats)
-            if not ok or not world then return "|cffffffff" end
-            if world < 100 then return "|cff40ff40" end
-            if world < 200 then return "|cffffd100" end
-            return "|cffff4444"
-        end,
+        -- tierColor returns neutral white so the per-segment inline color
+        -- codes in getValue aren't overridden. The outer wrapper still
+        -- needs a valid color code, not an empty string, so FormatSlot's
+        -- closing |r has something to close.
+        tierColor = function() return "|cffffffff" end,
     },
 
     latencyHome = {
@@ -273,17 +300,13 @@ HUF.DataPoints = {
             end)
             return ok and r or "—"
         end,
-        onClick = function() ToggleCharacter("TokenFrame") end,
+        -- No onClick: the Currency panel doesn't actually list raw gold,
+        -- so clicking would mislead. Hover-only tooltip uses Blizzard's
+        -- GetMoneyString for native g/s/c coin icon textures.
         onEnter = function(tooltip)
             local copper = GetMoney()
-            local g = math.floor(copper / 10000)
-            local s = math.floor((copper % 10000) / 100)
-            local c = copper % 100
-            tooltip:AddDoubleLine("Gold",   format("%d|cffffaa00g|r", g))
-            tooltip:AddDoubleLine("Silver", format("%d|cffc0c0c0s|r", s))
-            tooltip:AddDoubleLine("Copper", format("%d|cffb87333c|r", c))
+            tooltip:AddDoubleLine("Balance", GetMoneyString(copper, true))
         end,
-        clickHint = "open currency",
     },
 
     guild = {
@@ -335,6 +358,8 @@ HUF.DataPoints = {
             local ok, r = pcall(function() return GetZoneText() or "—" end)
             return ok and r or "—"
         end,
+        onClick = function() ToggleWorldMap() end,
+        clickHint = "open world map",
         onEnter = function(tooltip)
             local z = GetZoneText() or "—"
             local sz = GetSubZoneText() or ""
