@@ -2,6 +2,12 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.5.1] - 2026-04-23
+
+### Fixed
+- HUDFrame — panel bar data texts no longer show multiple stacked hover highlights when a bar is rebuilt (dropdown change, mode toggle, width slider, or `/hud set`). Click frames from previous layouts were leaking their `HIGHLIGHT` textures; they are now hidden, unanchored, and unhooked during rebuild
+- HUDFrame — Spec data text tooltip now labels the role as `Damage`/`Tank`/`Healer` to match the in-game Specialization panel, instead of the raw API strings `DAMAGER`/`TANK`/`HEALER`
+
 ## [1.5.0] - 2026-04-23
 
 ### Added

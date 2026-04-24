@@ -400,7 +400,11 @@ HUF.DataPoints = {
             local idx = GetSpecialization()
             if not idx then return end
             local _, _, _, _, role, primary = GetSpecializationInfo(idx)
-            if role then tooltip:AddDoubleLine("Role", role) end
+            -- Blizzard's API returns DAMAGER/TANK/HEALER, but the in-game
+            -- Specialization panel labels these roles as Damage/Tank/Healer.
+            -- Match the panel's terminology for consistency.
+            local roleLabels = { DAMAGER = "Damage", TANK = "Tank", HEALER = "Healer" }
+            if role then tooltip:AddDoubleLine("Role", roleLabels[role] or role) end
             local stats = { [1]="Strength", [2]="Agility", [4]="Intellect" }
             if primary and stats[primary] then
                 tooltip:AddDoubleLine("Primary stat", stats[primary])

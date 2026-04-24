@@ -150,11 +150,22 @@ local function BuildBar(barFrame, slotKeys, mountPoint, yOffset, zones)
     mountPoint = mountPoint or "CENTER"
     yOffset    = yOffset    or 0
 
-    -- Hide previous FontStrings
+    -- Hide previous FontStrings and detach their click frames.
+    -- WoW has no widget GC, so we hide + unpoint + unhook rather than
+    -- trying to free. If we skipped the click frames, stale HIGHLIGHT
+    -- textures from prior layouts would stack and produce multiple
+    -- hover boxes over the same visual slot.
     if barFrame._vuiSlots then
         for _, entry in ipairs(barFrame._vuiSlots) do
             entry.fs:SetText("")
             entry.fs:Hide()
+            if entry.clickFrame then
+                entry.clickFrame:Hide()
+                entry.clickFrame:ClearAllPoints()
+                entry.clickFrame:SetScript("OnEnter", nil)
+                entry.clickFrame:SetScript("OnLeave", nil)
+                entry.clickFrame:SetScript("OnClick", nil)
+            end
         end
     end
     barFrame._vuiSlots = {}
