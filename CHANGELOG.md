@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.27] - 2026-04-24
+
+### Fixed
+
+- **[ZoneQuests] Deep-copy table defaults on init** — the shallow default-fill loop assigned `DEFAULTS.manualWatched` by reference into `VeritasUI_ZoneQuestsDB.manualWatched`, so subsequent `SnapshotWatched()` writes would mutate the `DEFAULTS` constant at runtime. Benign in current code paths (`DEFAULTS.manualWatched` is never re-read after init) but a latent footgun that would produce silent cross-mutation the moment any future code read `DEFAULTS.manualWatched` as an empty template. Added a local `DeepCopy` helper invoked only on table-typed defaults — matches the "table defaults must be deep-copied on first init" landmine documented in the development skill
+
 ## [1.3.26] - 2026-04-24
 
 ### Added

@@ -336,9 +336,19 @@ ef:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 ~= ADDON_NAME then return end
         VeritasUI_ZoneQuestsDB = VeritasUI_ZoneQuestsDB or {}
+        -- Deep-copy table defaults to avoid sharing references with the
+        -- DEFAULTS constant (mutating db.<table> would otherwise mutate
+        -- DEFAULTS.<table> at runtime).  See Known Landmines in SKILL.md.
+        local function DeepCopy(t)
+            local c = {}
+            for k, v in pairs(t) do
+                c[k] = (type(v) == "table") and DeepCopy(v) or v
+            end
+            return c
+        end
         for k, v in pairs(DEFAULTS) do
             if VeritasUI_ZoneQuestsDB[k] == nil then
-                VeritasUI_ZoneQuestsDB[k] = v
+                VeritasUI_ZoneQuestsDB[k] = (type(v) == "table") and DeepCopy(v) or v
             end
         end
         -- Migrate old title-based snapshot to questID-based format
