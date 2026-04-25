@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.26] - 2026-04-24
+
+### Added
+
+- **[PriorityRotation] `/pr diag` command for 12.0.5 API diagnostic** — tests `issecretvalue`, `table.freeze`, `C_ActionBar.RegisterActionUIButton`, `C_Secrets`, `C_RestrictedActions` availability; checks `SetCVar` lockdown, `newtable()` in restricted execution, `GetActionInfo` secret values across all 120 action slots, `GetAttribute` step readability, and icon resolution. Run in different contexts (open world, M+, raid, Delve) to identify platform-specific API restrictions
+
+
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
 ## [1.3.25] — 2026-04-21
