@@ -227,7 +227,7 @@ function PR:BuildEditor(parent, contentWidth)
         cardFill:SetAllPoints()
         cardFill:SetColorTexture(0.07, 0.06, 0.05, 0.90)
 
-        local CR, CG, CB, CA = 0.28, 0.23, 0.14, 0.75  -- warm amber border
+        local CR, CG, CB, CA = 0.32, 0.26, 0.15, 0.80  -- warm amber border
         local bTop = row:CreateTexture(nil, "BORDER")
         bTop:SetColorTexture(CR, CG, CB, CA)
         bTop:SetPoint("TOPLEFT",  row, "TOPLEFT",  0, 0)
@@ -499,14 +499,93 @@ function PR:BuildEditor(parent, contentWidth)
     end)
     dropZone:SetScript("OnReceiveDrag", AppendSpell)
 
-    -- Sequence preview
-    local seqHeader = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    seqHeader:SetPoint("TOPLEFT", dropZone, "BOTTOMLEFT", 0, -8)
+    -- ── Sequence preview card ────────────────────────────────────
+    -- Wraps the "Compiled Sequence:" header + preview text in a card
+    -- matching the Phase 2 row card style: dark fill (BACKGROUND) +
+    -- 1px warm-amber border (BORDER) for visual consistency with the
+    -- rotation rows above. Width is anchored to dropZone's bottom
+    -- corners so the card matches the row width exactly. The bottom
+    -- edge anchors to parent's bottom so the card auto-fills the
+    -- remaining vertical space, providing room for the scrollable
+    -- preview text within.
+    local seqCard = CreateFrame("Frame", nil, parent)
+    seqCard:SetPoint("TOPLEFT",  dropZone, "BOTTOMLEFT",  0, -8)
+    seqCard:SetPoint("TOPRIGHT", dropZone, "BOTTOMRIGHT", 0, -8)
+    seqCard:SetPoint("BOTTOM",   parent,   "BOTTOM",      0,  4)
+
+    local seqFill = seqCard:CreateTexture(nil, "BACKGROUND")
+    seqFill:SetAllPoints()
+    seqFill:SetColorTexture(0.07, 0.06, 0.05, 0.90)
+
+    -- Same warm-amber border tint as the rotation row cards.
+    local SCR, SCG, SCB, SCA = 0.32, 0.26, 0.15, 0.80
+    local sBTop = seqCard:CreateTexture(nil, "BORDER")
+    sBTop:SetColorTexture(SCR, SCG, SCB, SCA)
+    sBTop:SetPoint("TOPLEFT",  seqCard, "TOPLEFT",  0, 0)
+    sBTop:SetPoint("TOPRIGHT", seqCard, "TOPRIGHT", 0, 0)
+    sBTop:SetHeight(1)
+    local sBBot = seqCard:CreateTexture(nil, "BORDER")
+    sBBot:SetColorTexture(SCR, SCG, SCB, SCA)
+    sBBot:SetPoint("BOTTOMLEFT",  seqCard, "BOTTOMLEFT",  0, 0)
+    sBBot:SetPoint("BOTTOMRIGHT", seqCard, "BOTTOMRIGHT", 0, 0)
+    sBBot:SetHeight(1)
+    local sBLft = seqCard:CreateTexture(nil, "BORDER")
+    sBLft:SetColorTexture(SCR, SCG, SCB, SCA)
+    sBLft:SetPoint("TOPLEFT",    seqCard, "TOPLEFT",    0, 0)
+    sBLft:SetPoint("BOTTOMLEFT", seqCard, "BOTTOMLEFT", 0, 0)
+    sBLft:SetWidth(1)
+    local sBRgt = seqCard:CreateTexture(nil, "BORDER")
+    sBRgt:SetColorTexture(SCR, SCG, SCB, SCA)
+    sBRgt:SetPoint("TOPRIGHT",    seqCard, "TOPRIGHT",    0, 0)
+    sBRgt:SetPoint("BOTTOMRIGHT", seqCard, "BOTTOMRIGHT", 0, 0)
+    sBRgt:SetWidth(1)
+
+    -- Header at top of card with padding.
+    local seqHeader = seqCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    seqHeader:SetPoint("TOPLEFT", seqCard, "TOPLEFT", 6, -6)
     seqHeader:SetText("|cFFFFFF00Compiled Sequence:|r")
 
-    local seqPreview = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    seqPreview:SetPoint("TOPLEFT", seqHeader, "BOTTOMLEFT", 0, -2)
-    seqPreview:SetWidth(W - 16)
+    -- Scrollable preview area — fills the remaining card interior.
+    -- Uses a plain ScrollFrame (no template) so we get clean visual chrome
+    -- with no legacy UIPanel scroll buttons. Scrolling is mousewheel-only,
+    -- which matches modern Blizzard panels (Talents, Professions) where
+    -- the WowScrollBox + MinimalScrollBar pattern is used. For long
+    -- sequences the user wheel-scrolls; for short sequences the text just
+    -- sits at the top of the card with no UI clutter.
+    local seqScroll = CreateFrame("ScrollFrame", nil, seqCard)
+    seqScroll:SetPoint("TOPLEFT",     seqHeader, "BOTTOMLEFT",  0, -2)
+    seqScroll:SetPoint("BOTTOMRIGHT", seqCard,   "BOTTOMRIGHT", -8, 6)
+    seqScroll:EnableMouseWheel(true)
+
+    local seqScrollChild = CreateFrame("Frame", nil, seqScroll)
+    seqScrollChild:SetSize(1, 1)  -- width tracked below; height set on Refresh
+    seqScroll:SetScrollChild(seqScrollChild)
+
+    -- Keep the scroll child width in sync with the scroll frame so the
+    -- fontstring inside wraps to the correct width. The OnSizeChanged
+    -- hook handles layout reflows; the deferred call covers the initial
+    -- sizing pass before frames have measured themselves.
+    local function UpdateSeqScrollChildWidth()
+        local w = seqScroll:GetWidth()
+        if w and w > 0 then seqScrollChild:SetWidth(w) end
+    end
+    seqScroll:HookScript("OnSizeChanged", UpdateSeqScrollChildWidth)
+    C_Timer.After(0, UpdateSeqScrollChildWidth)
+
+    -- Mousewheel scrolling. Step is 18px per wheel notch — roughly one
+    -- text line at GameFontNormalSmall.
+    seqScroll:SetScript("OnMouseWheel", function(self, delta)
+        local cur = self:GetVerticalScroll() or 0
+        local max = self:GetVerticalScrollRange() or 0
+        local newVal = cur - (delta * 18)
+        if newVal < 0 then newVal = 0 end
+        if newVal > max then newVal = max end
+        self:SetVerticalScroll(newVal)
+    end)
+
+    local seqPreview = seqScrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    seqPreview:SetPoint("TOPLEFT",  seqScrollChild, "TOPLEFT",  0, 0)
+    seqPreview:SetPoint("TOPRIGHT", seqScrollChild, "TOPRIGHT", 0, 0)
     seqPreview:SetJustifyH("LEFT")
     seqPreview:SetTextColor(0.7, 0.7, 0.7)
 
@@ -566,6 +645,9 @@ function PR:BuildEditor(parent, contentWidth)
         else
             seqPreview:SetText("|cFF888888(empty -- add spells above)|r")
         end
+        -- Resize the scroll child to fit the wrapped text. UIPanelScrollFrameTemplate's
+        -- scrollbar auto-shows/hides based on whether scrollChild height > scrollFrame height.
+        seqScrollChild:SetHeight(math.max(seqPreview:GetStringHeight() + 4, 1))
     end
 
     PR.Editor = editor

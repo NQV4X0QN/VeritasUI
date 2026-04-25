@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.3] - 2026-04-25
+
+### Changed
+- `VeritasUI_PriorityRotation` rotation editor "Compiled Sequence:" label + preview text now wrapped in a card matching the Phase 2 row card style (dark fill + 1px warm-amber border)
+- Sequence preview card width now aligns with the row cards (was previously narrower)
+- Card border tint refined across all editor cards (rows + sequence preview) from `(0.28, 0.23, 0.14, 0.75)` to `(0.32, 0.26, 0.15, 0.80)` for a "recessed in stone" look
+- Sequence preview now scrollable via mousewheel for long rotations (e.g. 10 slots × freq 5 = 50 entries) — text no longer bleeds out of the card or frame
+
 ## [1.4.2] - 2026-04-25
 
 ### Changed
