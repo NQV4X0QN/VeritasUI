@@ -1,7 +1,7 @@
 ## Interface: 120005
 ## Title: VeritasUI — HUD Frame
 ## Notes: Chat anchor frames and data text bars in Blizzard's Midnight style. |cFF888888by NQV4X0QN|r
-## Version: 1.5.4
+## Version: 1.5.5
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
 ## SavedVariables: VeritasUI_HUDFrameDB

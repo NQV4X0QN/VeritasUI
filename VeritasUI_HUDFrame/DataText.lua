@@ -6,6 +6,7 @@ local _, HUF = ...
 
 local _G     = _G
 local ipairs = ipairs
+local pairs  = pairs
 local format = string.format
 local C_Timer = C_Timer
 
@@ -314,6 +315,56 @@ function HUF.RebuildAllBars()
 end
 
 ----------------------------------------------------------------
+--  Event-driven refresh
+--
+--  DataPoints can declare an `events` array. At PLAYER_LOGIN we
+--  walk the registry once, collect the union of all listed events,
+--  and register them on a single frame.
+--
+--  UNIT_EVENTS members use RegisterUnitEvent("player") so the C
+--  engine filters non-player aura traffic before it reaches Lua.
+--
+--  A pending flag + C_Timer.After(0) coalesces a flurry of events
+--  (e.g. multiple UNIT_AURA fires during a Meta cast) into a single
+--  UpdateAllBars() call on the next frame.
+----------------------------------------------------------------
+local UNIT_EVENTS = {
+    UNIT_AURA = true,
+}
+
+local _eventPending = false
+
+local function RegisterDataPointEvents()
+    local eventSet = {}
+    for _, dp in pairs(HUF.DataPoints) do
+        if dp.events then
+            for _, ev in ipairs(dp.events) do
+                eventSet[ev] = true
+            end
+        end
+    end
+
+    local evFrame = CreateFrame("Frame")
+    evFrame:SetScript("OnEvent", function()
+        if not _eventPending then
+            _eventPending = true
+            C_Timer.After(0, function()
+                _eventPending = false
+                UpdateAllBars()
+            end)
+        end
+    end)
+
+    for ev in pairs(eventSet) do
+        if UNIT_EVENTS[ev] then
+            evFrame:RegisterUnitEvent(ev, "player")
+        else
+            evFrame:RegisterEvent(ev)
+        end
+    end
+end
+
+----------------------------------------------------------------
 --  PLAYER_LOGIN — start after Core.lua's handler creates frames
 ----------------------------------------------------------------
 local dtFrame = CreateFrame("Frame")
@@ -328,6 +379,7 @@ dtFrame:SetScript("OnEvent", function(self)
     end
 
     HUF.RebuildAllBars()
+    RegisterDataPointEvents()
 
     -- Start the update ticker
     local CFG = HUF.Config

@@ -2,6 +2,16 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.5.5] - 2026-04-24
+
+### Changed
+
+- **[HUDFrame] Stat data texts now refresh on game events in addition to the 2-second ticker** — `haste`, `crit`, `mastery`, `armor`, `ilvl`, `durability`, and `spec` each declare an `events` array in `DataPoints.lua`; `DataText.lua` walks the registry once at `PLAYER_LOGIN`, collects the union of all listed events, and registers them on a dedicated frame. `UNIT_AURA` uses `RegisterUnitEvent("player")` so the engine filters non-player aura traffic at the C level. A coalescing pending-flag + `C_Timer.After(0)` ensures a flurry of events during a buff application (e.g. Eye Beam haste on Metamorphosis entry, Demon Spikes armor, trinket procs) produces one `UpdateAllBars()` call on the next frame rather than N. The 2-second ticker is unchanged and continues to cover fps/latency/memory/gold/zone/guild/friends
+
+### Requires
+
+- World of Warcraft: Midnight (Patch 12.0.5, Interface 120005) — unchanged from v1.5.4
+
 ## [1.5.4] - 2026-04-23
 
 ### Changed

@@ -66,6 +66,7 @@ HUF.DataPoints = {
             end)
             return ok and r or "—"
         end,
+        events = { "UNIT_AURA", "COMBAT_RATING_UPDATE" },
     },
 
     mastery = {
@@ -77,6 +78,7 @@ HUF.DataPoints = {
             end)
             return ok and r or "—"
         end,
+        events = { "UNIT_AURA", "COMBAT_RATING_UPDATE", "MASTERY_UPDATE" },
     },
 
     crit = {
@@ -88,6 +90,7 @@ HUF.DataPoints = {
             end)
             return ok and r or "—"
         end,
+        events = { "UNIT_AURA", "COMBAT_RATING_UPDATE" },
     },
 
     armor = {
@@ -99,6 +102,7 @@ HUF.DataPoints = {
             end)
             return ok and r or "—"
         end,
+        events = { "UNIT_AURA", "PLAYER_EQUIPMENT_CHANGED" },
     },
 
     ilvl = {
@@ -120,6 +124,7 @@ HUF.DataPoints = {
             end
         end,
         clickHint = "open character panel",
+        events = { "PLAYER_EQUIPMENT_CHANGED" },
     },
 
     memory = {
@@ -282,6 +287,7 @@ HUF.DataPoints = {
             end
         end,
         clickHint = "open character panel",
+        events = { "UPDATE_INVENTORY_DURABILITY" },
     },
 
     gold = {
@@ -427,6 +433,7 @@ HUF.DataPoints = {
             end
         end,
         clickHint = "switch specialization",
+        events = { "PLAYER_SPECIALIZATION_CHANGED" },
     },
 
     empty = {
