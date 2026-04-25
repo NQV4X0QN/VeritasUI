@@ -341,23 +341,22 @@ function PR:ScanAndOverrideBarButton()
         end
     end
 
-    -- Strategy 3: Keybinding override (fallback when no bar button matched).
-    -- Skipped entirely if Strategies 1/2 already found a direct button.
-    if not self.overriddenButton then
-        local bindingCmd = SLOT_TO_BIND[foundSlot]
-        local boundKeys = {}
-        if bindingCmd then
-            local k1, k2 = GetBindingKey(bindingCmd)
-            if k1 then boundKeys[#boundKeys + 1] = k1 end
-            if k2 then boundKeys[#boundKeys + 1] = k2 end
-        end
-        if #boundKeys > 0 then
-            for _, key in ipairs(boundKeys) do
-                SetOverrideBindingClick(SECURE_HANDLER, false, key, PR.BUTTON_NAME)
-            end
-            self.overriddenKeys = boundKeys
+    -- Strategy 3: Keybinding override (fallback)
+    local bindingCmd = SLOT_TO_BIND[foundSlot]
+    local boundKeys  = {}
+    if bindingCmd then
+        local k1, k2 = GetBindingKey(bindingCmd)
+        if k1 then boundKeys[#boundKeys + 1] = k1 end
+        if k2 then boundKeys[#boundKeys + 1] = k2 end
+    end
+
+    if not self.overriddenButton and #boundKeys > 0 then
+        for _, key in ipairs(boundKeys) do
+            SetOverrideBindingClick(SECURE_HANDLER, false, key, PR.BUTTON_NAME)
         end
     end
+
+    self.overriddenKeys = #boundKeys > 0 and boundKeys or nil
 
     -- Icon ticker only makes sense when a bar button is directly overridden;
     -- keybind-only mode (Strategy 3) has no button whose icon to update.
