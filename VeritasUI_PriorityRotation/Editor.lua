@@ -178,17 +178,16 @@ function PR:BuildEditor(parent, contentWidth)
     lHelp:SetText(
         "|cFF00CCFFDrag spells|r from your spellbook or |cFF00CCFFmacros|r from /macro onto a slot.\n"
         .."Right-click to remove. Use arrows to reorder.\n"
-        .."|cFFFFFF00Freq|r = how often per cycle (1=cooldown, 3+=filler).")
+        .."|cFFFFFF00Freq|r = how often per cycle (3+=priority/cooldown, 1=filler).")
 
-    local lCols = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    lCols:SetPoint("TOPLEFT", lHelp, "BOTTOMLEFT", 4, -6)
-    lCols:SetText("  #        Icon   Ability                 Freq")
-    lCols:SetTextColor(0.65, 0.65, 0.25)
-
+    -- Divider below the header-label row. Column headers themselves are
+    -- created AFTER the row loop so they can anchor to row 1's components
+    -- and stay column-aligned automatically (the 22px gap leaves room for
+    -- the header fontstrings between lHelp and divLine).
     local divLine = parent:CreateTexture(nil, "ARTWORK")
     divLine:SetHeight(1)
-    divLine:SetPoint("TOPLEFT", lCols, "BOTTOMLEFT", -4, -2)
-    divLine:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, 0)
+    divLine:SetPoint("TOPLEFT",  lHelp,  "BOTTOMLEFT", -4, -22)
+    divLine:SetPoint("TOPRIGHT", parent, "TOPRIGHT",   -6,   0)
     divLine:SetColorTexture(0.35, 0.35, 0.35, 0.9)
 
     -- ── Rows ─────────────────────────────────────────────────
@@ -231,7 +230,7 @@ function PR:BuildEditor(parent, contentWidth)
         numLbl:SetWidth(18)
         numLbl:SetText(i)
         numLbl:SetTextColor(0.75, 0.75, 0.20)
-        numLbl:SetJustifyH("RIGHT")
+        numLbl:SetJustifyH("CENTER")
 
         -- Move arrows
         local moveCol = CreateFrame("Frame", nil, row)
@@ -384,6 +383,34 @@ function PR:BuildEditor(parent, contentWidth)
         row.decBtn, row.incBtn = decBtn, incBtn
         rows[i] = row
     end
+
+    -- ── Column headers ───────────────────────────────────────────────
+    -- All anchored to rows[1]'s TOPLEFT for a CONSISTENT vertical baseline
+    -- (anchoring to each column's TOP would put them at different heights
+    -- because column heights differ: iconBtn=28, freqFrame=38, text=~12).
+    --
+    -- X offsets are hardcoded to match the row-column layout above:
+    --   numLbl    LEFT=4,   width=18   → center=13
+    --   iconBtn   LEFT=47,  width=28   → center=61
+    --   nameLbl   LEFT=82,  width=130  → LEFT=82 (left-justified header)
+    --   freqFrame LEFT=216, width=70   → center=251
+    -- If you change row column sizing, update these offsets in lockstep.
+    local HEADER_Y = 6
+    local function MakeCenteredHeader(xOff, text)
+        local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("BOTTOM", rows[1], "TOPLEFT", xOff, HEADER_Y)
+        fs:SetTextColor(0.85, 0.75, 0.20)
+        fs:SetText(text)
+        return fs
+    end
+
+    MakeCenteredHeader(13,  "#")
+    MakeCenteredHeader(61,  "Icon")
+    local hAbility = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hAbility:SetPoint("BOTTOMLEFT", rows[1], "TOPLEFT", 82, HEADER_Y)
+    hAbility:SetTextColor(0.85, 0.75, 0.20)
+    hAbility:SetText("Ability")
+    MakeCenteredHeader(251, "Freq")
 
     -- Drop zone
     local dropZone = CreateFrame("Button", nil, parent)

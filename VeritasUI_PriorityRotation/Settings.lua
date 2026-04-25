@@ -9,15 +9,42 @@ if not VUI then return end   -- Core.lua already printed the error
 
 local SETTINGS_LABEL = "Priority Rotation"
 
-local PNL_W     = 380
-local PNL_H     = 620
-local TAB_H     = 24
+local PNL_W     = 420
+local PNL_H     = 660
 local CONTENT_W = PNL_W - 18
+
+-- Apply the current spec's icon to the frame's portrait slot, with the class
+-- atlas as a fallback (e.g. pre-spec-selection or low-level characters).
+-- Called on every RefreshBadge so it tracks spec changes automatically.
+local function ApplySpecPortrait(frame)
+    local portrait = (frame.PortraitContainer and frame.PortraitContainer.portrait)
+                  or frame.portrait
+    if not portrait then return end
+
+    local specIndex = GetSpecialization and GetSpecialization()
+    if specIndex then
+        local _, _, _, specIcon = GetSpecializationInfo(specIndex)
+        if specIcon then
+            portrait:SetTexture(specIcon)
+            -- Trim the ~8% Blizzard icon border so the spec art fills the
+            -- circular portrait mask cleanly.
+            portrait:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            return
+        end
+    end
+
+    -- Fallback: circular class atlas (used only when no spec is selected)
+    local _, class = UnitClass("player")
+    if class then
+        portrait:SetTexCoord(0, 1, 0, 1)
+        portrait:SetAtlas("classicon-" .. class:lower())
+    end
+end
 
 -- ── Main Editor Window ────────────────────────────────────────────
 
 local function BuildMainWindow()
-    local win = CreateFrame("Frame", "PriorityRotMainWindow", UIParent, "BasicFrameTemplate")
+    local win = CreateFrame("Frame", "PriorityRotMainWindow", UIParent, "PortraitFrameTemplate")
     win:SetSize(PNL_W, PNL_H)
     win:SetPoint("CENTER")
     win:SetMovable(true)
@@ -29,62 +56,86 @@ local function BuildMainWindow()
     win:SetFrameStrata("DIALOG")
     win:SetToplevel(true)
 
-    if win.TitleText then
+    -- Title — PortraitFrameTemplate (via ButtonFrameTemplate) exposes SetTitle
+    -- in modern clients; fall back to legacy fontstring paths defensively.
+    if win.SetTitle then
+        win:SetTitle("Priority Rotation")
+    elseif win.TitleContainer and win.TitleContainer.TitleText then
+        win.TitleContainer.TitleText:SetText("Priority Rotation")
+    elseif win.TitleText then
         win.TitleText:SetText("Priority Rotation")
-    elseif win.TitleBar and win.TitleBar.TitleText then
-        win.TitleBar.TitleText:SetText("Priority Rotation")
     end
+
+    -- Force the title to center on the full frame width. By default the
+    -- TitleContainer anchors between the portrait and close button, which
+    -- visually drifts the title right-of-center. Re-anchoring to TOP overrides
+    -- that layout.
+    local titleText = (win.TitleContainer and win.TitleContainer.TitleText)
+                   or win.TitleText
+    if titleText then
+        titleText:ClearAllPoints()
+        titleText:SetPoint("TOP", win, "TOP", 0, -5)
+    end
+
+    ApplySpecPortrait(win)
 
     local CONTENT = CreateFrame("Frame", nil, win)
-    CONTENT:SetPoint("TOPLEFT",     win, "TOPLEFT",     8,  -26)
-    CONTENT:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -6,   6)
+    CONTENT:SetPoint("TOPLEFT",     win, "TOPLEFT",     8,  -28)
+    CONTENT:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -8,   6)
 
-    -- Spec / profile badge
-    local specBadge = CONTENT:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    specBadge:SetPoint("TOPLEFT", CONTENT, "TOPLEFT", 8, -4)
-    specBadge:SetJustifyH("LEFT")
+    -- Spec / profile badge — "Havoc Demon Hunter" in heroic 20pt Friz Quadrata
+    -- (GameFontNormalHuge is Blizzard's standard section-title font).
+    -- Anchored to CONTENT's TOP (horizontally centered) at y=-16 to visually
+    -- balance against the portrait circle.
+    local specBadge = CONTENT:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    specBadge:SetPoint("TOP", CONTENT, "TOP", 0, -16)
+    specBadge:SetJustifyH("CENTER")
+    specBadge:SetTextColor(1, 1, 1)
 
     -- Exposed on win so PR:RefreshUI() can call it without monkey-patching.
+    -- Refreshes both the spec name and the portrait icon (spec changes trigger
+    -- this via Core.lua's PLAYER_SPECIALIZATION_CHANGED handler).
     function win:RefreshBadge()
         specBadge:SetText(PR:GetCurrentSpecLabel())
+        ApplySpecPortrait(self)
     end
 
-    -- Tabs
-    local tabBar = CreateFrame("Frame", nil, CONTENT)
-    tabBar:SetSize(CONTENT_W, TAB_H + 2)
-    tabBar:SetPoint("TOPLEFT", specBadge, "BOTTOMLEFT", -4, -4)
-
-    local function MakeTab(label, xOff)
-        local btn = CreateFrame("Button", nil, tabBar, "UIPanelButtonTemplate")
-        btn:SetSize(110, TAB_H)
-        btn:SetPoint("TOPLEFT", tabBar, "TOPLEFT", xOff, 0)
-        btn:SetText(label)
-        return btn
-    end
-
-    local tabRotation = MakeTab("Rotation", 0)
-    local tabSettings = MakeTab("Settings", 116)
-
-    local divider = CONTENT:CreateTexture(nil, "ARTWORK")
-    divider:SetHeight(1)
-    divider:SetPoint("TOPLEFT",  tabBar,   "BOTTOMLEFT",  0, -1)
-    divider:SetPoint("TOPRIGHT", CONTENT,  "TOPRIGHT",   -6,  0)
-    divider:SetColorTexture(0.35, 0.35, 0.35, 1)
-
+    -- Content panels — anchored to CONTENT directly (not to specBadge) so
+    -- horizontal position is independent of the badge's x offset. The -50 y
+    -- offset reserves the top band for the heroic spec-name header and leaves
+    -- room at the bottom for the Compiled Sequence preview to grow as users
+    -- add more spells / higher freq values.
     local contRotation = CreateFrame("Frame", nil, CONTENT)
-    contRotation:SetPoint("TOPLEFT",     divider, "BOTTOMLEFT",  4, -4)
-    contRotation:SetPoint("BOTTOMRIGHT", CONTENT, "BOTTOMRIGHT", -4,  6)
+    contRotation:SetPoint("TOPLEFT",     CONTENT, "TOPLEFT",      4, -50)
+    contRotation:SetPoint("BOTTOMRIGHT", CONTENT, "BOTTOMRIGHT", -4,   4)
 
     local contSettings = CreateFrame("Frame", nil, CONTENT)
-    contSettings:SetPoint("TOPLEFT",     divider, "BOTTOMLEFT",  4, -4)
-    contSettings:SetPoint("BOTTOMRIGHT", CONTENT, "BOTTOMRIGHT", -4,  6)
+    contSettings:SetPoint("TOPLEFT",     CONTENT, "TOPLEFT",      4, -50)
+    contSettings:SetPoint("BOTTOMRIGHT", CONTENT, "BOTTOMRIGHT", -4,   4)
     contSettings:Hide()
 
+    -- Bottom tabs — PanelTabButtonTemplate hangs below the frame edge in the
+    -- modern Journeys / Collections style. Tabs overlap by -16 by design.
+    local tabRotation = CreateFrame("Button", "$parentTab1", win, "PanelTabButtonTemplate")
+    tabRotation:SetID(1)
+    tabRotation:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 11, -30)
+    tabRotation:SetText("Rotation")
+    PanelTemplates_TabResize(tabRotation, 0)
+
+    local tabSettings = CreateFrame("Button", "$parentTab2", win, "PanelTabButtonTemplate")
+    tabSettings:SetID(2)
+    tabSettings:SetPoint("LEFT", tabRotation, "RIGHT", -16, 0)
+    tabSettings:SetText("Settings")
+    PanelTemplates_TabResize(tabSettings, 0)
+
+    PanelTemplates_SetNumTabs(win, 2)
+    PanelTemplates_SetTab(win, 1)
+
     local function ActivateTab(which)
-        contRotation:SetShown(which == "editor")
-        contSettings:SetShown(which ~= "editor")
-        tabRotation:SetText(which == "editor"  and "|cFF00CCFFRotation|r" or "Rotation")
-        tabSettings:SetText(which ~= "editor"  and "|cFF00CCFFSettings|r" or "Settings")
+        local idx = (which == "editor") and 1 or 2
+        PanelTemplates_SetTab(win, idx)
+        contRotation:SetShown(idx == 1)
+        contSettings:SetShown(idx == 2)
     end
 
     tabRotation:SetScript("OnClick", function() ActivateTab("editor") end)
@@ -101,28 +152,63 @@ local function BuildMainWindow()
 
     -- ── In-window Settings Tab ────────────────────────────────────
     local function BuildInWindowSettingsTab(cont)
-        local CW = CONTENT_W - 8
+        local CW   = CONTENT_W - 8
+        local HALF = math.floor((CW - 8) / 2)
 
-        local howLbl = cont:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        howLbl:SetPoint("TOPLEFT", cont, "TOPLEFT", 0, -4)
-        howLbl:SetWidth(CW)
-        howLbl:SetJustifyH("LEFT")
-        howLbl:SetText(
-            "|cFFAAAAAAThis addon cycles through your spell list on each "
-            .."key press. WoW handles cooldown/resource checks naturally.\n\n"
-            .."|cFFFFFF00Freq|cFFAAAAAA controls how often a spell appears per cycle. "
-            .."Use Freq 1 for cooldowns, Freq 3+ for filler spells.\n\n"
-            .."|cFFFFFF00Setup:|cFFAAAAAA\n"
-            .."  1) Click 'Create / Update Macro' below\n"
-            .."  2) Drag Attack from /macro to any action bar\n"
-            .."     (hidden bars like Bar 5 work too)\n"
-            .."  3) Bind a key to that bar slot\n"
-            .."  4) Click 'Scan & Bind' to activate\n"
-            .."  5) Spam the key (or use G-Hub repeat)|r")
+        -- Section helper: gold header + 1px divider, returns divider frame.
+        -- relPoint controls which edge of anchorFrame to hang from:
+        --   "TOPLEFT"    — first section, hangs from the top of the container
+        --   "BOTTOMLEFT" — subsequent sections, chains below previous body text
+        local function Section(anchorFrame, relPoint, yOff, title)
+            local hdr = cont:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            hdr:SetPoint("TOPLEFT", anchorFrame, relPoint, 0, yOff)
+            hdr:SetTextColor(1, 0.82, 0)
+            hdr:SetText(title)
+            local div = cont:CreateTexture(nil, "ARTWORK")
+            div:SetHeight(1)
+            div:SetPoint("TOPLEFT",  hdr,  "BOTTOMLEFT",  0, -3)
+            div:SetPoint("TOPRIGHT", cont, "TOPRIGHT",   -6,  0)
+            div:SetColorTexture(0.35, 0.35, 0.35, 0.8)
+            return div
+        end
 
+        local function Body(anchorFrame, yOff, text)
+            local fs = cont:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            fs:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, yOff)
+            fs:SetWidth(CW)
+            fs:SetJustifyH("LEFT")
+            fs:SetTextColor(0.75, 0.75, 0.75)
+            fs:SetText(text)
+            return fs
+        end
+
+        -- ── How It Works ──────────────────────────────────────────
+        local divHow = Section(cont, "TOPLEFT", -4, "How It Works")
+        local txtHow = Body(divHow, -6,
+            "Spam the bound key to cycle through your rotation. "
+            .."WoW's built-in cooldown and resource checks handle the rest.")
+
+        -- ── Freq ──────────────────────────────────────────────────
+        local divFreq = Section(txtHow, "BOTTOMLEFT", -10, "Freq")
+        local txtFreq = Body(divFreq, -6,
+            "Controls how often a spell appears in the cycle.\n"
+            .."|cFFFFFF00Freq 3+|r  —  priority spells and cooldowns. "
+            .."They fire as often as possible.\n"
+            .."|cFFFFFF00Freq 1|r   —  filler spells. "
+            .."They activate only when your higher-priority spells are on cooldown.")
+
+        -- ── Setup ─────────────────────────────────────────────────
+        local divSetup = Section(txtFreq, "BOTTOMLEFT", -10, "Setup")
+        local txtSetup = Body(divSetup, -6,
+            "1.  Click |cFFFFFF00Create / Update Macro|r below\n"
+            .."2.  Drag |cFFFFFF00Attack|r from /macro onto any action bar\n"
+            .."3.  Bind a key to that bar slot\n"
+            .."4.  Click |cFFFFFF00Scan & Bind|r to activate")
+
+        -- ── Action Buttons ────────────────────────────────────────
         local macroBtn = CreateFrame("Button", nil, cont, "UIPanelButtonTemplate")
-        macroBtn:SetSize(200, 24)
-        macroBtn:SetPoint("TOPLEFT", howLbl, "BOTTOMLEFT", 0, -10)
+        macroBtn:SetSize(CW, 28)
+        macroBtn:SetPoint("TOPLEFT", txtSetup, "BOTTOMLEFT", 0, -14)
         macroBtn:SetText("Create / Update Macro")
         macroBtn:SetScript("OnClick", function()
             if InCombatLockdown() then
@@ -132,20 +218,20 @@ local function BuildMainWindow()
             PR:UpdateMacroStub()
             VUI.Print("Priority Rotation",
                 "Macro |cFFFFFF00" .. PR.MACRO_NAME
-                .. "|r is ready — open /macro to drag it to a bar.")
+                .. "|r is ready — drag it from /macro to an action bar.")
         end)
 
         local scanBtn = CreateFrame("Button", nil, cont, "UIPanelButtonTemplate")
-        scanBtn:SetSize(200, 24)
+        scanBtn:SetSize(CW, 28)
         scanBtn:SetPoint("TOPLEFT", macroBtn, "BOTTOMLEFT", 0, -6)
-        scanBtn:SetText("Scan & Bind (/pr scan)")
+        scanBtn:SetText("Scan & Bind  (/pr scan)")
         scanBtn:SetScript("OnClick", function()
             SlashCmdList["VERITASUI_PR"]("scan")
         end)
 
         local resetBtn = CreateFrame("Button", nil, cont, "UIPanelButtonTemplate")
-        resetBtn:SetSize(170, 24)
-        resetBtn:SetPoint("TOPLEFT", scanBtn, "BOTTOMLEFT", 0, -10)
+        resetBtn:SetSize(HALF, 24)
+        resetBtn:SetPoint("TOPLEFT", scanBtn, "BOTTOMLEFT", 0, -14)
         resetBtn:SetText("Reset to Spec Defaults")
         resetBtn:SetScript("OnClick", function()
             PR:ResetCurrentProfileToDefault()
@@ -154,7 +240,7 @@ local function BuildMainWindow()
         end)
 
         local clearBtn = CreateFrame("Button", nil, cont, "UIPanelButtonTemplate")
-        clearBtn:SetSize(120, 24)
+        clearBtn:SetSize(HALF, 24)
         clearBtn:SetPoint("LEFT", resetBtn, "RIGHT", 8, 0)
         clearBtn:SetText("Clear All Spells")
         clearBtn:SetScript("OnClick", function()
@@ -162,7 +248,6 @@ local function BuildMainWindow()
             PR:CompileSequence()
             PR:RefreshUI()
         end)
-
     end
 
     BuildInWindowSettingsTab(contSettings)

@@ -9,163 +9,163 @@ PR.STARTER_LISTS = {
     [577] = {
         name   = "Havoc DH",
         spells = {
-            { spellID = 188499, freq = 1 },  -- Blade Dance
-            { spellID = 162794, freq = 3 },  -- Chaos Strike (filler)
-            { spellID = 258920, freq = 1 },  -- Immolation Aura
-            { spellID = 232893, freq = 1 },  -- Felblade
+            { spellID = 188499, freq = 3 },  -- Blade Dance
+            { spellID = 162794, freq = 1 },  -- Chaos Strike (filler)
+            { spellID = 258920, freq = 3 },  -- Immolation Aura
+            { spellID = 232893, freq = 3 },  -- Felblade
         },
     },
     [581] = {
         name   = "Vengeance DH",
         spells = {
             { spellID = 228477, freq = 2 },  -- Soul Cleave
-            { spellID = 258920, freq = 1 },  -- Immolation Aura
-            { spellID = 204021, freq = 1 },  -- Fiery Brand
-            { spellID = 232893, freq = 1 },  -- Felblade
+            { spellID = 258920, freq = 3 },  -- Immolation Aura
+            { spellID = 204021, freq = 3 },  -- Fiery Brand
+            { spellID = 232893, freq = 3 },  -- Felblade
         },
     },
     [71] = {
         name   = "Arms Warrior",
         spells = {
-            { spellID = 12294,  freq = 1 },  -- Mortal Strike
+            { spellID = 12294,  freq = 3 },  -- Mortal Strike
             { spellID = 7384,   freq = 2 },  -- Overpower
-            { spellID = 163201, freq = 1 },  -- Execute
-            { spellID = 1464,   freq = 3 },  -- Slam (filler)
+            { spellID = 163201, freq = 3 },  -- Execute
+            { spellID = 1464,   freq = 1 },  -- Slam (filler)
         },
     },
     [72] = {
         name   = "Fury Warrior",
         spells = {
-            { spellID = 184367, freq = 1 },  -- Rampage
+            { spellID = 184367, freq = 3 },  -- Rampage
             { spellID = 85288,  freq = 2 },  -- Raging Blow
-            { spellID = 23881,  freq = 3 },  -- Bloodthirst (filler)
-            { spellID = 280735, freq = 1 },  -- Execute
+            { spellID = 23881,  freq = 1 },  -- Bloodthirst (filler)
+            { spellID = 280735, freq = 3 },  -- Execute
         },
     },
     [70] = {
         name   = "Retribution Paladin",
         spells = {
-            { spellID = 20271,  freq = 1 },  -- Judgment
+            { spellID = 20271,  freq = 3 },  -- Judgment
             { spellID = 53385,  freq = 2 },  -- Divine Storm
-            { spellID = 35395,  freq = 3 },  -- Crusader Strike (filler)
-            { spellID = 24275,  freq = 1 },  -- Hammer of Wrath
+            { spellID = 35395,  freq = 1 },  -- Crusader Strike (filler)
+            { spellID = 24275,  freq = 3 },  -- Hammer of Wrath
         },
     },
     [253] = {
         name   = "BM Hunter",
         spells = {
             { spellID = 34026,  freq = 2 },  -- Kill Command
-            { spellID = 217200, freq = 1 },  -- Barbed Shot
-            { spellID = 53351,  freq = 1 },  -- Kill Shot
-            { spellID = 193455, freq = 3 },  -- Cobra Shot (filler)
+            { spellID = 217200, freq = 3 },  -- Barbed Shot
+            { spellID = 53351,  freq = 3 },  -- Kill Shot
+            { spellID = 193455, freq = 1 },  -- Cobra Shot (filler)
         },
     },
     [254] = {
         name   = "MM Hunter",
         spells = {
-            { spellID = 19434,  freq = 1 },  -- Aimed Shot
-            { spellID = 185358, freq = 3 },  -- Arcane Shot (filler)
-            { spellID = 257044, freq = 1 },  -- Rapid Fire
-            { spellID = 53351,  freq = 1 },  -- Kill Shot
+            { spellID = 19434,  freq = 3 },  -- Aimed Shot
+            { spellID = 185358, freq = 1 },  -- Arcane Shot (filler)
+            { spellID = 257044, freq = 3 },  -- Rapid Fire
+            { spellID = 53351,  freq = 3 },  -- Kill Shot
         },
     },
     [63] = {
         name   = "Fire Mage",
         spells = {
-            { spellID = 257541, freq = 1 },  -- Phoenix Flames
-            { spellID = 108853, freq = 1 },  -- Fire Blast
-            { spellID = 11366,  freq = 1 },  -- Pyroblast
-            { spellID = 133,    freq = 3 },  -- Fireball (filler)
+            { spellID = 257541, freq = 3 },  -- Phoenix Flames
+            { spellID = 108853, freq = 3 },  -- Fire Blast
+            { spellID = 11366,  freq = 3 },  -- Pyroblast
+            { spellID = 133,    freq = 1 },  -- Fireball (filler)
         },
     },
     [64] = {
         name   = "Frost Mage",
         spells = {
-            { spellID = 84714,  freq = 1 },  -- Frozen Orb
-            { spellID = 44614,  freq = 1 },  -- Flurry
+            { spellID = 84714,  freq = 3 },  -- Frozen Orb
+            { spellID = 44614,  freq = 3 },  -- Flurry
             { spellID = 30455,  freq = 2 },  -- Ice Lance
-            { spellID = 116,    freq = 3 },  -- Frostbolt (filler)
+            { spellID = 116,    freq = 1 },  -- Frostbolt (filler)
         },
     },
     [259] = {
         name   = "Assassination Rogue",
         spells = {
             { spellID = 32645,  freq = 2 },  -- Envenom
-            { spellID = 1329,   freq = 3 },  -- Mutilate (filler)
-            { spellID = 703,    freq = 1 },  -- Garrote
-            { spellID = 1943,   freq = 1 },  -- Rupture
+            { spellID = 1329,   freq = 1 },  -- Mutilate (filler)
+            { spellID = 703,    freq = 3 },  -- Garrote
+            { spellID = 1943,   freq = 3 },  -- Rupture
         },
     },
     [260] = {
         name   = "Outlaw Rogue",
         spells = {
             { spellID = 2098,   freq = 2 },  -- Dispatch
-            { spellID = 53,     freq = 3 },  -- Sinister Strike (filler)
-            { spellID = 13877,  freq = 1 },  -- Blade Flurry
-            { spellID = 195457, freq = 1 },  -- Grappling Hook
+            { spellID = 53,     freq = 1 },  -- Sinister Strike (filler)
+            { spellID = 13877,  freq = 3 },  -- Blade Flurry
+            { spellID = 195457, freq = 3 },  -- Grappling Hook
         },
     },
     [258] = {
         name   = "Shadow Priest",
         spells = {
-            { spellID = 335467, freq = 1 },  -- Devouring Plague
-            { spellID = 8092,   freq = 1 },  -- Mind Blast
-            { spellID = 34914,  freq = 1 },  -- Vampiric Touch
-            { spellID = 589,    freq = 3 },  -- Shadow Word: Pain
+            { spellID = 335467, freq = 3 },  -- Devouring Plague
+            { spellID = 8092,   freq = 3 },  -- Mind Blast
+            { spellID = 34914,  freq = 3 },  -- Vampiric Touch
+            { spellID = 589,    freq = 1 },  -- Shadow Word: Pain (filler)
         },
     },
     [263] = {
         name   = "Enhancement Shaman",
         spells = {
-            { spellID = 17364,  freq = 1 },  -- Stormstrike
+            { spellID = 17364,  freq = 3 },  -- Stormstrike
             { spellID = 60103,  freq = 2 },  -- Lava Lash
-            { spellID = 188196, freq = 3 },  -- Lightning Bolt (filler)
-            { spellID = 196840, freq = 1 },  -- Frost Shock
+            { spellID = 188196, freq = 1 },  -- Lightning Bolt (filler)
+            { spellID = 196840, freq = 3 },  -- Frost Shock
         },
     },
     [251] = {
         name   = "Frost DK",
         spells = {
             { spellID = 49020,  freq = 2 },  -- Obliterate
-            { spellID = 49143,  freq = 3 },  -- Frost Strike (filler)
-            { spellID = 49184,  freq = 1 },  -- Howling Blast
-            { spellID = 196770, freq = 1 },  -- Remorseless Winter
+            { spellID = 49143,  freq = 1 },  -- Frost Strike (filler)
+            { spellID = 49184,  freq = 3 },  -- Howling Blast
+            { spellID = 196770, freq = 3 },  -- Remorseless Winter
         },
     },
     [252] = {
         name   = "Unholy DK",
         spells = {
-            { spellID = 275699, freq = 1 },  -- Apocalypse
+            { spellID = 275699, freq = 3 },  -- Apocalypse
             { spellID = 85948,  freq = 2 },  -- Festering Strike
-            { spellID = 55090,  freq = 3 },  -- Scourge Strike (filler)
+            { spellID = 55090,  freq = 1 },  -- Scourge Strike (filler)
             { spellID = 47541,  freq = 2 },  -- Death Coil
         },
     },
     [269] = {
         name   = "Windwalker Monk",
         spells = {
-            { spellID = 107428, freq = 1 },  -- Rising Sun Kick
-            { spellID = 113656, freq = 1 },  -- Fists of Fury
+            { spellID = 107428, freq = 3 },  -- Rising Sun Kick
+            { spellID = 113656, freq = 3 },  -- Fists of Fury
             { spellID = 100784, freq = 2 },  -- Blackout Kick
-            { spellID = 100780, freq = 3 },  -- Tiger Palm (filler)
+            { spellID = 100780, freq = 1 },  -- Tiger Palm (filler)
         },
     },
     [103] = {
         name   = "Feral Druid",
         spells = {
-            { spellID = 22568,  freq = 1 },  -- Ferocious Bite
-            { spellID = 1079,   freq = 1 },  -- Rip
-            { spellID = 1822,   freq = 1 },  -- Rake
-            { spellID = 5221,   freq = 3 },  -- Shred (filler)
+            { spellID = 22568,  freq = 3 },  -- Ferocious Bite
+            { spellID = 1079,   freq = 3 },  -- Rip
+            { spellID = 1822,   freq = 3 },  -- Rake
+            { spellID = 5221,   freq = 1 },  -- Shred (filler)
         },
     },
     [1467] = {
         name   = "Devastation Evoker",
         spells = {
-            { spellID = 357208, freq = 1 },  -- Fire Breath
-            { spellID = 382266, freq = 1 },  -- Eternity Surge
+            { spellID = 357208, freq = 3 },  -- Fire Breath
+            { spellID = 382266, freq = 3 },  -- Eternity Surge
             { spellID = 362969, freq = 2 },  -- Disintegrate
-            { spellID = 361469, freq = 3 },  -- Living Flame (filler)
+            { spellID = 361469, freq = 1 },  -- Living Flame (filler)
         },
     },
 }

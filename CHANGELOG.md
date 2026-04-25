@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.4.0] - 2026-04-25
+
+### Changed
+- `VeritasUI_PriorityRotation` settings panel rebuilt on `PortraitFrameTemplate` with modern frame chrome
+- Portrait slot now shows current spec icon (falls back to class atlas for unspecced characters)
+- Spec/class name displayed in `GameFontNormalHuge` white, horizontally centered below the portrait
+- Title bar "Priority Rotation" re-anchored to center on full frame width
+- Tab navigation replaced with `PanelTabButtonTemplate` bottom tabs (Journeys-style)
+- Column headers in the rotation editor now anchor to row components for pixel-accurate alignment
+- Row slot numbers changed to center-justified under the `#` header
+- Settings tab redesigned with gold section headers, dividers, full-width primary buttons, and side-by-side secondary buttons
+- Freq guidance corrected — Freq 3+ for priority/cooldowns, Freq 1 for fillers
+- Removed hardware-specific key-repeat wording from Setup instructions
+- All 18 starter profiles updated: priority/cooldown spells default to Freq 3, filler spells to Freq 1
+
+
 ## [1.3.27] - 2026-04-24
 
 ### Fixed
