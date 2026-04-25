@@ -351,31 +351,35 @@ local function SetupItemLevels()
         end
     end
 
+    -- Debounce merchant updates: multiple triggers (hooks, events, button
+    -- clicks) can fire within the same frame when a vendor is opened or
+    -- paginated. One scheduled timer coalesces them into a single scan.
+    local pendingTimer
+    local function ScheduleMerchantUpdate()
+        if pendingTimer then return end
+        pendingTimer = C_Timer.NewTimer(0.08, function()
+            pendingTimer = nil
+            UpdateMerchantItems()
+        end)
+    end
+
     for _, fn in ipairs({
         "MerchantFrame_Update",
         "MerchantFrame_UpdateMerchantInfo",
     }) do
         if _G[fn] then
-            pcall(hooksecurefunc, fn, function()
-                C_Timer.After(0.05, UpdateMerchantItems)
-            end)
+            pcall(hooksecurefunc, fn, ScheduleMerchantUpdate)
         end
     end
 
     if MerchantFrame then
-        MerchantFrame:HookScript("OnShow", function()
-            C_Timer.After(0.1, UpdateMerchantItems)
-        end)
+        MerchantFrame:HookScript("OnShow", ScheduleMerchantUpdate)
         for _, name in ipairs({
             "MerchantNextPageButton", "MerchantPrevPageButton",
             "MerchantFrameTab1", "MerchantFrameTab2",
         }) do
             local btn = _G[name]
-            if btn then
-                btn:HookScript("OnClick", function()
-                    C_Timer.After(0.05, UpdateMerchantItems)
-                end)
-            end
+            if btn then btn:HookScript("OnClick", ScheduleMerchantUpdate) end
         end
     end
 
@@ -383,9 +387,7 @@ local function SetupItemLevels()
     mf:RegisterEvent("MERCHANT_SHOW")
     mf:RegisterEvent("MERCHANT_UPDATE")
     mf:RegisterEvent("MERCHANT_FILTER_ITEM_UPDATE")
-    mf:SetScript("OnEvent", function()
-        C_Timer.After(0.1, UpdateMerchantItems)
-    end)
+    mf:SetScript("OnEvent", ScheduleMerchantUpdate)
 end
 
 -- ── Feature: Map Coordinates ────────────────────────────────
