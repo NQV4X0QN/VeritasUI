@@ -206,7 +206,13 @@ local function BuildMainWindow()
             .."4.  Click |cFFFFFF00Scan & Bind|r to activate")
 
         -- ── Action Buttons ────────────────────────────────────────
-        local macroBtn = CreateFrame("Button", nil, cont, "UIPanelButtonTemplate")
+        -- All four buttons use MagicButtonTemplate for the gold-bordered
+        -- premium look that matches Blizzard's modern frame chrome (e.g. the
+        -- Specialization "Activate" button, Talent "Reset" button). The
+        -- template's default text height is ~22px; we keep slightly taller
+        -- sizes (28 primary / 24 secondary) so the button row reads as a
+        -- distinct call-to-action band beneath the Setup body text.
+        local macroBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")
         macroBtn:SetSize(CW, 28)
         macroBtn:SetPoint("TOPLEFT", txtSetup, "BOTTOMLEFT", 0, -14)
         macroBtn:SetText("Create / Update Macro")
@@ -221,7 +227,7 @@ local function BuildMainWindow()
                 .. "|r is ready — drag it from /macro to an action bar.")
         end)
 
-        local scanBtn = CreateFrame("Button", nil, cont, "UIPanelButtonTemplate")
+        local scanBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")
         scanBtn:SetSize(CW, 28)
         scanBtn:SetPoint("TOPLEFT", macroBtn, "BOTTOMLEFT", 0, -6)
         scanBtn:SetText("Scan & Bind  (/pr scan)")
@@ -229,7 +235,7 @@ local function BuildMainWindow()
             SlashCmdList["VERITASUI_PR"]("scan")
         end)
 
-        local resetBtn = CreateFrame("Button", nil, cont, "UIPanelButtonTemplate")
+        local resetBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")
         resetBtn:SetSize(HALF, 24)
         resetBtn:SetPoint("TOPLEFT", scanBtn, "BOTTOMLEFT", 0, -14)
         resetBtn:SetText("Reset to Spec Defaults")
@@ -239,7 +245,7 @@ local function BuildMainWindow()
             PR:RefreshUI()
         end)
 
-        local clearBtn = CreateFrame("Button", nil, cont, "UIPanelButtonTemplate")
+        local clearBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")
         clearBtn:SetSize(HALF, 24)
         clearBtn:SetPoint("LEFT", resetBtn, "RIGHT", 8, 0)
         clearBtn:SetText("Clear All Spells")

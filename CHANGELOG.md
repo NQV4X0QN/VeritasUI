@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.4.2] - 2026-04-25
+
+### Changed
+- `VeritasUI_PriorityRotation` Settings tab action buttons (Create / Update Macro, Scan & Bind, Reset to Spec Defaults, Clear All Spells) swapped from `UIPanelButtonTemplate` to `MagicButtonTemplate` to match Blizzard's modern frame chrome (same template used by the Profession Specializations "Apply Knowledge" / "Overview" buttons)
+
 ## [1.4.1] - 2026-04-25
 
 ### Changed
