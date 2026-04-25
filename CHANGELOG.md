@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.1] - 2026-04-25
+
+### Changed
+- `VeritasUI_PriorityRotation` rotation editor rows now render as bordered cards — dark fill with a 1px warm-amber border using `BACKGROUND`/`BORDER` draw layers
+- Row gap increased from 2px to 4px for visible card separation
+- Freq spinner `< >` text buttons replaced with arrow texture buttons using `SetRotation`
+- Freq value label upgraded from `GameFontNormalSmall` to `GameFontNormal` white
+- Drop zone replaced with a green-bordered card to distinguish it as a drop target
+
+### Fixed
+- Freq arrow vertical misalignment — both arrows now use identical rotation (`-π/2`) by pairing `Arrow-Down-Up` (dec) and `Arrow-Up-Up` (inc) so WoW's renderer produces pixel-perfect vertical alignment
+
+
 ## [1.4.0] - 2026-04-25
 
 ### Changed
