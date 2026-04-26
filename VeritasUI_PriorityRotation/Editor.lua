@@ -123,9 +123,30 @@ local function BuildEntryFromCursor()
             icon      = mIcon,
             freq      = 1,
         }
+    elseif cursorType == "item" then
+        -- Items dragged from a bag, character pane trinket slot, or
+        -- merchant. cursorData holds the itemID; cursorSpellID is unused.
+        local itemID = cursorData
+        local name, _, quality, _, _, _, _, _, equipLoc, icon = GetItemInfo(itemID)
+        if not name then
+            -- Item info isn't in the client cache yet. Rare for items the
+            -- player owns (which are always cached), but possible for
+            -- ephemeral cursor states. Ask the user to retry once cached.
+            return nil, "Item info not loaded yet — try again in a moment."
+        end
+        if equipLoc ~= "INVTYPE_TRINKET" then
+            return nil, "Only trinkets can be added to the rotation right now."
+        end
+        return {
+            itemID    = itemID,
+            itemName  = name,
+            itemQuality = quality,
+            icon      = icon,
+            freq      = 1,
+        }
     end
 
-    return nil, "Drag a spell or macro onto this slot."
+    return nil, "Drag a spell, macro, or trinket onto this slot."
 end
 
 local function HandleDrop(slotIndex)
@@ -176,7 +197,8 @@ function PR:BuildEditor(parent, contentWidth)
     lHelp:SetWidth(W - 16)
     lHelp:SetJustifyH("LEFT")
     lHelp:SetText(
-        "|cFF00CCFFDrag spells|r from your spellbook or |cFF00CCFFmacros|r from /macro onto a slot.\n"
+        "|cFF00CCFFDrag spells|r from your spellbook, |cFF00CCFFmacros|r from /macro, "
+        .."or |cFF00CCFFtrinkets|r from your character pane onto a slot.\n"
         .."Right-click to remove. Use arrows to reorder.\n"
         .."|cFFFFFF00Freq|r = how often per cycle (3+=priority/cooldown, 1=filler).")
 
@@ -211,7 +233,7 @@ function PR:BuildEditor(parent, contentWidth)
                 end
             else
                 local cursorType = GetCursorInfo()
-                if cursorType == "spell" or cursorType == "macro" then
+                if cursorType == "spell" or cursorType == "macro" or cursorType == "item" then
                     HandleDrop(i)
                 elseif not PR:CurrentProfile().spells[i] then
                     OpenSpellBook()
@@ -324,7 +346,7 @@ function PR:BuildEditor(parent, contentWidth)
                 end
             else
                 local ct = GetCursorInfo()
-                if ct == "spell" or ct == "macro" then HandleDrop(i)
+                if ct == "spell" or ct == "macro" or ct == "item" then HandleDrop(i)
                 elseif not PR:CurrentProfile().spells[i] then OpenSpellBook() end
             end
         end)
@@ -333,6 +355,13 @@ function PR:BuildEditor(parent, contentWidth)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             if e and e.spellID then
                 GameTooltip:SetSpellByID(e.spellID)
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("|cFFFF6644Right-click to remove|r")
+            elseif e and e.itemID then
+                -- Items use the standard Blizzard item tooltip with quality
+                -- header, ilvl, and use effect — same as hovering an item
+                -- in the character pane.
+                GameTooltip:SetItemByID(e.itemID)
                 GameTooltip:AddLine(" ")
                 GameTooltip:AddLine("|cFFFF6644Right-click to remove|r")
             elseif e and e.macroName then
@@ -352,7 +381,7 @@ function PR:BuildEditor(parent, contentWidth)
                 GameTooltip:AddLine("|cFFFF6644Right-click to remove|r")
             else
                 GameTooltip:AddLine("Slot " .. i, 1, 1, 0)
-                GameTooltip:AddLine("Click to open spellbook, or drag a spell/macro here.", 0.8, 0.8, 0.8)
+                GameTooltip:AddLine("Click to open spellbook, or drag a spell/macro/trinket here.", 0.8, 0.8, 0.8)
             end
             GameTooltip:Show()
         end)
@@ -492,10 +521,10 @@ function PR:BuildEditor(parent, contentWidth)
     local dzLbl = dropZone:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     dzLbl:SetAllPoints()
     dzLbl:SetJustifyH("CENTER")
-    dzLbl:SetText("|cFF44FF44+  Drop a spell or macro here, or click to open spellbook|r")
+    dzLbl:SetText("|cFF44FF44+  Drop a spell, macro, or trinket here, or click to open spellbook|r")
     dropZone:SetScript("OnClick", function()
         local ct = GetCursorInfo()
-        if ct == "spell" or ct == "macro" then AppendSpell() else OpenSpellBook() end
+        if ct == "spell" or ct == "macro" or ct == "item" then AppendSpell() else OpenSpellBook() end
     end)
     dropZone:SetScript("OnReceiveDrag", AppendSpell)
 
@@ -596,11 +625,19 @@ function PR:BuildEditor(parent, contentWidth)
         for i = 1, PR.MAX_SLOTS do
             local row = rows[i]
             local e   = spells[i]
-            if e and (e.spellID or e.macroName) then
-                -- Refresh icon: for macros, re-read the current macro icon
+            if e and (e.spellID or e.macroName or e.itemID) then
+                -- Refresh icon: for macros, re-read the current macro icon;
+                -- for items, refresh icon from GetItemInfo (in case the item
+                -- got upgraded / changed quality).
                 local displayIcon = e.icon
                 if e.macroName then
                     local _, freshIcon = GetMacroInfo(e.macroName)
+                    if freshIcon then
+                        displayIcon = freshIcon
+                        e.icon = freshIcon
+                    end
+                elseif e.itemID then
+                    local _, _, _, _, _, _, _, _, _, freshIcon = GetItemInfo(e.itemID)
                     if freshIcon then
                         displayIcon = freshIcon
                         e.icon = freshIcon
@@ -609,9 +646,16 @@ function PR:BuildEditor(parent, contentWidth)
                 row.iconBtn.tex:SetTexture(displayIcon)
                 row.iconBtn.tex:Show()
                 row.iconBtn.empty:Hide()
-                local displayName = e.spellName or e.macroName
+                local displayName = e.spellName or e.macroName or e.itemName
                 if e.macroName then
+                    -- Cyan [M] tag matches the established macro convention.
                     displayName = "|cFF66BBFF[M]|r " .. e.macroName
+                elseif e.itemID then
+                    -- Yellow [T] tag for "Trinket" — distinct from spells
+                    -- (no tag, white) and macros (cyan [M]). The trinket
+                    -- name itself stays white for readability against the
+                    -- dark row background.
+                    displayName = "|cFFFFD200[T]|r " .. e.itemName
                 end
                 row.nameLbl:SetText(displayName)
                 row.freqLbl:SetText("x" .. (e.freq or 1))
@@ -634,11 +678,20 @@ function PR:BuildEditor(parent, contentWidth)
             for idx, cast in ipairs(PR.compiledSequence) do
                 local n = PR.compiledNames and PR.compiledNames[idx]
                 if n then
-                    -- Strip [MACRO:...] wrapper for compact display
+                    -- Compact wrappers for the preview line:
+                    --   [MACRO:Name] → [M:Name]
+                    --   [ITEM:Name]  → [T:Name]
                     local mTag = n:match("^%[MACRO:(.-)%]$")
-                    displayNames[#displayNames + 1] = mTag and ("[M:" .. mTag .. "]") or n
+                    local iTag = n:match("^%[ITEM:(.-)%]$")
+                    if mTag then
+                        displayNames[#displayNames + 1] = "[M:" .. mTag .. "]"
+                    elseif iTag then
+                        displayNames[#displayNames + 1] = "[T:" .. iTag .. "]"
+                    else
+                        displayNames[#displayNames + 1] = n
+                    end
                 else
-                    displayNames[#displayNames + 1] = cast:gsub("^/cast ", "")
+                    displayNames[#displayNames + 1] = cast:gsub("^/cast ", ""):gsub("^/use ", "")
                 end
             end
             seqPreview:SetText(table.concat(displayNames, " > "))

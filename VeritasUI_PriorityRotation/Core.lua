@@ -110,6 +110,20 @@ function PR:CompileSequence()
                         -- Keep stored icon fresh
                         if mIcon then e.icon = mIcon end
                     end
+                elseif e.itemID then
+                    -- Trinket / item entry: emit a /use macro keyed on the
+                    -- item NAME (not slot ID), so the rotation always fires
+                    -- THIS specific item regardless of which inventory slot
+                    -- it occupies. Falls back to /use item:<id> if name is
+                    -- somehow missing (defensive — should never trigger
+                    -- since drop handler validates name presence).
+                    local useTarget = e.itemName
+                    if not useTarget or useTarget == "" then
+                        useTarget = "item:" .. tostring(e.itemID)
+                    end
+                    macrotext = "/use " .. useTarget
+                    entryIcon = e.icon
+                    entryName = "[ITEM:" .. (e.itemName or tostring(e.itemID)) .. "]"
                 elseif e.spellName then
                     macrotext = "/cast " .. e.spellName
                     entryIcon = e.icon
@@ -717,9 +731,8 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
     else
         if PR.MainWindow then
             if PR.MainWindow:IsShown() then
-                PR.MainWindow:Hide()
+                VUI.CloseManagedPanel(PR.MainWindow)
             else
-                PR.MainWindow:Show()
                 PR.MainWindow:ShowTab("editor")
             end
         else

@@ -28,7 +28,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.4.3"
+VUI.VERSION = "1.5.0"
 
 ----------------------------------------------------------------
 --  Print helpers
@@ -267,6 +267,96 @@ cqFrame:SetScript("OnEvent", function()
     queue = {}
     for _, fn in ipairs(pending) do pcall(fn) end
 end)
+
+----------------------------------------------------------------
+--  Managed Panel Helpers — UIPanel system integration
+--
+--  Wraps Blizzard's ShowUIPanel / HideUIPanel so VUI panels
+--  anchor to the standard left edge and stack with Character /
+--  Journeys / Spellbook via UIParent_ManageFramePositions —
+--  visually indistinguishable from Blizzard's own panels.
+--
+--  Usage:
+--    1) Create the frame with a GLOBAL NAME (UIPanel system
+--       requires a string-addressable frame):
+--           CreateFrame("Frame", "MyAddon_Panel", UIParent,
+--                       "PortraitFrameTemplate")
+--    2) Do NOT call SetPoint, SetMovable, SetFrameStrata, or
+--       SetToplevel on the frame — the manager owns positioning
+--       and any manual anchor will fight it.
+--    3) Register once at load:
+--           VUI.RegisterManagedPanel("MyAddon_Panel", {
+--               area = "left", pushable = 1, whileDead = 1 })
+--    4) Open / close through the helpers (combat-safe + pcall):
+--           VUI.OpenManagedPanel(frame)
+--           VUI.CloseManagedPanel(frame)
+--    5) Wire the X button to call HideUIPanel(self:GetParent())
+--       so the manager is notified and frees the slot.
+--
+--  Defaults:
+--    area      = "left"   ("left" | "doublewide" | "center")
+--    pushable  = 0        Highest priority in the legacy UIPanelWindows
+--                         system, matching CollectionsJournal/Journeys.
+--                         Lower pushable wins slot 1. Documented Blizzard
+--                         values (verified live in WoW Midnight 12.0.5):
+--                           CollectionsJournal = 0
+--                           CharacterFrame     = 3
+--                           ProfessionsFrame   = not in UIPanelWindows
+--                                                (uses modern manager)
+--                         Use 0 to behave like a Blizzard primary panel.
+--                         Use 9+ to consistently yield to all Blizzard
+--                         panels (lowest priority).
+--    whileDead = 1        (allow opening while dead, like Char)
+--    width     = N        Optional explicit width hint for the manager.
+--    height    = N        Optional explicit height hint for the manager.
+--
+--  IMPORTANT: Call RegisterManagedPanel at FILE LOAD time, BEFORE the
+--  frame is created. Blizzard registers all its UIPanelWindows entries
+--  at top-level file scope, and the manager treats late-registered
+--  frames as second-class — they hold their slot but won't displace
+--  existing panels. The frame name is a string lookup; the frame
+--  itself doesn't need to exist yet.
+----------------------------------------------------------------
+
+function VUI.RegisterManagedPanel(frameName, opts)
+    -- Frame doesn't need to exist yet — UIPanelWindows is a string-keyed
+    -- lookup the manager consults at ShowUIPanel time. Registering at file
+    -- load (before CreateFrame) is the Blizzard-native pattern.
+    if type(frameName) ~= "string" then return end
+    opts = opts or {}
+    UIPanelWindows[frameName] = {
+        area      = opts.area      or "left",
+        pushable  = opts.pushable  or 1,
+        whileDead = opts.whileDead or 1,
+        width     = opts.width,
+        height    = opts.height,
+        xoffset   = opts.xoffset,
+        yoffset   = opts.yoffset,
+    }
+    -- Escape-key support — mirror every Blizzard panel.
+    for _, n in ipairs(UISpecialFrames) do
+        if n == frameName then return end
+    end
+    table.insert(UISpecialFrames, frameName)
+end
+
+function VUI.OpenManagedPanel(frame)
+    if not frame then return end
+    if InCombatLockdown() then
+        VUI.CombatQueue.Add(function() pcall(ShowUIPanel, frame) end)
+    else
+        pcall(ShowUIPanel, frame)
+    end
+end
+
+function VUI.CloseManagedPanel(frame)
+    if not frame then return end
+    if InCombatLockdown() then
+        VUI.CombatQueue.Add(function() pcall(HideUIPanel, frame) end)
+    else
+        pcall(HideUIPanel, frame)
+    end
+end
 
 ----------------------------------------------------------------
 --  Settings Label Registry + Scoped Reload Button

@@ -13,6 +13,31 @@ local PNL_W     = 420
 local PNL_H     = 660
 local CONTENT_W = PNL_W - 18
 
+-- Register with the UIPanel manager at FILE LOAD time, BEFORE BuildMainWindow
+-- runs at PLAYER_LOGIN. Blizzard's primary panels register at top-level file
+-- scope; doing the same makes PR a first-class citizen of the manager.
+--
+-- pushable=0 mirrors CollectionsJournal/Journeys exactly — the highest-
+-- priority value in the legacy UIPanelWindows system. Lower pushable wins
+-- slot 1, and PR with pushable=0 will:
+--   • Always hold slot 1 against CharacterFrame (pushable=3) and other
+--     legacy panels with pushable >= 1, regardless of opening order
+--   • Coexist visibly: Character slides to slot 2 if opened after PR, or
+--     opens directly into slot 2 if opened after PR — end state identical
+--   • Yield to modern primary panels (ProfessionsFrame, PlayerSpellsFrame)
+--     that use the newer panel manager outside UIPanelWindows — same as
+--     how Journeys yields to Professions in Blizzard's own UI
+--
+-- This is the authentic "Blizzard primary panel" registration. The
+-- consistent leftmost slot regardless of opening order is the deterministic
+-- layout that makes Blizzard's UI feel cohesive.
+VUI.RegisterManagedPanel("PriorityRotMainWindow", {
+    area     = "left",
+    pushable = 0,
+    width    = PNL_W,
+    height   = PNL_H,
+})
+
 -- Apply the current spec's icon to the frame's portrait slot, with the class
 -- atlas as a fallback (e.g. pre-spec-selection or low-level characters).
 -- Called on every RefreshBadge so it tracks spec changes automatically.
@@ -44,17 +69,25 @@ end
 -- ── Main Editor Window ────────────────────────────────────────────
 
 local function BuildMainWindow()
+    -- Registered with Blizzard's UIPanel manager at file load time (see
+    -- VUI.RegisterManagedPanel call near the top of this file). Because
+    -- the manager owns positioning and strata, we must NOT call SetPoint,
+    -- SetMovable, SetFrameStrata, or SetToplevel here — any manual anchor
+    -- fights the manager and produces drift / strata-flicker.
     local win = CreateFrame("Frame", "PriorityRotMainWindow", UIParent, "PortraitFrameTemplate")
     win:SetSize(PNL_W, PNL_H)
-    win:SetPoint("CENTER")
-    win:SetMovable(true)
     win:EnableMouse(true)
-    win:RegisterForDrag("LeftButton")
-    win:SetScript("OnDragStart", win.StartMoving)
-    win:SetScript("OnDragStop",  win.StopMovingOrSizing)
     win:Hide()
-    win:SetFrameStrata("DIALOG")
-    win:SetToplevel(true)
+
+    -- Wire the PortraitFrameTemplate close button through the UIPanel
+    -- manager so the slot is released; a bare :Hide() leaves the manager
+    -- thinking the panel is still occupying the slot and corrupts stacking
+    -- on the next open.
+    if win.CloseButton then
+        win.CloseButton:SetScript("OnClick", function(self)
+            HideUIPanel(self:GetParent())
+        end)
+    end
 
     -- Title — PortraitFrameTemplate (via ButtonFrameTemplate) exposes SetTitle
     -- in modern clients; fall back to legacy fontstring paths defensively.
@@ -98,6 +131,11 @@ local function BuildMainWindow()
     function win:RefreshBadge()
         specBadge:SetText(PR:GetCurrentSpecLabel())
         ApplySpecPortrait(self)
+        -- Keep the spec switcher dropdown's label in sync with the live
+        -- spec. Set up by BuildInWindowSettingsTab (Tools section).
+        if self.specDD and self.specDD.RefreshLabel then
+            self.specDD:RefreshLabel()
+        end
     end
 
     -- Content panels — anchored to CONTENT directly (not to specBadge) so
@@ -142,7 +180,7 @@ local function BuildMainWindow()
     tabSettings:SetScript("OnClick", function() ActivateTab("settings") end)
 
     function win:ShowTab(which)
-        self:Show()
+        VUI.OpenManagedPanel(self)
         ActivateTab(which)
         self:RefreshBadge()
         if PR.Editor then PR.Editor:Refresh() end
@@ -253,6 +291,144 @@ local function BuildMainWindow()
             PR:CurrentProfile().spells = {}
             PR:CompileSequence()
             PR:RefreshUI()
+        end)
+
+        -- ── Tools ─────────────────────────────────────────────────
+        -- Convenience shortcuts: spec switcher dropdown, plus quick-open
+        -- buttons for the Spellbook and Macro UI (the two interfaces a
+        -- user juggles most while authoring a rotation).
+        --
+        -- IMPORTANT anchor note: Section() chains the header from the
+        -- given anchorFrame's relPoint at x=0. We anchor off resetBtn
+        -- (the LEFT half of the previous row) so the header lands at the
+        -- left edge of `cont`. Anchoring off clearBtn (the right half)
+        -- would place the header in the middle of the panel, pushing
+        -- every chained child off the right edge.
+        local divTools = Section(resetBtn, "BOTTOMLEFT", -14, "Tools")
+
+        -- Spec switcher — uses the modern WowStyle1DropdownTemplate
+        -- (`DropdownButton` widget that replaced legacy UIDropDownMenu in
+        -- Dragonflight). SetupMenu re-runs each time the dropdown opens so
+        -- the radio state always reflects the live spec, even mid-cast.
+        --
+        -- Defensive: wrap creation in pcall — if the template isn't
+        -- available on this client (e.g. some private-server build),
+        -- fall back gracefully without breaking the rest of the panel.
+        local specDD
+        local okDD = pcall(function()
+            specDD = CreateFrame("DropdownButton", nil, cont, "WowStyle1DropdownTemplate")
+        end)
+        if okDD and specDD then
+            specDD:SetPoint("TOPLEFT", divTools, "BOTTOMLEFT", 0, -10)
+            specDD:SetWidth(CW)
+
+            local function CurrentSpecName()
+                local idx = GetSpecialization and GetSpecialization()
+                if idx then
+                    local _, name = GetSpecializationInfo(idx)
+                    if name and name ~= "" then return name end
+                end
+                return "Switch Specialization"
+            end
+
+            specDD:SetupMenu(function(_, root)
+                local n = (GetNumSpecializations and GetNumSpecializations()) or 0
+                for i = 1, n do
+                    local id, name = GetSpecializationInfo(i)
+                    if id and name then
+                        root:CreateRadio(
+                            name,
+                            function() return GetSpecialization() == i end,
+                            function()
+                                if InCombatLockdown() then
+                                    VUI.Print("Priority Rotation",
+                                        "|cFFFF4444Can't switch spec in combat.|r")
+                                    return MenuResponse.Refresh
+                                end
+                                if i ~= GetSpecialization() then
+                                    -- Midnight refactored the spec API into
+                                    -- C_SpecializationInfo; the global
+                                    -- SetSpecialization may be absent or shimmed.
+                                    -- Try the modern namespace first, fall back
+                                    -- to the global, surface the actual error
+                                    -- if both fail so we can diagnose.
+                                    local ok, err
+                                    if C_SpecializationInfo and C_SpecializationInfo.SetSpecialization then
+                                        ok, err = pcall(C_SpecializationInfo.SetSpecialization, i)
+                                    end
+                                    if not ok and SetSpecialization then
+                                        ok, err = pcall(SetSpecialization, i)
+                                    end
+                                    if not ok then
+                                        VUI.Print("Priority Rotation",
+                                            "|cFFFF4444Spec switch failed:|r " .. tostring(err))
+                                    end
+                                end
+                                return MenuResponse.Close
+                            end
+                        )
+                    end
+                end
+            end)
+
+            -- Refresh helper — updates the dropdown's button label to
+            -- show the live spec name. Called from win:RefreshBadge so
+            -- the dropdown stays in sync with PLAYER_SPECIALIZATION_CHANGED.
+            function specDD:RefreshLabel()
+                if self.SetDefaultText then
+                    self:SetDefaultText(CurrentSpecName())
+                end
+            end
+            specDD:RefreshLabel()
+            -- Expose to the outer window so RefreshBadge can find it.
+            win.specDD = specDD
+        end
+
+        -- Spellbook toggle button. In Midnight, SpellBookFrame was retired
+        -- and absorbed into PlayerSpellsFrame. We implement explicit
+        -- toggle: if PlayerSpellsFrame is shown, hide via HideUIPanel
+        -- (manager-aware); otherwise open via the modern PlayerSpellsUtil
+        -- with a ToggleSpellBook fallback for earlier-build clients.
+        local spellBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")
+        spellBtn:SetSize(HALF, 24)
+        spellBtn:SetPoint("TOPLEFT", (specDD or divTools), "BOTTOMLEFT", 0, -10)
+        spellBtn:SetText("Spellbook")
+        spellBtn:SetScript("OnClick", function()
+            if InCombatLockdown() then
+                VUI.Print("Priority Rotation", "|cFFFF4444Can't toggle Spellbook in combat.|r")
+                return
+            end
+            if PlayerSpellsFrame and PlayerSpellsFrame:IsShown() then
+                pcall(HideUIPanel, PlayerSpellsFrame)
+                return
+            end
+            local opened = false
+            if PlayerSpellsUtil and PlayerSpellsUtil.OpenToSpellBookTab then
+                opened = pcall(PlayerSpellsUtil.OpenToSpellBookTab)
+            end
+            if not opened and ToggleSpellBook then
+                pcall(ToggleSpellBook, BOOKTYPE_SPELL or "spell")
+            end
+        end)
+
+        -- Macros toggle. ShowMacroFrame opens (and load-on-demands the
+        -- Blizzard_MacroUI addon). Once loaded, MacroFrame is the global
+        -- handle we check IsShown() against to implement the close half
+        -- of the toggle.
+        local macroOpenBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")
+        macroOpenBtn:SetSize(HALF, 24)
+        macroOpenBtn:SetPoint("LEFT", spellBtn, "RIGHT", 8, 0)
+        macroOpenBtn:SetText("Macros")
+        macroOpenBtn:SetScript("OnClick", function()
+            if InCombatLockdown() then
+                VUI.Print("Priority Rotation", "|cFFFF4444Can't toggle Macros in combat.|r")
+                return
+            end
+            if MacroFrame and MacroFrame:IsShown() then
+                pcall(HideUIPanel, MacroFrame)
+                return
+            end
+            if ShowMacroFrame then pcall(ShowMacroFrame) end
         end)
     end
 

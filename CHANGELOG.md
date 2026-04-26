@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.5.0] - 2026-04-25
+
+### Added
+- `VeritasUI_Lib` — three new managed-panel helpers wrapping Blizzard's `UIPanelWindows` system: `VUI.RegisterManagedPanel(name, opts)`, `VUI.OpenManagedPanel(frame)`, `VUI.CloseManagedPanel(frame)`. Combat-safe via the existing `CombatQueue` and `pcall`-wrapped end-to-end. Documented Blizzard pushable values (`CharacterFrame=3`, `CollectionsJournal=0`, `ProfessionsFrame` outside `UIPanelWindows`) in the Lib comments for future module authors.
+- `VeritasUI_PriorityRotation` Tools section in the Settings tab — spec switcher dropdown using the modern `WowStyle1DropdownTemplate`, plus `Spellbook` and `Macros` toggle buttons (click to open, click again to close) styled with `MagicButtonTemplate`
+- `VeritasUI_PriorityRotation` trinket support — drag a trinket from your character pane or bag onto a rotation slot and PR will compile a `/use <ItemName>` macro for it. Item-name-based binding (not slot-based) so the rotation always fires THAT specific trinket. Restricted to `INVTYPE_TRINKET`; non-trinket items politely rejected. Editor displays trinkets with a yellow `[T]` tag, item icon, and standard Blizzard item tooltip on hover
+
+### Changed
+- `VeritasUI_PriorityRotation` settings panel now anchors to the standard Blizzard left edge via the `UIPanel` manager (`area="left"`, `pushable=0`) — visually and behaviourally indistinguishable from a Tier A primary panel like `CollectionsJournal`. Holds slot 1 against `CharacterFrame` / `SpellBookFrame` (which slide to slot 2), mutually exclusive with other Tier A panels (`Achievements`, `Housing`, `Maps`, `Appearances`). Escape closes it via `UISpecialFrames` registration. Replaces the previous floating `:SetPoint("CENTER")` + draggable behaviour
+- `VeritasUI_PriorityRotation` editor help text and drop zone label updated to mention trinkets alongside spells and macros
+
+### Fixed
+- `VeritasUI_PriorityRotation` spec-switch handler now tries `C_SpecializationInfo.SetSpecialization` first and falls back to the global `SetSpecialization` — Midnight refactored the spec API into the `C_SpecializationInfo` namespace and the global may be absent or shimmed differently across builds
+
 ## [1.4.3] - 2026-04-25
 
 ### Changed
