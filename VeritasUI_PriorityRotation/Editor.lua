@@ -9,20 +9,38 @@ if not VUI then return end   -- Core.lua already printed the error
 local ICON_SZ = 28
 local ROW_H   = 38
 
--- Safe spellbook opener
-local function OpenSpellBook()
-    if PlayerSpellsUtil and PlayerSpellsUtil.OpenToSpellBookTab then
-        PlayerSpellsUtil.OpenToSpellBookTab()
-    elseif TogglePlayerSpellsFrame then
-        TogglePlayerSpellsFrame()
-    elseif PlayerSpellsFrame then
-        if PlayerSpellsFrame:IsShown() then HideUIPanel(PlayerSpellsFrame)
-        else ShowUIPanel(PlayerSpellsFrame) end
-    elseif ToggleSpellBook then
-        ToggleSpellBook(BOOKTYPE_SPELL or "spell")
-    else
-        VUI.Print("Priority Rotation", "Press |cFFFFFF00P|r to open your spellbook.")
+-- Spellbook / Macro toggles — mirror the Settings-tab buttons exactly so
+-- click behavior on empty rotation slots is consistent with the Tools
+-- section. Combat-guarded because ShowUIPanel / HideUIPanel mutate
+-- UIPanelWindows bookkeeping that can taint during lockdown.
+local function ToggleSpellBookPanel()
+    if InCombatLockdown() then
+        VUI.Print("Priority Rotation", "|cFFFF4444Can't toggle Spellbook in combat.|r")
+        return
     end
+    if PlayerSpellsFrame and PlayerSpellsFrame:IsShown() then
+        pcall(HideUIPanel, PlayerSpellsFrame)
+        return
+    end
+    local opened = false
+    if PlayerSpellsUtil and PlayerSpellsUtil.OpenToSpellBookTab then
+        opened = pcall(PlayerSpellsUtil.OpenToSpellBookTab)
+    end
+    if not opened and ToggleSpellBook then
+        pcall(ToggleSpellBook, BOOKTYPE_SPELL or "spell")
+    end
+end
+
+local function ToggleMacroPanel()
+    if InCombatLockdown() then
+        VUI.Print("Priority Rotation", "|cFFFF4444Can't toggle Macros in combat.|r")
+        return
+    end
+    if MacroFrame and MacroFrame:IsShown() then
+        pcall(HideUIPanel, MacroFrame)
+        return
+    end
+    if ShowMacroFrame then pcall(ShowMacroFrame) end
 end
 
 -- ── Drop helpers ─────────────────────────────────────────────
@@ -236,7 +254,7 @@ function PR:BuildEditor(parent, contentWidth)
                 if cursorType == "spell" or cursorType == "macro" or cursorType == "item" then
                     HandleDrop(i)
                 elseif not PR:CurrentProfile().spells[i] then
-                    OpenSpellBook()
+                    if IsShiftKeyDown() then ToggleMacroPanel() else ToggleSpellBookPanel() end
                 end
             end
         end)
@@ -347,7 +365,9 @@ function PR:BuildEditor(parent, contentWidth)
             else
                 local ct = GetCursorInfo()
                 if ct == "spell" or ct == "macro" or ct == "item" then HandleDrop(i)
-                elseif not PR:CurrentProfile().spells[i] then OpenSpellBook() end
+                elseif not PR:CurrentProfile().spells[i] then
+                    if IsShiftKeyDown() then ToggleMacroPanel() else ToggleSpellBookPanel() end
+                end
             end
         end)
         iconBtn:SetScript("OnEnter", function(self)
@@ -381,7 +401,8 @@ function PR:BuildEditor(parent, contentWidth)
                 GameTooltip:AddLine("|cFFFF6644Right-click to remove|r")
             else
                 GameTooltip:AddLine("Slot " .. i, 1, 1, 0)
-                GameTooltip:AddLine("Click to open spellbook, or drag a spell/macro/trinket here.", 0.8, 0.8, 0.8)
+                GameTooltip:AddLine("Click to toggle Spellbook · Shift-click to toggle Macros", 0.8, 0.8, 0.8)
+                GameTooltip:AddLine("Drag a spell, macro, or trinket here to fill this slot.", 0.8, 0.8, 0.8)
             end
             GameTooltip:Show()
         end)
@@ -489,58 +510,22 @@ function PR:BuildEditor(parent, contentWidth)
     hAbility:SetText("Ability")
     MakeCenteredHeader(251, "Freq")
 
-    -- Drop zone
-    local dropZone = CreateFrame("Button", nil, parent)
-    dropZone:SetSize(W - 12, 26)
-    dropZone:SetPoint("TOPLEFT", rows[PR.MAX_SLOTS], "BOTTOMLEFT", 0, -6)
-    dropZone:RegisterForClicks("LeftButtonUp")
-    local dzFill = dropZone:CreateTexture(nil, "BACKGROUND")
-    dzFill:SetAllPoints()
-    dzFill:SetColorTexture(0.02, 0.12, 0.02, 0.75)
-    local DZR, DZG, DZB, DZA = 0.10, 0.45, 0.10, 0.75
-    local dzBTop = dropZone:CreateTexture(nil, "BORDER")
-    dzBTop:SetColorTexture(DZR, DZG, DZB, DZA)
-    dzBTop:SetPoint("TOPLEFT",  dropZone, "TOPLEFT",  0, 0)
-    dzBTop:SetPoint("TOPRIGHT", dropZone, "TOPRIGHT", 0, 0)
-    dzBTop:SetHeight(1)
-    local dzBBot = dropZone:CreateTexture(nil, "BORDER")
-    dzBBot:SetColorTexture(DZR, DZG, DZB, DZA)
-    dzBBot:SetPoint("BOTTOMLEFT",  dropZone, "BOTTOMLEFT",  0, 0)
-    dzBBot:SetPoint("BOTTOMRIGHT", dropZone, "BOTTOMRIGHT", 0, 0)
-    dzBBot:SetHeight(1)
-    local dzBLft = dropZone:CreateTexture(nil, "BORDER")
-    dzBLft:SetColorTexture(DZR, DZG, DZB, DZA)
-    dzBLft:SetPoint("TOPLEFT",    dropZone, "TOPLEFT",    0, 0)
-    dzBLft:SetPoint("BOTTOMLEFT", dropZone, "BOTTOMLEFT", 0, 0)
-    dzBLft:SetWidth(1)
-    local dzBRgt = dropZone:CreateTexture(nil, "BORDER")
-    dzBRgt:SetColorTexture(DZR, DZG, DZB, DZA)
-    dzBRgt:SetPoint("TOPRIGHT",    dropZone, "TOPRIGHT",    0, 0)
-    dzBRgt:SetPoint("BOTTOMRIGHT", dropZone, "BOTTOMRIGHT", 0, 0)
-    dzBRgt:SetWidth(1)
-    local dzLbl = dropZone:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    dzLbl:SetAllPoints()
-    dzLbl:SetJustifyH("CENTER")
-    dzLbl:SetText("|cFF44FF44+  Drop a spell, macro, or trinket here, or click to open spellbook|r")
-    dropZone:SetScript("OnClick", function()
-        local ct = GetCursorInfo()
-        if ct == "spell" or ct == "macro" or ct == "item" then AppendSpell() else OpenSpellBook() end
-    end)
-    dropZone:SetScript("OnReceiveDrag", AppendSpell)
-
     -- ── Sequence preview card ────────────────────────────────────
     -- Wraps the "Compiled Sequence:" header + preview text in a card
-    -- matching the Phase 2 row card style: dark fill (BACKGROUND) +
-    -- 1px warm-amber border (BORDER) for visual consistency with the
-    -- rotation rows above. Width is anchored to dropZone's bottom
+    -- matching the row card style: dark fill (BACKGROUND) + 1px
+    -- warm-amber border (BORDER) for visual consistency with the
+    -- rotation rows above. Width is anchored to the last row's bottom
     -- corners so the card matches the row width exactly. The bottom
     -- edge anchors to parent's bottom so the card auto-fills the
     -- remaining vertical space, providing room for the scrollable
-    -- preview text within.
+    -- preview text within. Empty rotation slots themselves accept
+    -- drag-and-drop (spells/macros/trinkets), so no dedicated drop
+    -- zone is needed — and the Spellbook / Macros buttons in the
+    -- Settings tab cover the "open spellbook" affordance.
     local seqCard = CreateFrame("Frame", nil, parent)
-    seqCard:SetPoint("TOPLEFT",  dropZone, "BOTTOMLEFT",  0, -8)
-    seqCard:SetPoint("TOPRIGHT", dropZone, "BOTTOMRIGHT", 0, -8)
-    seqCard:SetPoint("BOTTOM",   parent,   "BOTTOM",      0,  4)
+    seqCard:SetPoint("TOPLEFT",  rows[PR.MAX_SLOTS], "BOTTOMLEFT",  0, -8)
+    seqCard:SetPoint("TOPRIGHT", rows[PR.MAX_SLOTS], "BOTTOMRIGHT", 0, -8)
+    seqCard:SetPoint("BOTTOM",   parent,             "BOTTOM",      0,  4)
 
     local seqFill = seqCard:CreateTexture(nil, "BACKGROUND")
     seqFill:SetAllPoints()

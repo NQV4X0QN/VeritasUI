@@ -31,11 +31,18 @@ local CONTENT_W = PNL_W - 18
 -- This is the authentic "Blizzard primary panel" registration. The
 -- consistent leftmost slot regardless of opening order is the deterministic
 -- layout that makes Blizzard's UI feel cohesive.
+--
+-- Width / height are intentionally NOT declared here. Blizzard's own
+-- CharacterFrame registration omits them, letting the manager read
+-- GetWidth() / GetHeight() from the live frame instead of using stale
+-- declared values. Declaring width=PNL_W caused a 1-2px horizontal
+-- drift vs Blizzard's own panels (instance bar not flush against our
+-- left edge) because PortraitFrameTemplate's portrait overhang makes
+-- the rendered geometry differ from the logical SetSize value the
+-- manager would otherwise use for positioning math.
 VUI.RegisterManagedPanel("PriorityRotMainWindow", {
     area     = "left",
     pushable = 0,
-    width    = PNL_W,
-    height   = PNL_H,
 })
 
 -- Apply the current spec's icon to the frame's portrait slot, with the class
@@ -72,12 +79,24 @@ local function BuildMainWindow()
     -- Registered with Blizzard's UIPanel manager at file load time (see
     -- VUI.RegisterManagedPanel call near the top of this file). Because
     -- the manager owns positioning and strata, we must NOT call SetPoint,
-    -- SetMovable, SetFrameStrata, or SetToplevel here — any manual anchor
-    -- fights the manager and produces drift / strata-flicker.
+    -- SetMovable, or SetFrameStrata here — any manual anchor fights the
+    -- manager and produces drift / strata-flicker. SetToplevel IS safe
+    -- (the manager doesn't touch it) and is required for PR to render
+    -- above the instance-info side bar, matching CharacterFrame.
     local win = CreateFrame("Frame", "PriorityRotMainWindow", UIParent, "PortraitFrameTemplate")
     win:SetSize(PNL_W, PNL_H)
     win:EnableMouse(true)
     win:Hide()
+
+    -- Match Blizzard's primary-panel declaration. CharacterFrame's XML
+    -- sets `toplevel="true"`, which causes the frame to raise above other
+    -- same-strata frames (like the instance-info side bar) whenever it's
+    -- shown or clicked. Without this, PR renders *below* the instance bar,
+    -- which visually breaks the "flush against the instance bar" alignment
+    -- that Blizzard's panels have. The UIPanel manager does NOT manage
+    -- toplevel state — only strata/position/level — so setting it here
+    -- does not fight the manager.
+    win:SetToplevel(true)
 
     -- Wire the PortraitFrameTemplate close button through the UIPanel
     -- manager so the slot is released; a bare :Hide() leaves the manager
@@ -332,6 +351,32 @@ local function BuildMainWindow()
             end
 
             specDD:SetupMenu(function(_, root)
+                -- ──────────────────────────────────────────────────────────
+                -- TAINT WORKAROUND for WoWUIBugs #783
+                -- ──────────────────────────────────────────────────────────
+                -- Midnight 12.0 bug: if a tainted (addon) dropdown is the
+                -- FIRST menu opened in a session, the menu compositor
+                -- assigns a tainted `nil` to the shared menu frame's
+                -- `minimumWidth` field. That tainted nil then propagates
+                -- through secure menu operations opened later, producing
+                -- Secret Value errors in Blizzard code (SpellBookItem
+                -- UpdateCooldown, ActionButton ApplyCooldown, etc.) during
+                -- combat in zones with Secret Values active.
+                --
+                -- Fix: assign a clean concrete integer at the top of EVERY
+                -- menu generator so the compositor never sees the tainted
+                -- nil landmine. One line, zero behavior cost.
+                --
+                -- Value is set to CW (the dropdown button's own width) so
+                -- the menu popup matches the button width visually rather
+                -- than auto-shrinking to the longest radio label. Any
+                -- positive integer defuses the taint; CW just looks right.
+                --
+                -- Credit: Meorawr (Total-RP-3 PR #1242). Remove this call
+                -- when WoWUIBugs #783 is resolved by Blizzard.
+                -- ──────────────────────────────────────────────────────────
+                root:SetMinimumWidth(CW)
+
                 local n = (GetNumSpecializations and GetNumSpecializations()) or 0
                 for i = 1, n do
                     local id, name = GetSpecializationInfo(i)
@@ -374,9 +419,20 @@ local function BuildMainWindow()
             -- Refresh helper — updates the dropdown's button label to
             -- show the live spec name. Called from win:RefreshBadge so
             -- the dropdown stays in sync with PLAYER_SPECIALIZATION_CHANGED.
+            --
+            -- OverrideText is the correct API here. SetDefaultText only
+            -- controls the label when no radio has been clicked — once the
+            -- user clicks a radio, the dropdown caches THAT radio's label
+            -- and won't re-poll isSelectedFn until the menu reopens. A
+            -- spec change fired by the game (not the dropdown) leaves the
+            -- cached click-label stale. OverrideText bypasses the cache
+            -- and force-sets the displayed text directly.
             function specDD:RefreshLabel()
-                if self.SetDefaultText then
-                    self:SetDefaultText(CurrentSpecName())
+                local name = CurrentSpecName()
+                if self.OverrideText then
+                    self:OverrideText(name)
+                elseif self.SetDefaultText then
+                    self:SetDefaultText(name)
                 end
             end
             specDD:RefreshLabel()
