@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.1] - 2026-04-25
+
+### Fixed
+- `VeritasUI_PriorityRotation` combat-time Lua errors in Midnight — Blizzard `ActionButton.ApplyCooldown` and `SpellBookItem.UpdateCooldown` no longer throw "Secret values are only allowed during untainted execution" when PR is open during combat. Root cause: WoWUIBugs #783 — if a tainted (addon) dropdown is the first menu opened in a session, the menu compositor assigns a tainted `nil` to the shared menu frame's `minimumWidth` field, which then propagates through secure menu operations later. Applied Meorawr's workaround (Total-RP-3 PR #1242): call `root:SetMinimumWidth(CW)` at the top of every `SetupMenu` generator so the compositor sees a clean concrete integer instead of the tainted nil landmine
+- `VeritasUI_PriorityRotation` spec dropdown label now updates live when the spec changes externally (via spec panel, macro, etc.). Switched from `SetDefaultText` (which only controls the label when no radio has been clicked) to `OverrideText`, which bypasses the click-label cache so `PLAYER_SPECIALIZATION_CHANGED` refreshes the display regardless of how the change originated
+- `VeritasUI_PriorityRotation` window now sits flush against the instance-info side bar in M+ / raid zones. Added `win:SetToplevel(true)` to match Blizzard's `CharacterFrame` XML declaration — the frame now raises above same-strata frames (instance bar) when shown. Removed `width` / `height` from the `UIPanelWindows` registration so the manager reads live `GetWidth`/`GetHeight` from the frame instead of stale declared values, matching `CharacterFrame`'s entry exactly and eliminating a 1-2px horizontal drift
+
+### Changed
+- `VeritasUI_PriorityRotation` removed the green "Drop a spell, macro, or trinket here" bar at the bottom of the rotation editor — empty slots themselves accept drag-and-drop, and the `Spellbook` / `Macros` buttons in the Settings tab Tools section cover the "open spellbook" affordance. The Compiled Sequence card now grows into the reclaimed vertical space
+- `VeritasUI_PriorityRotation` clicking an empty rotation slot toggles the Blizzard `PlayerSpellsFrame` (open if closed, close if open — same behaviour as the Spellbook button in Tools). Shift-clicking an empty slot toggles the Macro UI. Combat-guarded with a chat message. Empty-slot tooltip updated to document the new controls
+
+
 ## [1.5.0] - 2026-04-25
 
 ### Added
