@@ -57,10 +57,19 @@ Zone-specific quest tracking via the native Objective Tracker.
 
 Settings: **Options → AddOns → Zone Quests** | `/zq`
 
+### VeritasUI_AdvancedOptions
+Curated hidden settings and full CVar browser.
+
+- **Featured tab** — 9 collapsible categories (Camera, Nameplates, Combat Text, Action Bars, Targeting & Mouse, Tooltips & UI, Chat, Graphics, Accessibility) with ~45 hand-picked hidden settings using native checkboxes, sliders, and dropdowns. Per-control reset-to-default and restart indicators for GX-restart CVars
+- **All CVars tab** — searchable browser listing every CVar on the client. Star-favourite system (persists across sessions, sorts to top), click-to-expand inline editor, modified-value highlighting, slim scrollbar with drag support
+- CVar enumeration uses a three-strategy fallback: `C_Console.GetAllCommands()`, legacy `ConsoleGetAllCommands()`, then a ~170-entry known-CVar probe list via `C_CVar.GetCVarInfo`
+
+Settings: **Options → AddOns → Advanced Options** | `/ao`
+
 ## Installation
 
 1. Download or clone this repository
-2. Copy all five `VeritasUI_*` folders into:
+2. Copy all six `VeritasUI_*` folders into:
    ```
    World of Warcraft/_retail_/Interface/AddOns/
    ```

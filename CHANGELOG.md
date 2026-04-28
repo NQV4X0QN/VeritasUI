@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0] - 2026-04-28
+
+### Added
+- `VeritasUI_AdvancedOptions` — new module providing curated hidden settings and a full CVar browser. Features two tabs: a Featured tab with 9 collapsible categories (Camera, Nameplates, Combat Text, Action Bars, Targeting & Mouse, Tooltips & UI, Chat, Graphics, Accessibility) containing ~45 hand-picked settings with proper native controls (checkboxes, sliders, dropdowns), and an All CVars tab with a searchable browser listing every CVar on the client via `C_CVar.GetCVarInfo` probe fallback (Midnight removed `C_Console`). Browser features: star-favourite system (persisted, sorts to top), click-to-expand inline editor with Set/Reset buttons, modified-value highlighting, mousewheel + draggable slim scrollbar. Window uses `PortraitFrameTemplate` (520×660) registered as a Tier A UIPanel (`pushable=0`), matching the PriorityRotation panel pattern. Slash: `/ao`, `/advancedoptions`
+- `VeritasUI_AdvancedOptions` control factory system in `Controls.lua` — three reusable factories (`CreateCheckbox`, `CreateSlider`, `CreateDropdown`) with per-control reset-to-default (`transmog-icon-revert` atlas), restart indicators for GX-restart CVars, and tooltips. Adding a new CVar to the Featured tab is a single table entry in `Featured.lua`
+- `VeritasUI_AdvancedOptions` CVar browser uses a three-strategy enumeration: `C_Console.GetAllCommands()` (guarded), legacy `ConsoleGetAllCommands()`, then a ~170-entry known-CVar probe list as fallback. Midnight ships without `C_Console`, so the probe strategy fires and indexes all valid CVars via `C_CVar.GetCVarInfo`
+
+
 ## [1.5.1] - 2026-04-25
 
 ### Fixed
