@@ -1,13 +1,13 @@
 # VeritasUI
 
-A personal World of Warcraft addon suite for **Midnight** (12.0, Interface 120001), focused on solo play quality-of-life improvements.
+A personal World of Warcraft addon suite for **Midnight** (12.0.5, Interface 120005), focused on solo play quality-of-life improvements.
 
 VeritasUI uses Blizzard's native APIs exclusively and matches Blizzard's UI aesthetics — fonts, spacing, layout, and settings panels are designed to be indistinguishable from the default UI. Every feature is configurable through the standard **Options → AddOns** panel with no slash commands required.
 
 ## Modules
 
 ### VeritasUI_Lib
-Shared utility library loaded by all other modules. Provides the common print formatter, smooth per-frame fade manager (replacing Blizzard's conflicting `UIFrameFadeIn`/`UIFrameFadeOut`), player frame fade with event-timing health detection, and the shared settings panel infrastructure including the Reload UI button.
+Shared utility library loaded by all other modules. Provides the common print formatter, smooth per-frame fade manager (replacing Blizzard's conflicting `UIFrameFadeIn`/`UIFrameFadeOut`), player frame fade with event-timing health detection, frame suppression helpers (`SafeHide`/`SuppressFrame`), hover-fade hooks, a combat-deferral queue (`CombatQueue`), managed-panel helpers wrapping Blizzard's `UIPanelWindows` system, and the shared settings panel infrastructure including the Reload UI button.
 
 ### VeritasUI_CleanSolo
 UI decluttering for a cleaner solo experience.
@@ -29,7 +29,7 @@ Functional enhancements that don't fit the "hide/fade" category.
 
 - **Map Coordinates** — displays player and cursor coordinates on the World Map using native tooltip backdrop textures; draggable with a lock/unlock icon button; position persists across sessions
 - **Item Level Overlays** — shows color-coded item levels on gear in bags, character panel, bank, warband bank, and merchant windows; uses a universal `SetItemButtonQuality` hook with a dedicated merchant scanner
-- **Auto Sell Junk** — automatically sells gray items when visiting a merchant, with batched selling (6 per frame) and coin icon output
+- **Auto Sell Junk** — automatically sells gray items when visiting a merchant using event-driven batch selling; reports earnings via gold delta
 - **Auto Repair** — automatically repairs gear at repair merchants, attempting guild funds first with source reporting
 - **TomTom-compatible Waypoints** — `/way #mapID x y [label]` or `/way x y [label]` places a native Blizzard waypoint pin on the World Map and activates the minimap directional arrow; `/way clear` removes it; reads the same format used by most online guides (e.g. `/way #2351 45.2 56.3`)
 
@@ -38,14 +38,16 @@ Settings: **Options → AddOns → Quality of Life** | `/qol` | `/way`
 ### VeritasUI_PriorityRotation
 One-button spell cycling system for accessibility.
 
-- Cycles through a configurable spell list on each key press via external key repeat (G-Hub at 50ms)
+- Cycles through a configurable list of spells, macros, and trinkets on each key press via external key repeat
 - Uses a `SecureHandlerWrapScript` restricted snippet for zero-taint combat execution
 - Action bar override mechanism (reverse-engineered from GSE) redirects a real bar button to the hidden secure button
-- Per-spec profiles with drag-and-drop editor and spellbook/macro integration
+- Per-spec profiles with drag-and-drop editor — supports spellbook spells, `/macro` macros, and equipped trinkets
+- `PortraitFrameTemplate` settings window registered as a Tier A UIPanel (behaves like Blizzard's Journeys/Collections panels)
+- Built-in Tools section: spec switcher dropdown, Spellbook and Macros toggle buttons
 - Dynamic icon shows the current spell on the action bar
-- Frequency tuning per spell for weighted distribution
+- Frequency tuning per entry for weighted distribution (interleave compiler)
 
-Settings: **Options → AddOns → Priority Rotation** | `/pr`
+Settings: `/pr` or `/pr settings`
 
 ### VeritasUI_ZoneQuests
 Zone-specific quest tracking via the native Objective Tracker.
@@ -78,7 +80,7 @@ Settings: **Options → AddOns → Advanced Options** | `/ao`
 
 ## Requirements
 
-- World of Warcraft: Midnight (Patch 12.0.1, Interface 120001)
+- World of Warcraft: Midnight (Patch 12.0.5, Interface 120005)
 - No external library dependencies — fully self-contained
 
 ## Design Philosophy
@@ -92,7 +94,7 @@ Settings: **Options → AddOns → Advanced Options** | `/ao`
 
 - **Press and Hold Casting** must be disabled for Priority Rotation to function (the addon handles this automatically with a one-time notification)
 - **Quest reward item levels** are not displayed — async data loading and base vs. effective ilvl mismatch make reliable display impractical; this is an open problem for future work
-- **Secret Values** (Midnight 12.0) prevent direct health reading from addon code — the player frame fade uses event-timing as a workaround
+- **Secret Values** in Midnight prevent direct health reading from addon code — the player frame fade uses event-timing as a workaround
 
 ## License
 
