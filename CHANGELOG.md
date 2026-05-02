@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.1] - 2026-05-01
+
+### Fixed
+- `VeritasUI_PriorityRotation` — fixed Midnight taint error in `ActionButton_ApplyCooldown` caused by PR calling `SetAttribute` on Blizzard ActionButtons. Calling `SetAttribute("type", "click")` and `SetAttribute("clickbutton", ...)` from addon code taints the button's execution context; when Blizzard's own cooldown update code later passes Midnight Secret Values to `SetCooldown`, the tainted context throws `"Secret values are only allowed during untainted execution"`. Strategies 1 and 2 now only track which button frame holds the Attack macro (for the icon ticker) without modifying any attributes. Strategy 3 (`SetOverrideBindingClick`) is the sole click-routing mechanism — direct mouse clicks still work via the Attack macro's `/click PRAttackButton`
+
 ## [1.6.0] - 2026-04-28
 
 ### Added
