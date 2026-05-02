@@ -36,6 +36,7 @@ local defaults = {
     hideBagButtons      = true,
     hideMacroNames      = true,
     hideErrorText       = true,
+    fadeActionBars      = {},
 }
 
 local db
@@ -337,6 +338,46 @@ local function HideErrorText()
     end
 end
 
+-- ── Feature: Fade Action Bars ──────────────────────────────
+-- Hover-reveal for designated action bars: faded to alpha 0 when
+-- idle, reappear on mouseover.  Uses VUI.HookHoverFade which
+-- handles target + child OnEnter/OnLeave automatically.
+local ACTION_BAR_FRAMES = {
+    [2] = "MultiBarBottomLeft",
+    [3] = "MultiBarBottomRight",
+    [4] = "MultiBarRight",
+    [5] = "MultiBarLeft",
+    [6] = "MultiBar5",
+    [7] = "MultiBar6",
+    [8] = "MultiBar7",
+}
+
+local ACTION_BAR_LABELS = {
+    [2] = "Action Bar 2", [3] = "Action Bar 3", [4] = "Action Bar 4",
+    [5] = "Action Bar 5", [6] = "Action Bar 6", [7] = "Action Bar 7",
+    [8] = "Action Bar 8",
+}
+
+local function IsEditModeActive()
+    if EditModeManagerFrame and EditModeManagerFrame.IsEditModeActive then
+        local ok, active = pcall(EditModeManagerFrame.IsEditModeActive,
+                                 EditModeManagerFrame)
+        return ok and active
+    end
+    return false
+end
+
+local function SetupActionBarFading()
+    for i = 2, 8 do
+        if db.fadeActionBars[i] then
+            local barFrame = _G[ACTION_BAR_FRAMES[i]]
+            if barFrame then
+                VUI.HookHoverFade(barFrame, IsEditModeActive)
+            end
+        end
+    end
+end
+
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
@@ -382,6 +423,76 @@ local function InitializeOptions()
         Settings.CreateCheckbox(category, setting, opt.tip)
     end
 
+    -- ── Action Bar Fading — native Settings dropdown ───────
+    -- Uses Settings.CreateDropdown so the control is part of the
+    -- layout system — correct modern style, instant positioning,
+    -- no floating frames or deferred anchoring.
+    --
+    -- Multi-select via single-select dropdown: each option toggles
+    -- a bar, then the value is reset to a composite display label
+    -- ("Bars 2, 5") via a re-entry-guarded SetValue.
+    do
+        db.fadeActionBars[1] = nil  -- Bar 1 is Blizzard-protected
+        local bars = {}
+        for i = 2, 8 do
+            if db.fadeActionBars[i] then bars[#bars + 1] = tostring(i) end
+        end
+        db.fadeActionBarsLabel = #bars > 0
+            and ((#bars == 1 and "Bar " or "Bars ") .. table.concat(bars, ", ")) or "None"
+    end
+
+    local fadeSetting = Settings.RegisterAddOnSetting(
+        category,
+        ADDON_NAME .. "_fadeActionBars",
+        "fadeActionBarsLabel",
+        VeritasUI_CleanSoloDB,
+        "string",
+        "Fade Action Bars",
+        "None"
+    )
+
+    local ignoreFadeCallback = false
+
+    local function GetBarOptions()
+        local container = Settings.CreateControlTextContainer()
+        -- Current composite label as the "selected" display option.
+        container:Add(db.fadeActionBarsLabel, db.fadeActionBarsLabel)
+        -- Individual bar toggle actions.
+        for i = 2, 8 do
+            local label = db.fadeActionBars[i]
+                and ("|cFF00FF00" .. ACTION_BAR_LABELS[i] .. "|r")
+                or ACTION_BAR_LABELS[i]
+            container:Add("toggle:" .. i, label)
+        end
+        return container:GetData()
+    end
+
+    fadeSetting:SetValueChangedCallback(function(_, val)
+        if ignoreFadeCallback or type(val) ~= "string" then return end
+        local barNum = tonumber(val:match("^toggle:(%d+)$") or "")
+        if barNum and barNum >= 2 and barNum <= 8 then
+            db.fadeActionBars[barNum] = not db.fadeActionBars[barNum] or nil
+            VUI.Print("Clean Solo", ACTION_BAR_LABELS[barNum] .. " fade "
+                .. (db.fadeActionBars[barNum] and "enabled" or "disabled")
+                .. " — |cFFFFFF00/reload|r to apply.")
+        end
+        -- Recompute display label and reset value.
+        local b = {}
+        for i = 2, 8 do
+            if db.fadeActionBars[i] then b[#b + 1] = tostring(i) end
+        end
+        db.fadeActionBarsLabel = #b > 0
+            and ((#b == 1 and "Bar " or "Bars ") .. table.concat(b, ", ")) or "None"
+        ignoreFadeCallback = true
+        pcall(fadeSetting.SetValue, fadeSetting, db.fadeActionBarsLabel)
+        ignoreFadeCallback = false
+    end)
+
+    Settings.CreateDropdown(category, fadeSetting, GetBarOptions,
+        "Select a bar to toggle its hover-fade. Faded bars become "
+        .. "transparent when idle and reappear on mouseover. "
+        .. "|cFFFFFF00/reload|r to apply.")
+
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
     VUI.RegisterSettingsLabel(SETTINGS_LABEL)
@@ -397,7 +508,12 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         VeritasUI_CleanSoloDB = VeritasUI_CleanSoloDB or {}
         for k, v in pairs(defaults) do
             if VeritasUI_CleanSoloDB[k] == nil then
-                VeritasUI_CleanSoloDB[k] = v
+                if type(v) == "table" then
+                    VeritasUI_CleanSoloDB[k] = {}
+                    for k2, v2 in pairs(v) do VeritasUI_CleanSoloDB[k][k2] = v2 end
+                else
+                    VeritasUI_CleanSoloDB[k] = v
+                end
             end
         end
         db = VeritasUI_CleanSoloDB
@@ -415,6 +531,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.hideBagButtons      then HideBagButtons()      end
         if db.hideMacroNames      then HideMacroNames()      end
         if db.hideErrorText       then HideErrorText()       end
+        SetupActionBarFading()
 
         self:UnregisterEvent("PLAYER_LOGIN")
         VUI.Print("Clean Solo", "Loaded. Type |cFFFFFF00/cleansolo|r to open settings.")

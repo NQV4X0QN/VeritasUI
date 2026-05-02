@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.9] - 2026-05-02
+
+### Added
+- `VeritasUI_CleanSolo` — **Fade Action Bars: hover-reveal for action bars.** Designated bars fade to transparent when idle and reappear on mouseover. Uses `VUI.HookHoverFade` with an Edit Mode guard so bars stay visible during repositioning. Bars 2–8 are supported (Bar 1 is Blizzard-protected and excluded). Per-bar selection via a native `Settings.CreateDropdown` multi-select dropdown in the Options panel — modern gold-arrow style, part of the layout system, no floating frames or deferred anchoring. Toggling a bar in the dropdown marks it green; the dropdown label shows the current selection ("Bar 2" / "Bars 2, 5" / "None"). Saved vars: `fadeActionBars` table + `fadeActionBarsLabel` display string. Deep-copy table defaults on first init to avoid the shared-reference landmine
+
+### Fixed
+- `VeritasUI_CleanSolo` — **Player frame now reliably appears when joining combat initiated by another player.** `PLAYER_REGEN_DISABLED` can fire before `InCombatLockdown()` returns true on the same frame (known WoW timing quirk). Added a zero-delay deferred re-evaluation on `PLAYER_REGEN_DISABLED` that retries on the next frame when the lockdown flag has settled
+
 ## [1.6.8] - 2026-05-02
 
 ### Fixed
