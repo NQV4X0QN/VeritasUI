@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.12] - 2026-05-02
+
+### Fixed
+- `VeritasUI_QualityOfLife` — **Auto Sell Junk now reports accurate earnings when Auto Repair is also active.** The `GetMoney()` snapshot was captured at sell-init time, but the preceding `AutoRepair` deduction could land asynchronously during the sell window, making the delta negative (clamped to 0 — "Sold 17 junk items for 0🥉"). Fix: the `startMoney` snapshot is now deferred to the moment the first `UseContainerItem` call fires inside `SellNextBatch`, giving the repair deduction time to settle in `GetMoney()` before the delta window opens
+
 ## [1.6.11] - 2026-05-02
 
 ### Fixed

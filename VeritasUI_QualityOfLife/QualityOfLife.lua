@@ -73,6 +73,8 @@ end
 -- handling any number of junk items reliably.
 -- Gold reporting uses GetMoney() delta (before/after) rather than
 -- item price lookups, which are unreliable with Midnight secret values.
+-- The startMoney snapshot is deferred until the first UseContainerItem call
+-- so that any preceding AutoRepair deduction has settled in GetMoney().
 local SELL_BATCH = 9
 local sellState       -- nil when idle; table { count, startMoney } when selling
 
@@ -92,6 +94,9 @@ local function SellNextBatch()
             if info and info.quality == 0 and not info.hasNoValue then
                 remaining = remaining + 1
                 if not info.isLocked then
+                    if not sellState.startMoney then
+                        sellState.startMoney = GetMoney()
+                    end
                     C_Container.UseContainerItem(bag, slot)
                     sellState.count = sellState.count + 1
                     sold = sold + 1
@@ -108,7 +113,7 @@ local function SellNextBatch()
     frame:UnregisterEvent("BAG_UPDATE_DELAYED")
 
     local count      = sellState.count
-    local startMoney = sellState.startMoney
+    local startMoney = sellState.startMoney or GetMoney()
     sellState = nil
 
     if count == 0 then return end
@@ -126,7 +131,7 @@ local function SellNextBatch()
 end
 
 local function AutoSellJunk()
-    sellState = { count = 0, startMoney = GetMoney() }
+    sellState = { count = 0, startMoney = nil }  -- snapshot deferred to first sell
     frame:RegisterEvent("BAG_UPDATE_DELAYED")
     SellNextBatch()
 end
