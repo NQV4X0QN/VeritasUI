@@ -27,6 +27,7 @@ end
 ----------------------------------------------------------------
 local defaults = {
     fadeChatTabs        = true,
+    transparentChatBG   = true,
     hideSocialButton    = true,
     hideChatButtons     = true,
     hideVoiceChatButton = true,
@@ -40,6 +41,64 @@ local defaults = {
 local db
 local settingsCategoryID
 local frame = CreateFrame("Frame")
+
+-- ── Feature: Transparent Chat Background ────────────────────
+-- Writes alpha=0 to each chat frame's backdrop via Blizzard's
+-- FCF_SetWindowAlpha API (the same setting the right slider in
+-- /chatconfig → "Edit Window Appearance" controls). The color
+-- component is left untouched — users who set a non-default tint
+-- keep it. Blizzard's built-in hover-to-reveal behavior handles
+-- the rest: background is invisible when idle, visible on
+-- mouseover, exactly matching the Clean Solo aesthetic.
+--
+-- Runs once at PLAYER_LOGIN, then hooks FCF_SetWindowColor and
+-- FCF_SetWindowAlpha so that any time the user opens the tab
+-- right-click → "Background" color picker (or any other code path
+-- changes the chat window color/alpha), alpha=0 is re-applied.
+-- This is required because Blizzard's color picker fires its
+-- opacityFunc on open with its cached value, which would otherwise
+-- overwrite our setting.
+--
+-- The hooks gate on db.transparentChatBG so toggling the feature
+-- off + /reload cleanly disables enforcement — hooksecurefunc
+-- itself can't be unhooked, but db-gating has the same effect.
+local function SetupTransparentChatBG()
+    if not FCF_SetWindowAlpha then return end
+
+    local function ApplyAlphaZero(cf)
+        -- Third arg `true` is FCF_SetWindowAlpha's `doNotSave` flag —
+        -- skips persistence to Blizzard's chat-config saved state so our
+        -- hook-enforced alpha=0 stays session-volatile. This means
+        -- toggling the feature off and /reloading restores Blizzard's
+        -- saved alpha rather than leaving alpha=0 baked into the profile.
+        if cf and cf._vui_inAlphaHook then return end
+        if cf then cf._vui_inAlphaHook = true end
+        pcall(FCF_SetWindowAlpha, cf, 0, true)
+        if cf then cf._vui_inAlphaHook = false end
+    end
+
+    -- Initial pass: transparent every existing chat frame.
+    for i = 1, (NUM_CHAT_WINDOWS or 10) do
+        ApplyAlphaZero(_G["ChatFrame" .. i])
+    end
+
+    -- Enforce on user-driven color changes (tab right-click → Background).
+    if FCF_SetWindowColor then
+        hooksecurefunc("FCF_SetWindowColor", function(cf)
+            if db and db.transparentChatBG then ApplyAlphaZero(cf) end
+        end)
+    end
+
+    -- Enforce on any alpha-change attempt (e.g. opacity slider in the
+    -- color picker, or Blizzard's opacityFunc firing on dialog open).
+    -- The re-entry guard inside ApplyAlphaZero prevents our own 0-write
+    -- from looping through the hook.
+    hooksecurefunc("FCF_SetWindowAlpha", function(cf, alpha)
+        if db and db.transparentChatBG and alpha and alpha > 0 then
+            ApplyAlphaZero(cf)
+        end
+    end)
+end
 
 -- ── Feature: Hide Social Button ─────────────────────────────
 local function HideSocialButton()
@@ -285,6 +344,10 @@ local function InitializeOptions()
     local options = {
         { key = "fadeChatTabs",        name = "Fade Chat Tabs",
           tip = "Chat tabs fade out with the chat window and reappear on mouseover." },
+        { key = "transparentChatBG",   name = "Transparent Chat Background",
+          tip = "Sets the chat window background to fully transparent so only the text is visible when idle. "
+             .. "Blizzard's built-in hover behavior reveals the background on mouseover. "
+             .. "Disabling this does not restore your previous alpha — use /chatconfig to adjust manually." },
         { key = "hideSocialButton",    name = "Hide Social Button",
           tip = "Hides the Quick Join / Communities toast button." },
         { key = "hideChatButtons",     name = "Hide Chat Buttons",
@@ -344,6 +407,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "PLAYER_LOGIN" then
         if db.hideSocialButton    then HideSocialButton()    end
         if db.fadeChatTabs        then SetupChatTabFading()  end
+        if db.transparentChatBG   then SetupTransparentChatBG() end
         if db.hideChatButtons     then HideChatButtons()     end
         if db.hideVoiceChatButton then HideVoiceChatButton() end
         if db.fadeMicroMenu       then SetupMicroMenuFade()  end

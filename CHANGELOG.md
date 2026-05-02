@@ -2,6 +2,12 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.4] - 2026-05-02
+
+### Added
+- `VeritasUI_CleanSolo` — new "Transparent Chat Background" toggle (default on). Sets every chat frame's backdrop alpha to 0 via Blizzard's `FCF_SetWindowAlpha` API so only the text is visible when idle. Blizzard's built-in hover-to-reveal behavior still works — mousing over the chat frame reveals the background naturally. The color component is untouched, so any custom tint the user set in `/chatconfig` is preserved. Third arg to `FCF_SetWindowAlpha` (`doNotSave`) keeps the write session-volatile, so toggling the feature off and `/reload`ing restores Blizzard's saved alpha rather than leaving `alpha=0` baked into the profile
+- `VeritasUI_CleanSolo` — Transparent Chat Background enforces itself against Blizzard's color picker. Hooks `FCF_SetWindowColor` (re-applies alpha=0 after any color change from the tab right-click → "Background" menu) and `FCF_SetWindowAlpha` (re-applies 0 if any code path — including Blizzard's opacityFunc firing on picker open — tries to set a non-zero alpha). Hooks are db-gated so toggling the feature off + `/reload` cleanly disables enforcement. Re-entry-guarded with a per-frame flag to prevent our own 0-write from looping through the alpha hook
+
 ## [1.6.3] - 2026-05-02
 
 ### Fixed
