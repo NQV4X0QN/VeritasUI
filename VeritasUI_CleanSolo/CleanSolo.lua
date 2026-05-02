@@ -469,6 +469,8 @@ local function InitializeOptions()
 
     fadeSetting:SetValueChangedCallback(function(_, val)
         if ignoreFadeCallback or type(val) ~= "string" then return end
+        -- Ignore re-selection of the composite display label (no-op).
+        if val == db.fadeActionBarsLabel then return end
         local barNum = tonumber(val:match("^toggle:(%d+)$") or "")
         if barNum and barNum >= 2 and barNum <= 8 then
             db.fadeActionBars[barNum] = not db.fadeActionBars[barNum] or nil
