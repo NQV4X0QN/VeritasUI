@@ -284,24 +284,21 @@ for i = 1, 12 do
     end
 end
 
-local function OverrideBarButton(btn, btnName)
-    btn:SetAttribute("pr-override", PR.BUTTON_NAME)
-    btn:SetAttribute("type", "click")
-    btn:SetAttribute("clickbutton", rotBtn)
+-- Track which bar button holds the Attack macro (for icon ticker) but
+-- do NOT modify its attributes.  Calling SetAttribute on a Blizzard
+-- ActionButton from addon code taints its execution context; Midnight
+-- Secret Values in ActionButton_UpdateCooldown then throw because
+-- SetCooldown requires untainted execution.  The keybind override
+-- (Strategy 3) routes clicks without touching the button itself, and
+-- direct mouse clicks fall through to the Attack macro which already
+-- contains /click PRAttackButton.
+local function TrackBarButton(btnName)
     PR.overriddenButton = btnName
 end
 
 function PR:ClearOverride()
     if InCombatLockdown() then return end
     ClearOverrideBindings(SECURE_HANDLER)
-
-    if self.overriddenButton and _G[self.overriddenButton] then
-        local btn = _G[self.overriddenButton]
-        btn:SetAttribute("pr-override", nil)
-        btn:SetAttribute("type", "action")
-        btn:SetAttribute("clickbutton", nil)
-    end
-
     self.overriddenButton = nil
     self.overriddenKeys   = nil
 end
@@ -324,16 +321,16 @@ function PR:ScanAndOverrideBarButton()
     end
     if not foundSlot then return end
 
-    -- Strategy 1: Direct slot → frame name lookup
+    -- Strategy 1: Direct slot → frame name lookup (visual tracking only)
     local directName = SLOT_TO_FRAME[foundSlot]
     if directName then
         local btn = _G[directName]
         if btn then
-            OverrideBarButton(btn, directName)
+            TrackBarButton(directName)
         end
     end
 
-    -- Strategy 2: Attribute scan for addon bars (BT4, ElvUI)
+    -- Strategy 2: Attribute scan for addon bars (BT4, ElvUI — visual tracking only)
     if not self.overriddenButton then
         for _, btnName in ipairs(ADDON_BAR_BUTTONS) do
             local btn = _G[btnName]
@@ -348,14 +345,16 @@ function PR:ScanAndOverrideBarButton()
                     return a
                 end)
                 if ok and slotAttr == foundSlot then
-                    OverrideBarButton(btn, btnName)
+                    TrackBarButton(btnName)
                     break
                 end
             end
         end
     end
 
-    -- Strategy 3: Keybinding override (fallback)
+    -- Strategy 3: Keybinding override — the ONLY click-routing mechanism.
+    -- Always applied when a binding exists.  Direct mouse clicks on the
+    -- button still work via the Attack macro's /click PRAttackButton.
     local bindingCmd = SLOT_TO_BIND[foundSlot]
     local boundKeys  = {}
     if bindingCmd then
@@ -364,7 +363,7 @@ function PR:ScanAndOverrideBarButton()
         if k2 then boundKeys[#boundKeys + 1] = k2 end
     end
 
-    if not self.overriddenButton and #boundKeys > 0 then
+    if #boundKeys > 0 then
         for _, key in ipairs(boundKeys) do
             SetOverrideBindingClick(SECURE_HANDLER, false, key, PR.BUTTON_NAME)
         end
