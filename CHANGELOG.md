@@ -2,6 +2,12 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.10] - 2026-05-02
+
+### Fixed
+- `VeritasUI_CleanSolo` — **Fade Action Bars selection now persists across sessions.** Blizzard's `Settings.RegisterAddOnSetting` framework persists the raw dropdown value (e.g. `"toggle:2"`) and replays it through the `SetValueChangedCallback` on the next login, re-toggling the bar OFF and resetting the label to "None". Fix: the display label is now computed fresh from the authoritative `fadeActionBars` table on every load, force-set on the setting after registration (overriding the stale persisted string), and the callback is suppressed during initialisation so the framework's restore replay is ignored. Bar selections in saved vars were always correct — only the display/callback replay was broken
+- `VeritasUI_CleanSolo` — **Early-return on composite label re-selection in Fade Action Bars callback.** Prevents a no-op toggle cycle when the user clicks the already-displayed composite label in the dropdown
+
 ## [1.6.9] - 2026-05-02
 
 ### Added
