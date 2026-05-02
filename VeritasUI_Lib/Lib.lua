@@ -12,6 +12,8 @@ local pairs, ipairs  = pairs, ipairs
 local pcall, type    = pcall, type
 local next           = next
 local math_abs       = math.abs
+local math_max       = math.max
+local math_min       = math.min
 local format         = string.format
 local CreateFrame    = CreateFrame
 local C_Timer        = C_Timer
@@ -28,7 +30,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.6.4"
+VUI.VERSION = "1.6.5"
 
 ----------------------------------------------------------------
 --  Print helpers
@@ -267,6 +269,187 @@ cqFrame:SetScript("OnEvent", function()
     queue = {}
     for _, fn in ipairs(pending) do pcall(fn) end
 end)
+
+----------------------------------------------------------------
+--  Slim Scrollbar — modern Blizzard-style slim thumb track
+--
+--  Attaches an 8px vertical scrollbar on the right edge of the
+--  given ScrollFrame. Visual style matches modern Blizzard panels
+--  (Talents, Collections, Professions) — dark translucent track,
+--  lighter thumb, subtle highlight on hover.
+--
+--  Behavior:
+--    • Mousewheel routes to scrollFrame (and also works over the
+--      track itself).
+--    • Thumb drag via OnMouseDown/Up/OnUpdate — the thumb height
+--      is proportional to visible/content ratio.
+--    • Clicking the track above/below the thumb page-jumps to
+--      that position.
+--    • Auto-hides when content fits in the visible area.
+--
+--  Usage:
+--      local update = VUI.AttachSlimScrollbar(myScrollFrame, {
+--          wheelStep = 60,        -- pixels per wheel notch (default 30)
+--      })
+--      -- Call update() after the scrollChild's height changes so
+--      -- the thumb resizes/repositions correctly.
+--
+--  Args:
+--    scrollFrame: the ScrollFrame that needs scrolling. Must already
+--                 have a scroll child set.
+--    opts (table, optional):
+--      wheelStep       (number, default 30)  pixels per wheel notch
+--      scrollbarWidth  (number, default 8)   thumb/track width
+--      gap             (number, default 4)   gap between scrollFrame's
+--                                            right edge and the track
+--      minThumbHeight  (number, default 24)  minimum thumb height so
+--                                            it's always grabbable
+--      parent          (Frame, optional)     where to anchor the track
+--                                            (default: scrollFrame:GetParent())
+--                                            NOTE: the track MUST live
+--                                            outside the ScrollFrame so
+--                                            it isn't clipped.
+--
+--  Returns:
+--    update, track
+--      update: function; call after content-size changes so the thumb
+--              recomputes its height and position.
+--      track:  the track Frame, for callers that want to tweak visuals.
+----------------------------------------------------------------
+function VUI.AttachSlimScrollbar(scrollFrame, opts)
+    opts = opts or {}
+    local wheelStep      = opts.wheelStep      or 30
+    local scrollbarWidth = opts.scrollbarWidth or 8
+    local gap            = opts.gap            or 4
+    local minThumbHeight = opts.minThumbHeight or 24
+    local trackParent    = opts.parent or scrollFrame:GetParent()
+
+    -- Track — sits on the right edge of scrollFrame, parented outside
+    -- the scroll region so it never clips.
+    local track = CreateFrame("Frame", nil, trackParent)
+    track:SetWidth(scrollbarWidth)
+    track:SetPoint("TOPLEFT",    scrollFrame, "TOPRIGHT",    gap, 0)
+    track:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", gap, 0)
+
+    local trackBg = track:CreateTexture(nil, "BACKGROUND")
+    trackBg:SetAllPoints()
+    trackBg:SetColorTexture(0.12, 0.12, 0.12, 0.5)
+
+    local trackBorder = track:CreateTexture(nil, "BORDER")
+    trackBorder:SetAllPoints()
+    trackBorder:SetColorTexture(0.25, 0.25, 0.25, 0.4)
+
+    -- Thumb — drag handle + visual indicator of scroll position.
+    local thumb = CreateFrame("Button", nil, track)
+    thumb:SetWidth(scrollbarWidth)
+    thumb:EnableMouse(true)
+    thumb:SetMovable(true)
+    -- Drag via OnMouseDown/Up/OnUpdate; no RegisterForClicks needed.
+
+    local thumbTex = thumb:CreateTexture(nil, "OVERLAY")
+    thumbTex:SetAllPoints()
+    thumbTex:SetColorTexture(0.45, 0.45, 0.45, 0.8)
+
+    local thumbHover = thumb:CreateTexture(nil, "HIGHLIGHT")
+    thumbHover:SetAllPoints()
+    thumbHover:SetColorTexture(0.6, 0.6, 0.6, 0.5)
+
+    local function Update()
+        local maxScroll = scrollFrame:GetVerticalScrollRange()
+        local trackH    = track:GetHeight()
+
+        if maxScroll <= 0 or trackH <= 0 then
+            thumb:Hide()
+            return
+        end
+        thumb:Show()
+
+        -- Thumb height proportional to visible/total ratio, clamped
+        -- to minThumbHeight so it remains a comfortable grab target.
+        local visibleH = scrollFrame:GetHeight()
+        local contentH = visibleH + maxScroll
+        local thumbH   = math_max(minThumbHeight, (visibleH / contentH) * trackH)
+        thumb:SetHeight(thumbH)
+
+        -- Thumb position proportional to current scroll.
+        local curScroll = scrollFrame:GetVerticalScroll()
+        local scrollPct = curScroll / maxScroll
+        local travel    = trackH - thumbH
+        local yOff      = -(scrollPct * travel)
+        thumb:ClearAllPoints()
+        thumb:SetPoint("TOPLEFT", track, "TOPLEFT", 0, yOff)
+    end
+
+    -- Mousewheel on the scrollFrame.
+    scrollFrame:EnableMouseWheel(true)
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local cur = self:GetVerticalScroll()
+        local maxScroll = self:GetVerticalScrollRange()
+        local newScroll = cur - (delta * wheelStep)
+        newScroll = math_max(0, math_min(newScroll, maxScroll))
+        self:SetVerticalScroll(newScroll)
+        Update()
+    end)
+
+    -- Mousewheel on the track itself (so wheeling near the edge works).
+    track:EnableMouseWheel(true)
+    track:SetScript("OnMouseWheel", function(_, delta)
+        local cur = scrollFrame:GetVerticalScroll()
+        local maxScroll = scrollFrame:GetVerticalScrollRange()
+        local newScroll = cur - (delta * wheelStep)
+        newScroll = math_max(0, math_min(newScroll, maxScroll))
+        scrollFrame:SetVerticalScroll(newScroll)
+        Update()
+    end)
+
+    -- Thumb drag — tracks the cursor vertically, maps to scroll range.
+    local isDragging = false
+    local dragStartY, dragStartScroll
+    thumb:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            isDragging = true
+            dragStartY = select(2, GetCursorPosition()) / self:GetEffectiveScale()
+            dragStartScroll = scrollFrame:GetVerticalScroll()
+            self:SetScript("OnUpdate", function()
+                if not isDragging then return end
+                local curY = select(2, GetCursorPosition()) / thumb:GetEffectiveScale()
+                local deltaY = dragStartY - curY
+                local trackH = track:GetHeight()
+                local thumbH = thumb:GetHeight()
+                local travel = trackH - thumbH
+                if travel <= 0 then return end
+                local maxScroll = scrollFrame:GetVerticalScrollRange()
+                local scrollDelta = (deltaY / travel) * maxScroll
+                local newScroll = math_max(0, math_min(maxScroll, dragStartScroll + scrollDelta))
+                scrollFrame:SetVerticalScroll(newScroll)
+                Update()
+            end)
+        end
+    end)
+    thumb:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" then
+            isDragging = false
+            self:SetScript("OnUpdate", nil)
+        end
+    end)
+
+    -- Click on the track (above or below the thumb) to page-jump.
+    track:EnableMouse(true)
+    track:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then return end
+        local _, cursorY = GetCursorPosition()
+        cursorY = cursorY / self:GetEffectiveScale()
+        local trackTop = self:GetTop()
+        if not trackTop then return end
+        local clickPct = (trackTop - cursorY) / self:GetHeight()
+        local maxScroll = scrollFrame:GetVerticalScrollRange()
+        local newScroll = math_max(0, math_min(maxScroll, clickPct * maxScroll))
+        scrollFrame:SetVerticalScroll(newScroll)
+        Update()
+    end)
+
+    return Update, track
+end
 
 ----------------------------------------------------------------
 --  Managed Panel Helpers — UIPanel system integration

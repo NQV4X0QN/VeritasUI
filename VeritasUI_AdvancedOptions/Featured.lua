@@ -443,37 +443,50 @@ AO.FEATURED_CATEGORIES = {
 --  with controls beneath, all inside a scrolling container.
 ----------------------------------------------------------------
 function AO:BuildFeaturedContent(parent)
-    -- Scroll container — bare ScrollFrame + mousewheel, no chrome.
-    -- Matches the PR sequence preview pattern.
+    -- Reserve space on the right for the slim scrollbar (SB width + gap).
+    -- Scroll child width syncs to scrollFrame width via OnSizeChanged so
+    -- controls laid out at PAD_X + CW wrap correctly inside the new inset.
+    local SB_W, SB_GAP = 8, 4
+
     local scrollFrame = CreateFrame("ScrollFrame", nil, parent)
-    scrollFrame:SetPoint("TOPLEFT",     parent, "TOPLEFT",     0,  0)
-    scrollFrame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT",  0,  0)
-    scrollFrame:EnableMouseWheel(true)
-    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-        local cur = self:GetVerticalScroll()
-        local maxScroll = self:GetVerticalScrollRange()
-        local newScroll = cur - (delta * 30)
-        newScroll = math.max(0, math.min(newScroll, maxScroll))
-        self:SetVerticalScroll(newScroll)
-    end)
+    scrollFrame:SetPoint("TOPLEFT",     parent, "TOPLEFT",      0,  0)
+    scrollFrame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -(SB_W + SB_GAP + 4),  0)
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     local parentW = parent:GetWidth()
     scrollChild:SetWidth((parentW > 0) and parentW or 480)
     scrollFrame:SetScrollChild(scrollChild)
 
-    -- Keep scrollChild width in sync with scrollFrame
+    -- Attach the shared slim scrollbar (same visual style as the
+    -- Browser tab's CVar list for cross-tab consistency). Wheel step
+    -- 30 is roughly one control row per notch.
+    local UpdateScrollbar = VUI.AttachSlimScrollbar(scrollFrame, {
+        wheelStep      = 30,
+        scrollbarWidth = SB_W,
+        gap            = SB_GAP,
+        parent         = parent,
+    })
+
+    -- Keep scrollChild width in sync with scrollFrame (width changes
+    -- with window resizes or initial layout pass).
     scrollFrame:SetScript("OnSizeChanged", function(self, w)
         scrollChild:SetWidth(w)
+        UpdateScrollbar()
     end)
     C_Timer.After(0, function()
         scrollChild:SetWidth(scrollFrame:GetWidth())
+        UpdateScrollbar()
     end)
 
     local PAD_X     = 8
     local PAD_Y     = -6
     local SECTION_GAP = -14
-    local CW        = ((parentW > 0) and parentW or 480) - PAD_X * 2
+    -- CW subtracts the scrollbar inset (SB_W + SB_GAP + 4) so controls +
+    -- their right-anchored reset buttons fit inside scrollChild's narrower
+    -- bounds. Without this subtraction, reset buttons overflow 16px past
+    -- scrollChild.right into the scrollbar gutter and get clipped by the
+    -- scrollFrame viewport.
+    local CW        = ((parentW > 0) and parentW or 480) - PAD_X * 2 - (SB_W + SB_GAP + 4)
     local allControls = {}
     local yOffset   = -PAD_X
 
@@ -568,15 +581,17 @@ function AO:BuildFeaturedContent(parent)
         SetCollapsed(self:IsCollapsed(cat.key))
     end
 
-    -- Set total height of scroll child
+    -- Set total height of scroll child, then recompute the scrollbar thumb.
     scrollChild:SetHeight(math.abs(yOffset) + 20)
+    UpdateScrollbar()
 
     -- Store references for re-layout
-    self._featuredScrollChild = scrollChild
-    self._featuredPadX        = PAD_X
-    self._featuredCW          = CW
-    self._featuredSectionGap  = SECTION_GAP
-    self._allFeaturedControls = allControls
+    self._featuredScrollChild      = scrollChild
+    self._featuredPadX             = PAD_X
+    self._featuredCW               = CW
+    self._featuredSectionGap       = SECTION_GAP
+    self._allFeaturedControls      = allControls
+    self._featuredUpdateScrollbar  = UpdateScrollbar
 
     return scrollFrame
 end
@@ -619,4 +634,6 @@ function AO:RelayoutFeatured(scrollChild, padX, cw, sectionGap)
     end
 
     scrollChild:SetHeight(math.abs(yOffset) + 20)
+    -- Content height changed → recompute thumb size/position.
+    if self._featuredUpdateScrollbar then self._featuredUpdateScrollbar() end
 end

@@ -2,6 +2,17 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.5] - 2026-05-02
+
+### Added
+- `VeritasUI_AdvancedOptions` — the Featured tab now has the same slim scrollbar as the All CVars tab, for consistency across tabs. Mousewheel still works (as before), plus the new thumb can be dragged, and clicking the track above/below the thumb page-jumps. Scrollbar auto-hides when content fits in the visible area
+- `VeritasUI_Lib` — new `VUI.AttachSlimScrollbar(scrollFrame, opts)` helper that attaches a modern Blizzard-style 8px slim scrollbar on the right edge of any ScrollFrame. Encapsulates the track / thumb / drag handling / mousewheel routing / page-jump behavior that was previously open-coded in `Browser.lua`. Options: `wheelStep`, `scrollbarWidth`, `gap`, `minThumbHeight`, `parent`. Returns an `update` function callers invoke after content-size changes so the thumb recomputes its height and position
+
+### Changed
+- `VeritasUI_AdvancedOptions` — `Browser.lua` refactored to call `VUI.AttachSlimScrollbar` instead of inline scrollbar code. ~105 lines of self-contained widget logic pulled out of the module; behavior preserved exactly (same wheel step of `ROW_H * 3`, same 8px scrollbar width, same 4px gap). Lowers drift risk between the two tabs' scrollbar implementations going forward
+- `VeritasUI_AdvancedOptions` — Featured tab's scroll container is now inset 16px from the right edge (scrollbar width + gap + margin). `CW` (control row width) is reduced by the same 16px so right-anchored reset buttons fit cleanly within the scrollChild bounds instead of overflowing into the scrollbar gutter. Controls are ~3% narrower on a 520px window — imperceptible but arithmetically correct
+- `VeritasUI_Lib` — added `math_max` and `math_min` localizations alongside the existing `math_abs` (required by the new scrollbar helper)
+
 ## [1.6.4] - 2026-05-02
 
 ### Added
