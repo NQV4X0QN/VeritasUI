@@ -35,9 +35,13 @@ AO.VERSION = VUI.VERSION
 --  favourited CVars in the browser, and the last active tab.
 ----------------------------------------------------------------
 local defaults = {
-    collapsed = {},          -- [categoryKey] = true/false
-    favorites = {},          -- [cvarName]    = true
-    lastTab   = 1,           -- 1 = Featured, 2 = All CVars
+    collapsed  = {},          -- [categoryKey] = true/false
+    favorites  = {},          -- [cvarName]    = true
+    lastTab    = 1,           -- 1 = Featured, 2 = All CVars
+    cvarCache  = {},          -- [cvarName]    = last-known-good string value
+                              -- Fallback for CVars registered by Blizzard LoD
+                              -- subsystems (Blizzard_NamePlates, Blizzard_CombatText)
+                              -- that aren't in the registry at PLAYER_LOGIN.
 }
 
 local db
@@ -64,9 +68,17 @@ end
 ----------------------------------------------------------------
 
 --- Read a CVar value. Returns string or nil on failure.
+--- Falls back to a saved-vars cache for CVars whose Blizzard
+--- subsystem hasn't loaded yet at PLAYER_LOGIN time.
 function AO:GetCVar(name)
     local ok, val = pcall(C_CVar.GetCVar, name)
-    return ok and val or nil
+    if ok and val ~= nil then
+        -- Live value available — update the cache.
+        if db then db.cvarCache[name] = val end
+        return val
+    end
+    -- CVar not (yet) in the registry — return cached value if we have one.
+    return db and db.cvarCache[name] or nil
 end
 
 --- Read a CVar as a boolean. Returns true/false or nil on failure.
@@ -93,11 +105,16 @@ function AO:SetCVar(name, value)
     if InCombatLockdown() then
         VUI.CombatQueue.Add(function()
             local ok, err = pcall(C_CVar.SetCVar, name, value)
-            if not ok then
+            if ok then
+                if db then db.cvarCache[name] = value end
+            else
                 VUI.Print("Advanced Options",
                     format("|cFFFF4444Failed to set %s:|r %s", name, tostring(err)))
             end
         end)
+        -- Optimistically cache even for deferred writes so the UI
+        -- reflects the pending value immediately.
+        if db then db.cvarCache[name] = value end
         VUI.Print("Advanced Options",
             format("|cFFFFFF00%s|r will be set after combat.", name))
         return false
@@ -108,6 +125,7 @@ function AO:SetCVar(name, value)
             format("|cFFFF4444Failed to set %s:|r %s", name, tostring(err)))
         return false
     end
+    if db then db.cvarCache[name] = value end
     return true
 end
 

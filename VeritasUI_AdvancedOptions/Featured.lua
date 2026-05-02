@@ -90,44 +90,9 @@ AO.FEATURED_CATEGORIES = {
                 tooltip = "Opacity of nameplates hidden behind walls or terrain. 0 = fully invisible, 1 = fully opaque.",
                 min     = 0.0, max = 1.0, step = 0.05, decimals = 2,
             },
-            {
-                type    = "dropdown",
-                cvar    = "nameplateMotion",
-                label   = "Motion Type",
-                tooltip = "Controls how nameplates arrange when multiple units overlap.",
-                options = {
-                    { value = "0", text = "Overlapping" },
-                    { value = "1", text = "Stacking" },
-                },
-            },
-            {
-                type    = "slider",
-                cvar    = "nameplateOverlapH",
-                label   = "Horizontal Overlap",
-                tooltip = "Horizontal spacing multiplier between stacked nameplates. Lower = tighter.",
-                min     = 0.0, max = 2.0, step = 0.1, decimals = 1,
-            },
-            {
-                type    = "slider",
-                cvar    = "nameplateOverlapV",
-                label   = "Vertical Overlap",
-                tooltip = "Vertical spacing multiplier between stacked nameplates. Lower = tighter.",
-                min     = 0.0, max = 2.0, step = 0.1, decimals = 1,
-            },
-            {
-                type    = "slider",
-                cvar    = "nameplateOtherTopInset",
-                label   = "Top Screen Clamp",
-                tooltip = "How close to the top edge of the screen nameplates are allowed. Negative values let them go off-screen.",
-                min     = -0.1, max = 0.5, step = 0.01, decimals = 2,
-            },
-            {
-                type    = "slider",
-                cvar    = "nameplateOtherBottomInset",
-                label   = "Bottom Screen Clamp",
-                tooltip = "How close to the bottom edge of the screen nameplates are allowed.",
-                min     = -0.1, max = 0.5, step = 0.01, decimals = 2,
-            },
+            -- nameplateMotion, nameplateOverlapH/V, nameplateOtherTopInset,
+            -- nameplateOtherBottomInset were removed in Midnight. Stacking
+            -- is now per-unit-type (Enemy/Friendly) in Options → Nameplates.
         },
     },
     {
@@ -152,24 +117,9 @@ AO.FEATURED_CATEGORIES = {
                 label   = "Show Healing Numbers",
                 tooltip = "Display outgoing healing as floating text on targets.",
             },
-            {
-                type    = "slider",
-                cvar    = "WorldTextScale",
-                label   = "Combat Text Scale",
-                tooltip = "Size multiplier for all floating combat text.",
-                min     = 0.5, max = 3.0, step = 0.1, decimals = 1,
-            },
-            {
-                type    = "dropdown",
-                cvar    = "floatingCombatTextFloatMode",
-                label   = "Float Direction",
-                tooltip = "Controls the trajectory of floating combat numbers.",
-                options = {
-                    { value = "1", text = "Arc" },
-                    { value = "2", text = "Straight Up" },
-                    { value = "3", text = "Straight Down" },
-                },
-            },
+            -- WorldTextScale and floatingCombatTextFloatMode were removed
+            -- in Midnight. Combat text scale and float direction are no
+            -- longer exposed as CVars.
         },
     },
     {
@@ -479,7 +429,6 @@ function AO:BuildFeaturedContent(parent)
     end)
 
     local PAD_X     = 8
-    local PAD_Y     = -6
     local SECTION_GAP = -14
     -- CW subtracts the scrollbar inset (SB_W + SB_GAP + 4) so controls +
     -- their right-anchored reset buttons fit inside scrollChild's narrower

@@ -9,7 +9,6 @@ local SETTINGS_LABEL = "Advanced Options"
 
 local PNL_W     = 520
 local PNL_H     = 660
-local CONTENT_W = PNL_W - 18
 
 ----------------------------------------------------------------
 --  Register with Blizzard's UIPanel manager at FILE LOAD time.

@@ -2,6 +2,17 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.6] - 2026-05-02
+
+### Removed
+- `VeritasUI_AdvancedOptions` — removed 7 dead CVars from the Featured tab that were removed or replaced in WoW Midnight. **Nameplates:** `nameplateMotion` (dropdown), `nameplateOverlapH`, `nameplateOverlapV`, `nameplateOtherTopInset`, `nameplateOtherBottomInset` (sliders) — nameplate stacking is now per-unit-type (Enemy/Friendly) in Blizzard's Options → Nameplates panel. **Combat Text:** `WorldTextScale` (slider), `floatingCombatTextFloatMode` (dropdown) — no longer exposed as CVars. These controls appeared functional but were reading nil from `C_CVar.GetCVar`; sliders silently showed their min value, dropdowns showed "?"
+
+### Changed
+- `VeritasUI_AdvancedOptions` — `Controls.lua` dropdown factory (`CreateDropdown`) now uses `tostring()` coercion on both sides of value comparison and `ipairs()` for deterministic option iteration. Prevents potential mismatches between CVar string formatting and option table values
+- `VeritasUI_AdvancedOptions` — `Core.lua` `GetCVar` now caches last-known-good values in saved vars (`cvarCache`). If a CVar returns nil (e.g. its Blizzard subsystem hasn't loaded yet), the cache provides a fallback. `SetCVar` also updates the cache on successful writes. Defensive measure for any future edge cases with late-loading LoD subsystems
+- `VeritasUI_AdvancedOptions` — removed unused `PAD_Y` variable from `Featured.lua` and unused `CONTENT_W` constant from `Settings.lua`
+- `VeritasUI_AdvancedOptions` — updated `GetCVar` docblock to reference the general late-loading subsystem case rather than specific removed CVars
+
 ## [1.6.5] - 2026-05-02
 
 ### Added

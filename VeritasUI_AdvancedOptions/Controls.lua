@@ -316,8 +316,11 @@ function AO:CreateDropdown(parent, cfg)
 
     local function CurrentText()
         local cur = AO:GetCVar(cfg.cvar)
-        for _, opt in pairs(cfg.options) do
-            if opt.value == cur then return opt.text end
+        if cur ~= nil then
+            local curStr = tostring(cur)
+            for _, opt in ipairs(cfg.options) do
+                if tostring(opt.value) == curStr then return opt.text end
+            end
         end
         return cur or "?"
     end
@@ -334,11 +337,13 @@ function AO:CreateDropdown(parent, cfg)
         -- WoWUIBugs #783 taint workaround
         root:SetMinimumWidth(150)
 
-        local cur = AO:GetCVar(cfg.cvar)
-        for _, opt in pairs(cfg.options) do
+        for _, opt in ipairs(cfg.options) do
             root:CreateRadio(
                 opt.text,
-                function() return AO:GetCVar(cfg.cvar) == opt.value end,
+                function()
+                    local cur = AO:GetCVar(cfg.cvar)
+                    return cur ~= nil and tostring(cur) == tostring(opt.value)
+                end,
                 function()
                     AO:SetCVar(cfg.cvar, opt.value)
                     Refresh()
