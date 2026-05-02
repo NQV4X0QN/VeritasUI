@@ -431,14 +431,26 @@ local function InitializeOptions()
     -- Multi-select via single-select dropdown: each option toggles
     -- a bar, then the value is reset to a composite display label
     -- ("Bars 2, 5") via a re-entry-guarded SetValue.
+    --
+    -- The composite label is computed fresh from db.fadeActionBars
+    -- on every load — it is NOT the persisted value.  The Settings
+    -- framework persists a dummy sentinel ("_") that the callback
+    -- ignores on restore, preventing the old bug where Blizzard's
+    -- framework replayed a stale "toggle:N" string on load and
+    -- re-toggled the bar selection.
+    local function ComputeFadeLabel()
+        local b = {}
+        for i = 2, 8 do
+            if db.fadeActionBars[i] then b[#b + 1] = tostring(i) end
+        end
+        return #b > 0
+            and ((#b == 1 and "Bar " or "Bars ") .. table.concat(b, ", "))
+            or "None"
+    end
+
     do
         db.fadeActionBars[1] = nil  -- Bar 1 is Blizzard-protected
-        local bars = {}
-        for i = 2, 8 do
-            if db.fadeActionBars[i] then bars[#bars + 1] = tostring(i) end
-        end
-        db.fadeActionBarsLabel = #bars > 0
-            and ((#bars == 1 and "Bar " or "Bars ") .. table.concat(bars, ", ")) or "None"
+        db.fadeActionBarsLabel = ComputeFadeLabel()
     end
 
     local fadeSetting = Settings.RegisterAddOnSetting(
@@ -448,10 +460,14 @@ local function InitializeOptions()
         VeritasUI_CleanSoloDB,
         "string",
         "Fade Action Bars",
-        "None"
+        "_"
     )
 
-    local ignoreFadeCallback = false
+    -- Force the display value to the freshly-computed label, overriding
+    -- whatever stale string Blizzard restored from saved vars.
+    local fadeInitialising = true
+    pcall(fadeSetting.SetValue, fadeSetting, db.fadeActionBarsLabel)
+    fadeInitialising = false
 
     local function GetBarOptions()
         local container = Settings.CreateControlTextContainer()
@@ -468,7 +484,7 @@ local function InitializeOptions()
     end
 
     fadeSetting:SetValueChangedCallback(function(_, val)
-        if ignoreFadeCallback or type(val) ~= "string" then return end
+        if fadeInitialising or type(val) ~= "string" then return end
         -- Ignore re-selection of the composite display label (no-op).
         if val == db.fadeActionBarsLabel then return end
         local barNum = tonumber(val:match("^toggle:(%d+)$") or "")
@@ -479,15 +495,10 @@ local function InitializeOptions()
                 .. " — |cFFFFFF00/reload|r to apply.")
         end
         -- Recompute display label and reset value.
-        local b = {}
-        for i = 2, 8 do
-            if db.fadeActionBars[i] then b[#b + 1] = tostring(i) end
-        end
-        db.fadeActionBarsLabel = #b > 0
-            and ((#b == 1 and "Bar " or "Bars ") .. table.concat(b, ", ")) or "None"
-        ignoreFadeCallback = true
+        db.fadeActionBarsLabel = ComputeFadeLabel()
+        fadeInitialising = true
         pcall(fadeSetting.SetValue, fadeSetting, db.fadeActionBarsLabel)
-        ignoreFadeCallback = false
+        fadeInitialising = false
     end)
 
     Settings.CreateDropdown(category, fadeSetting, GetBarOptions,
