@@ -30,7 +30,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.6.6"
+VUI.VERSION = "1.6.7"
 
 ----------------------------------------------------------------
 --  Print helpers
@@ -447,6 +447,65 @@ function VUI.AttachSlimScrollbar(scrollFrame, opts)
         scrollFrame:SetVerticalScroll(newScroll)
         Update()
     end)
+
+    -- ── Hover-fade behaviour ─────────────────────────────────
+    -- Track starts hidden, fades in on hover/scroll, lingers for
+    -- 1.5s after the last interaction, then fades out.
+    local FADE_IN_DUR  = 0.15
+    local FADE_OUT_DUR = 0.4
+    local LINGER_SEC   = 1.5
+    local lingerHandle = nil
+
+    track:SetAlpha(0)
+
+    local function ShowTrack()
+        if lingerHandle then lingerHandle:Cancel(); lingerHandle = nil end
+        VUI.SmoothFade(track, FADE_IN_DUR, 1)
+    end
+
+    local function ScheduleHideTrack()
+        if lingerHandle then lingerHandle:Cancel() end
+        lingerHandle = C_Timer.NewTimer(LINGER_SEC, function()
+            lingerHandle = nil
+            -- Don't fade out while dragging
+            if isDragging then return end
+            VUI.SmoothFade(track, FADE_OUT_DUR, 0)
+        end)
+    end
+
+    -- Show on mousewheel (already wired above; hook the Update call).
+    local origOnMouseWheel = scrollFrame:GetScript("OnMouseWheel")
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        origOnMouseWheel(self, delta)
+        ShowTrack()
+        ScheduleHideTrack()
+    end)
+
+    local origTrackWheel = track:GetScript("OnMouseWheel")
+    track:SetScript("OnMouseWheel", function(self, delta)
+        origTrackWheel(self, delta)
+        ShowTrack()
+        ScheduleHideTrack()
+    end)
+
+    -- Show on hover over the scrollbar area (track or thumb).
+    track:HookScript("OnEnter", function() ShowTrack() end)
+    track:HookScript("OnLeave", function() ScheduleHideTrack() end)
+    thumb:HookScript("OnEnter", function() ShowTrack() end)
+    thumb:HookScript("OnLeave", function()
+        if not isDragging then ScheduleHideTrack() end
+    end)
+
+    -- Keep visible during drag; schedule hide when drag ends.
+    -- HookScript fires after the original OnMouseUp (which clears
+    -- isDragging), so ScheduleHideTrack sees the correct state.
+    thumb:HookScript("OnMouseUp", function()
+        ScheduleHideTrack()
+    end)
+
+    -- Show on track click too.
+    track:HookScript("OnMouseDown", function() ShowTrack() end)
+    track:HookScript("OnMouseUp",   function() ScheduleHideTrack() end)
 
     return Update, track
 end

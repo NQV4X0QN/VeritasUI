@@ -2,6 +2,15 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.7] - 2026-05-02
+
+### Changed
+- `VeritasUI_AdvancedOptions` — **Browser tab rewritten as a virtual scroll list.** The old implementation created one full row frame (Button + 4 fontstrings + editor Frame + EditBox + 2 UIPanelButtons) per CVar — ~1,400 frames for 197 CVars. Every scroll interaction triggered `RefreshEntry` (pcall to `C_CVar.GetCVarInfo`) on all 197 entries and re-wired `SetScript` closures on every row. The new implementation uses a fixed pool of 26 row frames that are recycled as the user scrolls, with a single shared editor that repositions to the expanded row. Only the ~24 visible rows are bound and have their CVar values read on each scroll change. Click handlers, tooltips, and star toggles are wired once at pool creation and use a stable `row._entry` reference. Eliminates the game lock-up on first scroll and makes the tab feel instant
+- `VeritasUI_AdvancedOptions` — Browser search now resets scroll position to top on every filter change. Previously, filtering down to a few results while scrolled deep into the full list left the viewport past the content, showing an empty list until the user scrolled up
+- `VeritasUI_AdvancedOptions` — Browser tab scrollbar right-edge alignment normalized to match the Featured tab (both now at 16px inset from the parent's right edge)
+- `VeritasUI_Lib` — `VUI.AttachSlimScrollbar` now includes hover-fade behaviour: the scrollbar starts invisible, fades in (0.15s) on mousewheel, hover, track click, or thumb drag, lingers for 1.5s after the last interaction, then fades out (0.4s). Stays visible during active thumb drag. Applies to both the Featured and Browser tabs automatically
+- `VeritasUI_AdvancedOptions` — removed unused `math_abs` localization from `Browser.lua` (dead import from pre-virtual-scroll `Refresh`)
+
 ## [1.6.6] - 2026-05-02
 
 ### Removed
