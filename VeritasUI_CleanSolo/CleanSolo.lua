@@ -419,8 +419,18 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         self:UnregisterEvent("PLAYER_LOGIN")
         VUI.Print("Clean Solo", "Loaded. Type |cFFFFFF00/cleansolo|r to open settings.")
 
-    elseif event == "PLAYER_REGEN_DISABLED"
-        or event == "PLAYER_REGEN_ENABLED" then
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        if self._playerEvaluate then
+            self._playerEvaluate()
+            -- Deferred retry: InCombatLockdown() may not return true
+            -- on the same frame PLAYER_REGEN_DISABLED fires (known
+            -- WoW timing quirk). A zero-delay timer re-evaluates on
+            -- the next frame, catching the race that causes the player
+            -- frame to stay hidden when joining someone else's combat.
+            C_Timer.After(0, self._playerEvaluate)
+        end
+
+    elseif event == "PLAYER_REGEN_ENABLED" then
         if self._playerEvaluate then self._playerEvaluate() end
 
     elseif event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then

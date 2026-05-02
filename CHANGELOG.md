@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.8] - 2026-05-02
+
+### Fixed
+- `VeritasUI_CleanSolo` — **Player frame now reliably appears when joining combat initiated by another player.** `PLAYER_REGEN_DISABLED` can fire before `InCombatLockdown()` returns true on the same frame (known WoW timing quirk). When you initiate combat yourself, a near-simultaneous `UNIT_HEALTH` event masked the race, but when joining someone else's fight without immediately taking damage, the sole `Evaluate()` call saw `InCombatLockdown() == false` and the frame stayed hidden. Fix: a zero-delay deferred re-evaluation (`C_Timer.After(0, Evaluate)`) on `PLAYER_REGEN_DISABLED` retries on the next frame when the lockdown flag has settled
+
 ## [1.6.7] - 2026-05-02
 
 ### Changed
