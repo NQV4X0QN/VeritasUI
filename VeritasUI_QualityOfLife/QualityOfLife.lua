@@ -389,16 +389,22 @@ local function SetupItemLevels()
 end
 
 -- ── Feature: Map Coordinates ────────────────────────────────
--- Shows player and cursor coordinates on the World Map.
--- Uses WoW's native tooltip backdrop textures for a metallic frame.
+-- Shows player and cursor coordinates side-by-side on the World Map.
+-- No backdrop or border — just two fontstrings with a drop shadow.
 -- Hides the quest log side panel toggle button.
--- Small lock button toggles positioning mode; position saved across sessions.
--- When locked, the box is mouse-transparent (map clicks pass through).
+-- Right-click toggles lock/unlock; left-drag repositions when unlocked.
+-- When locked, the frame is mouse-transparent (map clicks pass through).
 -- Handles WorldMapFrame being load-on-demand (Blizzard_WorldMap).
 -- Gracefully shows "—" in instances or areas without position data.
 local function SetupMapCoordinates()
     local fmt = string.format
     local THROTTLE = 0.033   -- ~30 fps
+
+    -- Normal colours
+    local PLAYER_R, PLAYER_G, PLAYER_B = 1, 0.82, 0        -- gold
+    local CURSOR_R, CURSOR_G, CURSOR_B = 0.75, 0.75, 0.75  -- light gray
+    -- Unlocked-mode tint (cyan)
+    local UNLOCK_R, UNLOCK_G, UNLOCK_B = 0.2, 0.8, 1.0
 
     local function InitCoords()
         if not WorldMapFrame or not WorldMapFrame.ScrollContainer then return end
@@ -408,143 +414,135 @@ local function SetupMapCoordinates()
         local toggle = WorldMapFrame.SidePanelToggle
         if toggle then VUI.SuppressFrame(toggle) end
 
-        local bg = CreateFrame("Frame", nil, container, "BackdropTemplate")
-        bg:SetSize(126, 38)
-        bg:SetFrameStrata("HIGH")
-        bg:SetFrameLevel(container:GetFrameLevel() + 10)
-        bg:SetBackdrop({
-            bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile     = true,
-            tileSize = 16,
-            edgeSize = 16,
-            insets   = { left = 4, right = 4, top = 4, bottom = 4 },
-        })
-        bg:SetBackdropColor(0.08, 0.08, 0.10, 0.65)
-        bg:SetBackdropBorderColor(0.65, 0.65, 0.65, 1)
+        -- Invisible container button — no backdrop, no border, no tint.
+        -- Must be a Button (not Frame) so RegisterForClicks works.
+        local anchor = CreateFrame("Button", nil, container)
+        anchor:SetSize(1, 1)  -- auto-sized by content; initial 1×1 is a placeholder
+        anchor:SetFrameStrata("DIALOG")
+        anchor:SetFrameLevel(container:GetFrameLevel() + 10)
 
         -- Restore saved position or default to bottom-right.
-        -- Saved positions are always stored as BOTTOMLEFT offsets from the
-        -- container's BOTTOMLEFT corner (see SavePosition below).
         local saved = db.mapCoordsPos
         if saved then
-            bg:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", saved.x, saved.y)
+            anchor:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", saved.x, saved.y)
         else
-            bg:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", 3, 0)
+            anchor:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -6, 4)
         end
 
-        -- ── Lock / unlock via a small toggle button ──
+        -- ── Lock / unlock state ──
         local locked = true
 
-        -- Mouse-transparent when locked so map clicks pass through.
-        bg:EnableMouse(false)
-        bg:SetMovable(false)
-        bg:SetClampedToScreen(true)
+        -- Always accept mouse input so right-click (un)lock works in
+        -- either state.  Left-clicks pass through to the map because we
+        -- only RegisterForClicks("RightButtonUp"), never LeftButton.
+        anchor:EnableMouse(true)
+        anchor:SetMovable(false)
+        anchor:SetClampedToScreen(true)
 
         local function SavePosition()
-            bg:StopMovingOrSizing()
-            -- After StartMoving(), WoW silently re-anchors the frame to
-            -- UIParent for drag tracking, so GetPoint(1) returns offsets
-            -- relative to UIParent — NOT our container.  Using those
-            -- offsets with container as the relative frame on restore
-            -- places the box in the wrong spot every login.
-            --
-            -- GetLeft()/GetBottom() always return true screen-space
-            -- positions regardless of WoW's internal anchor state, so we
-            -- compute the BOTTOMLEFT offset from the container explicitly.
-            -- Both frames may have different effective scales, so we
-            -- normalise through screen-pixel space first.
-            local bgScale        = bg:GetEffectiveScale()
-            local containerScale = container:GetEffectiveScale()
-            if containerScale == 0 then return end
-            local x = ((bg:GetLeft()   or 0) * bgScale
-                       - (container:GetLeft()   or 0) * containerScale)
-                      / containerScale
-            local y = ((bg:GetBottom() or 0) * bgScale
-                       - (container:GetBottom() or 0) * containerScale)
-                      / containerScale
+            anchor:StopMovingOrSizing()
+            local aScale = anchor:GetEffectiveScale()
+            local cScale = container:GetEffectiveScale()
+            if cScale == 0 then return end
+            local x = ((anchor:GetLeft()   or 0) * aScale
+                       - (container:GetLeft()   or 0) * cScale) / cScale
+            local y = ((anchor:GetBottom() or 0) * aScale
+                       - (container:GetBottom() or 0) * cScale) / cScale
             db.mapCoordsPos = { x = x, y = y }
+        end
+
+        -- Player coords (gold) — left side.
+        local playerText = anchor:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        playerText:SetPoint("LEFT", anchor, "LEFT", 0, 0)
+        playerText:SetJustifyH("LEFT")
+        playerText:SetTextColor(PLAYER_R, PLAYER_G, PLAYER_B)
+        playerText:SetShadowColor(0, 0, 0, 1)
+        playerText:SetShadowOffset(1, -1)
+        playerText:SetText("Player: —")
+
+        -- Cursor coords (light gray) — right of player, separated by a gap.
+        local mouseText = anchor:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        mouseText:SetPoint("LEFT", playerText, "RIGHT", 12, 0)
+        mouseText:SetJustifyH("LEFT")
+        mouseText:SetTextColor(CURSOR_R, CURSOR_G, CURSOR_B)
+        mouseText:SetShadowColor(0, 0, 0, 1)
+        mouseText:SetShadowOffset(1, -1)
+        mouseText:SetText("Cursor: —")
+
+        -- Resize the invisible hit frame to wrap both fontstrings.
+        local function ResizeAnchor()
+            local pw = playerText:GetStringWidth() or 0
+            local mw = mouseText:GetStringWidth()  or 0
+            local h  = playerText:GetStringHeight() or 14
+            anchor:SetSize(pw + 12 + mw, h)
+        end
+        ResizeAnchor()
+
+        local function SetTextColors(unlocked)
+            if unlocked then
+                playerText:SetTextColor(UNLOCK_R, UNLOCK_G, UNLOCK_B)
+                mouseText:SetTextColor(UNLOCK_R, UNLOCK_G, UNLOCK_B)
+            else
+                playerText:SetTextColor(PLAYER_R, PLAYER_G, PLAYER_B)
+                mouseText:SetTextColor(CURSOR_R, CURSOR_G, CURSOR_B)
+            end
         end
 
         local function SetLocked(lock)
             locked = lock
-            bg:SetMovable(not lock)
-            bg:EnableMouse(not lock)
+            anchor:SetMovable(not lock)
             if lock then
-                bg:SetBackdropBorderColor(0.65, 0.65, 0.65, 1)
+                anchor:RegisterForDrag()          -- clear drag registration
             else
-                bg:SetBackdropBorderColor(0.2, 0.8, 1.0, 1)
+                anchor:RegisterForDrag("LeftButton")
             end
+            SetTextColors(not lock)
         end
 
-        -- Small lock/unlock toggle button on the bottom-right corner.
-        -- This is the ONLY way to lock/unlock — no auto-lock on drop.
-        local lockBtn = CreateFrame("Button", nil, bg)
-        lockBtn:SetSize(14, 14)
-        lockBtn:SetPoint("BOTTOMRIGHT", bg, "BOTTOMRIGHT", -5, 4)
-        lockBtn:SetFrameLevel(bg:GetFrameLevel() + 2)
-
-        local lockIcon = lockBtn:CreateTexture(nil, "ARTWORK")
-        lockIcon:SetAllPoints()
-        lockIcon:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-LOCK")
-        lockIcon:SetVertexColor(0.7, 0.7, 0.7)
-        lockBtn.icon = lockIcon
-
-        -- Drag handling: only starts/stops movement, never changes lock state.
-        bg:RegisterForDrag("LeftButton")
-        bg:SetScript("OnDragStart", function(self)
-            if not locked then
-                self:StartMoving()
-            end
-        end)
-        bg:SetScript("OnDragStop", function(self)
-            self:StopMovingOrSizing()
-            SavePosition()
-        end)
-
-        lockBtn:SetScript("OnClick", function()
+        -- Right-click toggles lock/unlock.
+        anchor:RegisterForClicks("RightButtonUp")
+        anchor:SetScript("OnClick", function(_, button)
+            if button ~= "RightButton" then return end
             if locked then
                 SetLocked(false)
-                lockIcon:SetVertexColor(0.2, 0.8, 1.0)
                 VUI.Print("Quality of Life",
                     "Coordinates |cFF00CCFFunlocked|r — drag to reposition. "
-                    .. "Click the lock icon to lock.")
+                    .. "Right-click to lock.")
             else
                 SavePosition()
                 SetLocked(true)
-                lockIcon:SetVertexColor(0.7, 0.7, 0.7)
                 VUI.Print("Quality of Life", "Coordinates |cFF00FF00locked.|r")
             end
         end)
 
-        lockBtn:SetScript("OnEnter", function(self)
+        -- Left-drag to reposition when unlocked.
+        -- Drag registration is managed by SetLocked(); starts unregistered
+        -- because locked=true at init.
+        anchor:SetScript("OnDragStart", function(self)
+            if not locked then self:StartMoving() end
+        end)
+        anchor:SetScript("OnDragStop", function(self)
+            self:StopMovingOrSizing()
+            SavePosition()
+        end)
+
+        -- Tooltip hint on hover — provides discoverability for the
+        -- right-click lock/unlock interaction.
+        anchor:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             if locked then
-                GameTooltip:AddLine("Click to unlock and reposition", 0.7, 0.7, 0.7)
+                GameTooltip:AddLine("Right-click to unlock and reposition", 0.7, 0.7, 0.7)
             else
-                GameTooltip:AddLine("Click to lock position", 0.2, 0.8, 1)
+                GameTooltip:AddLine("Drag to reposition", 0.2, 0.8, 1)
+                GameTooltip:AddLine("Right-click to lock", 0.7, 0.7, 0.7)
             end
             GameTooltip:Show()
         end)
-        lockBtn:SetScript("OnLeave", function()
+        anchor:SetScript("OnLeave", function()
             GameTooltip:Hide()
         end)
 
-        -- Player line (gold).
-        local playerText = bg:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        playerText:SetPoint("TOPLEFT", bg, "TOPLEFT", 10, -7)
-        playerText:SetJustifyH("LEFT")
-        playerText:SetTextColor(1, 0.82, 0)
-        playerText:SetText("Player:  —")
-
-        -- Cursor line (light gray).
-        local mouseText = bg:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        mouseText:SetPoint("TOPLEFT", playerText, "BOTTOMLEFT", 0, -3)
-        mouseText:SetJustifyH("LEFT")
-        mouseText:SetTextColor(0.75, 0.75, 0.75)
-        mouseText:SetText("Cursor:  —")
-
-        bg:SetScript("OnUpdate", function(self, elapsed)
+        anchor:SetScript("OnUpdate", function(self, elapsed)
             self._t = (self._t or 0) + elapsed
             if self._t < THROTTLE then return end
             self._t = 0
@@ -552,13 +550,13 @@ local function SetupMapCoordinates()
             local mapID = C_Map.GetBestMapForUnit("player")
 
             -- Player position
-            local pStr = "Player:  —"
+            local pStr = "Player: —"
             if mapID then
                 local ok, pos = pcall(C_Map.GetPlayerMapPosition, mapID, "player")
                 if ok and pos then
                     local x, y = pos:GetXY()
                     if x and y and (x > 0 or y > 0) then
-                        pStr = fmt("Player:  %.1f, %.1f", x * 100, y * 100)
+                        pStr = fmt("Player: %.1f, %.1f", x * 100, y * 100)
                     end
                 end
             end
@@ -568,17 +566,19 @@ local function SetupMapCoordinates()
             end
 
             -- Cursor position (only while hovering the map canvas)
-            local cStr = "Cursor:  —"
+            local cStr = "Cursor: —"
             if container:IsMouseOver() then
                 local ok, cx, cy = pcall(container.GetNormalizedCursorPosition, container)
                 if ok and cx and cy and cx >= 0 and cx <= 1 and cy >= 0 and cy <= 1 then
-                    cStr = fmt("Cursor:  %.1f, %.1f", cx * 100, cy * 100)
+                    cStr = fmt("Cursor: %.1f, %.1f", cx * 100, cy * 100)
                 end
             end
             if cStr ~= self._lastCursor then
                 mouseText:SetText(cStr)
                 self._lastCursor = cStr
             end
+
+            ResizeAnchor()
         end)
     end
 
@@ -603,7 +603,7 @@ local function InitializeOptions()
 
     local options = {
         { key = "showMapCoords",   name = "Show Map Coordinates",
-          tip = "Displays player and cursor coordinates on the World Map. Use the lock icon to unlock and reposition. Hides the quest log toggle button." },
+          tip = "Displays player and cursor coordinates on the World Map. Right-click the coordinates to unlock and reposition. Hides the quest log toggle button." },
         { key = "showItemLevels",  name = "Show Item Levels",
           tip = "Displays item level numbers on equipment in bags, bank, character panel, and merchants. Quest rewards are excluded." },
         { key = "autoSellJunk",    name = "Auto Sell Junk",

@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.2] - 2026-05-02
+
+### Changed
+- `VeritasUI_QualityOfLife` — redesigned Map Coordinates display. Removed the metallic tooltip-style box (BackdropTemplate with border and tinted background) and lock icon button. Coordinates now render as two bare fontstrings side-by-side on one horizontal line: `Player: 42.0, 67.1  Cursor: —` with a black drop shadow for legibility against any map background. Player coords in gold, cursor coords in light gray. Frame strata set to DIALOG so the coordinates can be positioned anywhere on the map frame including the title bar chrome. Right-click the coordinates to toggle lock/unlock (cyan tint when unlocked); left-drag to reposition when unlocked. Hover tooltip provides contextual hint in both states. Settings tooltip updated to reflect the new interaction
+
 ## [1.6.1] - 2026-05-01
 
 ### Fixed
