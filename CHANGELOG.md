@@ -2,6 +2,21 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.3] - 2026-05-02
+
+### Fixed
+- `VeritasUI_PriorityRotation` — `C_CVar.SetCVar("ActionButtonUseKeyDown", ...)` is now `pcall`-wrapped at all three call sites (PLAYER_LOGIN handler, Enable setting callback on, Enable setting callback off). A raw error here would previously abort the rest of the login handler and leave PR half-initialized; now surfaces an amber warning and lets the rest of init proceed
+- `VeritasUI_PriorityRotation` — `ScanAndOverrideBarButton` now counts slots that `pcall(GetActionInfo)` fails on (likely Midnight Secret Values in raid / M+ zones). When the user-initiated `/pr scan` or "Scan & Bind" button fails to find the Attack macro AND unreadable slots were present, prints an actionable diagnostic telling the user to re-scan after leaving the encounter or move the macro. Automatic scans (post-compile, post-login, post-spec-change) remain silent as before
+- `VeritasUI_PriorityRotation` — `UpdateMacroStub` now returns a success boolean and warns the user with a red error when the account macro list is full (120/120). Previously the function silently no-op'd and callers printed a misleading "Macro is ready" message. Both user-facing callers (`/pr macro` slash command, "Create / Update Macro" button) now gate their success message on the return value
+
+### Changed
+- `VeritasUI_Lib` — corrected the `VUI.RegisterManagedPanel` docblock to accurately document the `pushable` default (`1`, Tier B coexist-with-everything) instead of the previously-claimed `0` (Tier A exclusive). Explains both tiers and clarifies when to pass `pushable=0` explicitly
+- `VeritasUI_QualityOfLife` — map-coords `OnUpdate` now tracks a `dirty` flag and only calls `ResizeAnchor()` when player or cursor text actually changed. `GetStringWidth` / `GetStringHeight` / `SetSize` no longer fire 30×/sec on unchanged coordinates
+- `VeritasUI_ZoneQuests` — first `BuildZoneNameSet()` call now assigns its result to `cachedNameSet` so subsequent `QUEST_LOG_UPDATE` events in the login-to-first-zone-change window reuse the cached set instead of rebuilding the map-hierarchy walk on every fire
+- `VeritasUI_AdvancedOptions` — removed 4 duplicate entries from `Browser.lua` `KNOWN_CVARS` list (`movieSubtitle`, `showTimestamps`, `speechToText`, `textToSpeech` were each listed twice). List is now clean; 197 unique CVar names
+- `VeritasUI_AdvancedOptions` — removed dead `thumb:RegisterForClicks` call on the Browser scrollbar thumb. Drag is implemented via `OnMouseDown` / `OnMouseUp` / `OnUpdate`; `RegisterForClicks` was a no-op
+- `VeritasUI_AdvancedOptions` — Browser `expandedRow` (numeric list index) renamed to `expandedName` and keyed by CVar name. Toggling a favourite mid-session (which re-sorts the filtered list) no longer desyncs which row's inline editor is open
+
 ## [1.6.2] - 2026-05-02
 
 ### Changed

@@ -161,7 +161,13 @@ local function SyncTracking(verbose)
         return
     end
 
-    local nameSet   = cachedNameSet or BuildZoneNameSet()
+    local nameSet = cachedNameSet
+    if not nameSet then
+        nameSet = BuildZoneNameSet()
+        cachedNameSet = nameSet   -- cache first build so QUEST_LOG_UPDATE
+                                  -- doesn't rebuild on every fire until the
+                                  -- first ZONE_CHANGED event invalidates it
+    end
     local watchType = GetWatchType()
     local removed, added = 0, 0
     local currentHeader = nil

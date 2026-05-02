@@ -548,6 +548,7 @@ local function SetupMapCoordinates()
             self._t = 0
 
             local mapID = C_Map.GetBestMapForUnit("player")
+            local dirty = false
 
             -- Player position
             local pStr = "Player: —"
@@ -563,6 +564,7 @@ local function SetupMapCoordinates()
             if pStr ~= self._lastPlayer then
                 playerText:SetText(pStr)
                 self._lastPlayer = pStr
+                dirty = true
             end
 
             -- Cursor position (only while hovering the map canvas)
@@ -576,9 +578,13 @@ local function SetupMapCoordinates()
             if cStr ~= self._lastCursor then
                 mouseText:SetText(cStr)
                 self._lastCursor = cStr
+                dirty = true
             end
 
-            ResizeAnchor()
+            -- Only reflow the invisible hit rect when the text actually
+            -- changed. GetStringWidth/Height + SetSize 30×/sec on unchanged
+            -- text was wasteful.
+            if dirty then ResizeAnchor() end
         end)
     end
 

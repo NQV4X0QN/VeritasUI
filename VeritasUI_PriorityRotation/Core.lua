@@ -205,9 +205,14 @@ end
 
 ----------------------------------------------------------------
 --  Macro Stub
+--
+--  Returns true on success (macro created or edited), false on
+--  failure. Silent combat-lockdown no-op returns false too;
+--  callers that need to surface a user-visible success message
+--  should check the return value and gate their print on it.
 ----------------------------------------------------------------
 function PR:UpdateMacroStub()
-    if InCombatLockdown() then return end
+    if InCombatLockdown() then return false end
 
     local macroBody = "#showtooltip\n/click " .. self.BUTTON_NAME
     local macroIcon = "ability_warrior_charge"
@@ -219,9 +224,19 @@ function PR:UpdateMacroStub()
     local idx = GetMacroIndexByName(self.MACRO_NAME)
     if idx > 0 then
         EditMacro(idx, self.MACRO_NAME, macroIcon, macroBody)
+        return true
     else
         if GetNumMacros() < (MAX_ACCOUNT_MACROS or 120) then
             CreateMacro(self.MACRO_NAME, macroIcon, macroBody)
+            return true
+        else
+            -- Account macro list is full (120/120). This is a hard failure
+            -- the user must resolve; warn them so they don't assume the
+            -- macro was created.
+            VUI.Print("Priority Rotation",
+                "|cFFFF4444Can't create the Attack macro — your account macro list is full "
+                .. "(120/120).|r Delete an unused macro in |cFFFFFF00/macro|r, then try again.")
+            return false
         end
     end
 end
@@ -303,7 +318,7 @@ function PR:ClearOverride()
     self.overriddenKeys   = nil
 end
 
-function PR:ScanAndOverrideBarButton()
+function PR:ScanAndOverrideBarButton(verbose)
     if InCombatLockdown() or not PR:IsEnabled() then return end
 
     local macroIdx = GetMacroIndexByName(self.MACRO_NAME)
@@ -311,15 +326,37 @@ function PR:ScanAndOverrideBarButton()
 
     self:ClearOverride()
 
+    -- Midnight Secret Values: in raid / M+ zones, GetActionInfo can return
+    -- Secret Values for some slots. The equality check `id == macroIdx`
+    -- throws when one side is secret, so we pcall; unreadable slots become
+    -- `ok=false` and are counted separately. If the macro happens to live
+    -- on such a slot, the scan silently misses it — verbose callers (the
+    -- user-initiated /pr scan and the "Scan & Bind" button) surface this
+    -- so the user understands why the scan failed and what to do about it.
     local foundSlot
+    local unreadableSlots = 0
     for slot = 1, 120 do
         local ok, actionType, id = pcall(GetActionInfo, slot)
-        if ok and actionType == "macro" and id == macroIdx then
-            foundSlot = slot
-            break
+        if ok then
+            if actionType == "macro" and id == macroIdx then
+                foundSlot = slot
+                break
+            end
+        else
+            unreadableSlots = unreadableSlots + 1
         end
     end
-    if not foundSlot then return end
+    if not foundSlot then
+        if verbose and unreadableSlots > 0 then
+            VUI.Print("Priority Rotation",
+                format("|cFFFF8800Scan incomplete:|r %d slot(s) unreadable "
+                    .. "(likely Midnight Secret Values in raid / M+). "
+                    .. "Re-run |cFFFFFF00/pr scan|r after leaving the encounter, "
+                    .. "or move the Attack macro to a different bar.",
+                    unreadableSlots))
+        end
+        return
+    end
 
     -- Strategy 1: Direct slot → frame name lookup (visual tracking only)
     local directName = SLOT_TO_FRAME[foundSlot]
@@ -446,7 +483,17 @@ ef:SetScript("OnEvent", function(_, event, arg1)
     elseif event == "PLAYER_LOGIN" then
         -- Manage Press and Hold Casting CVar automatically.
         -- PR requires key-up firing (0); disabling PR restores key-down (1).
-        C_CVar.SetCVar("ActionButtonUseKeyDown", PR:IsEnabled() and "0" or "1")
+        -- pcall-guarded because SetCVar can throw in edge cases (GX-locked
+        -- values, server-stored variants, early-login race conditions). A
+        -- silent error here would abort the rest of this handler and leave
+        -- PR booted in a half-initialized state.
+        local okCVar, errCVar = pcall(C_CVar.SetCVar,
+            "ActionButtonUseKeyDown", PR:IsEnabled() and "0" or "1")
+        if not okCVar then
+            VUI.Print("Priority Rotation",
+                "|cFFFF8800ActionButtonUseKeyDown CVar could not be set at login — "
+                .. "PR may behave unexpectedly until /reload. (" .. tostring(errCVar) .. ")|r")
+        end
         PR:SwitchToCurrentSpec()
         PR:CompileSequence()
         PR._lastProfileKey = PR:GetProfileKey()
@@ -510,7 +557,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             VUI.Print("Priority Rotation", "|cFFFF4444Can't scan in combat.|r")
             return
         end
-        PR:ScanAndOverrideBarButton()
+        PR:ScanAndOverrideBarButton(true)   -- verbose: surface Secret-Value diagnostic on failure
         if PR.overriddenButton then
             local keyInfo = ""
             if PR.overriddenKeys then
@@ -535,9 +582,11 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             VUI.Print("Priority Rotation", "|cFFFF4444Can't create macro in combat.|r")
             return
         end
-        PR:UpdateMacroStub()
-        VUI.Print("Priority Rotation",
-            "Macro |cFFFFFF00" .. PR.MACRO_NAME .. "|r ready in /macro.")
+        if PR:UpdateMacroStub() then
+            VUI.Print("Priority Rotation",
+                "Macro |cFFFFFF00" .. PR.MACRO_NAME .. "|r ready in /macro.")
+        end
+        -- On failure, UpdateMacroStub already printed the specific reason.
 
     elseif cmd == "test" then
         VUI.Print("Priority Rotation", "Diagnostic:")

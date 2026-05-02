@@ -28,7 +28,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.6.2"
+VUI.VERSION = "1.6.3"
 
 ----------------------------------------------------------------
 --  Print helpers
@@ -295,17 +295,20 @@ end)
 --
 --  Defaults:
 --    area      = "left"   ("left" | "doublewide" | "center")
---    pushable  = 0        Highest priority in the legacy UIPanelWindows
---                         system, matching CollectionsJournal/Journeys.
---                         Lower pushable wins slot 1. Documented Blizzard
---                         values (verified live in WoW Midnight 12.0.5):
---                           CollectionsJournal = 0
---                           CharacterFrame     = 3
+--    pushable  = 1        Default is Tier B — coexists with Blizzard primary
+--                         panels (CollectionsJournal, Character, etc.) without
+--                         displacing them. Lower pushable wins slot 1.
+--                         Documented Blizzard values (verified live in WoW
+--                         Midnight 12.0.5):
+--                           CollectionsJournal = 0  (Tier A, exclusive)
+--                           CharacterFrame     = 3  (Tier B, coexists)
 --                           ProfessionsFrame   = not in UIPanelWindows
 --                                                (uses modern manager)
---                         Use 0 to behave like a Blizzard primary panel.
---                         Use 9+ to consistently yield to all Blizzard
---                         panels (lowest priority).
+--                         Pass pushable=0 explicitly to behave like a Blizzard
+--                         primary panel (always claims slot 1, mutually
+--                         exclusive with other Tier A panels).
+--                         Pass pushable=9+ to consistently yield to all
+--                         Blizzard panels (lowest priority).
 --    whileDead = 1        (allow opening while dead, like Char)
 --    width     = N        Optional explicit width hint for the manager.
 --    height    = N        Optional explicit height hint for the manager.

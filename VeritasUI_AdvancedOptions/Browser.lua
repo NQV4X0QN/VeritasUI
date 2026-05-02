@@ -66,7 +66,7 @@ local KNOWN_CVARS = {
     "chatBubbles", "chatBubblesParty", "chatClassColorOverride",
     "chatMouseScroll", "chatStyle", "guildMemberNotify",
     "profanityFilter", "removeChatDelay", "showTimestamps",
-    "speechToText", "textToSpeech", "whisperMode",
+    "whisperMode",
     -- Combat
     "autoSelfCast", "enableFloatingCombatText", "SpellQueueWindow",
     "floatingCombatTextAllSpellMechanics", "floatingCombatTextAuras",
@@ -148,10 +148,10 @@ local KNOWN_CVARS = {
     "empowerTapControls", "findYourselfMode",
     "instantQuestText", "lootLeftmostBin",
     "missingTransmogrifySourceInItemTooltips",
-    "movieSubtitle", "OutlineEngineMode",
+    "OutlineEngineMode",
     "predictedHealth", "scriptErrors",
     "showInGameNavigation", "showNPETutorials", "showTargetOfTarget",
-    "showTimestamps", "showToastWindow", "showTutorials",
+    "showToastWindow", "showTutorials",
     "StatusText", "StatusTextDisplay", "threatShowNumeric",
     "UberTooltips", "uiScale", "useUiScale",
     "XPBarText",
@@ -388,7 +388,8 @@ function AO:BuildBrowserContent(parent)
     thumb:SetWidth(SCROLLBAR_W)
     thumb:EnableMouse(true)
     thumb:SetMovable(true)
-    thumb:RegisterForClicks("LeftButtonDown", "LeftButtonUp")
+    -- Drag is implemented via OnMouseDown / OnMouseUp / OnUpdate below;
+    -- no OnClick handler is needed, so no RegisterForClicks call either.
 
     local thumbTex = thumb:CreateTexture(nil, "OVERLAY")
     thumbTex:SetAllPoints()
@@ -495,7 +496,9 @@ function AO:BuildBrowserContent(parent)
 
     -- ── Row pool ────────────────────────────────────────────
     local rows = {}
-    local expandedRow = nil   -- index into filteredList
+    local expandedName = nil   -- CVar name of the currently-expanded row
+                               -- (keyed by name, not list index, so toggling
+                               -- a favourite doesn't desync which row is open)
 
     local function CreateRow(index)
         local row = CreateFrame("Button", nil, listChild)
@@ -621,17 +624,17 @@ function AO:BuildBrowserContent(parent)
             end
 
             -- Row click → toggle inline editor
-            local expanded = (expandedRow == i)
+            local expanded = (expandedName == entry.name)
             row.editor:SetShown(expanded)
             if expanded then
                 row.editor.editBox:SetText(entry.value)
             end
 
             row:SetScript("OnClick", function()
-                if expandedRow == i then
-                    expandedRow = nil
+                if expandedName == entry.name then
+                    expandedName = nil
                 else
-                    expandedRow = i
+                    expandedName = entry.name
                 end
                 Refresh()
             end)
@@ -690,7 +693,7 @@ function AO:BuildBrowserContent(parent)
         if searchTimer then searchTimer:Cancel() end
         searchTimer = C_Timer.NewTimer(0.2, function()
             searchTimer = nil
-            expandedRow = nil
+            expandedName = nil
             Refresh()
         end)
     end)

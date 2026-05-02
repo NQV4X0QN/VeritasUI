@@ -278,10 +278,12 @@ local function BuildMainWindow()
                 VUI.Print("Priority Rotation", "|cFFFF4444Can't create macro in combat.|r")
                 return
             end
-            PR:UpdateMacroStub()
-            VUI.Print("Priority Rotation",
-                "Macro |cFFFFFF00" .. PR.MACRO_NAME
-                .. "|r is ready — drag it from /macro to an action bar.")
+            if PR:UpdateMacroStub() then
+                VUI.Print("Priority Rotation",
+                    "Macro |cFFFFFF00" .. PR.MACRO_NAME
+                    .. "|r is ready — drag it from /macro to an action bar.")
+            end
+            -- On failure, UpdateMacroStub already printed the specific reason.
         end)
 
         local scanBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")
@@ -514,7 +516,14 @@ local function BuildNativeSettingsPanel()
     )
     enableSetting:SetValueChangedCallback(function(_, value)
         if value then
-            C_CVar.SetCVar("ActionButtonUseKeyDown", "0")
+            -- pcall-guarded: SetCVar can throw in edge cases; better to
+            -- continue enabling PR with a warning than to half-fail silently.
+            local okE = pcall(C_CVar.SetCVar, "ActionButtonUseKeyDown", "0")
+            if not okE then
+                VUI.Print("Priority Rotation",
+                    "|cFFFF8800ActionButtonUseKeyDown CVar could not be set — "
+                    .. "key-up firing may not work correctly until /reload.|r")
+            end
             PR:CompileSequence()
             C_Timer.After(0.5, function()
                 if not InCombatLockdown() then PR:ScanAndOverrideBarButton() end
@@ -528,7 +537,7 @@ local function BuildNativeSettingsPanel()
                 PR.needsClearOverride = true
             end
             PR:StopIconTicker()
-            C_CVar.SetCVar("ActionButtonUseKeyDown", "1")
+            pcall(C_CVar.SetCVar, "ActionButtonUseKeyDown", "1")
             VUI.Print("Priority Rotation", "|cFFFF4444Disabled.|r")
         end
     end)
