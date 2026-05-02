@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.11] - 2026-05-02
+
+### Fixed
+- `VeritasUI_CleanSolo` — **Reverted v1.6.10 Fade Action Bars changes that broke persistence.** The v1.6.10 hardening commit added an early-return guard (`if val == db.fadeActionBarsLabel then return end`) in the dropdown callback that prevented the recompute + SetValue refresh from running when the Settings framework replayed a persisted value on load. This caused bar selections to silently reset to "None" across sessions. Restored the original working callback from v1.6.9 which handled all replay scenarios correctly
+
 ## [1.6.10] - 2026-05-02
 
 ### Fixed
