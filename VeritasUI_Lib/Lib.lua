@@ -30,7 +30,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.6.13"
+VUI.VERSION = "1.6.14"
 
 ----------------------------------------------------------------
 --  Print helpers
@@ -120,12 +120,21 @@ function VUI.SuppressFrame(f)
 end
 
 ----------------------------------------------------------------
---  HookHoverFade  (MicroMenu, etc.)
+--  HookHoverFade  (MicroMenu, action bars, etc.)
+--
+--  Hybrid hover detection: event-driven OnEnter for instant fade-
+--  in, OnUpdate poll for robust fade-out.  The poll checks target
+--  AND all direct children via IsMouseOver, which handles Edit Mode
+--  layouts where buttons extend beyond the parent bar frame's bounds.
+--  The poll frame is only active while the target is visible, so
+--  hidden bars have zero per-frame cost.
 --
 --  Uses SmoothFade to avoid Blizzard UIFrameFade table conflicts.
 ----------------------------------------------------------------
-local HOVER_FADE_IN  = 0.2
-local HOVER_FADE_OUT = 0.5
+local HOVER_FADE_IN   = 0.2
+local HOVER_FADE_OUT  = 0.5
+local HOVER_POLL_RATE = 0.1    -- ~10 Hz while visible
+local HOVER_LEAVE_GRACE = 0.15 -- seconds after last "not over" before fading
 
 function VUI.HookHoverFade(target, shouldStayVisible)
     if not target then return end
@@ -135,31 +144,79 @@ function VUI.HookHoverFade(target, shouldStayVisible)
         return shouldStayVisible and shouldStayVisible()
     end
 
-    local function FadeIn()
-        SmoothFade(target, HOVER_FADE_IN, 1)
+    -- Check target and all direct children — handles Edit Mode layouts
+    -- where buttons extend beyond the parent bar frame's bounds.
+    -- Short-circuits on target:IsMouseOver() (common case for MicroMenu).
+    -- Children are cached to avoid table allocation on every poll tick;
+    -- the cache is rebuilt when RefreshChildren is called (e.g. after
+    -- Edit Mode exit changes the bar layout).
+    local childCache = { target:GetChildren() }
+
+    local function RefreshChildren()
+        childCache = { target:GetChildren() }
     end
+
+    local function IsMouseOverAny()
+        if target:IsMouseOver() then return true end
+        for i = 1, #childCache do
+            local child = childCache[i]
+            if child:IsVisible() and child:IsMouseOver() then return true end
+        end
+        return false
+    end
+
+    local hovered    = false
+    local graceSince = nil
+    local poll       = CreateFrame("Frame")
+    poll:Hide()  -- inactive until first hover
+
     local function FadeOut()
-        if not IsLocked() and not MouseIsOver(target) then
+        if not IsLocked() and not IsMouseOverAny() then
+            hovered    = false
+            graceSince = nil
+            poll:Hide()
             SmoothFade(target, HOVER_FADE_OUT, 0)
         end
     end
 
+    local function FadeIn()
+        if not hovered then
+            hovered    = true
+            graceSince = nil
+            SmoothFade(target, HOVER_FADE_IN, 1)
+            poll:Show()
+        end
+    end
+
+    -- Poll: runs only while hovered; watches for mouse-leave.
+    poll:SetScript("OnUpdate", function(self, elapsed)
+        self._t = (self._t or 0) + elapsed
+        if self._t < HOVER_POLL_RATE then return end
+        self._t = 0
+        if IsLocked() then graceSince = nil; return end
+        if IsMouseOverAny() then
+            graceSince = nil
+        else
+            local now = GetTime()
+            if not graceSince then
+                graceSince = now
+            elseif now - graceSince >= HOVER_LEAVE_GRACE then
+                FadeOut()
+            end
+        end
+    end)
+
+    -- Instant fade-in via OnEnter hooks on target + direct children.
     local hooked = {}
     local function HookChild(child)
         if not child or hooked[child] or not child.HookScript then return end
         hooked[child] = true
         child:HookScript("OnEnter", FadeIn)
-        child:HookScript("OnLeave", function() C_Timer.After(0.1, FadeOut) end)
     end
-    local function HookAllChildren()
-        for _, child in ipairs({ target:GetChildren() }) do HookChild(child) end
-    end
-
     target:HookScript("OnEnter", FadeIn)
-    target:HookScript("OnLeave", function() C_Timer.After(0.1, FadeOut) end)
-    HookAllChildren()
+    for _, child in ipairs({ target:GetChildren() }) do HookChild(child) end
 
-    return FadeOut
+    return FadeOut, RefreshChildren
 end
 
 ----------------------------------------------------------------

@@ -2,6 +2,12 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.14] - 2026-05-02
+
+### Fixed
+- `VeritasUI_Lib` — **Rewrote `HookHoverFade` with hybrid poll-based hover detection.** The old event-driven `OnEnter`/`OnLeave` approach failed for action bars in Edit Mode layouts (e.g., 3×4 grids) where buttons extend beyond the parent bar frame's bounds — `MouseIsOver(target)` returned false while hovering a button, and `OnLeave`/`OnEnter` races between adjacent buttons left bars stuck visible. New approach: event-driven `OnEnter` for instant fade-in, `OnUpdate` poll (10 Hz, only active while hovered) for robust fade-out that checks target AND all direct children via `IsMouseOver()`. Cached child array with `RefreshChildren` handle avoids per-tick allocation. 150ms grace period prevents flicker between adjacent buttons. Zero per-frame cost while hidden
+- `VeritasUI_CleanSolo` — `SetupActionBarFading` now captures the `RefreshChildren` handle and calls it on Edit Mode exit alongside `FadeOut`, so the child cache stays current after layout changes
+
 ## [1.6.13] - 2026-05-02
 
 ### Fixed

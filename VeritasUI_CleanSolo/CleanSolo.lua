@@ -369,20 +369,24 @@ end
 
 local function SetupActionBarFading()
     local fadeOuts = {}
+    local refreshers = {}
     for i = 2, 8 do
         if db.fadeActionBars[i] then
             local barFrame = _G[ACTION_BAR_FRAMES[i]]
             if barFrame then
-                local fo = VUI.HookHoverFade(barFrame, IsEditModeActive)
+                local fo, rc = VUI.HookHoverFade(barFrame, IsEditModeActive)
                 if fo then fadeOuts[#fadeOuts + 1] = fo end
+                if rc then refreshers[#refreshers + 1] = rc end
             end
         end
     end
     -- Re-fade bars after Edit Mode exits — Blizzard forces them visible
     -- during layout editing, and no OnLeave fires to trigger FadeOut.
+    -- Also refresh child caches in case Edit Mode changed button layout.
     if #fadeOuts > 0 and EditModeManagerFrame then
         pcall(hooksecurefunc, EditModeManagerFrame, "ExitEditMode", function()
             C_Timer.After(0.2, function()
+                for _, rc in ipairs(refreshers) do rc() end
                 for _, fo in ipairs(fadeOuts) do fo() end
             end)
         end)
