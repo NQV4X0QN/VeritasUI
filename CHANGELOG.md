@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.16] - 2026-05-03
+
+### Fixed
+- `VeritasUI_QualityOfLife` — **Auto Sell Junk no longer stalls mid-sell with large junk counts.** The sell chain relied entirely on `BAG_UPDATE_DELAYED` to drive each batch. If that event was lost — server throttle, event coalesced away, or bag reorganization swallowing the signal — the chain broke silently and remaining junk was never sold. Fix: a 0.5s safety timer (`SELL_RETRY_SEC`) now self-chains after every `SellNextBatch` call. If `BAG_UPDATE_DELAYED` fires normally (the common path), it cancels and replaces the timer. If the event is lost, the timer fires and resumes selling. The timer is cancelled on merchant close and on sell completion. Normal-path behavior and timing are unchanged
+
 ## [1.6.15] - 2026-05-03
 
 ### Fixed

@@ -71,16 +71,25 @@ end
 -- processes bag changes) before selling the next batch.  This
 -- lets the game's own event cadence throttle the sell rate,
 -- handling any number of junk items reliably.
+-- A 0.5s safety timer guarantees forward progress even if
+-- BAG_UPDATE_DELAYED is lost (server throttle, event swallowed).
 -- Gold reporting uses GetMoney() delta (before/after) rather than
 -- item price lookups, which are unreliable with Midnight secret values.
 -- The startMoney snapshot is deferred until the first UseContainerItem call
 -- so that any preceding AutoRepair deduction has settled in GetMoney().
-local SELL_BATCH = 9
-local sellState       -- nil when idle; table { count, startMoney } when selling
+local SELL_BATCH     = 9
+local SELL_RETRY_SEC = 0.5
+local sellState         -- nil when idle; table { count, startMoney } when selling
+local sellRetryTimer    -- safety timer; fires if BAG_UPDATE_DELAYED is lost
+
+local function CancelSellRetry()
+    if sellRetryTimer then sellRetryTimer:Cancel(); sellRetryTimer = nil end
+end
 
 local function SellNextBatch()
     if not sellState then return end
     if not MerchantFrame or not MerchantFrame:IsShown() then
+        CancelSellRetry()
         sellState = nil
         frame:UnregisterEvent("BAG_UPDATE_DELAYED")
         return
@@ -110,6 +119,7 @@ local function SellNextBatch()
     if remaining > 0 then return end
 
     -- No remaining junk — finish up.
+    CancelSellRetry()
     frame:UnregisterEvent("BAG_UPDATE_DELAYED")
 
     local count      = sellState.count
@@ -130,10 +140,24 @@ local function SellNextBatch()
     end)
 end
 
+-- Schedule a safety retry in case BAG_UPDATE_DELAYED doesn't fire.
+-- Called after every SellNextBatch invocation; no-op if selling finished.
+local function ScheduleSellRetry()
+    CancelSellRetry()
+    if sellState then
+        sellRetryTimer = C_Timer.NewTimer(SELL_RETRY_SEC, function()
+            sellRetryTimer = nil
+            SellNextBatch()
+            ScheduleSellRetry()
+        end)
+    end
+end
+
 local function AutoSellJunk()
     sellState = { count = 0, startMoney = nil }  -- snapshot deferred to first sell
     frame:RegisterEvent("BAG_UPDATE_DELAYED")
     SellNextBatch()
+    ScheduleSellRetry()
 end
 
 -- ── Feature: Auto Repair ────────────────────────────────────
@@ -679,13 +703,16 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.autoSellJunk then C_Timer.After(0, AutoSellJunk) end
 
     elseif event == "MERCHANT_CLOSED" then
+        CancelSellRetry()
         if sellState then
             frame:UnregisterEvent("BAG_UPDATE_DELAYED")
             sellState = nil
         end
 
     elseif event == "BAG_UPDATE_DELAYED" then
+        CancelSellRetry()
         SellNextBatch()
+        ScheduleSellRetry()
 
     elseif event == "USER_WAYPOINT_UPDATED" then
         -- Fired when the waypoint is cleared externally (e.g. map right-click UI).
