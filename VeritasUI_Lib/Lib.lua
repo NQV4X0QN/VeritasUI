@@ -30,7 +30,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.6.14"
+VUI.VERSION = "1.6.15"
 
 ----------------------------------------------------------------
 --  Print helpers
@@ -122,18 +122,20 @@ end
 ----------------------------------------------------------------
 --  HookHoverFade  (MicroMenu, action bars, etc.)
 --
---  Hybrid hover detection: event-driven OnEnter for instant fade-
---  in, OnUpdate poll for robust fade-out.  The poll checks target
---  AND all direct children via IsMouseOver, which handles Edit Mode
---  layouts where buttons extend beyond the parent bar frame's bounds.
---  The poll frame is only active while the target is visible, so
---  hidden bars have zero per-frame cost.
+--  Always-on 10 Hz poll that checks IsMouseOver on the target AND
+--  all direct children via a cached array, handling Edit Mode layouts
+--  where buttons extend beyond the parent bar frame's bounds.  Only
+--  the parent's OnEnter is hooked for instant fade-in within its own
+--  bounds — child frames (ActionButtons) are NOT hooked to avoid
+--  tainting their execution context, which causes Midnight Secret
+--  Value errors in Delves/M+/raids (WoWUIBugs #783-adjacent).
+--  150ms grace period prevents flicker between adjacent children.
 --
 --  Uses SmoothFade to avoid Blizzard UIFrameFade table conflicts.
 ----------------------------------------------------------------
 local HOVER_FADE_IN   = 0.2
 local HOVER_FADE_OUT  = 0.5
-local HOVER_POLL_RATE = 0.1    -- ~10 Hz while visible
+local HOVER_POLL_RATE = 0.1    -- ~10 Hz always
 local HOVER_LEAVE_GRACE = 0.15 -- seconds after last "not over" before fading
 
 function VUI.HookHoverFade(target, shouldStayVisible)
@@ -168,13 +170,11 @@ function VUI.HookHoverFade(target, shouldStayVisible)
     local hovered    = false
     local graceSince = nil
     local poll       = CreateFrame("Frame")
-    poll:Hide()  -- inactive until first hover
 
     local function FadeOut()
         if not IsLocked() and not IsMouseOverAny() then
             hovered    = false
             graceSince = nil
-            poll:Hide()
             SmoothFade(target, HOVER_FADE_OUT, 0)
         end
     end
@@ -184,11 +184,15 @@ function VUI.HookHoverFade(target, shouldStayVisible)
             hovered    = true
             graceSince = nil
             SmoothFade(target, HOVER_FADE_IN, 1)
-            poll:Show()
         end
     end
 
-    -- Poll: runs only while hovered; watches for mouse-leave.
+    -- Poll: always active at 10 Hz.  Detects both hover-start (for
+    -- child buttons that extend beyond the parent bar's bounds) and
+    -- hover-end (with grace period to prevent flicker).  Only the
+    -- parent bar's OnEnter is hooked for instant fade-in within its
+    -- bounds — child ActionButtons are NOT hooked, avoiding taint
+    -- propagation that causes Secret Value errors in Midnight Delves.
     poll:SetScript("OnUpdate", function(self, elapsed)
         self._t = (self._t or 0) + elapsed
         if self._t < HOVER_POLL_RATE then return end
@@ -196,7 +200,8 @@ function VUI.HookHoverFade(target, shouldStayVisible)
         if IsLocked() then graceSince = nil; return end
         if IsMouseOverAny() then
             graceSince = nil
-        else
+            if not hovered then FadeIn() end
+        elseif hovered then
             local now = GetTime()
             if not graceSince then
                 graceSince = now
@@ -206,15 +211,9 @@ function VUI.HookHoverFade(target, shouldStayVisible)
         end
     end)
 
-    -- Instant fade-in via OnEnter hooks on target + direct children.
-    local hooked = {}
-    local function HookChild(child)
-        if not child or hooked[child] or not child.HookScript then return end
-        hooked[child] = true
-        child:HookScript("OnEnter", FadeIn)
-    end
+    -- Instant fade-in on the parent bar frame only.  Child buttons
+    -- are detected by the poll to avoid tainting ActionButton frames.
     target:HookScript("OnEnter", FadeIn)
-    for _, child in ipairs({ target:GetChildren() }) do HookChild(child) end
 
     return FadeOut, RefreshChildren
 end

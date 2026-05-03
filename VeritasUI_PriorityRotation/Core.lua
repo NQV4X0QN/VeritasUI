@@ -423,7 +423,11 @@ end
 --
 --  SetTexture() on a button icon is NOT a protected operation,
 --  so this runs freely during combat — which is exactly when the
---  user needs to see the next spell in the cycle.
+--  user needs to see the next spell in the cycle.  Show() is
+--  intentionally omitted — the icon is already visible on any
+--  button with an assigned action, and calling Show() from addon
+--  code taints the ActionButton's execution context, causing
+--  Secret Value errors in Midnight Delves/M+/raids.
 ----------------------------------------------------------------
 local function UpdateIcon()
     if not PR.overriddenButton or #PR.compiledSequence == 0 then return end
@@ -437,7 +441,6 @@ local function UpdateIcon()
     local iconID = PR.iconCache[step]
     if iconID and type(iconID) == "number" then
         icon:SetTexture(iconID)
-        icon:Show()
     end
 end
 

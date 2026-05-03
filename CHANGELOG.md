@@ -2,6 +2,12 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.15] - 2026-05-03
+
+### Fixed
+- `VeritasUI_Lib` — **Fix Midnight Secret Value taint errors on faded action bars.** `HookHoverFade` previously hooked `OnEnter` on every child ActionButton via `HookScript`, which tainted their execution context. When `ACTIONBAR_UPDATE_COOLDOWN` fired in Secret Value zones (Delves, M+, raids), Blizzard's `ActionButton_UpdateCooldown` ran in the tainted context and `SetCooldown` rejected the Secret Values — producing `"bad argument #1 to 'SetCooldown'"` errors (175+ per Delve entry). Fix: child ActionButton `OnEnter` hooks removed entirely; the always-on 10 Hz poll now handles both hover-start and hover-end detection. Only the parent bar frame's `OnEnter` is hooked (not an ActionButton, so no taint). Poll was previously gated on `hovered` state; now runs unconditionally. Identical user-visible behavior, zero taint surface on ActionButton frames
+- `VeritasUI_PriorityRotation` — **Remove `icon:Show()` from icon ticker to prevent latent taint.** `UpdateIcon` called `Show()` on the overridden ActionButton's icon texture from addon code every 0.25s. While `SetTexture` is unprotected, `Show()` on a child of a secure ActionButton propagates taint to the button's execution context, causing the same Secret Value errors when a rotation is active. Fix: `Show()` removed — `SetTexture(iconID)` alone is sufficient since the icon is already visible on any button with an assigned action
+
 ## [1.6.14] - 2026-05-02
 
 ### Fixed
