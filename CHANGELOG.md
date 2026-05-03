@@ -2,6 +2,12 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.13] - 2026-05-02
+
+### Fixed
+- `VeritasUI_CleanSolo` — **Fade Action Bars now re-hide after exiting Edit Mode.** Blizzard forces bars visible during Edit Mode layout editing, but no `OnLeave` fires on exit to trigger `FadeOut`. Fix: `SetupActionBarFading` now collects `FadeOut` handles returned by `HookHoverFade` and hooks `EditModeManagerFrame:ExitEditMode` to re-evaluate fade state 200ms after exit
+- `VeritasUI_Lib` — `HookHoverFade` now returns its internal `FadeOut` closure so callers can force a re-evaluation after external state changes (e.g., Edit Mode exit). Existing callers that discard the return are unaffected
+
 ## [1.6.12] - 2026-05-02
 
 ### Fixed

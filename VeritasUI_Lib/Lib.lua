@@ -30,7 +30,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.6.12"
+VUI.VERSION = "1.6.13"
 
 ----------------------------------------------------------------
 --  Print helpers
@@ -158,6 +158,8 @@ function VUI.HookHoverFade(target, shouldStayVisible)
     target:HookScript("OnEnter", FadeIn)
     target:HookScript("OnLeave", function() C_Timer.After(0.1, FadeOut) end)
     HookAllChildren()
+
+    return FadeOut
 end
 
 ----------------------------------------------------------------
