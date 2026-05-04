@@ -1,8 +1,8 @@
 -- VeritasUI_AdvancedOptions / Browser.lua
 -- Full CVar browser: searchable, sortable list with inline editing.
 --
--- Phase 3 implementation. This file provides the data-layer
--- (enumeration + caching) and the scroll-list UI.
+-- Uses Blizzard's ScrollBox + MinimalScrollBar for native virtual
+-- scrolling — same system as Talents, Professions, Housing.
 
 local ADDON_NAME, AO = ...
 local VUI = _G.VeritasUI
@@ -267,26 +267,23 @@ local function ApplyFilter(searchText)
 end
 
 ----------------------------------------------------------------
---  Browser UI
+--  Browser UI — Blizzard ScrollBox + MinimalScrollBar
 --
 --  Layout:
 --    Search box at top
 --    Column headers (★ | Name | Value | Default)
---    Scrolling list of rows
---    Each row: fav star | cvar name | current value | default
+--    Native ScrollBox list of rows
 --    Click row → inline expand with edit box + Set + Reset buttons
 ----------------------------------------------------------------
 local ROW_H       = 20
-local VISIBLE_ROWS = 22
 local EXPAND_H    = 28
 
-local POOL_SIZE = VISIBLE_ROWS + 4   -- enough rows to cover viewport + buffer
-
 function AO:BuildBrowserContent(parent)
-    local SCROLLBAR_W = 8
-    local INSET       = 8
+    local INSET = 8
 
     -- ── Search Box ──────────────────────────────────────────
+    local SB_INSET = 16   -- room for MinimalScrollBar + gap on the right
+
     local searchBox = CreateFrame("EditBox", nil, parent, "SearchBoxTemplate")
     searchBox:SetHeight(22)
     searchBox:SetPoint("TOPLEFT",  parent, "TOPLEFT",  INSET, -INSET)
@@ -297,10 +294,11 @@ function AO:BuildBrowserContent(parent)
     end
 
     -- ── Column headers ──────────────────────────────────────
+    -- Right edge matches the scrollBox so columns align with data rows.
     local headerFrame = CreateFrame("Frame", nil, parent)
     headerFrame:SetHeight(16)
     headerFrame:SetPoint("TOPLEFT",  searchBox,  "BOTTOMLEFT",  0, -6)
-    headerFrame:SetPoint("RIGHT",    parent,     "RIGHT",       -(INSET + SCROLLBAR_W), 0)
+    headerFrame:SetPoint("RIGHT",    parent,     "RIGHT",       -SB_INSET, 0)
 
     local hdrStar = CreateFrame("Frame", nil, headerFrame)
     hdrStar:SetSize(20, 16)
@@ -338,39 +336,21 @@ function AO:BuildBrowserContent(parent)
     divider:SetPoint("TOPRIGHT", headerFrame, "BOTTOMRIGHT", 0, -2)
     divider:SetColorTexture(0.35, 0.35, 0.35, 0.8)
 
-    -- ── Scroll container ────────────────────────────────────
-    local listFrame = CreateFrame("ScrollFrame", nil, parent)
-    listFrame:SetPoint("TOPLEFT",     divider,  "BOTTOMLEFT",  0, -2)
-    listFrame:SetPoint("BOTTOMRIGHT", parent,   "BOTTOMRIGHT", -(SCROLLBAR_W + 8), 4)
+    -- ── ScrollBox + MinimalScrollBar ────────────────────────
+    local scrollBox = CreateFrame("Frame", nil, parent, "WowScrollBoxList")
+    scrollBox:SetPoint("TOPLEFT",     divider,  "BOTTOMLEFT",  0, -2)
+    scrollBox:SetPoint("BOTTOMRIGHT", parent,   "BOTTOMRIGHT", -SB_INSET, 4)
 
-    local listChild = CreateFrame("Frame", nil, listFrame)
-    listChild:SetWidth(1)
-    listFrame:SetScrollChild(listChild)
+    local scrollBar = CreateFrame("EventFrame", nil, parent, "MinimalScrollBar")
+    scrollBar:SetPoint("TOPLEFT",    scrollBox, "TOPRIGHT",    4, 0)
+    scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", 4, 0)
 
-    -- Width sync
-    listFrame:SetScript("OnSizeChanged", function(self, w)
-        listChild:SetWidth(w)
-    end)
-    C_Timer.After(0, function()
-        listChild:SetWidth(listFrame:GetWidth())
-    end)
-
-    -- ── Scrollbar ───────────────────────────────────────────
-    local UpdateScrollbar = VUI.AttachSlimScrollbar(listFrame, {
-        wheelStep      = ROW_H * 3,
-        scrollbarWidth = SCROLLBAR_W,
-        gap            = 4,
-        parent         = parent,
-    })
-
-    -- ── Virtual scroll state ────────────────────────────────
+    -- ── Expanded row state ──────────────────────────────────
     local expandedName = nil
-    local lastScroll   = -1
-    local yPositions   = {}    -- [i] = top y of row i (positive, distance from top)
-    local totalVirtualH = 0
 
     -- ── Shared inline editor (one instance, repositioned) ───
-    local editor = CreateFrame("Frame", nil, listChild)
+    -- Parented to scrollBox so it scrolls with content.
+    local editor = CreateFrame("Frame", nil, scrollBox)
     editor:SetHeight(EXPAND_H)
     editor:Hide()
 
@@ -390,23 +370,23 @@ function AO:BuildBrowserContent(parent)
     resetDefBtn:SetText("Reset")
 
     -- Editor callbacks — use expandedName to find the active entry.
-    setBtn:SetScript("OnClick", function()
+    local function ApplyEditorValue()
         if not expandedName then return end
         local entry = cvarByName[expandedName]
         if not entry then return end
         AO:SetCVar(entry.name, editBox:GetText())
         RefreshEntry(entry)
-        -- Rebind so the row reflects the new value.
-        lastScroll = -1
-    end)
+        -- Force ScrollBox to re-render the changed row
+        if scrollBox.GetDataProvider then
+            local dp = scrollBox:GetDataProvider()
+            if dp then dp:SignalUpdate() end
+        end
+    end
+
+    setBtn:SetScript("OnClick", ApplyEditorValue)
     editBox:SetScript("OnEnterPressed", function(self)
-        if not expandedName then return end
-        local entry = cvarByName[expandedName]
-        if not entry then return end
-        AO:SetCVar(entry.name, self:GetText())
-        RefreshEntry(entry)
+        ApplyEditorValue()
         self:ClearFocus()
-        lastScroll = -1
     end)
     resetDefBtn:SetScript("OnClick", function()
         if not expandedName then return end
@@ -414,188 +394,126 @@ function AO:BuildBrowserContent(parent)
         if not entry then return end
         AO:ResetCVar(entry.name)
         RefreshEntry(entry)
-        lastScroll = -1
+        if scrollBox.GetDataProvider then
+            local dp = scrollBox:GetDataProvider()
+            if dp then dp:SignalUpdate() end
+        end
     end)
 
-    -- ── Row pool (fixed-size, created once) ─────────────────
-    local pool = {}
+    -- ── ScrollBox view + element initializer ────────────────
+    -- Each element is a data entry from filteredList. The view
+    -- recycles row frames automatically — no manual pool needed.
+    local view = CreateScrollBoxListLinearView()
 
-    for pi = 1, POOL_SIZE do
-        local row = CreateFrame("Button", nil, listChild)
-        row:SetHeight(ROW_H)
-        row:Hide()
+    -- Element extent: ROW_H normally, ROW_H + EXPAND_H when expanded.
+    view:SetElementExtentCalculator(function(dataIndex, elementData)
+        if elementData and expandedName == elementData.name then
+            return ROW_H + EXPAND_H
+        end
+        return ROW_H
+    end)
 
-        local bg = row:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        row._bg = bg
+    -- Initializer — called when a row frame is acquired from the pool.
+    -- Sets up the frame's child regions on first use, then binds data.
+    view:SetElementInitializer("Button", function(row, elementData)
+        -- ── One-time setup (first acquisition) ──────────────
+        if not row._nameFs then
+            row:SetHeight(ROW_H)
 
-        local highlight = row:CreateTexture(nil, "HIGHLIGHT")
-        highlight:SetAllPoints()
-        highlight:SetColorTexture(1, 1, 1, 0.06)
+            local bg = row:CreateTexture(nil, "BACKGROUND")
+            bg:SetAllPoints()
+            row._bg = bg
 
-        local star = CreateFrame("Button", nil, row)
-        star:SetSize(16, ROW_H)
-        star:SetPoint("LEFT", row, "LEFT", 0, 0)
-        local starIcon = star:CreateTexture(nil, "OVERLAY")
-        starIcon:SetSize(12, 12)
-        starIcon:SetPoint("CENTER")
-        starIcon:SetAtlas("auctionhouse-icon-favorite")
-        row._star     = star
-        row._starIcon = starIcon
+            local highlight = row:CreateTexture(nil, "HIGHLIGHT")
+            highlight:SetAllPoints()
+            highlight:SetColorTexture(1, 1, 1, 0.06)
 
-        local nameFs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        nameFs:SetPoint("LEFT", star, "RIGHT", 4, 0)
-        nameFs:SetWidth(200)
-        nameFs:SetJustifyH("LEFT")
-        row._nameFs = nameFs
+            local star = CreateFrame("Button", nil, row)
+            star:SetSize(16, ROW_H)
+            star:SetPoint("LEFT", row, "LEFT", 0, 0)
+            local starIcon = star:CreateTexture(nil, "OVERLAY")
+            starIcon:SetSize(12, 12)
+            starIcon:SetPoint("CENTER")
+            starIcon:SetAtlas("auctionhouse-icon-favorite")
+            row._star     = star
+            row._starIcon = starIcon
 
-        local valFs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        valFs:SetPoint("LEFT", nameFs, "RIGHT", 4, 0)
-        valFs:SetWidth(100)
-        valFs:SetJustifyH("LEFT")
-        row._valFs = valFs
+            local nameFs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            nameFs:SetPoint("LEFT", star, "RIGHT", 4, 0)
+            nameFs:SetWidth(200)
+            nameFs:SetJustifyH("LEFT")
+            row._nameFs = nameFs
 
-        local defFs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        defFs:SetPoint("LEFT", valFs, "RIGHT", 4, 0)
-        defFs:SetWidth(100)
-        defFs:SetJustifyH("LEFT")
-        defFs:SetTextColor(0.5, 0.5, 0.5)
-        row._defFs = defFs
+            local valFs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            valFs:SetPoint("LEFT", nameFs, "RIGHT", 4, 0)
+            valFs:SetWidth(100)
+            valFs:SetJustifyH("LEFT")
+            row._valFs = valFs
 
-        -- Stable reference for click handlers (updated by BindRow)
-        row._entry = nil
+            local defFs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            defFs:SetPoint("LEFT", valFs, "RIGHT", 4, 0)
+            defFs:SetWidth(100)
+            defFs:SetJustifyH("LEFT")
+            defFs:SetTextColor(0.5, 0.5, 0.5)
+            row._defFs = defFs
+        end
 
-        pool[pi] = row
-    end
+        -- ── Data bind ───────────────────────────────────────
+        row._entry = elementData
+        RefreshEntry(elementData)
 
-    -- ── Bind a pool row to a data entry ─────────────────────
-    local function BindRow(row, entry, dataIndex)
-        row._entry = entry
-
-        -- Refresh this single entry's live CVar value
-        RefreshEntry(entry)
-
-        row._nameFs:SetText(entry.name)
-        row._valFs:SetText(entry.value)
-        row._defFs:SetText(entry.default)
+        row._nameFs:SetText(elementData.name)
+        row._valFs:SetText(elementData.value)
+        row._defFs:SetText(elementData.default)
 
         -- Modified indicator
-        if entry.value ~= entry.default then
+        if elementData.value ~= elementData.default then
             row._valFs:SetTextColor(0.4, 0.8, 1)
         else
             row._valFs:SetTextColor(0.75, 0.75, 0.75)
         end
 
         -- Star colour
-        local isFav = AO:IsFavorite(entry.name)
+        local isFav = AO:IsFavorite(elementData.name)
         row._starIcon:SetVertexColor(isFav and 1 or 0.25,
                                       isFav and 0.82 or 0.25,
                                       isFav and 0 or 0.25)
         row._starIcon:SetDesaturated(not isFav)
 
-        -- Alternating background based on data index
-        row._bg:SetColorTexture(1, 1, 1, (dataIndex % 2 == 0) and 0.03 or 0)
-    end
+        -- Alternating background — derive from name byte sum (stable,
+        -- no API call needed; FindIndex doesn't exist on ScrollBox).
+        local nameSum = 0
+        for i = 1, #elementData.name do nameSum = nameSum + elementData.name:byte(i) end
+        row._bg:SetColorTexture(1, 1, 1, (nameSum % 2 == 0) and 0.03 or 0)
 
-    -- ── Compute virtual layout ──────────────────────────────
-    local function ComputeLayout()
-        yPositions = {}
-        totalVirtualH = 0
-        for i, entry in ipairs(filteredList) do
-            yPositions[i] = totalVirtualH
-            totalVirtualH = totalVirtualH + ROW_H
-            if expandedName == entry.name then
-                totalVirtualH = totalVirtualH + EXPAND_H
-            end
-        end
-        listChild:SetHeight(math_max(totalVirtualH, 1))
-    end
-
-    -- ── Rebind visible rows ─────────────────────────────────
-    --  Called on every scroll position change. Only touches the
-    --  ~24 pool rows — O(filteredList) scan to find visible range,
-    --  O(POOL_SIZE) binds. No frame creation, no closure allocation.
-    local function RebindVisibleRows()
-        local scroll   = listFrame:GetVerticalScroll()
-        local viewH    = listFrame:GetHeight()
-        local scrollEnd = scroll + viewH
-
-        local poolIdx    = 1
-        local editorUsed = false
-
-        for i, entry in ipairs(filteredList) do
-            local rowTop = yPositions[i]
-            if not rowTop then break end
-            local isExpanded = (expandedName == entry.name)
-            local rowBot = rowTop + ROW_H + (isExpanded and EXPAND_H or 0)
-
-            -- Skip rows entirely above the viewport
-            if rowBot <= scroll then
-                -- nothing
-            elseif rowTop >= scrollEnd then
-                -- Past the viewport — no more visible rows
-                break
-            else
-                -- Visible — bind to a pool row
-                local row = pool[poolIdx]
-                if not row then break end
-
-                BindRow(row, entry, i)
-                row:ClearAllPoints()
-                row:SetPoint("TOPLEFT",  listChild, "TOPLEFT",  0, -rowTop)
-                row:SetPoint("TOPRIGHT", listChild, "TOPRIGHT", 0, -rowTop)
-                row:Show()
-
-                -- Position the shared editor beneath this row
-                if isExpanded then
-                    editor:ClearAllPoints()
-                    editor:SetPoint("TOPLEFT",  listChild, "TOPLEFT",  20, -(rowTop + ROW_H))
-                    editor:SetPoint("TOPRIGHT", listChild, "TOPRIGHT",  0, -(rowTop + ROW_H))
-                    editBox:SetText(entry.value)
-                    editor:Show()
-                    editorUsed = true
-                end
-
-                poolIdx = poolIdx + 1
-            end
+        -- ── Inline editor positioning ───────────────────────
+        local isExpanded = (expandedName == elementData.name)
+        if isExpanded then
+            editor:SetParent(row)
+            editor:ClearAllPoints()
+            editor:SetPoint("TOPLEFT",  row, "BOTTOMLEFT",  20, 0)
+            editor:SetPoint("TOPRIGHT", row, "BOTTOMRIGHT",  0, 0)
+            editBox:SetText(elementData.value)
+            editor:Show()
+        elseif editor:GetParent() == row then
+            editor:Hide()
         end
 
-        -- Hide unused pool rows
-        for i = poolIdx, POOL_SIZE do
-            pool[i]:Hide()
-            pool[i]._entry = nil
-        end
-
-        if not editorUsed then editor:Hide() end
-        UpdateScrollbar()
-    end
-
-    -- ── Full refresh (filter/favourite/expand change) ───────
-    local function FullRefresh()
-        EnumerateCVars()
-        ApplyFilter(searchBox:GetText() or "")
-        ComputeLayout()
-        listFrame:SetVerticalScroll(0)   -- show results from the top
-        lastScroll = -1                  -- force rebind on next OnUpdate
-    end
-
-    -- ── Row click handlers (bound once, use row._entry) ─────
-    for _, row in ipairs(pool) do
+        -- ── Row click handlers ──────────────────────────────
         row._star:SetScript("OnClick", function()
-            if not row._entry then return end
-            AO:ToggleFavorite(row._entry.name)
-            FullRefresh()
+            AO:ToggleFavorite(elementData.name)
+            AO:RefreshBrowser()
         end)
 
         row:SetScript("OnClick", function()
-            if not row._entry then return end
-            if expandedName == row._entry.name then
+            if expandedName == elementData.name then
                 expandedName = nil
             else
-                expandedName = row._entry.name
+                expandedName = elementData.name
             end
-            ComputeLayout()
-            lastScroll = -1
+            -- Re-render so extent calculator picks up the change
+            local dp = scrollBox:GetDataProvider()
+            if dp then dp:SignalUpdate() end
         end)
 
         row:SetScript("OnEnter", function(self)
@@ -611,19 +529,30 @@ function AO:BuildBrowserContent(parent)
             end
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end)
+
+    -- ── Wire ScrollBox + ScrollBar ──────────────────────────
+    ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
+
+    -- ── Data provider refresh ───────────────────────────────
+    local function FullRefresh()
+        EnumerateCVars()
+        ApplyFilter(searchBox:GetText() or "")
+
+        local dataProvider = CreateDataProvider()
+        for _, entry in ipairs(filteredList) do
+            dataProvider:Insert(entry)
+        end
+        scrollBox:SetDataProvider(dataProvider)
     end
 
-    -- ── Scroll-position monitor ─────────────────────────────
-    --  Checks once per frame whether the scroll position changed;
-    --  if so, rebinds the visible pool rows. The comparison is a
-    --  single number check — negligible per-frame cost.
-    listFrame:HookScript("OnUpdate", function()
-        local scroll = listFrame:GetVerticalScroll()
-        if scroll ~= lastScroll then
-            lastScroll = scroll
-            RebindVisibleRows()
-        end
-    end)
+    function AO:RefreshBrowser()
+        expandedName = nil
+        FullRefresh()
+    end
+
+    -- Store refresh handle
+    AO._browserRefresh = FullRefresh
 
     -- ── Debounced search ────────────────────────────────────
     local searchTimer
@@ -636,13 +565,10 @@ function AO:BuildBrowserContent(parent)
         end)
     end)
 
-    -- Store refresh handle
-    AO._browserRefresh = FullRefresh
-
     -- Initial populate deferred to first show
     parent:SetScript("OnShow", function()
         FullRefresh()
     end)
 
-    return listFrame
+    return scrollBox
 end

@@ -2,6 +2,16 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.18] - 2026-05-03
+
+### Changed
+- `VeritasUI_AdvancedOptions` — **Both tabs now use Blizzard's native `WowScrollBoxList` + `MinimalScrollBar` for scrolling.** Replaces the custom `AttachSlimScrollbar` implementation with the same scroll system used by Blizzard's Talents, Professions, Housing, and Collections panels — pixel-identical scrollbar appearance and behavior
+  - **Browser tab (All CVars):** Rewrote from manual 26-row virtual pool + bare `ScrollFrame` to native `WowScrollBoxList` + `CreateScrollBoxListLinearView` + `CreateDataProvider`. Blizzard's view handles row recycling natively; ~200 fewer lines of scroll plumbing. Inline editor and expand/collapse preserved
+  - **Featured tab:** Converted from bare `ScrollFrame` to `WowScrollBoxList` with a flat data model — each category header, control, and inter-category gap is a separate list element. Controls are created once by the existing factory functions (`CreateCheckbox`/`CreateSlider`/`CreateDropdown`) and cached; the element initializer reparents them into whichever pool frame the ScrollBox assigns. Collapse/expand rebuilds the DataProvider
+
+### Removed
+- `VeritasUI_Lib` — **Removed `VUI.AttachSlimScrollbar` helper** (~240 lines). All consumers now use Blizzard's native `MinimalScrollBar` directly. Tombstone comment in Lib.lua points future modules to the AO implementations as reference
+
 ## [1.6.17] - 2026-05-03
 
 ### Improved

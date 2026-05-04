@@ -1,9 +1,15 @@
 -- VeritasUI_AdvancedOptions / Featured.lua
 -- Curated hidden-settings categories with native controls.
 --
--- Phase 2 will populate all 9 categories. This file ships with the
--- data-driven category/control definition table and the renderer.
--- Adding a new CVar is just one table entry.
+-- Uses Blizzard's WowScrollBoxList + MinimalScrollBar for native
+-- scrolling — same system as Talents, Professions, Housing.
+--
+-- Each category header and control is a separate list element.
+-- Controls are created once by the factory functions and cached;
+-- the initializer reparents them into whichever pool frame the
+-- ScrollBox assigns on each layout pass.
+--
+-- Adding a new CVar is just one table entry in FEATURED_CATEGORIES.
 
 local ADDON_NAME, AO = ...
 local VUI = _G.VeritasUI
@@ -386,203 +392,221 @@ AO.FEATURED_CATEGORIES = {
 }
 
 ----------------------------------------------------------------
---  Renderer — builds the Featured tab content inside a scroll
---  frame.  Called once from Settings.lua at PLAYER_LOGIN.
+--  Element height constants — must match Controls.lua
 --
---  Layout: collapsible category headers (gold text + divider)
---  with controls beneath, all inside a scrolling container.
+--  ROW_HEIGHT = 26 (checkbox), +8 (slider = 34), +4 (dropdown = 30)
+--  GAP = 4px between controls
 ----------------------------------------------------------------
+local HEADER_H    = 24         -- header button (20) + divider + gap
+local SECTION_GAP = 14         -- extra gap between categories
+local GAP         = 4          -- gap between controls
+local PAD_X       = 8
+
+local CONTROL_HEIGHTS = {
+    checkbox = 26 + GAP,       -- 30
+    slider   = 34 + GAP,       -- 38
+    dropdown = 30 + GAP,       -- 34
+}
+
+----------------------------------------------------------------
+--  Renderer — builds the Featured tab content inside a native
+--  Blizzard WowScrollBoxList + MinimalScrollBar.
+--
+--  The content is modeled as a flat list:
+--    { type="header",  catIdx=N }
+--    { type="control", catIdx=N, ctrlIdx=M, cfg={...} }
+--    { type="gap" }                                      -- between categories
+--
+--  Controls are created once by the factory functions and cached.
+--  The initializer reparents them into the ScrollBox pool frame.
+----------------------------------------------------------------
+
+-- Caches — controls and headers persist across relayouts
+local headerCache  = {}    -- [catIdx] = { btn=, arrowDown=, arrowRight=, text=, div= }
+local controlCache = {}    -- ["catIdx-ctrlIdx"] = control frame
+
 function AO:BuildFeaturedContent(parent)
-    -- Reserve space on the right for the slim scrollbar (SB width + gap).
-    -- Scroll child width syncs to scrollFrame width via OnSizeChanged so
-    -- controls laid out at PAD_X + CW wrap correctly inside the new inset.
-    local SB_W, SB_GAP = 8, 4
+    -- ── ScrollBox + MinimalScrollBar ────────────────────────
+    local SB_INSET = 16   -- room for MinimalScrollBar + gap on the right
 
-    local scrollFrame = CreateFrame("ScrollFrame", nil, parent)
-    scrollFrame:SetPoint("TOPLEFT",     parent, "TOPLEFT",      0,  0)
-    scrollFrame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -(SB_W + SB_GAP + 4),  0)
+    local scrollBox = CreateFrame("Frame", nil, parent, "WowScrollBoxList")
+    scrollBox:SetPoint("TOPLEFT",     parent, "TOPLEFT",      0, 0)
+    scrollBox:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SB_INSET, 0)
 
-    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    local parentW = parent:GetWidth()
-    scrollChild:SetWidth((parentW > 0) and parentW or 480)
-    scrollFrame:SetScrollChild(scrollChild)
+    local scrollBar = CreateFrame("EventFrame", nil, parent, "MinimalScrollBar")
+    scrollBar:SetPoint("TOPLEFT",    scrollBox, "TOPRIGHT",    4, 0)
+    scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", 4, 0)
 
-    -- Attach the shared slim scrollbar (same visual style as the
-    -- Browser tab's CVar list for cross-tab consistency). Wheel step
-    -- 30 is roughly one control row per notch.
-    local UpdateScrollbar = VUI.AttachSlimScrollbar(scrollFrame, {
-        wheelStep      = 30,
-        scrollbarWidth = SB_W,
-        gap            = SB_GAP,
-        parent         = parent,
-    })
+    -- ── Build the flat data list ────────────────────────────
+    local function BuildDataList()
+        local list = {}
+        for catIdx, cat in ipairs(self.FEATURED_CATEGORIES) do
+            list[#list + 1] = { type = "header", catIdx = catIdx }
+            if not self:IsCollapsed(cat.key) then
+                for ctrlIdx, cfg in ipairs(cat.controls) do
+                    list[#list + 1] = {
+                        type     = "control",
+                        catIdx   = catIdx,
+                        ctrlIdx  = ctrlIdx,
+                        cfg      = cfg,
+                    }
+                end
+            end
+            list[#list + 1] = { type = "gap" }
+        end
+        return list
+    end
 
-    -- Keep scrollChild width in sync with scrollFrame (width changes
-    -- with window resizes or initial layout pass).
-    scrollFrame:SetScript("OnSizeChanged", function(self, w)
-        scrollChild:SetWidth(w)
-        UpdateScrollbar()
+    -- ── Refresh: rebuild DataProvider ────────────────────────
+    local function Refresh()
+        local dp = CreateDataProvider()
+        for _, elem in ipairs(BuildDataList()) do
+            dp:Insert(elem)
+        end
+        scrollBox:SetDataProvider(dp)
+    end
+
+    -- ── View setup ──────────────────────────────────────────
+    local view = CreateScrollBoxListLinearView()
+
+    -- Element heights
+    view:SetElementExtentCalculator(function(dataIndex, elementData)
+        if elementData.type == "header" then return HEADER_H end
+        if elementData.type == "gap"    then return SECTION_GAP end
+        return CONTROL_HEIGHTS[elementData.cfg.type] or 30
     end)
-    C_Timer.After(0, function()
-        scrollChild:SetWidth(scrollFrame:GetWidth())
-        UpdateScrollbar()
-    end)
 
-    local PAD_X     = 8
-    local SECTION_GAP = -14
-    -- CW subtracts the scrollbar inset (SB_W + SB_GAP + 4) so controls +
-    -- their right-anchored reset buttons fit inside scrollChild's narrower
-    -- bounds. Without this subtraction, reset buttons overflow 16px past
-    -- scrollChild.right into the scrollbar gutter and get clipped by the
-    -- scrollFrame viewport.
-    local CW        = ((parentW > 0) and parentW or 480) - PAD_X * 2 - (SB_W + SB_GAP + 4)
-    local allControls = {}
-    local yOffset   = -PAD_X
+    -- Element initializer — creates or retrieves cached UI, reparents
+    view:SetElementInitializer("Frame", function(frame, elementData)
+        -- Detach any previously-attached cached child from this pool frame
+        if frame._attached then
+            frame._attached:ClearAllPoints()
+            frame._attached:SetParent(nil)
+            frame._attached:Hide()
+            frame._attached = nil
+        end
+        -- Hide leftover textures from header reuse
+        if frame._divider then frame._divider:Hide() end
 
-    for _, cat in ipairs(self.FEATURED_CATEGORIES) do
-        -- Category header — clickable gold text + divider
-        local headerBtn = CreateFrame("Button", nil, scrollChild)
-        headerBtn:SetHeight(20)
-        headerBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PAD_X, yOffset)
-        headerBtn:SetPoint("RIGHT",   scrollChild, "RIGHT",  -PAD_X, 0)
+        if elementData.type == "gap" then
+            -- Empty spacer — nothing to render
+            return
+        end
 
-        -- Arrow container — a fixed-size frame that both arrow textures
-        -- anchor to.  The container itself is centered vertically on the
-        -- header button.  Swapping arrows = show/hide, no movement.
-        local arrowBox = CreateFrame("Frame", nil, headerBtn)
-        arrowBox:SetSize(12, 12)
-        arrowBox:SetPoint("LEFT", headerBtn, "LEFT", 2, 0)
+        if elementData.type == "header" then
+            local catIdx = elementData.catIdx
+            local cat    = self.FEATURED_CATEGORIES[catIdx]
 
-        -- Down arrow (expanded) — natural orientation, centered in box
-        local arrowDown = arrowBox:CreateTexture(nil, "OVERLAY")
-        arrowDown:SetAllPoints()
-        arrowDown:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
-        arrowDown:SetVertexColor(1, 0.82, 0)
+            -- Create header on first encounter, cache thereafter
+            if not headerCache[catIdx] then
+                local h = {}
 
-        -- Right arrow (collapsed) — natural orientation, centered in box
-        local arrowRight = arrowBox:CreateTexture(nil, "OVERLAY")
-        arrowRight:SetAllPoints()
-        arrowRight:SetTexture("Interface\\Buttons\\Arrow-Up-Up")
-        arrowRight:SetRotation(-math.pi / 2)   -- points right (per PR landmine)
-        arrowRight:SetVertexColor(1, 0.82, 0)
-        arrowRight:Hide()
+                h.btn = CreateFrame("Button", nil, frame)
+                h.btn:SetHeight(20)
 
-        local hdrText = headerBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        hdrText:SetPoint("LEFT", arrowBox, "RIGHT", 4, 0)
-        hdrText:SetTextColor(1, 0.82, 0)
-        hdrText:SetText(cat.title)
+                h.arrowBox = CreateFrame("Frame", nil, h.btn)
+                h.arrowBox:SetSize(12, 12)
+                h.arrowBox:SetPoint("LEFT", h.btn, "LEFT", 2, 0)
 
-        local div = scrollChild:CreateTexture(nil, "ARTWORK")
-        div:SetHeight(1)
-        div:SetPoint("TOPLEFT",  headerBtn, "BOTTOMLEFT",  0, -2)
-        div:SetPoint("TOPRIGHT", headerBtn, "BOTTOMRIGHT", 0, -2)
-        div:SetColorTexture(0.35, 0.35, 0.35, 0.8)
+                h.arrowDown = h.arrowBox:CreateTexture(nil, "OVERLAY")
+                h.arrowDown:SetAllPoints()
+                h.arrowDown:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
+                h.arrowDown:SetVertexColor(1, 0.82, 0)
 
-        yOffset = yOffset - 24
+                h.arrowRight = h.arrowBox:CreateTexture(nil, "OVERLAY")
+                h.arrowRight:SetAllPoints()
+                h.arrowRight:SetTexture("Interface\\Buttons\\Arrow-Up-Up")
+                h.arrowRight:SetRotation(-math.pi / 2)
+                h.arrowRight:SetVertexColor(1, 0.82, 0)
+                h.arrowRight:Hide()
 
-        -- Build controls for this category
-        local controlFrames = {}
-        local controlStartY = yOffset
+                h.text = h.btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                h.text:SetPoint("LEFT", h.arrowBox, "RIGHT", 4, 0)
+                h.text:SetTextColor(1, 0.82, 0)
+                h.text:SetText(cat.title)
 
-        for _, cfg in ipairs(cat.controls) do
-            local ctrl
-            if cfg.type == "checkbox" then
-                ctrl = self:CreateCheckbox(scrollChild, cfg)
-            elseif cfg.type == "slider" then
-                ctrl = self:CreateSlider(scrollChild, cfg)
-            elseif cfg.type == "dropdown" then
-                ctrl = self:CreateDropdown(scrollChild, cfg)
+                h.btn:SetScript("OnClick", function()
+                    self:ToggleCollapsed(cat.key)
+                    Refresh()
+                end)
+
+                headerCache[catIdx] = h
             end
 
+            local h        = headerCache[catIdx]
+            local collapsed = self:IsCollapsed(cat.key)
+
+            -- Reparent into the current pool frame
+            h.btn:SetParent(frame)
+            h.btn:ClearAllPoints()
+            h.btn:SetPoint("TOPLEFT",  frame, "TOPLEFT",  PAD_X, 0)
+            h.btn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD_X, 0)
+            h.btn:Show()
+
+            h.arrowDown:SetShown(not collapsed)
+            h.arrowRight:SetShown(collapsed)
+
+            -- Divider line — create on the pool frame (not cached, since
+            -- it needs to span the frame's width which varies by pool slot)
+            if not frame._divider then
+                frame._divider = frame:CreateTexture(nil, "ARTWORK")
+                frame._divider:SetHeight(1)
+                frame._divider:SetColorTexture(0.35, 0.35, 0.35, 0.8)
+            end
+            frame._divider:ClearAllPoints()
+            frame._divider:SetPoint("BOTTOMLEFT",  frame, "BOTTOMLEFT",  PAD_X, 1)
+            frame._divider:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD_X, 1)
+            frame._divider:Show()
+
+            frame._attached = h.btn
+
+        elseif elementData.type == "control" then
+            local key = elementData.catIdx .. "-" .. elementData.ctrlIdx
+            local cfg = elementData.cfg
+
+            -- Create control on first encounter via factory, cache thereafter
+            if not controlCache[key] then
+                -- Use a temp sizing parent so the factory can read width
+                local tmpParent = CreateFrame("Frame", nil, UIParent)
+                tmpParent:SetSize(
+                    (parent:GetWidth() > 0 and parent:GetWidth() or 480) - PAD_X * 2,
+                    CONTROL_HEIGHTS[cfg.type] or 30
+                )
+                local ctrl
+                if cfg.type == "checkbox" then
+                    ctrl = self:CreateCheckbox(tmpParent, cfg)
+                elseif cfg.type == "slider" then
+                    ctrl = self:CreateSlider(tmpParent, cfg)
+                elseif cfg.type == "dropdown" then
+                    ctrl = self:CreateDropdown(tmpParent, cfg)
+                end
+                if ctrl then
+                    controlCache[key] = ctrl
+                end
+                -- Clean up temp parent (ctrl is reparented below)
+                tmpParent:Hide()
+            end
+
+            local ctrl = controlCache[key]
             if ctrl then
-                ctrl:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PAD_X, yOffset)
-                ctrl:SetWidth(CW)
-                yOffset = yOffset - (ctrl:GetHeight() + 4)
-                controlFrames[#controlFrames + 1] = ctrl
-                allControls[#allControls + 1] = ctrl
+                ctrl:SetParent(frame)
+                ctrl:ClearAllPoints()
+                ctrl:SetPoint("TOPLEFT",  frame, "TOPLEFT",  PAD_X, 0)
+                ctrl:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD_X, 0)
+                ctrl:Show()
+                frame._attached = ctrl
             end
         end
+    end)
 
-        yOffset = yOffset + SECTION_GAP
+    -- ── Wire ScrollBox + ScrollBar ──────────────────────────
+    ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
 
-        -- Collapse/expand logic
-        local function SetCollapsed(collapsed)
-            arrowDown:SetShown(not collapsed)
-            arrowRight:SetShown(collapsed)
-            for _, cf in ipairs(controlFrames) do
-                cf:SetShown(not collapsed)
-            end
-        end
+    -- Store refresh handle for external callers
+    self._featuredRefresh = Refresh
 
-        -- Store layout info for re-layout on toggle
-        cat._controlFrames = controlFrames
-        cat._headerBtn     = headerBtn
-        cat._arrowDown     = arrowDown
-        cat._arrowRight    = arrowRight
-        cat._startY        = controlStartY
+    -- Initial populate
+    Refresh()
 
-        headerBtn:SetScript("OnClick", function()
-            self:ToggleCollapsed(cat.key)
-            -- Full re-layout needed since collapsing shifts everything below
-            self:RelayoutFeatured(scrollChild, PAD_X, CW, SECTION_GAP)
-        end)
-
-        SetCollapsed(self:IsCollapsed(cat.key))
-    end
-
-    -- Set total height of scroll child, then recompute the scrollbar thumb.
-    scrollChild:SetHeight(math.abs(yOffset) + 20)
-    UpdateScrollbar()
-
-    -- Store references for re-layout
-    self._featuredScrollChild      = scrollChild
-    self._featuredPadX             = PAD_X
-    self._featuredCW               = CW
-    self._featuredSectionGap       = SECTION_GAP
-    self._allFeaturedControls      = allControls
-    self._featuredUpdateScrollbar  = UpdateScrollbar
-
-    return scrollFrame
-end
-
-----------------------------------------------------------------
---  Re-layout — called after collapsing/expanding a category.
---  Walks through all categories and repositions everything.
-----------------------------------------------------------------
-function AO:RelayoutFeatured(scrollChild, padX, cw, sectionGap)
-    local yOffset = -padX
-
-    for _, cat in ipairs(self.FEATURED_CATEGORIES) do
-        local collapsed = self:IsCollapsed(cat.key)
-
-        -- Reposition header
-        cat._headerBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", padX, yOffset)
-
-        -- Update arrows — show/hide swap, no position change
-        if cat._arrowDown and cat._arrowRight then
-            cat._arrowDown:SetShown(not collapsed)
-            cat._arrowRight:SetShown(collapsed)
-        end
-
-        yOffset = yOffset - 24
-
-        -- Reposition or hide controls
-        for _, cf in ipairs(cat._controlFrames) do
-            if collapsed then
-                cf:Hide()
-            else
-                cf:ClearAllPoints()
-                cf:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", padX, yOffset)
-                cf:SetWidth(cw)
-                cf:Show()
-                yOffset = yOffset - (cf:GetHeight() + 4)
-            end
-        end
-
-        yOffset = yOffset + sectionGap
-    end
-
-    scrollChild:SetHeight(math.abs(yOffset) + 20)
-    -- Content height changed → recompute thumb size/position.
-    if self._featuredUpdateScrollbar then self._featuredUpdateScrollbar() end
+    return scrollBox
 end

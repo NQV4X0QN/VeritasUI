@@ -559,26 +559,21 @@ function PR:BuildEditor(parent, contentWidth)
     seqHeader:SetPoint("TOPLEFT", seqCard, "TOPLEFT", 6, -6)
     seqHeader:SetText("|cFFFFFF00Compiled Sequence:|r")
 
-    -- Scrollable preview area — fills the remaining card interior.
-    -- Uses a plain ScrollFrame (no template) so we get clean visual chrome
-    -- with no legacy UIPanel scroll buttons. Scrolling is mousewheel-only,
-    -- which matches modern Blizzard panels (Talents, Professions) where
-    -- the WowScrollBox + MinimalScrollBar pattern is used. For long
-    -- sequences the user wheel-scrolls; for short sequences the text just
-    -- sits at the top of the card with no UI clutter.
+    -- Scrollable preview area — plain ScrollFrame with mousewheel.
+    -- MinimalScrollBar is designed for lists (AO Browser/Featured),
+    -- not single text blocks — WowScrollBoxList can't scroll WITHIN
+    -- a single oversized element, only BETWEEN elements. For a
+    -- wrapped paragraph, the bare ScrollFrame + mousewheel pattern
+    -- is cleaner and actually scrollable.
     local seqScroll = CreateFrame("ScrollFrame", nil, seqCard)
     seqScroll:SetPoint("TOPLEFT",     seqHeader, "BOTTOMLEFT",  0, -2)
     seqScroll:SetPoint("BOTTOMRIGHT", seqCard,   "BOTTOMRIGHT", -8, 6)
     seqScroll:EnableMouseWheel(true)
 
     local seqScrollChild = CreateFrame("Frame", nil, seqScroll)
-    seqScrollChild:SetSize(1, 1)  -- width tracked below; height set on Refresh
+    seqScrollChild:SetSize(1, 1)
     seqScroll:SetScrollChild(seqScrollChild)
 
-    -- Keep the scroll child width in sync with the scroll frame so the
-    -- fontstring inside wraps to the correct width. The OnSizeChanged
-    -- hook handles layout reflows; the deferred call covers the initial
-    -- sizing pass before frames have measured themselves.
     local function UpdateSeqScrollChildWidth()
         local w = seqScroll:GetWidth()
         if w and w > 0 then seqScrollChild:SetWidth(w) end
@@ -586,8 +581,6 @@ function PR:BuildEditor(parent, contentWidth)
     seqScroll:HookScript("OnSizeChanged", UpdateSeqScrollChildWidth)
     C_Timer.After(0, UpdateSeqScrollChildWidth)
 
-    -- Mousewheel scrolling. Step is 18px per wheel notch — roughly one
-    -- text line at GameFontNormalSmall.
     seqScroll:SetScript("OnMouseWheel", function(self, delta)
         local cur = self:GetVerticalScroll() or 0
         local max = self:GetVerticalScrollRange() or 0
@@ -683,8 +676,8 @@ function PR:BuildEditor(parent, contentWidth)
         else
             seqPreview:SetText("|cFF888888(empty -- add spells above)|r")
         end
-        -- Resize the scroll child to fit the wrapped text. UIPanelScrollFrameTemplate's
-        -- scrollbar auto-shows/hides based on whether scrollChild height > scrollFrame height.
+        -- Resize the scroll child to fit the wrapped text so mousewheel
+        -- scrolling works when the sequence overflows the card.
         seqScrollChild:SetHeight(math.max(seqPreview:GetStringHeight() + 4, 1))
     end
 
