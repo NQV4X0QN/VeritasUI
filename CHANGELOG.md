@@ -2,6 +2,17 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.19] - 2026-05-03
+
+### Added
+- `VeritasUI_QualityOfLife` — **AFK Screen.** New toggle (default on) that activates a cinematic overlay when the player goes AFK. Hides all standard UI and displays character name (class-coloured), level, equipped item level, current zone/subzone, and a real-world clock over a slow camera orbit — designed to minimise OLED burn-in by eliminating static UI elements and keeping the screen moving
+  - **Trigger:** `PLAYER_FLAGS_CHANGED` → `UnitIsAFK("player")`; dismissed when the server clears the AFK flag on character movement (keyboard input), matching Blizzard's default behavior
+  - **UI hiding:** `UIParent:SetAlpha(0)` plus explicit `MinimapCluster:Hide()` (minimap has `SetIgnoreParentAlpha` in Blizzard code and bleeds through the alpha change)
+  - **Camera:** `MoveViewRightStart(0.03)` slow orbit, stopped on exit
+  - **Vignette:** four edge gradients (bottom/top 25%, left/right 20%) framing the 3D scene; single `OnSizeChanged` + `OnShow` handler for robust sizing
+  - **Safety:** `PLAYER_LOGIN` unconditionally restores `UIParent` alpha and `MinimapCluster` visibility (crash/disconnect recovery); `PLAYER_LOGOUT` calls `AFK_Exit()` before the client saves frame state; `PLAYER_FLAGS_CHANGED` gated on `arg1 == "player"` to ignore group member flag changes
+  - **Midnight hardening:** `GetAverageItemLevel` and the subsequent `format` call both wrapped in `pcall` for Secret Value safety; zone segment omitted from info line when `GetZoneText()` returns empty (loading screen/instance transition)
+
 ## [1.6.18] - 2026-05-03
 
 ### Changed

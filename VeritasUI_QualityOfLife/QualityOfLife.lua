@@ -1,5 +1,5 @@
 -- VeritasUI_QualityOfLife / QualityOfLife.lua
--- Functional enhancements: map coordinates, item levels, auto-repair, auto-sell.
+-- Functional enhancements: map coordinates, item levels, auto-repair, auto-sell, AFK screen.
 -- Settings: Options → AddOns → Quality of Life  |  /qol
 
 local ADDON_NAME     = "VeritasUI_QualityOfLife"
@@ -35,6 +35,7 @@ local defaults = {
     autoRepair     = true,
     showItemLevels = true,
     showMapCoords  = true,
+    afkScreen      = true,
 }
 
 local db
@@ -651,6 +652,220 @@ local function SetupMapCoordinates()
     end
 end
 
+-- ── Feature: AFK Screen ─────────────────────────────────────
+-- Cinematic AFK overlay: hides all UI, shows character info
+-- (name, level, item level, zone) with a slow camera orbit
+-- to minimise OLED burn-in.
+-- Triggered by PLAYER_FLAGS_CHANGED → UnitIsAFK("player").
+-- Dismissed when AFK flag clears (any input).
+-- ─────────────────────────────────────────────────────────────
+local afkOverlay          -- the fullscreen frame (created once, reused)
+local afkClockTicker      -- 30s timer for real-world clock refresh
+local afkActive = false   -- guard against re-entry
+
+local function AFK_CreateOverlay()
+    if afkOverlay then return afkOverlay end
+
+    local f = CreateFrame("Frame", "VeritasUI_AFKScreen", UIParent)
+    f:SetAllPoints(UIParent)
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
+    f:SetFrameLevel(500)
+    f:SetIgnoreParentAlpha(true)
+    f:EnableKeyboard(true)
+    f:Hide()
+
+    -- ── Vignette overlay ──
+    -- Four edge gradients converging inward for a soft cinematic frame.
+    -- Each strip is a percentage of the screen dimension and fades from
+    -- dark edge to transparent interior.
+    local VIG_ALPHA = 0.85
+
+    -- Bottom
+    local vigB = f:CreateTexture(nil, "BACKGROUND")
+    vigB:SetTexture("Interface/Buttons/WHITE8x8")
+    vigB:SetGradient("VERTICAL",
+        CreateColor(0, 0, 0, VIG_ALPHA),
+        CreateColor(0, 0, 0, 0))
+    vigB:SetPoint("BOTTOMLEFT")
+    vigB:SetPoint("BOTTOMRIGHT")
+
+    -- Top
+    local vigT = f:CreateTexture(nil, "BACKGROUND")
+    vigT:SetTexture("Interface/Buttons/WHITE8x8")
+    vigT:SetGradient("VERTICAL",
+        CreateColor(0, 0, 0, 0),
+        CreateColor(0, 0, 0, VIG_ALPHA))
+    vigT:SetPoint("TOPLEFT")
+    vigT:SetPoint("TOPRIGHT")
+
+    -- Left
+    local vigL = f:CreateTexture(nil, "BACKGROUND")
+    vigL:SetTexture("Interface/Buttons/WHITE8x8")
+    vigL:SetGradient("HORIZONTAL",
+        CreateColor(0, 0, 0, VIG_ALPHA * 0.6),
+        CreateColor(0, 0, 0, 0))
+    vigL:SetPoint("TOPLEFT")
+    vigL:SetPoint("BOTTOMLEFT")
+
+    -- Right
+    local vigR = f:CreateTexture(nil, "BACKGROUND")
+    vigR:SetTexture("Interface/Buttons/WHITE8x8")
+    vigR:SetGradient("HORIZONTAL",
+        CreateColor(0, 0, 0, 0),
+        CreateColor(0, 0, 0, VIG_ALPHA * 0.6))
+    vigR:SetPoint("TOPRIGHT")
+    vigR:SetPoint("BOTTOMRIGHT")
+
+    -- Single OnSizeChanged handler sizes all four vignette strips.
+    -- Also called explicitly on Show to handle the case where the frame
+    -- is already at its final size (SetAllPoints resolves immediately)
+    -- and OnSizeChanged never fires.
+    local function SizeVignettes(w, h)
+        if not w or w == 0 then return end
+        vigB:SetHeight(h * 0.25)
+        vigT:SetHeight(h * 0.25)
+        vigL:SetWidth(w * 0.20)
+        vigR:SetWidth(w * 0.20)
+    end
+    f:HookScript("OnSizeChanged", function(_, w, h) SizeVignettes(w, h) end)
+    f:HookScript("OnShow", function(self) SizeVignettes(self:GetSize()) end)
+
+    -- ── Info cluster (bottom-center) ──
+    local cluster = CreateFrame("Frame", nil, f)
+    cluster:SetPoint("BOTTOM", f, "BOTTOM", 0, 60)
+    cluster:SetSize(400, 80)
+
+    -- Character name — class-coloured, large
+    local nameText = cluster:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    nameText:SetPoint("BOTTOM", cluster, "BOTTOM", 0, 24)
+    nameText:SetJustifyH("CENTER")
+    nameText:SetShadowColor(0, 0, 0, 1)
+    nameText:SetShadowOffset(2, -2)
+    f._nameText = nameText
+
+    -- Level · Item Level · Zone — subdued white
+    local infoText = cluster:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    infoText:SetPoint("TOP", nameText, "BOTTOM", 0, -4)
+    infoText:SetJustifyH("CENTER")
+    infoText:SetTextColor(0.78, 0.78, 0.78)
+    infoText:SetShadowColor(0, 0, 0, 1)
+    infoText:SetShadowOffset(1, -1)
+    f._infoText = infoText
+
+    -- Real-world clock — dim gray, below info line
+    local clockText = cluster:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    clockText:SetPoint("TOP", infoText, "BOTTOM", 0, -6)
+    clockText:SetJustifyH("CENTER")
+    clockText:SetTextColor(0.50, 0.50, 0.50)
+    clockText:SetShadowColor(0, 0, 0, 1)
+    clockText:SetShadowOffset(1, -1)
+    f._clockText = clockText
+
+    -- ── Input dismiss ──
+    -- Only character movement (keyboard) clears AFK in Blizzard's default
+    -- behavior — mouse clicks do not.  Propagate every key so the movement
+    -- key that wakes the player also reaches the game.  Mouse is not
+    -- captured (EnableMouse stays false) so clicks fall through harmlessly.
+    f:SetScript("OnKeyDown", function(self, key)
+        self:SetPropagateKeyboardInput(true)
+    end)
+
+    afkOverlay = f
+    return f
+end
+
+local function AFK_RefreshInfo()
+    if not afkOverlay then return end
+
+    -- Character name in class colour
+    local name = UnitName("player") or "Unknown"
+    local _, classFile = UnitClass("player")
+    local cc = C_ClassColor and C_ClassColor.GetClassColor(classFile)
+    if cc then
+        afkOverlay._nameText:SetText(cc:WrapTextInColorCode(name))
+    else
+        afkOverlay._nameText:SetText(name)
+    end
+
+    -- Level · ilvl · zone
+    local level = UnitLevel("player") or "?"
+    local ilvlStr = "—"
+    local ok, overall, equipped = pcall(GetAverageItemLevel)
+    if ok and equipped then
+        -- equipped may be a secret value; guard the format call
+        local fmtOk, s = pcall(format, "%.0f", equipped)
+        if fmtOk then ilvlStr = s end
+    end
+
+    local zone = GetZoneText() or ""
+    local subZone = GetSubZoneText() or ""
+    local zoneDisplay = zone
+    if subZone ~= "" and subZone ~= zone then
+        zoneDisplay = subZone .. ", " .. zone
+    end
+
+    -- Build info line; omit zone segment if zone data is unavailable
+    -- (loading screen, instance transition) to avoid a trailing separator.
+    local parts = {}
+    parts[#parts + 1] = "Level " .. tostring(level)
+    parts[#parts + 1] = "Item Level " .. ilvlStr
+    if zoneDisplay ~= "" then
+        parts[#parts + 1] = zoneDisplay
+    end
+    afkOverlay._infoText:SetText(table.concat(parts, "  ·  "))
+
+    -- Clock
+    afkOverlay._clockText:SetText(date("%I:%M %p"))
+end
+
+local function AFK_Enter()
+    if afkActive then return end
+    if not db or not db.afkScreen then return end
+    afkActive = true
+
+    local overlay = AFK_CreateOverlay()
+
+    -- Hide all standard UI
+    UIParent:SetAlpha(0)
+
+    -- MinimapCluster has SetIgnoreParentAlpha(true) in Blizzard code,
+    -- so UIParent:SetAlpha(0) doesn't reach it.  Hide it explicitly.
+    if MinimapCluster then MinimapCluster:Hide() end
+
+    -- Refresh info and show
+    AFK_RefreshInfo()
+    overlay:Show()
+
+    -- Start slow camera orbit
+    MoveViewRightStart(0.03)
+
+    -- Clock refresh every 30s
+    if afkClockTicker then afkClockTicker:Cancel() end
+    afkClockTicker = C_Timer.NewTicker(30, function()
+        if afkOverlay and afkOverlay:IsShown() then
+            afkOverlay._clockText:SetText(date("%I:%M %p"))
+        end
+    end)
+end
+
+local function AFK_Exit()
+    if not afkActive then return end
+    afkActive = false
+
+    -- Stop camera orbit
+    MoveViewRightStop()
+
+    -- Restore UI
+    UIParent:SetAlpha(1)
+    if MinimapCluster then MinimapCluster:Show() end
+
+    -- Hide overlay
+    if afkOverlay then afkOverlay:Hide() end
+
+    -- Stop clock ticker
+    if afkClockTicker then afkClockTicker:Cancel(); afkClockTicker = nil end
+end
+
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
@@ -664,6 +879,8 @@ local function InitializeOptions()
           tip = "Automatically sells all grey items when you visit a merchant." },
         { key = "autoRepair",      name = "Auto Repair",
           tip = "Automatically repairs all equipment at repair vendors. Uses guild funds first if available." },
+        { key = "afkScreen",       name = "AFK Screen",
+          tip = "Shows a cinematic overlay when you go AFK — your character name, level, item level, and zone over a slow camera orbit. Helps minimize OLED burn-in by hiding static UI elements and keeping the screen moving." },
     }
 
     for _, opt in ipairs(options) do
@@ -690,7 +907,9 @@ end
 -- ── Events ──────────────────────────────────────────────────
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("PLAYER_LOGOUT")
 frame:RegisterEvent("USER_WAYPOINT_UPDATED")
+frame:RegisterEvent("PLAYER_FLAGS_CHANGED")
 
 frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" then
@@ -706,6 +925,13 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         self:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
+        -- Belt-and-suspenders: if we crashed/disconnected while AFK was
+        -- active, UIParent alpha and MinimapCluster may be in a bad state.
+        -- Restore unconditionally on every login — these are no-ops when
+        -- already at their default values.
+        UIParent:SetAlpha(1)
+        if MinimapCluster then MinimapCluster:Show() end
+
         if db.showItemLevels then SetupItemLevels()     end
         if db.showMapCoords  then SetupMapCoordinates() end
 
@@ -716,6 +942,10 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 
         self:UnregisterEvent("PLAYER_LOGIN")
         VUI.Print("Quality of Life", "Loaded. Type |cFFFFFF00/qol|r to open settings.")
+
+    elseif event == "PLAYER_LOGOUT" then
+        -- Ensure UI is fully restored before the client saves frame state.
+        AFK_Exit()
 
     elseif event == "MERCHANT_SHOW" then
         if db.autoRepair   then AutoRepair()  end
@@ -732,6 +962,15 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         CancelSellRetry()
         SellNextBatch()
         ScheduleSellRetry()
+
+    elseif event == "PLAYER_FLAGS_CHANGED" then
+        -- arg1 is the unit whose flags changed; ignore non-player units.
+        if arg1 ~= "player" then return end
+        if UnitIsAFK("player") then
+            AFK_Enter()
+        else
+            AFK_Exit()
+        end
 
     elseif event == "USER_WAYPOINT_UPDATED" then
         -- Fired when the waypoint is cleared externally (e.g. map right-click UI).
