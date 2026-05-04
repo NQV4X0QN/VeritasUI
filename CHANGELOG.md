@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.17] - 2026-05-03
+
+### Improved
+- `VeritasUI_QualityOfLife` — **Item level overlays now have a subtle bottom-vignette gradient for readability on busy or bright item art.** A vertical gradient fades from 70% black at the icon's bottom edge to fully transparent 24px above, ensuring ilvl numbers are legible regardless of the icon artwork behind them. Uses the Warcraft Wiki-documented `WHITE8x8` + `SetGradient` pattern with `colorRGBA` alpha interpolation (`SetColorTexture` does not support gradient alpha in Midnight — discovered during development). Single texture per button, zero extra frames
+
 ## [1.6.16] - 2026-05-03
 
 ### Fixed

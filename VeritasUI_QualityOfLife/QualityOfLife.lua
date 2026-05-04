@@ -213,15 +213,34 @@ local function SetupItemLevels()
             fs:SetShadowColor(0, 0, 0, 1)
             fs:SetShadowOffset(1, -1)
             btn._vui_ilvl = fs
+
+            -- Bottom-vignette gradient for readability on busy/bright
+            -- item art.  Uses the Warcraft Wiki-documented pattern:
+            -- WHITE8x8 base texture + SetGradient with colorRGBA.
+            -- SetGradient acts as a vertex-color filter (multiplied
+            -- with the texture), so WHITE8x8 × gradient = the gradient
+            -- itself.  ARTWORK sublevel 7 sits behind the OVERLAY
+            -- fontstring but above the icon texture.
+            local bg = btn:CreateTexture(nil, "ARTWORK", nil, 7)
+            bg:SetTexture("Interface/Buttons/WHITE8x8")
+            bg:SetGradient("VERTICAL",
+                CreateColor(0, 0, 0, 0.7),    -- bottom: opaque (behind text)
+                CreateColor(0, 0, 0, 0))       -- top: transparent (fades out)
+            bg:SetPoint("BOTTOMLEFT",  anchor, "BOTTOMLEFT",  0, 0)
+            bg:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", 0, 0)
+            bg:SetHeight(24)
+            btn._vui_ilvlBG = bg
         end
         local c = QUALITY_COLORS[quality or 1] or QUALITY_COLORS[1]
         fs:SetText(ilvl)
         fs:SetTextColor(c.r, c.g, c.b)
         fs:Show()
+        if btn._vui_ilvlBG then btn._vui_ilvlBG:Show() end
     end
 
     local function HideOverlay(btn)
-        if btn._vui_ilvl then btn._vui_ilvl:Hide() end
+        if btn._vui_ilvl   then btn._vui_ilvl:Hide()   end
+        if btn._vui_ilvlBG then btn._vui_ilvlBG:Hide() end
     end
 
     local function IsEquippableGear(itemIDOrLink)
