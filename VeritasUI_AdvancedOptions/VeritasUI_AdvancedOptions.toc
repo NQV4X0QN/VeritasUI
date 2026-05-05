@@ -1,7 +1,7 @@
 ## Interface: 120005
 ## Title: VeritasUI — Advanced Options
 ## Notes: Curated hidden settings and full CVar browser. |cFF888888by NQV4X0QN|r
-## Version: 1.6.20
+## Version: 1.6.21
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
 ## SavedVariables: VeritasUI_AdvancedOptionsDB

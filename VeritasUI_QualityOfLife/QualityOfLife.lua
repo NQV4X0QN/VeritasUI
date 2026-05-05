@@ -866,6 +866,26 @@ local function AFK_Exit()
     if afkClockTicker then afkClockTicker:Cancel(); afkClockTicker = nil end
 end
 
+-- ── AFK Fallback Poll ──────────────────────────────────────────
+-- Belt-and-suspenders: PLAYER_FLAGS_CHANGED may not fire reliably
+-- for server-originated idle AFK in all Midnight builds.  A 5s poll
+-- guarantees we catch the transition regardless of event delivery.
+-- Cost: one pcall(UnitIsAFK,"player") every 5 seconds — negligible.
+local afkPollTicker
+local function AFK_StartPoll()
+    if afkPollTicker then return end
+    afkPollTicker = C_Timer.NewTicker(5, function()
+        if not db or not db.afkScreen then return end
+        local ok, afk = pcall(UnitIsAFK, "player")
+        if not ok or (issecretvalue and issecretvalue(afk)) then return end
+        if afk and not afkActive then
+            AFK_Enter()
+        elseif not afk and afkActive then
+            AFK_Exit()
+        end
+    end)
+end
+
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
@@ -940,6 +960,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             self:RegisterEvent("MERCHANT_CLOSED")
         end
 
+        if db.afkScreen then AFK_StartPoll() end
+
         self:UnregisterEvent("PLAYER_LOGIN")
         VUI.Print("Quality of Life", "Loaded. Type |cFFFFFF00/qol|r to open settings.")
 
@@ -968,9 +990,16 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- Note: idle-timeout AFK can fire with arg1=nil (server-originated),
         -- so treat nil as "self" and only bail on an explicit other-unit token.
         if arg1 and arg1 ~= "player" then return end
-        if UnitIsAFK("player") then
+        -- UnitIsAFK can return a Secret Value under Midnight's
+        -- ChatMessagingLockdown restriction.  Guard with pcall +
+        -- issecretvalue (added in 12.0.0) to guarantee we get a real bool.
+        local ok, afk = pcall(UnitIsAFK, "player")
+        if not ok or (issecretvalue and issecretvalue(afk)) then
+            afk = nil -- treat as unknown; fallback poll will catch it
+        end
+        if afk then
             AFK_Enter()
-        else
+        elseif afk == false then
             AFK_Exit()
         end
 

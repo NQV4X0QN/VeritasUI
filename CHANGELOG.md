@@ -2,6 +2,13 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.21] - 2026-05-04
+
+### Fixed
+- `VeritasUI_QualityOfLife` — **AFK Screen now reliably triggers on idle timeout.** Added a 5-second fallback poll (`UnitIsAFK("player")`) that detects AFK state independently of `PLAYER_FLAGS_CHANGED` event delivery. In Midnight, the event may not fire reliably for server-originated idle AFK in all contexts — the poll guarantees detection within 5 seconds regardless. The event handler remains for instant response when it does fire
+  - **Secret Value hardening:** `UnitIsAFK` is tagged `SecretInChatMessagingLockdown` in Midnight and can return opaque secret values in restricted contexts. Both the event handler and the poll now guard with `pcall` + `issecretvalue` (matching ElvUI's defensive pattern via their `oUF:NotSecretValue` wrapper). If blocked, the poll silently retries on the next tick
+  - **Dual-path architecture:** event handler (instant, when it fires) + poll (guaranteed, always running). Poll starts at `PLAYER_LOGIN` when AFK Screen is enabled; cost is one `pcall` every 5s with no allocations when state is unchanged
+
 ## [1.6.20] - 2026-05-04
 
 ### Fixed
