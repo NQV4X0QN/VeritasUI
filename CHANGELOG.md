@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.20] - 2026-05-04
+
+### Fixed
+- `VeritasUI_QualityOfLife` — **AFK Screen not triggering on idle timeout.** When WoW's server-side idle timer sets the AFK flag, `PLAYER_FLAGS_CHANGED` can fire with `arg1 = nil` (server-originated event without an explicit unit payload). The previous guard `if arg1 ~= "player"` treated `nil` as "not player" and bailed early, preventing `AFK_Enter()` from executing. Manual `/afk` was unaffected because the client-originated event always passes `arg1 = "player"`. Fixed by changing the guard to `if arg1 and arg1 ~= "player"` — nil is now treated as "self" and falls through to the `UnitIsAFK("player")` state check. Note: ElvUI's AFK module has the same unguarded pattern as of their current `main` branch
+
 ## [1.6.19] - 2026-05-03
 
 ### Added

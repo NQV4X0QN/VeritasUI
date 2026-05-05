@@ -965,7 +965,9 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 
     elseif event == "PLAYER_FLAGS_CHANGED" then
         -- arg1 is the unit whose flags changed; ignore non-player units.
-        if arg1 ~= "player" then return end
+        -- Note: idle-timeout AFK can fire with arg1=nil (server-originated),
+        -- so treat nil as "self" and only bail on an explicit other-unit token.
+        if arg1 and arg1 ~= "player" then return end
         if UnitIsAFK("player") then
             AFK_Enter()
         else
