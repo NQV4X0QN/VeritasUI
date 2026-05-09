@@ -483,11 +483,12 @@ function AO:BuildBrowserContent(parent)
 
         -- ── Inline editor positioning ───────────────────────
         local isExpanded = (expandedName == elementData.name)
+        row:SetHeight(isExpanded and (ROW_H + EXPAND_H) or ROW_H)
         if isExpanded then
             editor:SetParent(row)
             editor:ClearAllPoints()
-            editor:SetPoint("TOPLEFT",  row, "BOTTOMLEFT",  20, 0)
-            editor:SetPoint("TOPRIGHT", row, "BOTTOMRIGHT",  0, 0)
+            editor:SetPoint("TOPLEFT",  row, "TOPLEFT",  20, -ROW_H)
+            editor:SetPoint("TOPRIGHT", row, "TOPRIGHT",  0, -ROW_H)
             editBox:SetText(elementData.value)
             editor:Show()
         elseif editor:GetParent() == row then

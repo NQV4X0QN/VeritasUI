@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.23] - 2026-05-09
+
+### Fixed
+- `VeritasUI_AdvancedOptions` — **All CVars tab: inline editor overlapped the row below and left a gap above.** The row frame stayed at `ROW_H` height even when the ScrollBox's extent calculator reserved `ROW_H + EXPAND_H`, and the editor anchored to `BOTTOMLEFT`/`BOTTOMRIGHT` (the row's bottom edge) which placed it outside the row's bounds. Fixed by dynamically setting the row height to `ROW_H + EXPAND_H` when expanded and anchoring the editor to `TOPLEFT` offset by `-ROW_H` — placing it directly below the CVar data line but inside the row's own allocated space
+
 ## [1.6.22] - 2026-05-09
 
 ### Fixed

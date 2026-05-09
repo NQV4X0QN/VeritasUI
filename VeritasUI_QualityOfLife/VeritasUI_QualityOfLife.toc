@@ -1,7 +1,7 @@
 ## Interface: 120005
 ## Title: VeritasUI — Quality of Life
 ## Notes: Map coordinates, item levels, auto-repair, auto-sell junk, and TomTom-compatible waypoints. |cFF888888by NQV4X0QN|r
-## Version: 1.6.22
+## Version: 1.6.23
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
 ## OptionalDeps: Blizzard_WorldMap
