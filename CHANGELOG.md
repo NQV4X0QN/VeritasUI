@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.22] - 2026-05-09
+
+### Fixed
+- `VeritasUI_AdvancedOptions` — **All CVars tab: clicking a row to expand/edit crashed with "attempt to call a nil value" at Browser.lua:516.** `DataProvider:SignalUpdate()` was removed in Midnight. All three call sites (row expand/collapse, Set button, Reset button) called this nil method. Replaced with `FullRefresh()` which creates a fresh `DataProvider` and calls `scrollBox:SetDataProvider()` — the same proven path used by search, favourites, and initial populate. Required a forward declaration (`local FullRefresh` before the editor callbacks, assigned after ScrollBox setup) to avoid the Lua forward-reference-local-is-nil-in-closures trap
+
 ## [1.6.21] - 2026-05-04
 
 ### Fixed

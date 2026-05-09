@@ -370,17 +370,15 @@ function AO:BuildBrowserContent(parent)
     resetDefBtn:SetText("Reset")
 
     -- Editor callbacks — use expandedName to find the active entry.
+    local FullRefresh  -- forward-declared; assigned after ScrollBox setup
     local function ApplyEditorValue()
         if not expandedName then return end
         local entry = cvarByName[expandedName]
         if not entry then return end
         AO:SetCVar(entry.name, editBox:GetText())
         RefreshEntry(entry)
-        -- Force ScrollBox to re-render the changed row
-        if scrollBox.GetDataProvider then
-            local dp = scrollBox:GetDataProvider()
-            if dp then dp:SignalUpdate() end
-        end
+        -- Force ScrollBox to re-layout with fresh DataProvider
+        FullRefresh()
     end
 
     setBtn:SetScript("OnClick", ApplyEditorValue)
@@ -394,10 +392,7 @@ function AO:BuildBrowserContent(parent)
         if not entry then return end
         AO:ResetCVar(entry.name)
         RefreshEntry(entry)
-        if scrollBox.GetDataProvider then
-            local dp = scrollBox:GetDataProvider()
-            if dp then dp:SignalUpdate() end
-        end
+        FullRefresh()
     end)
 
     -- ── ScrollBox view + element initializer ────────────────
@@ -512,8 +507,7 @@ function AO:BuildBrowserContent(parent)
                 expandedName = elementData.name
             end
             -- Re-render so extent calculator picks up the change
-            local dp = scrollBox:GetDataProvider()
-            if dp then dp:SignalUpdate() end
+            FullRefresh()
         end)
 
         row:SetScript("OnEnter", function(self)
@@ -535,7 +529,7 @@ function AO:BuildBrowserContent(parent)
     ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
 
     -- ── Data provider refresh ───────────────────────────────
-    local function FullRefresh()
+    FullRefresh = function()
         EnumerateCVars()
         ApplyFilter(searchBox:GetText() or "")
 
