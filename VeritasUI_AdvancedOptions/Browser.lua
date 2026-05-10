@@ -276,7 +276,6 @@ end
 --    Click row → inline expand with edit box + Set + Reset buttons
 ----------------------------------------------------------------
 local ROW_H       = 20
-local EXPAND_H    = 28
 
 function AO:BuildBrowserContent(parent)
     local INSET = 8
@@ -345,54 +344,61 @@ function AO:BuildBrowserContent(parent)
     scrollBar:SetPoint("TOPLEFT",    scrollBox, "TOPRIGHT",    4, 0)
     scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", 4, 0)
 
-    -- ── Expanded row state ──────────────────────────────────
-    local expandedName = nil
+    -- ── Inline edit state ────────────────────────────────────
+    local editingRow = nil   -- the row frame currently being edited
 
-    -- ── Shared inline editor (one instance, repositioned) ───
-    -- Parented to scrollBox so it scrolls with content.
-    local editor = CreateFrame("Frame", nil, scrollBox)
-    editor:SetHeight(EXPAND_H)
-    editor:Hide()
+    -- Shared inline EditBox — positioned over a row's value fontstring.
+    local inlineEdit = CreateFrame("EditBox", nil, scrollBox, "InputBoxTemplate")
+    inlineEdit:SetHeight(ROW_H - 2)
+    inlineEdit:SetAutoFocus(false)
+    inlineEdit:Hide()
 
-    local editBox = CreateFrame("EditBox", nil, editor, "InputBoxTemplate")
-    editBox:SetSize(160, 20)
-    editBox:SetPoint("LEFT", editor, "LEFT", 4, 0)
-    editBox:SetAutoFocus(false)
-
-    local setBtn = CreateFrame("Button", nil, editor, "UIPanelButtonTemplate")
-    setBtn:SetSize(40, 20)
-    setBtn:SetPoint("LEFT", editBox, "RIGHT", 6, 0)
-    setBtn:SetText("Set")
-
-    local resetDefBtn = CreateFrame("Button", nil, editor, "UIPanelButtonTemplate")
-    resetDefBtn:SetSize(60, 20)
-    resetDefBtn:SetPoint("LEFT", setBtn, "RIGHT", 4, 0)
-    resetDefBtn:SetText("Reset")
-
-    -- Editor callbacks — use expandedName to find the active entry.
-    local FullRefresh  -- forward-declared; assigned after ScrollBox setup
-    local function ApplyEditorValue()
-        if not expandedName then return end
-        local entry = cvarByName[expandedName]
-        if not entry then return end
-        AO:SetCVar(entry.name, editBox:GetText())
-        RefreshEntry(entry)
-        -- Force ScrollBox to re-layout with fresh DataProvider
-        FullRefresh()
+    local function CloseInlineEdit()
+        if editingRow and editingRow._valFs then
+            editingRow._valFs:Show()
+        end
+        editingRow = nil
+        inlineEdit:ClearFocus()
+        inlineEdit:Hide()
     end
 
-    setBtn:SetScript("OnClick", ApplyEditorValue)
-    editBox:SetScript("OnEnterPressed", function(self)
-        ApplyEditorValue()
-        self:ClearFocus()
-    end)
-    resetDefBtn:SetScript("OnClick", function()
-        if not expandedName then return end
-        local entry = cvarByName[expandedName]
-        if not entry then return end
-        AO:ResetCVar(entry.name)
+    local function OpenInlineEdit(row, entry)
+        -- Close any previous edit
+        if editingRow and editingRow ~= row then CloseInlineEdit() end
+        editingRow = row
+        -- Position over the value fontstring
+        row._valFs:Hide()
+        inlineEdit:SetParent(row)
+        inlineEdit:ClearAllPoints()
+        inlineEdit:SetPoint("LEFT",  row._valFs, "LEFT",  -4, 0)
+        inlineEdit:SetPoint("RIGHT", row._valFs, "RIGHT",  4, 0)
+        inlineEdit:SetFrameLevel(row:GetFrameLevel() + 5)
+        inlineEdit:SetText(entry.value)
+        inlineEdit:Show()
+        inlineEdit:SetFocus()
+        inlineEdit:HighlightText()
+    end
+
+    -- Enter → apply the new value
+    inlineEdit:SetScript("OnEnterPressed", function(self)
+        if not editingRow then return end
+        local entry = editingRow._entry
+        if not entry then CloseInlineEdit(); return end
+        AO:SetCVar(entry.name, self:GetText())
         RefreshEntry(entry)
-        FullRefresh()
+        -- Update the row's display
+        editingRow._valFs:SetText(entry.value)
+        if entry.value ~= entry.default then
+            editingRow._valFs:SetTextColor(0.4, 0.8, 1)
+        else
+            editingRow._valFs:SetTextColor(0.75, 0.75, 0.75)
+        end
+        CloseInlineEdit()
+    end)
+
+    -- Escape → cancel editing
+    inlineEdit:SetScript("OnEscapePressed", function()
+        CloseInlineEdit()
     end)
 
     -- ── ScrollBox view + element initializer ────────────────
@@ -400,11 +406,10 @@ function AO:BuildBrowserContent(parent)
     -- recycles row frames automatically — no manual pool needed.
     local view = CreateScrollBoxListLinearView()
 
-    -- Element extent: ROW_H normally, ROW_H + EXPAND_H when expanded.
+    -- Element extent: fixed height for all rows. The inline editor
+    -- floats as an overlay below the expanded row at a higher frame level,
+    -- so no variable extent is needed.
     view:SetElementExtentCalculator(function(dataIndex, elementData)
-        if elementData and expandedName == elementData.name then
-            return ROW_H + EXPAND_H
-        end
         return ROW_H
     end)
 
@@ -481,19 +486,12 @@ function AO:BuildBrowserContent(parent)
         for i = 1, #elementData.name do nameSum = nameSum + elementData.name:byte(i) end
         row._bg:SetColorTexture(1, 1, 1, (nameSum % 2 == 0) and 0.03 or 0)
 
-        -- ── Inline editor positioning ───────────────────────
-        local isExpanded = (expandedName == elementData.name)
-        row:SetHeight(isExpanded and (ROW_H + EXPAND_H) or ROW_H)
-        if isExpanded then
-            editor:SetParent(row)
-            editor:ClearAllPoints()
-            editor:SetPoint("TOPLEFT",  row, "TOPLEFT",  20, -ROW_H)
-            editor:SetPoint("TOPRIGHT", row, "TOPRIGHT",  0, -ROW_H)
-            editBox:SetText(elementData.value)
-            editor:Show()
-        elseif editor:GetParent() == row then
-            editor:Hide()
+        -- ── Inline edit: close if this row is recycled while editing ──
+        if editingRow == row then
+            CloseInlineEdit()
         end
+        -- Ensure value fontstring is visible on rebind
+        row._valFs:Show()
 
         -- ── Row click handlers ──────────────────────────────
         row._star:SetScript("OnClick", function()
@@ -501,14 +499,23 @@ function AO:BuildBrowserContent(parent)
             AO:RefreshBrowser()
         end)
 
-        row:SetScript("OnClick", function()
-            if expandedName == elementData.name then
-                expandedName = nil
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        row:SetScript("OnClick", function(self, button)
+            if button == "RightButton" then
+                -- Right-click → reset to default
+                AO:ResetCVar(elementData.name)
+                RefreshEntry(elementData)
+                row._valFs:SetText(elementData.value)
+                row._valFs:SetTextColor(0.75, 0.75, 0.75)
+                if editingRow == row then CloseInlineEdit() end
             else
-                expandedName = elementData.name
+                -- Left-click → toggle inline edit
+                if editingRow == row then
+                    CloseInlineEdit()
+                else
+                    OpenInlineEdit(row, elementData)
+                end
             end
-            -- Re-render so extent calculator picks up the change
-            FullRefresh()
         end)
 
         row:SetScript("OnEnter", function(self)
@@ -530,7 +537,7 @@ function AO:BuildBrowserContent(parent)
     ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
 
     -- ── Data provider refresh ───────────────────────────────
-    FullRefresh = function()
+    local function FullRefresh()
         EnumerateCVars()
         ApplyFilter(searchBox:GetText() or "")
 
@@ -542,7 +549,7 @@ function AO:BuildBrowserContent(parent)
     end
 
     function AO:RefreshBrowser()
-        expandedName = nil
+        CloseInlineEdit()
         FullRefresh()
     end
 
@@ -555,7 +562,7 @@ function AO:BuildBrowserContent(parent)
         if searchTimer then searchTimer:Cancel() end
         searchTimer = C_Timer.NewTimer(0.2, function()
             searchTimer = nil
-            expandedName = nil
+            CloseInlineEdit()
             FullRefresh()
         end)
     end)

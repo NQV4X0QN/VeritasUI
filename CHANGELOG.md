@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.24] - 2026-05-09
+
+### Changed
+- `VeritasUI_AdvancedOptions` — **All CVars tab: redesigned CVar editor from dropdown panel to inline edit.** Clicking a CVar row now turns the Value column into an editable field in-place — no overlay panel, no Set/Reset buttons, no DataProvider re-layout. Press Enter to apply, Escape to cancel, right-click to reset to default. This eliminates the `DataProvider:SignalUpdate()` dependency that was removed in Midnight (which caused the original crash) and all the layout issues that followed from trying to replace it. The extent calculator is now fixed-height (`ROW_H`) for all rows; the `EXPAND_H` constant and the shared editor frame are removed entirely
+
 ## [1.6.23] - 2026-05-09
 
 ### Fixed
