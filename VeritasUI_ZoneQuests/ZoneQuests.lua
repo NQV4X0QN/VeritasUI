@@ -27,18 +27,28 @@ local db = nil  -- assigned only after ADDON_LOADED
 
 -- ── Directional prefix stripper ───────────────────────────────────
 local DIRECTIONAL = {
-    ["northern "]=true, ["southern "]=true, ["eastern "]=true,
-    ["western "]=true,  ["upper "]=true,    ["lower "]=true,
-    ["inner "]=true,    ["outer "]=true,    ["the "]=true,
+    "northern ", "southern ", "eastern ", "western ",
+    "upper ", "lower ", "inner ", "outer ", "the ",
 }
 local function StripDir(s)
-    for p in pairs(DIRECTIONAL) do
-        if s:sub(1, #p) == p then return s:sub(#p + 1) end
+    local changed = true
+    while changed do
+        changed = false
+        for _, p in ipairs(DIRECTIONAL) do
+            if s:sub(1, #p) == p then
+                s = s:sub(#p + 1)
+                changed = true
+                break
+            end
+        end
     end
     return s
 end
 
 -- ── Zone name set ─────────────────────────────────────────────────
+local MAP_TYPE_WORLD  = (Enum and Enum.UIMapType and Enum.UIMapType.World)  or 1
+local MAP_TYPE_COSMIC = (Enum and Enum.UIMapType and Enum.UIMapType.Cosmic) or 0
+
 local function BuildZoneNameSet()
     local t = {}
     local function add(s)
@@ -60,9 +70,11 @@ local function BuildZoneNameSet()
             safety = safety + 1
             local info = C_Map.GetMapInfo(mapID)
             if not info then break end
+            local mt = info.mapType or -1
+            if mt == MAP_TYPE_WORLD or mt == MAP_TYPE_COSMIC then break end
             add(info.name)
             local par = info.parentMapID
-            if not par or par <= 0 or par == 946 or par == 947 then break end
+            if not par or par <= 0 then break end
             mapID = par
         end
     end
@@ -78,7 +90,7 @@ local function HeaderMatches(header, nameSet)
     for name in pairs(nameSet) do
         if #name > 2 then
             if h:find(name, 1, true) then return true end
-            if name:find(hs, 1, true) then return true end
+            if #hs > 2 and name:find(hs, 1, true) then return true end
         end
     end
     return false
@@ -258,7 +270,6 @@ local function ScheduleSync()
 end
 
 -- ── Options Panel — Blizzard native vertical layout ───────────────
-local registeredCategory = nil
 local settingsCategoryID
 
 local function InitializeOptions()
@@ -322,7 +333,6 @@ local function InitializeOptions()
     end
 
     Settings.RegisterAddOnCategory(category)
-    registeredCategory = category
     settingsCategoryID = category:GetID()
     VUI.RegisterSettingsLabel(SETTINGS_LABEL)
 end
@@ -335,7 +345,6 @@ ef:RegisterEvent("ZONE_CHANGED")
 ef:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 ef:RegisterEvent("ZONE_CHANGED_INDOORS")
 ef:RegisterEvent("QUEST_LOG_UPDATE")
-ef:RegisterEvent("QUEST_ACCEPTED")
 ef:RegisterEvent("SUPER_TRACKING_CHANGED")
 
 ef:SetScript("OnEvent", function(_, event, arg1)
@@ -392,9 +401,6 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         cachedNameSet = BuildZoneNameSet()
         lastDirectSync = GetTime()
         SyncTracking(false)
-
-    elseif event == "QUEST_ACCEPTED" then
-        C_Timer.After(0.5, function() SyncTracking(false) end)
 
     elseif event == "SUPER_TRACKING_CHANGED" then
         -- Player set or cleared the minimap direction arrow. Re-sync so the
@@ -502,7 +508,7 @@ SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
         print("  db.enabled: " .. tostring(db and db.enabled))
 
     else
-        if registeredCategory then
+        if settingsCategoryID then
             Settings.OpenToCategory(settingsCategoryID)
         else
             VUI.Print("Zone Quests", "Settings not ready yet.")
@@ -512,7 +518,7 @@ end
 
 -- ── Addon Compartment (minimap dropdown) ────────────────────
 function VeritasUI_ZoneQuests_OnAddonCompartmentClick()
-    if registeredCategory then
+    if settingsCategoryID then
         C_Timer.After(0, function() Settings.OpenToCategory(settingsCategoryID) end)
     end
 end

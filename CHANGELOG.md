@@ -2,6 +2,16 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.27] - 2026-05-14
+
+### Changed
+- `VeritasUI_ZoneQuests` — **Architectural hardening: five robustness improvements.**
+  - **Remove `QUEST_ACCEPTED` stacked timers** — The `QUEST_ACCEPTED` handler created a non-cancellable `C_Timer.After(0.5, ...)` per event. Accepting multiple quests from one NPC fired multiple stacked timers that all called `SyncTracking` independently. Since `QUEST_LOG_UPDATE` fires on every acceptance and already routes through the cancellable debounce, `QUEST_ACCEPTED` was redundant. Handler and event registration removed
+  - **Map walk uses `Enum.UIMapType` stop sentinel** — `BuildZoneNameSet`'s C_Map hierarchy walk previously stopped at hardcoded parent map IDs 946/947 (the World and Cosmic map IDs). If Blizzard renumbers these in a future patch, the walk would climb past the world level and pollute the name set with world-level names, causing every quest header to match every zone. Now stops when `info.mapType` is `Enum.UIMapType.World` or `Enum.UIMapType.Cosmic` (with numeric fallbacks), which is ID-independent
+  - **`StripDir` uses ordered array and loops until stable** — `DIRECTIONAL` changed from a hash table (non-deterministic `pairs` iteration) to an ordered array (`ipairs`). `StripDir` now loops until no further prefix is stripped, so doubly-prefixed names like `"The Upper Blackrock Spire"` fully reduce to `"Blackrock Spire"` in two passes. Previously only one prefix was stripped per call, leaving the second prefix in place and relying on the substring fallback in `HeaderMatches` — which introduced false-positive risk
+  - **`HeaderMatches` guards short stripped headers** — The bidirectional substring fallback now requires `#hs > 2` before checking whether the stripped quest header appears inside a zone name in the set. Previously a very short stripped header could sweep-match across unrelated zone names. The guard on `#name > 2` already protected the forward direction; this adds the symmetric guard to the reverse direction
+  - **Remove redundant `registeredCategory` variable** — `registeredCategory` and `settingsCategoryID` both tracked whether `InitializeOptions` had run. All three guard sites now use `settingsCategoryID` directly, eliminating the drift risk if the two variables were ever set independently
+
 ## [1.6.26] - 2026-05-14
 
 ### Changed
