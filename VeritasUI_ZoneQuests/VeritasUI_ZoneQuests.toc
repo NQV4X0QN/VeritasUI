@@ -1,5 +1,5 @@
-﻿## Interface: 120005
-## Title: VeritasUI â€” Zone Quests
+## Interface: 120005
+## Title: VeritasUI — Zone Quests
 ## Notes: Auto-tracks only quests for your current zone in the Objective Tracker. |cFF888888by NQV4X0QN|r
 ## Version: 1.6.30
 ## Author: NQV4X0QN
