@@ -2,6 +2,21 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.28] - 2026-05-14
+
+### Changed
+- `VeritasUI_QualityOfLife` — **Architectural hardening: ten robustness improvements.**
+  - **AutoSell gold reporting — PLAYER_MONEY event replaces fixed-frame delay** — `C_Timer.After(0, ...)` raced against the server's money-credit packet, causing sub-1g sell totals to read `GetMoney() - startMoney == 0` and report "for 0g". `PLAYER_MONEY` fires exactly when the server confirms the credit; the report now triggers in that handler. A 2-second fallback timer fires if `PLAYER_MONEY` never arrives. A stale-closure guard (`pendingReportFn ~= DoReport`) and `CancelPendingReport()` prevent double-reporting if a new sell session starts before the previous report fires
+  - **Item level hook respects mid-session disable** — `hooksecurefunc("SetItemButtonQuality", ...)` cannot be unregistered once set; overlays remained visible after disabling the setting mid-session. Added `if not db or not db.showItemLevels then return end` as the first guard in the hook closure so disabling takes effect immediately without a `/reload`
+  - **Map coordinates OnUpdate respects mid-session disable** — the anchor frame's 30 fps `OnUpdate` ran regardless of `db.showMapCoords`. Added a db check that hides the anchor and returns when the setting is off
+  - **Settings callbacks invoke feature setup on mid-session enable** — enabling `showItemLevels` or `showMapCoords` after login (when they were disabled at login) previously did nothing because setup only ran in `PLAYER_LOGIN`. Callbacks now call `SetupItemLevels()` / `SetupMapCoordinates()` when toggled on; `SetupItemLevels` is idempotent via the new `itemLevelsSetup` guard. Map coords anchor is shown/hidden directly if already initialised
+  - **AFK poll starts when AFK Screen enabled mid-session** — `AFK_StartPoll()` was only called in `PLAYER_LOGIN` if `db.afkScreen`. Enabling the feature after login left the 5-second fallback poll un-started (event-driven path still worked). The `afkScreen` settings callback now calls `AFK_StartPoll()` on enable; the function is idempotent
+  - **`MinimapCluster` visibility preserved across AFK** — `AFK_Exit()` unconditionally called `MinimapCluster:Show()`, revealing it even if another addon had hidden it before AFK started. `AFK_Enter()` now snapshots `MinimapCluster:IsShown()` into `afkOverlay._minimapWasShown`; `AFK_Exit()` restores that exact state
+  - **`MoveViewRightStart` / `MoveViewRightStop` pcall-wrapped** — camera movement APIs can fail in cinematics, vehicle sequences, and certain phased content. Both calls are now guarded with `pcall`
+  - **`InitCoords` idempotency guard** — added `coordsInitialized` flag; `InitCoords()` is now a no-op if called a second time (e.g. edge-case LoD event re-fire), preventing duplicate anchor frames on the map
+  - **Merchant scanner no longer double-fires on open** — the item-level merchant scanner's `mf` frame registered both `MERCHANT_SHOW` and `MerchantFrame:HookScript("OnShow", ...)`, causing `UpdateMerchantItems` to be called twice at +0.1s on every merchant open. Removed `MERCHANT_SHOW` from `mf`; the `OnShow` hook covers the open case
+  - **`/way` defers registration to `PLAYER_LOGIN` with TomTom detection** — if TomTom is loaded, both addons register `/way` and the last to load silently wins. Registration now happens in `PLAYER_LOGIN`; if `_G.TomTom` or `IsAddOnLoaded("TomTom")` is true, `/way` is skipped and a one-time note is printed. The slash handler extracted to `local function WayCommand(msg)` for testability
+
 ## [1.6.27] - 2026-05-14
 
 ### Changed

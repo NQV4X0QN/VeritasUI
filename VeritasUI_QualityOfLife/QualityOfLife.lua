@@ -42,6 +42,13 @@ local db
 local settingsCategoryID
 local frame = CreateFrame("Frame")
 
+local itemLevelsSetup   = false  -- guards SetupItemLevels() re-entry
+local coordsInitialized = false  -- guards InitCoords() re-entry
+local mapCoordsAnchor   = nil    -- reference for mid-session show/hide
+
+local pendingReportFn    = nil   -- DoReport closure awaiting PLAYER_MONEY
+local pendingReportTimer = nil   -- 2-second fallback for the report
+
 -- ── /way — proximity auto-clear state ───────────────────────
 local wayTicker        = nil
 local WAY_ARRIVAL_YARDS = 10
@@ -87,6 +94,12 @@ local function CancelSellRetry()
     if sellRetryTimer then sellRetryTimer:Cancel(); sellRetryTimer = nil end
 end
 
+local function CancelPendingReport()
+    if pendingReportTimer then pendingReportTimer:Cancel(); pendingReportTimer = nil end
+    pendingReportFn = nil
+    frame:UnregisterEvent("PLAYER_MONEY")
+end
+
 local function SellNextBatch()
     if not sellState then return end
     if not MerchantFrame or not MerchantFrame:IsShown() then
@@ -129,16 +142,27 @@ local function SellNextBatch()
 
     if count == 0 then return end
 
-    -- Use GetMoney() delta for accurate reporting; wait one frame so the
-    -- server-side money update is reflected in the client value.
-    C_Timer.After(0, function()
-        local earned = GetMoney() - startMoney
+    -- Wait for PLAYER_MONEY (the server's money-credit packet) before reporting.
+    -- BAG_UPDATE_DELAYED and PLAYER_MONEY arrive as separate server messages;
+    -- reading GetMoney() immediately here races the credit packet and produces 0
+    -- for sub-1g sell totals. A 2-second timer fires as a fallback if
+    -- PLAYER_MONEY never arrives (e.g. high latency, server hiccup).
+    local capturedCount = count
+    local capturedStart = startMoney
+    local function DoReport()
+        if pendingReportFn ~= DoReport then return end
+        CancelPendingReport()
+        local earned = GetMoney() - capturedStart
         if earned < 0 then earned = 0 end
         VUI.Print("Quality of Life", format(
             "Sold |cFFFFFF00%d|r junk item%s for %s",
-            count, count > 1 and "s" or "",
+            capturedCount, capturedCount > 1 and "s" or "",
             GetCoinTextureString(earned)))
-    end)
+    end
+    CancelPendingReport()
+    pendingReportFn    = DoReport
+    pendingReportTimer = C_Timer.NewTimer(2, DoReport)
+    frame:RegisterEvent("PLAYER_MONEY")
 end
 
 -- Schedule a safety retry in case BAG_UPDATE_DELAYED doesn't fire.
@@ -155,6 +179,7 @@ local function ScheduleSellRetry()
 end
 
 local function AutoSellJunk()
+    CancelPendingReport()
     sellState = { count = 0, startMoney = nil }  -- snapshot deferred to first sell
     frame:RegisterEvent("BAG_UPDATE_DELAYED")
     SellNextBatch()
@@ -193,6 +218,8 @@ end
 -- Quest reward buttons are explicitly excluded.
 -- ─────────────────────────────────────────────────────────────
 local function SetupItemLevels()
+    if itemLevelsSetup then return end
+    itemLevelsSetup = true
     local QUALITY_COLORS = ITEM_QUALITY_COLORS
     local GEAR_CLASSES   = { [2] = true, [4] = true }  -- Weapon, Armor
     -- Items whose GetDetailedItemLevelInfo returns a stale/wrong ilvl.
@@ -305,6 +332,7 @@ local function SetupItemLevels()
     end
 
     hooksecurefunc("SetItemButtonQuality", function(btn, quality, itemIDOrLink)
+        if not db or not db.showItemLevels then return end
         if not btn or not btn.CreateFontString then return end
         if not itemIDOrLink then HideOverlay(btn); return end
         if quality ~= nil and quality == 0 then HideOverlay(btn); return end
@@ -429,7 +457,6 @@ local function SetupItemLevels()
     end
 
     local mf = CreateFrame("Frame")
-    mf:RegisterEvent("MERCHANT_SHOW")
     mf:RegisterEvent("MERCHANT_UPDATE")
     mf:RegisterEvent("MERCHANT_FILTER_ITEM_UPDATE")
     mf:SetScript("OnEvent", function()
@@ -456,7 +483,9 @@ local function SetupMapCoordinates()
     local UNLOCK_R, UNLOCK_G, UNLOCK_B = 0.2, 0.8, 1.0
 
     local function InitCoords()
+        if coordsInitialized then return end
         if not WorldMapFrame or not WorldMapFrame.ScrollContainer then return end
+        coordsInitialized = true
         local container = WorldMapFrame.ScrollContainer
 
         -- Hide the quest log show/hide toggle button in the bottom-right.
@@ -466,6 +495,7 @@ local function SetupMapCoordinates()
         -- Invisible container button — no backdrop, no border, no tint.
         -- Must be a Button (not Frame) so RegisterForClicks works.
         local anchor = CreateFrame("Button", nil, container)
+        mapCoordsAnchor = anchor
         anchor:SetSize(1, 1)  -- auto-sized by content; initial 1×1 is a placeholder
         anchor:SetFrameStrata("DIALOG")
         anchor:SetFrameLevel(container:GetFrameLevel() + 10)
@@ -592,6 +622,7 @@ local function SetupMapCoordinates()
         end)
 
         anchor:SetScript("OnUpdate", function(self, elapsed)
+            if not db or not db.showMapCoords then self:Hide(); return end
             self._t = (self._t or 0) + elapsed
             if self._t < THROTTLE then return end
             self._t = 0
@@ -830,14 +861,19 @@ local function AFK_Enter()
 
     -- MinimapCluster has SetIgnoreParentAlpha(true) in Blizzard code,
     -- so UIParent:SetAlpha(0) doesn't reach it.  Hide it explicitly.
-    if MinimapCluster then MinimapCluster:Hide() end
+    -- Save pre-AFK visibility so AFK_Exit restores the exact prior state
+    -- rather than force-showing something another addon may have hidden.
+    if MinimapCluster then
+        afkOverlay._minimapWasShown = MinimapCluster:IsShown()
+        MinimapCluster:Hide()
+    end
 
     -- Refresh info and show
     AFK_RefreshInfo()
     overlay:Show()
 
-    -- Start slow camera orbit
-    MoveViewRightStart(0.03)
+    -- Start slow camera orbit (pcall-guarded: may fail in cinematics or vehicle sequences).
+    pcall(MoveViewRightStart, 0.03)
 
     -- Clock refresh every 30s
     if afkClockTicker then afkClockTicker:Cancel() end
@@ -853,11 +889,15 @@ local function AFK_Exit()
     afkActive = false
 
     -- Stop camera orbit
-    MoveViewRightStop()
+    pcall(MoveViewRightStop)
 
-    -- Restore UI
+    -- Restore UI; only show MinimapCluster if it was visible before AFK started.
     UIParent:SetAlpha(1)
-    if MinimapCluster then MinimapCluster:Show() end
+    if MinimapCluster then
+        if afkOverlay and afkOverlay._minimapWasShown then
+            MinimapCluster:Show()
+        end
+    end
 
     -- Hide overlay
     if afkOverlay then afkOverlay:Hide() end
@@ -913,8 +953,24 @@ local function InitializeOptions()
             opt.name,
             defaults[opt.key]
         )
+        local key = opt.key
         setting:SetValueChangedCallback(function(_, value)
             VUI.PrintOnOff("Quality of Life", opt.name, value)
+            if key == "afkScreen" and value then
+                AFK_StartPoll()
+            elseif key == "showItemLevels" and value then
+                SetupItemLevels()  -- idempotent: no-op if already hooked
+            elseif key == "showMapCoords" then
+                if value then
+                    if not coordsInitialized then
+                        SetupMapCoordinates()
+                    elseif mapCoordsAnchor then
+                        mapCoordsAnchor:Show()
+                    end
+                else
+                    if mapCoordsAnchor then mapCoordsAnchor:Hide() end
+                end
+            end
         end)
         Settings.CreateCheckbox(category, setting, opt.tip)
     end
@@ -962,6 +1018,15 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 
         if db.afkScreen then AFK_StartPoll() end
 
+        -- Register /way only if TomTom is absent; both addons claim this command.
+        if not (_G.TomTom or (IsAddOnLoaded and IsAddOnLoaded("TomTom"))) then
+            SLASH_VERITASUI_WAY1 = "/way"
+            SlashCmdList["VERITASUI_WAY"] = WayCommand
+        else
+            VUI.Print("Quality of Life",
+                "TomTom detected — |cFFFFFF00/way|r is handled by TomTom.")
+        end
+
         self:UnregisterEvent("PLAYER_LOGIN")
         VUI.Print("Quality of Life", "Loaded. Type |cFFFFFF00/qol|r to open settings.")
 
@@ -984,6 +1049,9 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         CancelSellRetry()
         SellNextBatch()
         ScheduleSellRetry()
+
+    elseif event == "PLAYER_MONEY" then
+        if pendingReportFn then pendingReportFn() end
 
     elseif event == "PLAYER_FLAGS_CHANGED" then
         -- arg1 is the unit whose flags changed; ignore non-player units.
@@ -1019,6 +1087,7 @@ SlashCmdList["VERITASUI_QOL"] = function()
 end
 
 -- ── /way — TomTom-compatible waypoint command ────────────────
+-- Registered at PLAYER_LOGIN to detect TomTom conflicts; see PLAYER_LOGIN handler.
 -- Supported formats (mirrors TomTom syntax):
 --   /way #2351 45.2 56.3              -- explicit map ID
 --   /way #2351 45.2 56.3 Some Label   -- with optional label
@@ -1029,8 +1098,7 @@ end
 -- Uses Blizzard's native user-waypoint APIs so the pin appears on
 -- the World Map and the minimap arrow activates automatically
 -- (same behaviour as right-clicking the map and choosing "Set Waypoint").
-SLASH_VERITASUI_WAY1 = "/way"
-SlashCmdList["VERITASUI_WAY"] = function(msg)
+local function WayCommand(msg)
     msg = strtrim(msg or ""):gsub(",", ".")
 
     -- ── Clear ──────────────────────────────────────────────
