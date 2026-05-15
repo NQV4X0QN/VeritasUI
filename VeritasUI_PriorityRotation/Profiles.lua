@@ -210,7 +210,10 @@ end
 
 function PR:BuildDefaultProfile()
     local specIndex = C_SpecializationInfo.GetSpecialization()
-    local specID    = specIndex and C_SpecializationInfo.GetSpecializationInfo(specIndex) or 0
+    local specID = 0
+    if specIndex then
+        specID = C_SpecializationInfo.GetSpecializationInfo(specIndex) or 0
+    end
     local starter   = self.STARTER_LISTS[specID]
     local profile   = {
         name   = starter and starter.name or self:GetCurrentSpecLabel(),

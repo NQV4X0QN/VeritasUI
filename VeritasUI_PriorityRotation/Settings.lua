@@ -516,28 +516,13 @@ local function BuildNativeSettingsPanel()
     )
     enableSetting:SetValueChangedCallback(function(_, value)
         if value then
-            -- pcall-guarded: SetCVar can throw in edge cases; better to
-            -- continue enabling PR with a warning than to half-fail silently.
-            local okE = pcall(C_CVar.SetCVar, "ActionButtonUseKeyDown", "0")
-            if not okE then
-                VUI.Print("Priority Rotation",
-                    "|cFFFF8800ActionButtonUseKeyDown CVar could not be set — "
-                    .. "key-up firing may not work correctly until /reload.|r")
-            end
+            PR:EnsureActionBarCVar(true)
             PR:CompileSequence()
-            C_Timer.After(0.5, function()
-                if not InCombatLockdown() then PR:ScanAndOverrideBarButton() end
-            end)
+            PR:ScheduleScan(0.5)
             VUI.Print("Priority Rotation", "|cFF00FF00Enabled.|r")
         else
-            if not InCombatLockdown() then
-                PR:ClearOverride()
-            else
-                -- Defer override cleanup until combat ends.
-                PR.needsClearOverride = true
-            end
-            PR:StopIconTicker()
-            pcall(C_CVar.SetCVar, "ActionButtonUseKeyDown", "1")
+            PR:ClearOverride()
+            PR:EnsureActionBarCVar(false)
             VUI.Print("Priority Rotation", "|cFFFF4444Disabled.|r")
         end
     end)

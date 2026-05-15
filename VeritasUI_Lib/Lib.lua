@@ -505,3 +505,11 @@ function VUI._InitReloadButton()
         if reloadBtn then reloadBtn:Hide() end
     end)
 end
+
+----------------------------------------------------------------
+--  /veritasui slash command
+----------------------------------------------------------------
+SLASH_VERITASUI1 = "/veritasui"
+SlashCmdList["VERITASUI"] = function()
+    VUI.Print("VeritasUI", "Version " .. VUI.VERSION .. " loaded.")
+end

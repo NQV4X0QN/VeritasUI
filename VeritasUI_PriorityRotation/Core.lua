@@ -4,6 +4,26 @@
 -- Contract: All functions that modify secure state check InCombatLockdown
 -- internally, so callers need not guard. Functions that only read state
 -- or modify Lua-side data do not check combat.
+--
+-- ┌─ TAINT CONTRACT ──────────────────────────────────────────────────────────┐
+-- │ Midnight 12.0 Secret Values: taint on any SecureActionButton propagates   │
+-- │ to its entire execution context. Blizzard's cooldown/combat code then     │
+-- │ throws "Secret values only allowed during untainted execution" in          │
+-- │ Delves, M+, and raids.                                                    │
+-- │                                                                            │
+-- │ SAFE from addon code:                                                      │
+-- │   rotBtn:Execute(...)           — runs in the secure restricted env        │
+-- │   SetOverrideBindingClick(...)  — does not touch button attributes         │
+-- │   icon:SetTexture(...)          — unprotected rendering property           │
+-- │                                                                            │
+-- │ NEVER from addon code:                                                     │
+-- │   btn:SetAttribute(...)         — taints the button's execution context    │
+-- │   btn.icon:Show() / Hide()      — taints ActionButton children             │
+-- │   any API call inside Execute() that touches protected game state          │
+-- │                                                                            │
+-- │ The secure execution core (WrapScript + newtable + Execute) is correct.   │
+-- │ All historical breakage has been code AROUND it crossing this boundary.   │
+-- └───────────────────────────────────────────────────────────────────────────┘
 
 local ADDON_NAME, PR = ...
 local VUI = _G.VeritasUI
@@ -35,11 +55,52 @@ PR.MAX_SLOTS        = 10
 PR.MACRO_NAME       = "Attack"
 PR.BUTTON_NAME      = "PRAttackButton"
 PR.compiledSequence = {}
-PR.compiledNames    = {}      -- step → display name, built during compile
-PR.iconCache        = {}      -- step → iconID, built during compile
-PR.overriddenButton = nil
-PR.needsRecompile   = false
-PR.needsClearOverride = false
+PR.compiledNames    = {}   -- step → display name, built during compile
+PR.overrides        = {}   -- [macroName] = { slot, keys } — populated by scan
+PR.debug            = false
+
+----------------------------------------------------------------
+--  Debug output — gated on PR.debug; never clutters normal play.
+--  Toggle at runtime with /pr debug.
+----------------------------------------------------------------
+local function DebugPrint(msg)
+    if PR.debug then VUI.Print("Priority Rotation", "|cFF888888[debug]|r " .. msg) end
+end
+
+----------------------------------------------------------------
+--  CVar management — idempotent, value-checks before writing.
+--
+--  Reads the current CVar value and skips the write if it already
+--  matches the target. Safe to call from any number of code paths
+--  without worrying about redundant writes or ordering.
+----------------------------------------------------------------
+function PR:EnsureActionBarCVar(enabled)
+    local target = enabled and "0" or "1"
+    if C_CVar.GetCVar("ActionButtonUseKeyDown") == target then return end
+    local ok, err = pcall(C_CVar.SetCVar, "ActionButtonUseKeyDown", target)
+    if not ok then
+        VUI.Print("Priority Rotation",
+            "|cFFFF8800ActionButtonUseKeyDown CVar could not be set — "
+            .. "key-up firing may not work correctly. (" .. tostring(err) .. ")|r")
+    end
+end
+
+----------------------------------------------------------------
+--  Scan scheduler — single cancellable handle, never piles up.
+--
+--  Any code path that needs to trigger a scan calls ScheduleScan.
+--  A pending scan is always cancelled before a new one is set, so
+--  only one scan timer exists at any given time. The callback
+--  re-checks InCombatLockdown so a scan never fires mid-combat
+--  regardless of when it was scheduled.
+----------------------------------------------------------------
+function PR:ScheduleScan(delay)
+    if self._scanTimer then self._scanTimer:Cancel() end
+    self._scanTimer = C_Timer.NewTimer(delay, function()
+        self._scanTimer = nil
+        if not InCombatLockdown() then self:ScanAndOverrideBarButton() end
+    end)
+end
 
 ----------------------------------------------------------------
 --  Secure Action Button
@@ -86,47 +147,43 @@ end
 --  Interleave Compiler
 ----------------------------------------------------------------
 function PR:CompileSequence()
+    if not self.db then return end
     if InCombatLockdown() then
-        self.needsRecompile = true
+        -- Dedup: only one compile queued at a time; flag clears when it fires.
+        if not self._compileQueued then
+            self._compileQueued = true
+            VUI.CombatQueue.Add(function()
+                PR._compileQueued = false
+                PR:CompileSequence()
+            end)
+        end
         return
     end
 
-    local seq, cache, names = {}, {}, {}
+    local seq, names = {}, {}
     local profile = self:CurrentProfile()
     if profile and profile.spells and #profile.spells > 0 then
         local cooldowns, fillers = {}, {}
-        local cdIcons, fillIcons = {}, {}
-        local cdNames, fillNames = {}, {}
+        local cdNames,   fillNames = {}, {}
         for _, e in ipairs(profile.spells) do
             if e then
-                local macrotext, entryIcon, entryName
+                local macrotext, entryName
                 if e.macroName then
-                    -- Macro entry: look up current body at compile time
                     local mName, mIcon, mBody = GetMacroInfo(e.macroName)
                     if mBody and mBody ~= "" then
                         macrotext = mBody
-                        entryIcon = mIcon or e.icon
                         entryName = "[MACRO:" .. (mName or e.macroName) .. "]"
-                        -- Keep stored icon fresh
-                        if mIcon then e.icon = mIcon end
+                        if mIcon then e.icon = mIcon end   -- keep editor icon current
                     end
                 elseif e.itemID then
-                    -- Trinket / item entry: emit a /use macro keyed on the
-                    -- item NAME (not slot ID), so the rotation always fires
-                    -- THIS specific item regardless of which inventory slot
-                    -- it occupies. Falls back to /use item:<id> if name is
-                    -- somehow missing (defensive — should never trigger
-                    -- since drop handler validates name presence).
                     local useTarget = e.itemName
                     if not useTarget or useTarget == "" then
                         useTarget = "item:" .. tostring(e.itemID)
                     end
                     macrotext = "/use " .. useTarget
-                    entryIcon = e.icon
                     entryName = "[ITEM:" .. (e.itemName or tostring(e.itemID)) .. "]"
                 elseif e.spellName then
                     macrotext = "/cast " .. e.spellName
-                    entryIcon = e.icon
                     entryName = e.spellName
                 end
 
@@ -134,12 +191,10 @@ function PR:CompileSequence()
                     local freq = e.freq or 1
                     if freq <= 1 then
                         cooldowns[#cooldowns + 1] = macrotext
-                        cdIcons[#cdIcons + 1] = entryIcon
-                        cdNames[#cdNames + 1] = entryName
+                        cdNames[#cdNames + 1]     = entryName
                     else
                         for _ = 1, freq do
-                            fillers[#fillers + 1] = macrotext
-                            fillIcons[#fillIcons + 1] = entryIcon
+                            fillers[#fillers + 1]   = macrotext
                             fillNames[#fillNames + 1] = entryName
                         end
                     end
@@ -150,13 +205,11 @@ function PR:CompileSequence()
         while ci <= #cooldowns or fi <= #fillers do
             if ci <= #cooldowns then
                 seq[#seq + 1] = cooldowns[ci]
-                cache[#seq]   = cdIcons[ci]
                 names[#seq]   = cdNames[ci]
                 ci = ci + 1
             end
             if fi <= #fillers then
                 seq[#seq + 1] = fillers[fi]
-                cache[#seq]   = fillIcons[fi]
                 names[#seq]   = fillNames[fi]
                 fi = fi + 1
             end
@@ -164,19 +217,14 @@ function PR:CompileSequence()
     end
 
     self.compiledSequence = seq
-    self.iconCache        = cache
     self.compiledNames    = names
     self:InjectSequence(seq)
-    self.needsRecompile = false
-    self:UpdateMacroStub()
-
-    C_Timer.After(0.5, function()
-        if not InCombatLockdown() then PR:ScanAndOverrideBarButton() end
-    end)
+    self:ScheduleScan(0.5)
+    DebugPrint("Compiled " .. #seq .. " step(s)")
 end
 
 -- Returns a Lua long-string literal that safely embeds any string content,
--- including those containing ]] or ]=] sequences.  Scans for the minimum
+-- including those containing ]] or ]=] sequences. Scans for the minimum
 -- nesting level whose closing delimiter does not appear in the string.
 local function SafeQuote(s)
     local level = 0
@@ -206,10 +254,9 @@ end
 ----------------------------------------------------------------
 --  Macro Stub
 --
---  Returns true on success (macro created or edited), false on
---  failure. Silent combat-lockdown no-op returns false too;
---  callers that need to surface a user-visible success message
---  should check the return value and gate their print on it.
+--  Returns true on success, false on failure. Silent combat-lockdown
+--  no-op returns false; callers that surface a success message should
+--  gate it on the return value.
 ----------------------------------------------------------------
 function PR:UpdateMacroStub()
     if InCombatLockdown() then return false end
@@ -230,9 +277,6 @@ function PR:UpdateMacroStub()
             CreateMacro(self.MACRO_NAME, macroIcon, macroBody)
             return true
         else
-            -- Account macro list is full (120/120). This is a hard failure
-            -- the user must resolve; warn them so they don't assume the
-            -- macro was created.
             VUI.Print("Priority Rotation",
                 "|cFFFF4444Can't create the Attack macro — your account macro list is full "
                 .. "(120/120).|r Delete an unused macro in |cFFFFFF00/macro|r, then try again.")
@@ -242,35 +286,26 @@ function PR:UpdateMacroStub()
 end
 
 ----------------------------------------------------------------
---  Action Bar Override
+--  Action Bar Keybind Override
 --
---  Redirects the bar button containing the Attack macro so that
---  pressing its keybind clicks rotBtn instead.  Works with any
---  bar — visible, hidden, or tucked away.
+--  Redirects the bar button containing a macro so that pressing its
+--  keybind clicks rotBtn instead. Works with any bar — visible,
+--  hidden, or tucked away.
 --
 --  Slot mapping covers Blizzard bars 1-9 (slots 1-12, 25-120).
---  Slots 13-24 are action bar pages 2+ (stance/stealth) and
---  are intentionally unmapped — macros are not placed there.
+--  Slots 13-24 are action bar pages 2+ (stance/stealth) and are
+--  intentionally unmapped — macros are not placed there.
+--
+--  Direct mouse clicks still work via the macro's /click PRAttackButton.
+--
+--  ScanAndOverrideBarButton accepts an optional macroName so the same
+--  scan machinery can support additional macros in the future (e.g. an
+--  interrupt rotation) without structural changes. ClearOverride clears
+--  all override bindings for SECURE_HANDLER — with a single macro this
+--  is correct; future multi-macro support would re-apply remaining
+--  overrides here after removing the requested one.
 ----------------------------------------------------------------
 local SECURE_HANDLER = CreateFrame("Frame", "PRSecureHandler", nil, "SecureHandlerBaseTemplate")
-
-local SLOT_TO_FRAME = {}
-local FRAME_DEFS = {
-    { base =   0, prefix = "ActionButton" },
-    { base =  24, prefix = "MultiBarRightButton" },
-    { base =  36, prefix = "MultiBarLeftButton" },
-    { base =  48, prefix = "MultiBarBottomRightButton" },
-    { base =  60, prefix = "MultiBarBottomLeftButton" },
-    { base =  72, prefix = "MultiBar5Button" },
-    { base =  84, prefix = "MultiBar6Button" },
-    { base =  96, prefix = "MultiBar7Button" },
-    { base = 108, prefix = "MultiBar8Button" },
-}
-for _, def in ipairs(FRAME_DEFS) do
-    for i = 1, 12 do
-        SLOT_TO_FRAME[def.base + i] = def.prefix .. i
-    end
-end
 
 local SLOT_TO_BIND = {}
 local BIND_DEFS = {
@@ -290,49 +325,33 @@ for _, def in ipairs(BIND_DEFS) do
     end
 end
 
--- Extra button names for Bartender4 / ElvUI (attribute scan only).
-local ADDON_BAR_BUTTONS = {}
-for i = 1, 12 do
-    ADDON_BAR_BUTTONS[#ADDON_BAR_BUTTONS + 1] = "BT4Button" .. i
-    for b = 1, 6 do
-        ADDON_BAR_BUTTONS[#ADDON_BAR_BUTTONS + 1] = "ElvUI_Bar" .. b .. "Button" .. i
+function PR:ClearOverride(macroName)
+    if InCombatLockdown() then
+        VUI.CombatQueue.Add(function() PR:ClearOverride(macroName) end)
+        return
     end
-end
-
--- Track which bar button holds the Attack macro (for icon ticker) but
--- do NOT modify its attributes.  Calling SetAttribute on a Blizzard
--- ActionButton from addon code taints its execution context; Midnight
--- Secret Values in ActionButton_UpdateCooldown then throw because
--- SetCooldown requires untainted execution.  The keybind override
--- (Strategy 3) routes clicks without touching the button itself, and
--- direct mouse clicks fall through to the Attack macro which already
--- contains /click PRAttackButton.
-local function TrackBarButton(btnName)
-    PR.overriddenButton = btnName
-end
-
-function PR:ClearOverride()
-    if InCombatLockdown() then return end
     ClearOverrideBindings(SECURE_HANDLER)
-    self.overriddenButton = nil
-    self.overriddenKeys   = nil
+    if macroName then
+        self.overrides[macroName] = nil
+    else
+        self.overrides = {}
+    end
+    DebugPrint("ClearOverride" .. (macroName and " (" .. macroName .. ")" or " (all)"))
 end
 
-function PR:ScanAndOverrideBarButton(verbose)
-    if InCombatLockdown() or not PR:IsEnabled() then return end
+function PR:ScanAndOverrideBarButton(macroName, verbose)
+    macroName = macroName or self.MACRO_NAME
+    if InCombatLockdown() or not self:IsEnabled() then return end
 
-    local macroIdx = GetMacroIndexByName(self.MACRO_NAME)
+    local macroIdx = GetMacroIndexByName(macroName)
     if not macroIdx or macroIdx == 0 then return end
 
-    self:ClearOverride()
+    self:ClearOverride(macroName)
 
-    -- Midnight Secret Values: in raid / M+ zones, GetActionInfo can return
-    -- Secret Values for some slots. The equality check `id == macroIdx`
-    -- throws when one side is secret, so we pcall; unreadable slots become
-    -- `ok=false` and are counted separately. If the macro happens to live
-    -- on such a slot, the scan silently misses it — verbose callers (the
-    -- user-initiated /pr scan and the "Scan & Bind" button) surface this
-    -- so the user understands why the scan failed and what to do about it.
+    -- Midnight Secret Values: GetActionInfo can return secret values in
+    -- raid/M+ zones; pcall each slot and count failures. Verbose callers
+    -- (user-initiated /pr scan and "Scan & Bind" button) surface the
+    -- diagnostic so the user knows what to do.
     local foundSlot
     local unreadableSlots = 0
     for slot = 1, 120 do
@@ -346,6 +365,7 @@ function PR:ScanAndOverrideBarButton(verbose)
             unreadableSlots = unreadableSlots + 1
         end
     end
+
     if not foundSlot then
         if verbose and unreadableSlots > 0 then
             VUI.Print("Priority Rotation",
@@ -355,43 +375,11 @@ function PR:ScanAndOverrideBarButton(verbose)
                     .. "or move the Attack macro to a different bar.",
                     unreadableSlots))
         end
+        DebugPrint("Scan: " .. macroName .. " not found (" .. unreadableSlots .. " unreadable slots)")
         return
     end
 
-    -- Strategy 1: Direct slot → frame name lookup (visual tracking only)
-    local directName = SLOT_TO_FRAME[foundSlot]
-    if directName then
-        local btn = _G[directName]
-        if btn then
-            TrackBarButton(directName)
-        end
-    end
-
-    -- Strategy 2: Attribute scan for addon bars (BT4, ElvUI — visual tracking only)
-    if not self.overriddenButton then
-        for _, btnName in ipairs(ADDON_BAR_BUTTONS) do
-            local btn = _G[btnName]
-            if btn then
-                local ok, slotAttr = pcall(function()
-                    local a = tonumber(btn:GetAttribute("action"))
-                    if not a or a == 0 then
-                        local s = btn:GetID()
-                        local p = tonumber(btn:GetAttribute("actionpage")) or 1
-                        if s and s > 0 then a = s + (p - 1) * 12 end
-                    end
-                    return a
-                end)
-                if ok and slotAttr == foundSlot then
-                    TrackBarButton(btnName)
-                    break
-                end
-            end
-        end
-    end
-
-    -- Strategy 3: Keybinding override — the ONLY click-routing mechanism.
-    -- Always applied when a binding exists.  Direct mouse clicks on the
-    -- button still work via the Attack macro's /click PRAttackButton.
+    -- Keybinding override — the sole click-routing mechanism.
     local bindingCmd = SLOT_TO_BIND[foundSlot]
     local boundKeys  = {}
     if bindingCmd then
@@ -400,61 +388,18 @@ function PR:ScanAndOverrideBarButton(verbose)
         if k2 then boundKeys[#boundKeys + 1] = k2 end
     end
 
+    self.overrides[macroName] = {
+        slot = foundSlot,
+        keys = #boundKeys > 0 and boundKeys or nil,
+    }
+
     if #boundKeys > 0 then
         for _, key in ipairs(boundKeys) do
             SetOverrideBindingClick(SECURE_HANDLER, false, key, PR.BUTTON_NAME)
         end
-    end
-
-    self.overriddenKeys = #boundKeys > 0 and boundKeys or nil
-
-    -- Icon ticker only makes sense when a bar button is directly overridden;
-    -- keybind-only mode (Strategy 3) has no button whose icon to update.
-    if self.overriddenButton then
-        self:StartIconTicker()
-    end
-end
-
-----------------------------------------------------------------
---  Dynamic Icon Ticker
---
---  Uses pre-built iconCache (step → iconID) to avoid per-tick
---  C_Spell.GetSpellInfo calls and string parsing.
---
---  SetTexture() on a button icon is NOT a protected operation,
---  so this runs freely during combat — which is exactly when the
---  user needs to see the next spell in the cycle.  Show() is
---  intentionally omitted — the icon is already visible on any
---  button with an assigned action, and calling Show() from addon
---  code taints the ActionButton's execution context, causing
---  Secret Value errors in Midnight Delves/M+/raids.
-----------------------------------------------------------------
-local function UpdateIcon()
-    if not PR.overriddenButton or #PR.compiledSequence == 0 then return end
-
-    local btn = _G[PR.overriddenButton]
-    if not btn then return end
-    local icon = btn.icon or btn.Icon or _G[PR.overriddenButton .. "Icon"]
-    if not icon then return end
-
-    local step = tonumber(rotBtn:GetAttribute("step")) or 1
-    local iconID = PR.iconCache[step]
-    if iconID and type(iconID) == "number" then
-        icon:SetTexture(iconID)
-    end
-end
-
-function PR:StartIconTicker()
-    if self.iconTicker then return end
-    self.iconTicker = C_Timer.NewTicker(0.25, function()
-        pcall(UpdateIcon)
-    end)
-end
-
-function PR:StopIconTicker()
-    if self.iconTicker then
-        self.iconTicker:Cancel()
-        self.iconTicker = nil
+        DebugPrint("Scan: " .. macroName .. " bound to " .. tconcat(boundKeys, ", "))
+    else
+        DebugPrint("Scan: " .. macroName .. " found on slot " .. foundSlot .. " — no keybind")
     end
 end
 
@@ -475,7 +420,8 @@ local ef = CreateFrame("Frame")
 ef:RegisterEvent("ADDON_LOADED")
 ef:RegisterEvent("PLAYER_LOGIN")
 ef:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
-ef:RegisterEvent("PLAYER_REGEN_ENABLED")
+-- PLAYER_REGEN_ENABLED is owned by VUI.CombatQueue (Lib.lua).
+-- All deferred post-combat actions go through VUI.CombatQueue.Add().
 
 ef:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
@@ -484,26 +430,12 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         ef:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
-        -- Manage Press and Hold Casting CVar automatically.
-        -- PR requires key-up firing (0); disabling PR restores key-down (1).
-        -- pcall-guarded because SetCVar can throw in edge cases (GX-locked
-        -- values, server-stored variants, early-login race conditions). A
-        -- silent error here would abort the rest of this handler and leave
-        -- PR booted in a half-initialized state.
-        local okCVar, errCVar = pcall(C_CVar.SetCVar,
-            "ActionButtonUseKeyDown", PR:IsEnabled() and "0" or "1")
-        if not okCVar then
-            VUI.Print("Priority Rotation",
-                "|cFFFF8800ActionButtonUseKeyDown CVar could not be set at login — "
-                .. "PR may behave unexpectedly until /reload. (" .. tostring(errCVar) .. ")|r")
-        end
+        PR:EnsureActionBarCVar(PR:IsEnabled())
         PR:SwitchToCurrentSpec()
         PR:CompileSequence()
         PR._lastProfileKey = PR:GetProfileKey()
         C_Timer.After(2, function() PR:UpdateMacroStub() end)
-        C_Timer.After(4, function()
-            if not InCombatLockdown() then PR:ScanAndOverrideBarButton() end
-        end)
+        PR:ScheduleScan(4)
         VUI.Print("Priority Rotation",
             format("v%s loaded — |cFFFFFF00/pr|r to open.", PR.VERSION))
 
@@ -517,17 +449,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         VUI.Print("Priority Rotation",
             format("Switched to |cFFFFFF00%s|r.", PR:GetCurrentSpecLabel()))
         PR:RefreshUI()
-        C_Timer.After(1, function()
-            if not InCombatLockdown() then PR:ScanAndOverrideBarButton() end
-        end)
-
-    elseif event == "PLAYER_REGEN_ENABLED" then
-        if PR.needsClearOverride then
-            PR:ClearOverride()
-            PR:StopIconTicker()
-            PR.needsClearOverride = false
-        end
-        if PR.needsRecompile then PR:CompileSequence() end
+        PR:ScheduleScan(1)
     end
 end)
 
@@ -560,19 +482,16 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             VUI.Print("Priority Rotation", "|cFFFF4444Can't scan in combat.|r")
             return
         end
-        PR:ScanAndOverrideBarButton(true)   -- verbose: surface Secret-Value diagnostic on failure
-        if PR.overriddenButton then
-            local keyInfo = ""
-            if PR.overriddenKeys then
-                keyInfo = " (|cFF00FF00" .. table.concat(PR.overriddenKeys, ", ") .. "|r)"
-            end
+        PR:ScanAndOverrideBarButton(PR.MACRO_NAME, true)
+        local override = PR.overrides[PR.MACRO_NAME]
+        if override and override.keys then
             VUI.Print("Priority Rotation",
-                "Bound to |cFF00FF00" .. PR.overriddenButton .. "|r"
-                .. keyInfo .. " — spam the key to play.")
-        elseif PR.overriddenKeys then
-            VUI.Print("Priority Rotation",
-                "Keybind |cFF00FF00" .. table.concat(PR.overriddenKeys, ", ")
+                "Keybind |cFF00FF00" .. tconcat(override.keys, ", ")
                 .. "|r override active — spam the key to play.")
+        elseif override then
+            VUI.Print("Priority Rotation",
+                "|cFFFF8800Found on slot " .. override.slot
+                .. "|r but no keybind — assign a key to that bar slot, then /pr scan.")
         else
             VUI.Print("Priority Rotation",
                 "|cFFFF8800Not found.|r Put |cFFFFFF00"
@@ -589,7 +508,28 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             VUI.Print("Priority Rotation",
                 "Macro |cFFFFFF00" .. PR.MACRO_NAME .. "|r ready in /macro.")
         end
-        -- On failure, UpdateMacroStub already printed the specific reason.
+
+    elseif cmd == "status" then
+        local function yn(v) return v and "|cFF00FF00yes|r" or "|cFFFF4444no|r" end
+        local macroIdx   = GetMacroIndexByName(PR.MACRO_NAME)
+        local macroExists = macroIdx and macroIdx > 0
+        local override   = PR.overrides[PR.MACRO_NAME]
+        VUI.Print("Priority Rotation", "Status:")
+        print("  Enabled:  " .. yn(PR:IsEnabled()))
+        print("  Macro:    " .. yn(macroExists)
+            .. (macroExists and "" or "  — run |cFFFFFF00/pr macro|r"))
+        print("  On bar:   " .. (override
+            and "|cFF00FF00slot " .. override.slot .. "|r"
+            or  "|cFFFF4444no|r  — run |cFFFFFF00/pr scan|r"))
+        print("  Keybind:  " .. ((override and override.keys)
+            and "|cFF00FF00" .. tconcat(override.keys, ", ") .. "|r"
+            or  "|cFFFF8800none|r — assign a key to the macro's bar slot"))
+        print("  Compiled: " .. #PR.compiledSequence .. " step(s)")
+
+    elseif cmd == "debug" then
+        PR.debug = not PR.debug
+        VUI.Print("Priority Rotation",
+            "Debug " .. (PR.debug and "|cFF00FF00ON|r" or "|cFFFF4444OFF|r"))
 
     elseif cmd == "test" then
         VUI.Print("Priority Rotation", "Diagnostic:")
@@ -601,23 +541,22 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             local label = PR.compiledNames and PR.compiledNames[i] or s
             print("    " .. i .. ". " .. label)
         end
-        print("  Bar button: " .. (PR.overriddenButton
-            and "|cFF00FF00" .. PR.overriddenButton .. "|r"
-            or  "|cFFFF8800not found|r"))
-        if PR.overriddenKeys then
-            print("  Keybind: |cFF00FF00" .. table.concat(PR.overriddenKeys, ", ") .. "|r")
+        local override = PR.overrides[PR.MACRO_NAME]
+        if override and override.keys then
+            print("  Keybind: |cFF00FF00" .. tconcat(override.keys, ", ") .. "|r")
+        elseif override then
+            print("  Macro slot: |cFFFF8800" .. override.slot .. "|r (no keybind)")
         else
-            print("  Keybind: |cFFFF8800none|r")
+            print("  Override: |cFFFF8800not active|r")
         end
 
     elseif cmd == "diag" then
         VUI.Print("Priority Rotation", "|cFFFFFF0012.0.5 API Diagnostic|r")
         print("─────────────────────────────────────────")
 
-        -- 1. Detect 12.0.5 APIs
-        local G = "|cFF00FF00"   -- green
-        local R = "|cFFFF4444"   -- red
-        local Y = "|cFFFFFF00"   -- yellow
+        local G = "|cFF00FF00"
+        local R = "|cFFFF4444"
+        local Y = "|cFFFFFF00"
         local E = "|r"
 
         local hasIssecret = type(issecretvalue) == "function"
@@ -638,7 +577,6 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         local hasRestrict = C_RestrictedActions and type(C_RestrictedActions) == "table"
         print("  C_RestrictedActions:       " .. (hasRestrict and G.."available"..E or R.."NOT FOUND"..E))
 
-        -- 2. SetCVar test
         print("─────────────────────────────────────────")
         local cvarOk, cvarErr = pcall(C_CVar.SetCVar, "ActionButtonUseKeyDown", "0")
         if cvarOk then
@@ -648,7 +586,6 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             print("    Error: " .. Y .. tostring(cvarErr) .. E)
         end
 
-        -- 3. newtable() in Execute test
         local execOk, execErr = pcall(function()
             PR.rotBtn:Execute("local t = newtable(); t[1] = 'diag_test'")
         end)
@@ -659,7 +596,6 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             print("    Error: " .. Y .. tostring(execErr) .. E)
         end
 
-        -- 4. GetMacroIndexByName test
         local macroOk, macroResult = pcall(GetMacroIndexByName, PR.MACRO_NAME)
         if macroOk then
             local idx = macroResult or 0
@@ -668,31 +604,26 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             else
                 print("  GetMacroIndexByName(\"" .. PR.MACRO_NAME .. "\"): " .. Y .. "not found (idx=0)" .. E)
             end
-            if hasIssecret then
-                local isSec = issecretvalue(macroResult)
-                if isSec then
-                    print("    ⚠ macroIndex is a |cFFFF8800SECRET VALUE|r")
-                end
+            if hasIssecret and issecretvalue(macroResult) then
+                print("    ⚠ macroIndex is a |cFFFF8800SECRET VALUE|r")
             end
         else
             print("  GetMacroIndexByName: " .. R .. "ERROR" .. E .. " — " .. tostring(macroResult))
         end
 
-        -- 5. GetActionInfo slot scan
         print("─────────────────────────────────────────")
         print("  Scanning slots 1-120 with GetActionInfo:")
-        local macroIdx = macroOk and macroResult or 0
-        local foundSlots = 0
-        local macroSlots = {}
+        local macroIdx    = macroOk and macroResult or 0
+        local foundSlots  = 0
+        local macroSlots  = {}
         local secretSlots = 0
-        local errorSlots = 0
+        local errorSlots  = 0
 
         for slot = 1, 120 do
             local ok, actionType, id = pcall(GetActionInfo, slot)
             if ok then
                 if actionType then
                     foundSlots = foundSlots + 1
-                    -- Check if actionType is secret
                     if hasIssecret then
                         local typeSecret = issecretvalue(actionType)
                         local idSecret   = issecretvalue(id)
@@ -706,7 +637,6 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
                             end
                         end
                     end
-                    -- Check for our macro (only if values aren't secret)
                     if actionType == "macro" and id == macroIdx and macroIdx > 0 then
                         macroSlots[#macroSlots + 1] = slot
                     end
@@ -733,11 +663,10 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             if macroIdx > 0 then
                 print("      (macro exists at idx=" .. macroIdx .. " but no slot matched)")
             else
-                print("      (macro not in macro list either — create with /pr macro)")
+                print("      (macro not in macro list — create with /pr macro)")
             end
         end
 
-        -- 6. GetAttribute step test
         print("─────────────────────────────────────────")
         local stepOk, stepVal = pcall(function() return PR.rotBtn:GetAttribute("step") end)
         if stepOk then
@@ -753,13 +682,17 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             print("  rotBtn:GetAttribute('step'): " .. R .. "ERROR" .. E .. " — " .. tostring(stepVal))
         end
 
-        -- 7. Icon resolution test
-        if PR.overriddenButton then
-            local btn = _G[PR.overriddenButton]
-            local icon = btn and (btn.icon or btn.Icon or _G[PR.overriddenButton .. "Icon"])
-            print("  Overridden button icon:   " .. (icon and G .. "found" .. E or R .. "nil" .. E))
+        print("─────────────────────────────────────────")
+        local override = PR.overrides[PR.MACRO_NAME]
+        if override then
+            print("  Override slot: " .. G .. override.slot .. E)
+            if override.keys then
+                print("  Bound keys:   " .. G .. table.concat(override.keys, ", ") .. E)
+            else
+                print("  Bound keys:   " .. Y .. "none (macro found but no keybind assigned)" .. E)
+            end
         else
-            print("  Overridden button:        " .. Y .. "none (scan hasn't succeeded)" .. E)
+            print("  Override:     " .. R .. "not active" .. E .. " (run /pr scan)")
         end
 
         print("─────────────────────────────────────────")
@@ -774,10 +707,12 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         print("  |cFFFFFF00/pr settings|r  — open settings panel")
         print("  |cFFFFFF00/pr scan|r      — bind to keybind/bar")
         print("  |cFFFFFF00/pr macro|r     — create macro stub")
+        print("  |cFFFFFF00/pr status|r    — show current state at a glance")
         print("  |cFFFFFF00/pr reset|r     — reset to spec defaults")
         print("  |cFFFFFF00/pr clear|r     — clear spell list")
         print("  |cFFFFFF00/pr test|r      — show compiled sequence")
         print("  |cFFFFFF00/pr diag|r      — 12.0.5 API diagnostic")
+        print("  |cFFFFFF00/pr debug|r     — toggle debug output")
 
     else
         if PR.MainWindow then

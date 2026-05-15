@@ -2,6 +2,19 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.25] - 2026-05-14
+
+### Changed
+- `VeritasUI_PriorityRotation` — **Architectural hardening: seven improvements to eliminate fragility and Secret Value taint risk.**
+  - **Removed icon ticker system** — `StartIconTicker()`, `StopIconTicker()`, `UpdateIcon()`, and `iconCache` are gone. The ticker called `icon:Show()`/`Hide()` and polled action button frames on every tick, producing taint that could corrupt secure execution contexts in Delves, M+, and raids. Action bar button now keeps its static macro icon; no dynamic updates
+  - **CombatQueue delegation** — `PR.needsRecompile` and `PR.needsClearOverride` boolean flags replaced by direct calls to `VUI.CombatQueue.Add()` (already implemented in Lib.lua). Combat-blocked operations now queue correctly and execute atomically via the shared processor on `PLAYER_REGEN_ENABLED`; the `PLAYER_REGEN_ENABLED` handler in Core.lua is removed (Lib.lua owns it)
+  - **Single cancellable scan timer** — `PR:ScheduleScan(delay)` method with one `PR._scanTimer` handle replaces three ad-hoc `C_Timer.After()` calls that stacked without cancelling each other
+  - **Idempotent CVar management** — `PR:EnsureActionBarCVar(enabled)` value-checks before writing, so toggling enable/disable mid-session doesn't dirty the CVar when the value is already correct
+  - **Compile dedup guard** — `_compileQueued` flag prevents multiple combat-blocked `CompileSequence()` calls from queueing more than one deferred execution
+  - **Parameter-driven scan** — `ScanAndOverrideBarButton(macroName, verbose)` is now explicit-argument instead of hardcoded, ready for future multi-rotation support without structural change
+  - **Per-macro override state** — `PR.overrides[macroName]` table replaces flat `overriddenButton`/`overriddenKeys` fields, matching the parameter-driven scan signature
+  - **Explicit specID extraction** — `BuildDefaultProfile` in Profiles.lua uses explicit `if specIndex then ... end` instead of relying on Lua `and`/`or` multi-return discard, which was silently wrong when `GetSpecializationInfo` returned multiple values
+
 ## [1.6.24] - 2026-05-09
 
 ### Changed
