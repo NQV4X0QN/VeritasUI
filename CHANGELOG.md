@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.30] - 2026-05-14
+
+### Changed
+- `VeritasUI_QualityOfLife` — **AutoSell and AutoRepair: sell-first sequencing, guild tag respect, and repair funding setting.**
+  - **Sell-first sequencing** — AutoSell now runs before AutoRepair instead of after. The merchant-open handler kicks off `AutoSellJunk()` immediately; `AutoRepair()` is triggered from inside `SellNextBatch` when all junk has been sold (or immediately if there was nothing to sell). This eliminates the 0.25s artificial delay that existed to prevent repair deductions from corrupting the sell gold delta. Sell credits arrive from the server before repair deductions in normal network order, and the existing `earned ≤ 0` rebase guard in `DoReport` handles the rare high-latency edge case. If Auto Sell is disabled and Auto Repair is on, repair fires immediately from `MERCHANT_SHOW` as before
+  - **`[noautorepair]` guild tag** — `AutoRepair` now checks whether the guild's info text contains the literal string `[noautorepair]` before attempting guild bank repair. This is an informal convention used by guild masters to prevent auto-repair addons from drawing on guild funds (common in organized raiding guilds). If the tag is present, the guild repair step is skipped and personal gold is used instead
+  - **Repair Funding setting** — new dropdown in the Quality of Life settings panel (directly below the Auto Repair checkbox): `Guild + Personal` (default, existing behavior) or `Personal Only`. `Guild + Personal` tries guild bank funds first when all guild conditions are met, then covers any remainder with personal gold. `Personal Only` skips guild entirely and always uses personal gold — useful for players not in a guild or who prefer not to use guild funds
+
 ## [1.6.29] - 2026-05-14
 
 ### Fixed

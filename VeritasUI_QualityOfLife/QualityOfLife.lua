@@ -33,6 +33,7 @@ end
 local defaults = {
     autoSellJunk   = true,
     autoRepair     = true,
+    repairFunding  = "guild",   -- "guild" = Guild + Personal; "personal" = Personal Only
     showItemLevels = true,
     showMapCoords  = true,
     afkScreen      = true,
@@ -84,7 +85,7 @@ end
 -- Gold reporting uses GetMoney() delta (before/after) rather than
 -- item price lookups, which are unreliable with Midnight secret values.
 -- The startMoney snapshot is deferred until the first UseContainerItem call
--- so that any preceding AutoRepair deduction has settled in GetMoney().
+-- so it is captured as close as possible to the actual sell window.
 local SELL_BATCH     = 9
 local SELL_RETRY_SEC = 0.5
 local sellState         -- nil when idle; table { count, startMoney } when selling
@@ -140,24 +141,27 @@ local function SellNextBatch()
     local startMoney = sellState.startMoney or GetMoney()
     sellState = nil
 
-    if count == 0 then return end
+    if count == 0 then
+        -- Nothing sold; still trigger repair if enabled (sell-first sequencing).
+        if db.autoRepair then AutoRepair() end
+        return
+    end
 
-    -- Wait for PLAYER_MONEY (the server's money-credit packet) before reporting.
-    -- BAG_UPDATE_DELAYED and PLAYER_MONEY arrive as separate server messages;
-    -- reading GetMoney() immediately here races the credit packet and produces 0
-    -- for sub-1g sell totals. A 2-second timer fires as a fallback if
-    -- PLAYER_MONEY never arrives (e.g. high latency, server hiccup).
+    -- Set up sell reporting before triggering repair.  In normal network order,
+    -- sell credits (PLAYER_MONEY, positive delta) arrive before the repair
+    -- deduction, so DoReport fires and clears pendingReportFn before the repair
+    -- PLAYER_MONEY lands.  The earned<=0 rebase guard below handles the rare
+    -- high-latency case where a repair deduction arrives first.
     local capturedCount = count
     local capturedStart = startMoney
     local function DoReport()
         if pendingReportFn ~= DoReport then return end
         local earned = GetMoney() - capturedStart
         if earned <= 0 then
-            -- Delta is negative or zero: a repair deduction (or other money loss)
-            -- arrived via PLAYER_MONEY before the sell credit. Rebase to the
-            -- current post-deduction gold and keep waiting for the sell PLAYER_MONEY.
-            -- On the 2-second fallback timer, capturedStart is already post-repair
-            -- (rebased on the earlier event), so earned = sell_proceeds > 0.
+            -- A repair deduction arrived before the sell credit.
+            -- Rebase so the next PLAYER_MONEY (the sell credit) computes
+            -- the correct delta.  The 2-second fallback timer reads the
+            -- rebased capturedStart and reports sell proceeds correctly.
             capturedStart = GetMoney()
             return
         end
@@ -171,6 +175,11 @@ local function SellNextBatch()
     pendingReportFn    = DoReport
     pendingReportTimer = C_Timer.NewTimer(2, DoReport)
     frame:RegisterEvent("PLAYER_MONEY")
+
+    -- Trigger repair after the sell report listener is armed (sell-first sequencing).
+    -- RepairAllItems calls happen after all UseContainerItem calls, so the server
+    -- processes sell credits before the repair deduction in normal network order.
+    if db.autoRepair then AutoRepair() end
 end
 
 -- Schedule a safety retry in case BAG_UPDATE_DELAYED doesn't fire.
@@ -195,27 +204,37 @@ local function AutoSellJunk()
 end
 
 -- ── Feature: Auto Repair ────────────────────────────────────
--- Tries guild repair first, then personal gold covers any remainder.
--- GetRepairAllCost() after RepairAllItems(true) reflects a client-cached
--- value that updates asynchronously from the server, so we cannot reliably
--- split costs between guild and personal in the same frame.  Instead, we
--- always call RepairAllItems(false) after the guild attempt to cover any
--- shortfall, and report the original total cost.
+-- Funding source is controlled by db.repairFunding:
+--   "guild"    — try guild bank first, then personal covers any remainder.
+--                Skipped if the guild's info text contains [noautorepair]
+--                (a convention used by GMs to block auto-repairs against
+--                the guild bank). Our dual-call approach always covers
+--                the remainder with personal gold regardless of withdrawal
+--                limit — we never silently under-repair.
+--   "personal" — always use personal gold, skip guild entirely.
+--
+-- Called from SellNextBatch (sell-first sequencing) so gold from junk
+-- sales is already in GetMoney() when CanGuildBankRepair() is checked.
 local function AutoRepair()
     if not CanMerchantRepair() then return end
     local cost, canRepair = GetRepairAllCost()
     if not canRepair or cost == 0 then return end
 
-    if IsInGuild() and CanGuildBankRepair() then
+    local useGuild = db.repairFunding ~= "personal"
+        and IsInGuild()
+        and CanGuildBankRepair()
+        and not (GetGuildInfoText() or ""):find("[noautorepair]", 1, true)
+
+    if useGuild then
         RepairAllItems(true)   -- guild funds first
         RepairAllItems(false)  -- personal gold covers any remainder
         VUI.Print("Quality of Life", format(
             "Repaired for %s (guild bank)", GetCoinTextureString(cost)))
-        return
+    else
+        RepairAllItems(false)
+        VUI.Print("Quality of Life", format(
+            "Repaired for %s", GetCoinTextureString(cost)))
     end
-    RepairAllItems(false)
-    VUI.Print("Quality of Life", format(
-        "Repaired for %s", GetCoinTextureString(cost)))
 end
 
 -- ── Feature: Show Item Levels ───────────────────────────────
@@ -938,50 +957,68 @@ end
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
 
-    local options = {
-        { key = "showMapCoords",   name = "Show Map Coordinates",
-          tip = "Displays player and cursor coordinates on the World Map. Right-click the coordinates to unlock and reposition. Hides the quest log toggle button." },
-        { key = "showItemLevels",  name = "Show Item Levels",
-          tip = "Displays item level numbers on equipment in bags, bank, character panel, and merchants. Quest rewards are excluded." },
-        { key = "autoSellJunk",    name = "Auto Sell Junk",
-          tip = "Automatically sells all grey items when you visit a merchant." },
-        { key = "autoRepair",      name = "Auto Repair",
-          tip = "Automatically repairs all equipment at repair vendors. Uses guild funds first if available." },
-        { key = "afkScreen",       name = "AFK Screen",
-          tip = "Shows a cinematic overlay when you go AFK — your character name, level, item level, and zone over a slow camera orbit. Helps minimize OLED burn-in by hiding static UI elements and keeping the screen moving." },
-    }
-
-    for _, opt in ipairs(options) do
+    local function AddCheckbox(key, name, tip, onChange)
         local setting = Settings.RegisterAddOnSetting(
-            category,
-            ADDON_NAME .. "_" .. opt.key,
-            opt.key,
-            VeritasUI_QualityOfLifeDB,
-            type(defaults[opt.key]),
-            opt.name,
-            defaults[opt.key]
-        )
-        local key = opt.key
+            category, ADDON_NAME .. "_" .. key, key,
+            VeritasUI_QualityOfLifeDB, type(defaults[key]), name, defaults[key])
         setting:SetValueChangedCallback(function(_, value)
-            VUI.PrintOnOff("Quality of Life", opt.name, value)
-            if key == "afkScreen" and value then
-                AFK_StartPoll()
-            elseif key == "showItemLevels" and value then
-                SetupItemLevels()  -- idempotent: no-op if already hooked
-            elseif key == "showMapCoords" then
-                if value then
-                    if not coordsInitialized then
-                        SetupMapCoordinates()
-                    elseif mapCoordsAnchor then
-                        mapCoordsAnchor:Show()
-                    end
-                else
-                    if mapCoordsAnchor then mapCoordsAnchor:Hide() end
-                end
+            VUI.PrintOnOff("Quality of Life", name, value)
+            if onChange then onChange(value) end
+        end)
+        Settings.CreateCheckbox(category, setting, tip)
+    end
+
+    AddCheckbox("showMapCoords", "Show Map Coordinates",
+        "Displays player and cursor coordinates on the World Map. Right-click the coordinates to unlock and reposition. Hides the quest log toggle button.",
+        function(value)
+            if value then
+                if not coordsInitialized then SetupMapCoordinates()
+                elseif mapCoordsAnchor then mapCoordsAnchor:Show() end
+            else
+                if mapCoordsAnchor then mapCoordsAnchor:Hide() end
             end
         end)
-        Settings.CreateCheckbox(category, setting, opt.tip)
+
+    AddCheckbox("showItemLevels", "Show Item Levels",
+        "Displays item level numbers on equipment in bags, bank, character panel, and merchants. Quest rewards are excluded.",
+        function(value)
+            if value then SetupItemLevels() end
+        end)
+
+    AddCheckbox("autoSellJunk", "Auto Sell Junk",
+        "Automatically sells all grey items when you visit a merchant.")
+
+    AddCheckbox("autoRepair", "Auto Repair",
+        "Automatically repairs all equipment at repair vendors. Funding source is selected below.")
+
+    -- Repair Funding dropdown — appears directly below the Auto Repair checkbox.
+    local repairSetting = Settings.RegisterAddOnSetting(
+        category,
+        ADDON_NAME .. "_repairFunding",
+        "repairFunding",
+        VeritasUI_QualityOfLifeDB,
+        type(defaults.repairFunding),
+        "Repair Funding",
+        defaults.repairFunding
+    )
+    repairSetting:SetValueChangedCallback(function(_, value)
+        local label = value == "guild" and "Guild + Personal" or "Personal Only"
+        VUI.Print("Quality of Life", "Repair Funding: " .. label)
+    end)
+    local function GetRepairFundingOptions()
+        local container = Settings.CreateControlTextContainer()
+        container:Add("guild",    "Guild + Personal")
+        container:Add("personal", "Personal Only")
+        return container:GetData()
     end
+    Settings.CreateDropdown(category, repairSetting, GetRepairFundingOptions,
+        "How repair costs are funded. 'Guild + Personal' uses guild bank funds first (requires guild membership, guild repair permission, and guild info must not contain [noautorepair]), then covers any remainder with personal gold. 'Personal Only' always uses personal gold.")
+
+    AddCheckbox("afkScreen", "AFK Screen",
+        "Shows a cinematic overlay when you go AFK — your character name, level, item level, and zone over a slow camera orbit. Helps minimize OLED burn-in by hiding static UI elements and keeping the screen moving.",
+        function(value)
+            if value then AFK_StartPoll() end
+        end)
 
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
@@ -1043,13 +1080,16 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         AFK_Exit()
 
     elseif event == "MERCHANT_SHOW" then
-        if db.autoRepair   then AutoRepair()  end
-        -- Delay sell by 0.25s so any AutoRepair PLAYER_MONEY (personal-gold
-        -- repair deduction) settles in GetMoney() before startMoney is captured.
-        -- A zero-frame defer was too short — server RTT for the repair credit is
-        -- typically 50–200ms, so startMoney ended up pre-repair, and the repair
-        -- PLAYER_MONEY later triggered DoReport with a negative delta (→ 0g).
-        if db.autoSellJunk then C_Timer.After(0.25, AutoSellJunk) end
+        -- Sell-first sequencing: junk is sold before repair fires, so junk-sale
+        -- gold is available for personal repair and the repair deduction cannot
+        -- race the sell PLAYER_MONEY delta.  AutoRepair is triggered from
+        -- SellNextBatch when selling finishes (or immediately if nothing to sell).
+        -- If only autoRepair is on (sell disabled), repair fires directly here.
+        if db.autoSellJunk then
+            AutoSellJunk()
+        elseif db.autoRepair then
+            AutoRepair()
+        end
 
     elseif event == "MERCHANT_CLOSED" then
         CancelSellRetry()
