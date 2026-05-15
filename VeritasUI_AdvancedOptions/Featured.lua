@@ -392,21 +392,12 @@ AO.FEATURED_CATEGORIES = {
 }
 
 ----------------------------------------------------------------
---  Element height constants — must match Controls.lua
---
---  ROW_HEIGHT = 26 (checkbox), +8 (slider = 34), +4 (dropdown = 30)
---  GAP = 4px between controls
+--  Layout constants
 ----------------------------------------------------------------
 local HEADER_H    = 24         -- header button (20) + divider + gap
 local SECTION_GAP = 14         -- extra gap between categories
-local GAP         = 4          -- gap between controls
+local GAP         = 4          -- gap between controls; added to AO.CONTROL_HEIGHTS in extents
 local PAD_X       = 8
-
-local CONTROL_HEIGHTS = {
-    checkbox = 26 + GAP,       -- 30
-    slider   = 34 + GAP,       -- 38
-    dropdown = 30 + GAP,       -- 34
-}
 
 ----------------------------------------------------------------
 --  Renderer — builds the Featured tab content inside a native
@@ -427,7 +418,7 @@ local controlCache = {}    -- ["catIdx-ctrlIdx"] = control frame
 
 function AO:BuildFeaturedContent(parent)
     -- ── ScrollBox + MinimalScrollBar ────────────────────────
-    local SB_INSET = 16   -- room for MinimalScrollBar + gap on the right
+    local SB_INSET = AO.SB_INSET   -- shared with Browser tab for visual alignment
 
     local scrollBox = CreateFrame("Frame", nil, parent, "WowScrollBoxList")
     scrollBox:SetPoint("TOPLEFT",     parent, "TOPLEFT",      0, 0)
@@ -473,7 +464,7 @@ function AO:BuildFeaturedContent(parent)
     view:SetElementExtentCalculator(function(dataIndex, elementData)
         if elementData.type == "header" then return HEADER_H end
         if elementData.type == "gap"    then return SECTION_GAP end
-        return CONTROL_HEIGHTS[elementData.cfg.type] or 30
+        return (AO.CONTROL_HEIGHTS[elementData.cfg.type] or 26) + GAP
     end)
 
     -- Element initializer — creates or retrieves cached UI, reparents
@@ -570,7 +561,7 @@ function AO:BuildFeaturedContent(parent)
                 local tmpParent = CreateFrame("Frame", nil, UIParent)
                 tmpParent:SetSize(
                     (parent:GetWidth() > 0 and parent:GetWidth() or 480) - PAD_X * 2,
-                    CONTROL_HEIGHTS[cfg.type] or 30
+                    (AO.CONTROL_HEIGHTS[cfg.type] or 26) + GAP
                 )
                 local ctrl
                 if cfg.type == "checkbox" then

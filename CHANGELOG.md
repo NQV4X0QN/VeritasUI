@@ -2,6 +2,17 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.26] - 2026-05-14
+
+### Changed
+- `VeritasUI_AdvancedOptions` — **Architectural hardening: six improvements to eliminate fragility and ensure long-term robustness.**
+  - **Shared height constants** — `AO.CONTROL_HEIGHTS` table defined in `Controls.lua` using `ROW_HEIGHT` as the single source; `Featured.lua`'s extent calculator now references it instead of maintaining a duplicate copy. Adding a new control type no longer requires updating two files
+  - **Shared scrollbar inset** — `AO.SB_INSET = 16` defined once in `Core.lua`; both `BuildFeaturedContent` and `BuildBrowserContent` reference it. The precisely-tuned scrollbar alignment between tabs can no longer silently drift if one is changed independently
+  - **Featured → Browser CVar sync** — `EnumerateCVars` now auto-supplements the browser list with every CVar from `AO.FEATURED_CATEGORIES` after the three enumeration strategies run. Adding a CVar to the Featured tab will automatically appear in the All CVars tab without a separate `KNOWN_CVARS` entry; the lists can never silently diverge
+  - **Slider write debounce** — `CreateSlider`'s `OnValueChanged` now uses the `userInput` parameter to skip programmatic `SetValue` calls (e.g. from `Refresh()`), and defers the actual `SetCVar` write via a 0.15s `C_Timer` debounce that commits only after the drag settles. Eliminates spurious writes on every `Refresh` and rapid-fire writes during drag
+  - **CVar cache version stamp** — `InitDB` now clears `db.cvarCache` when `db.cacheVersion` doesn't match `AO.VERSION`, evicting stale entries from CVars renamed or removed in a prior patch. Cache repopulates naturally during the session
+  - **Restart indicator comment corrected** — `CreateRestartIndicator` comment updated to reflect that `"!"` text is the intentional implementation; the atlas approach was tried and abandoned due to pool-frame reparenting conflicts
+
 ## [1.6.25] - 2026-05-14
 
 ### Changed

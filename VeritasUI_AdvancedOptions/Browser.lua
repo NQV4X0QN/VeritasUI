@@ -224,6 +224,30 @@ local function EnumerateCVars()
         end
     end
 
+    -- Ensure every CVar in the Featured tab is also present in the browser,
+    -- regardless of which enumeration strategy fired. Featured.lua loads before
+    -- Browser.lua so AO.FEATURED_CATEGORIES is always populated at this point.
+    for _, cat in ipairs(AO.FEATURED_CATEGORIES) do
+        for _, ctrl in ipairs(cat.controls) do
+            local name = ctrl.cvar
+            if name and not cvarByName[name] then
+                local val, def, server, locked = AO:GetCVarInfo(name)
+                if val ~= nil then
+                    local entry = {
+                        name    = name,
+                        value   = val,
+                        default = def or "",
+                        locked  = locked or false,
+                        server  = server or false,
+                        help    = "",
+                    }
+                    cvarList[#cvarList + 1] = entry
+                    cvarByName[name] = entry
+                end
+            end
+        end
+    end
+
     -- Sort alphabetically
     table.sort(cvarList, function(a, b) return strlower(a.name) < strlower(b.name) end)
 
@@ -281,7 +305,7 @@ function AO:BuildBrowserContent(parent)
     local INSET = 8
 
     -- ── Search Box ──────────────────────────────────────────
-    local SB_INSET = 16   -- room for MinimalScrollBar + gap on the right
+    local SB_INSET = AO.SB_INSET   -- shared with Featured tab for visual alignment
 
     local searchBox = CreateFrame("EditBox", nil, parent, "SearchBoxTemplate")
     searchBox:SetHeight(22)

@@ -25,7 +25,8 @@ local InCombatLockdown = InCombatLockdown
 ----------------------------------------------------------------
 --  Constants
 ----------------------------------------------------------------
-AO.VERSION = VUI.VERSION
+AO.VERSION  = VUI.VERSION
+AO.SB_INSET = 16        -- MinimalScrollBar width + gap; both scroll tabs must match
 
 ----------------------------------------------------------------
 --  Defaults & state
@@ -59,6 +60,11 @@ function AO:InitDB()
                 db[k] = v
             end
         end
+    end
+    -- Clear CVar value cache on version change to evict entries from renamed/removed CVars.
+    if db.cacheVersion ~= AO.VERSION then
+        db.cvarCache    = {}
+        db.cacheVersion = AO.VERSION
     end
     AO.db = db
 end

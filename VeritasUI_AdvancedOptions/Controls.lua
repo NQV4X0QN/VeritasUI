@@ -21,6 +21,7 @@ local math_max       = math.max
 local math_min       = math.min
 local CreateFrame    = CreateFrame
 local C_CVar         = C_CVar
+local C_Timer        = C_Timer
 local GameTooltip    = GameTooltip
 
 ----------------------------------------------------------------
@@ -29,6 +30,14 @@ local GameTooltip    = GameTooltip
 local ROW_HEIGHT     = 26
 local LABEL_WIDTH    = 260
 local RESET_SIZE     = 14
+
+-- Exported for Featured.lua's extent calculator.
+-- GAP between controls is a layout concern (Featured.lua) and is not included here.
+AO.CONTROL_HEIGHTS = {
+    checkbox = ROW_HEIGHT,        -- 26
+    slider   = ROW_HEIGHT + 8,    -- 34
+    dropdown = ROW_HEIGHT + 4,    -- 30
+}
 
 ----------------------------------------------------------------
 --  Tooltip helper
@@ -82,7 +91,8 @@ end
 --
 --  A small warning icon next to controls whose CVar requires
 --  a /reload or GX restart to take effect.
---  Uses a texture atlas instead of Unicode ⚠.
+--  Uses "!" text (orange); atlas approach conflicted with pool-frame
+--  reparenting and was abandoned.
 ----------------------------------------------------------------
 local function CreateRestartIndicator(parent, requiresRestart)
     if not requiresRestart then return nil end
@@ -231,14 +241,22 @@ function AO:CreateSlider(parent, cfg)
     end
     Refresh()
 
-    slider:SetScript("OnValueChanged", function(self, value)
+    local pendingWrite
+    slider:SetScript("OnValueChanged", function(self, value, userInput)
         -- Snap to step
         local step = cfg.step or 1
         if step > 0 then
             value = math_floor(value / step + 0.5) * step
         end
         valText:SetText(FormatValue(value))
-        AO:SetCVar(cfg.cvar, tostring(value))
+        -- Skip programmatic SetValue calls (e.g. from Refresh); only write on user drag.
+        if not userInput then return end
+        -- Debounce: commit after drag settles instead of on every intermediate step.
+        if pendingWrite then pendingWrite:Cancel() end
+        pendingWrite = C_Timer.NewTimer(0.15, function()
+            pendingWrite = nil
+            AO:SetCVar(cfg.cvar, tostring(value))
+        end)
     end)
 
     -- Reset button — anchored to the far right of the row
