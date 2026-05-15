@@ -151,9 +151,17 @@ local function SellNextBatch()
     local capturedStart = startMoney
     local function DoReport()
         if pendingReportFn ~= DoReport then return end
-        CancelPendingReport()
         local earned = GetMoney() - capturedStart
-        if earned < 0 then earned = 0 end
+        if earned <= 0 then
+            -- Delta is negative or zero: a repair deduction (or other money loss)
+            -- arrived via PLAYER_MONEY before the sell credit. Rebase to the
+            -- current post-deduction gold and keep waiting for the sell PLAYER_MONEY.
+            -- On the 2-second fallback timer, capturedStart is already post-repair
+            -- (rebased on the earlier event), so earned = sell_proceeds > 0.
+            capturedStart = GetMoney()
+            return
+        end
+        CancelPendingReport()
         VUI.Print("Quality of Life", format(
             "Sold |cFFFFFF00%d|r junk item%s for %s",
             capturedCount, capturedCount > 1 and "s" or "",
@@ -1036,7 +1044,12 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 
     elseif event == "MERCHANT_SHOW" then
         if db.autoRepair   then AutoRepair()  end
-        if db.autoSellJunk then C_Timer.After(0, AutoSellJunk) end
+        -- Delay sell by 0.25s so any AutoRepair PLAYER_MONEY (personal-gold
+        -- repair deduction) settles in GetMoney() before startMoney is captured.
+        -- A zero-frame defer was too short — server RTT for the repair credit is
+        -- typically 50–200ms, so startMoney ended up pre-repair, and the repair
+        -- PLAYER_MONEY later triggered DoReport with a negative delta (→ 0g).
+        if db.autoSellJunk then C_Timer.After(0.25, AutoSellJunk) end
 
     elseif event == "MERCHANT_CLOSED" then
         CancelSellRetry()

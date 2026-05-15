@@ -2,6 +2,13 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.29] - 2026-05-14
+
+### Fixed
+- `VeritasUI_QualityOfLife` — **AutoSell Junk gold reporting still showed 0g when Auto Repair also ran using personal gold.** Root cause: `C_Timer.After(0, AutoSellJunk)` started the sell one frame (~16ms) after the repair request was sent, but the server's repair `PLAYER_MONEY` event (money deduction) typically arrives 50–200ms later. `startMoney` was therefore captured pre-repair. Once the sell completed and `pendingReportFn = DoReport` was set, the repair's `PLAYER_MONEY` arrived first and fired `DoReport` with a negative delta (repair deduction − 0) → clamped to 0 → "for 0🪙". The sell's own `PLAYER_MONEY` arrived after `pendingReportFn` was already cleared and was silently ignored.
+  - **Primary fix:** sell deferred by 0.25s (up from one frame) so repair credit settles in `GetMoney()` before `startMoney` is captured. Covers typical server round-trips of 50–200ms.
+  - **Secondary fix (high-latency guard):** `DoReport` now checks whether `earned ≤ 0` before reporting. If a repair deduction still arrives after `pendingReportFn` is set (connection latency > 250ms), `DoReport` rebases `capturedStart` to the current post-deduction gold and returns without reporting — keeping `pendingReportFn` active so the sell's subsequent `PLAYER_MONEY` (earned > 0) fires a correct report. The 2-second fallback timer also reads the rebased `capturedStart`, so it reports sell proceeds rather than a net sell-minus-repair delta.
+
 ## [1.6.28] - 2026-05-14
 
 ### Changed
