@@ -101,6 +101,8 @@ local function CancelPendingReport()
     frame:UnregisterEvent("PLAYER_MONEY")
 end
 
+local AutoRepair  -- forward declaration; SellNextBatch calls AutoRepair, which is defined below
+
 local function SellNextBatch()
     if not sellState then return end
     if not MerchantFrame or not MerchantFrame:IsShown() then
@@ -215,7 +217,7 @@ end
 --
 -- Called from SellNextBatch (sell-first sequencing) so gold from junk
 -- sales is already in GetMoney() when CanGuildBankRepair() is checked.
-local function AutoRepair()
+AutoRepair = function()
     if not CanMerchantRepair() then return end
     local cost, canRepair = GetRepairAllCost()
     if not canRepair or cost == 0 then return end

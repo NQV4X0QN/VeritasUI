@@ -53,9 +53,9 @@ local function ApplySpecPortrait(frame)
                   or frame.portrait
     if not portrait then return end
 
-    local specIndex = GetSpecialization and GetSpecialization()
+    local specIndex = C_SpecializationInfo.GetSpecialization()
     if specIndex then
-        local _, _, _, specIcon = GetSpecializationInfo(specIndex)
+        local _, _, _, specIcon = C_SpecializationInfo.GetSpecializationInfo(specIndex)
         if specIcon then
             portrait:SetTexture(specIcon)
             -- Trim the ~8% Blizzard icon border so the spec art fills the
@@ -344,9 +344,9 @@ local function BuildMainWindow()
             specDD:SetWidth(CW)
 
             local function CurrentSpecName()
-                local idx = GetSpecialization and GetSpecialization()
+                local idx = C_SpecializationInfo.GetSpecialization()
                 if idx then
-                    local _, name = GetSpecializationInfo(idx)
+                    local _, name = C_SpecializationInfo.GetSpecializationInfo(idx)
                     if name and name ~= "" then return name end
                 end
                 return "Switch Specialization"
@@ -379,20 +379,20 @@ local function BuildMainWindow()
                 -- ──────────────────────────────────────────────────────────
                 root:SetMinimumWidth(CW)
 
-                local n = (GetNumSpecializations and GetNumSpecializations()) or 0
+                local n = C_SpecializationInfo.GetNumSpecializations() or 0
                 for i = 1, n do
-                    local id, name = GetSpecializationInfo(i)
+                    local id, name = C_SpecializationInfo.GetSpecializationInfo(i)
                     if id and name then
                         root:CreateRadio(
                             name,
-                            function() return GetSpecialization() == i end,
+                            function() return C_SpecializationInfo.GetSpecialization() == i end,
                             function()
                                 if InCombatLockdown() then
                                     VUI.Print("Priority Rotation",
                                         "|cFFFF4444Can't switch spec in combat.|r")
                                     return MenuResponse.Refresh
                                 end
-                                if i ~= GetSpecialization() then
+                                if i ~= C_SpecializationInfo.GetSpecialization() then
                                     -- Midnight refactored the spec API into
                                     -- C_SpecializationInfo; the global
                                     -- SetSpecialization may be absent or shimmed.
@@ -452,21 +452,7 @@ local function BuildMainWindow()
         spellBtn:SetPoint("TOPLEFT", (specDD or divTools), "BOTTOMLEFT", 0, -10)
         spellBtn:SetText("Spellbook")
         spellBtn:SetScript("OnClick", function()
-            if InCombatLockdown() then
-                VUI.Print("Priority Rotation", "|cFFFF4444Can't toggle Spellbook in combat.|r")
-                return
-            end
-            if PlayerSpellsFrame and PlayerSpellsFrame:IsShown() then
-                pcall(HideUIPanel, PlayerSpellsFrame)
-                return
-            end
-            local opened = false
-            if PlayerSpellsUtil and PlayerSpellsUtil.OpenToSpellBookTab then
-                opened = pcall(PlayerSpellsUtil.OpenToSpellBookTab)
-            end
-            if not opened and ToggleSpellBook then
-                pcall(ToggleSpellBook, BOOKTYPE_SPELL or "spell")
-            end
+            PR.ToggleSpellBookPanel()
         end)
 
         -- Macros toggle. ShowMacroFrame opens (and load-on-demands the
@@ -478,15 +464,7 @@ local function BuildMainWindow()
         macroOpenBtn:SetPoint("LEFT", spellBtn, "RIGHT", 8, 0)
         macroOpenBtn:SetText("Macros")
         macroOpenBtn:SetScript("OnClick", function()
-            if InCombatLockdown() then
-                VUI.Print("Priority Rotation", "|cFFFF4444Can't toggle Macros in combat.|r")
-                return
-            end
-            if MacroFrame and MacroFrame:IsShown() then
-                pcall(HideUIPanel, MacroFrame)
-                return
-            end
-            if ShowMacroFrame then pcall(ShowMacroFrame) end
+            PR.ToggleMacroPanel()
         end)
     end
 

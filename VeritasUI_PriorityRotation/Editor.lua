@@ -43,6 +43,10 @@ local function ToggleMacroPanel()
     if ShowMacroFrame then pcall(ShowMacroFrame) end
 end
 
+-- Expose on PR so Settings.lua can call them without duplicating the logic.
+PR.ToggleSpellBookPanel = ToggleSpellBookPanel
+PR.ToggleMacroPanel     = ToggleMacroPanel
+
 -- ── Drop helpers ─────────────────────────────────────────────
 -- HandleDrop appends if slotIndex is beyond the current list
 -- to prevent sparse array holes.

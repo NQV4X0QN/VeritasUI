@@ -2,6 +2,15 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.31] - 2026-05-15
+
+### Fixed
+- `VeritasUI_QualityOfLife` — **AutoRepair scoping fix: `SellNextBatch` now correctly calls the VUI `AutoRepair` local.** `local function AutoRepair()` was declared at line 218, after `SellNextBatch` at line 104. In Lua, a local is only visible to code declared after it, so `AutoRepair()` inside `SellNextBatch` resolved to `_G.AutoRepair` (nil in WoW) rather than the VUI local — causing a Lua error on every merchant visit with both Auto Sell and Auto Repair enabled. Fixed with a forward declaration (`local AutoRepair`) placed before `SellNextBatch`; the definition is unchanged and the sell-first sequencing architecture from v1.6.30 is fully preserved.
+
+### Changed
+- `VeritasUI_PriorityRotation` — **Settings.lua spec API calls updated to `C_SpecializationInfo` namespace.** `ApplySpecPortrait`, `CurrentSpecName`, and the spec switcher dropdown's `SetupMenu` were using the legacy global `GetSpecialization` / `GetSpecializationInfo` / `GetNumSpecializations` with defensive nil guards. These are now replaced with direct `C_SpecializationInfo.*` calls, consistent with the pattern already used throughout `Profiles.lua`. Eliminates the inconsistency and removes reliance on globals that Blizzard may eventually drop.
+- `VeritasUI_PriorityRotation` — **Deduplicated Spellbook/Macro toggle logic.** `ToggleSpellBookPanel` and `ToggleMacroPanel` are defined once in `Editor.lua` and exposed on the `PR` table. `Settings.lua`'s Spellbook and Macros button handlers now call `PR.ToggleSpellBookPanel()` / `PR.ToggleMacroPanel()` instead of inlining identical logic. Any future change to the toggle behavior only needs to be made in one place.
+
 ## [1.6.30] - 2026-05-14
 
 ### Changed
