@@ -47,9 +47,6 @@ local itemLevelsSetup   = false  -- guards SetupItemLevels() re-entry
 local coordsInitialized = false  -- guards InitCoords() re-entry
 local mapCoordsAnchor   = nil    -- reference for mid-session show/hide
 
-local pendingReportFn    = nil   -- DoReport closure awaiting PLAYER_MONEY
-local pendingReportTimer = nil   -- 2-second fallback for the report
-
 -- ── /way — proximity auto-clear state ───────────────────────
 local wayTicker        = nil
 local WAY_ARRIVAL_YARDS = 10
@@ -76,121 +73,153 @@ local function StartWaypointTracking()
 end
 
 -- ── Feature: Auto Sell Junk ─────────────────────────────────
--- Event-driven selling: sells up to SELL_BATCH items per cycle,
--- then waits for BAG_UPDATE_DELAYED (fired after the client
--- processes bag changes) before selling the next batch.  This
--- lets the game's own event cadence throttle the sell rate,
--- handling any number of junk items reliably.
--- A 0.5s safety timer guarantees forward progress even if
--- BAG_UPDATE_DELAYED is lost (server throttle, event swallowed).
--- Gold reporting uses GetMoney() delta (before/after) rather than
--- item price lookups, which are unreliable with Midnight secret values.
--- The startMoney snapshot is deferred until the first UseContainerItem call
--- so it is captured as close as possible to the actual sell window.
-local SELL_BATCH     = 9
-local SELL_RETRY_SEC = 0.5
-local sellState         -- nil when idle; table { count, startMoney } when selling
-local sellRetryTimer    -- safety timer; fires if BAG_UPDATE_DELAYED is lost
+-- Event-driven selling: each SellNextBatch call sells up to
+-- SELL_BATCH grey items, then waits for BAG_UPDATE_DELAYED (or
+-- the SELL_RETRY_SEC fallback) to re-enter and continue.
+--
+-- Gold accounting uses summed item sell prices (the same pattern
+-- as Scrap, jaliborc/Scrap addons/merchant/button.lua).  At sell
+-- start we snapshot saleTotal = sum of every grey item's
+-- sellPrice * stackCount.  On each call we recompute the remaining
+-- junk value (excluding locked items mid-sale); the delta
+-- saleTotal - remaining is the amount actually sold.  GetMoney()
+-- is never used for the sell amount, so there is no race with a
+-- concurrent repair deduction.
+--
+-- AutoRepair is independent — it is NOT chained off this code path.
+-- That decoupling is intentional: at Delver's Supplies crates in
+-- Delves, Blizzard disables item sales entirely while still
+-- allowing repair.  If AutoRepair were chained off AutoSellJunk,
+-- the inability to sell would also kill repair.
+local SELL_BATCH         = 11
+local SELL_RETRY_SEC     = 0.5
+local MAX_NO_PROGRESS    = 5     -- bail if no item is removed for this many seconds
+local saleTotal              -- nil when idle; total value of junk at sell start
+local saleCount              -- count of grey stacks at sell start (for print)
+local lastRemainingValue     -- previous cycle's remaining value (progress detection)
+local noProgressSince        -- GetTime() of last cycle that made progress (or sell start)
+local sellRetryTimer         -- safety timer; fires if BAG_UPDATE_DELAYED is lost
 
 local function CancelSellRetry()
     if sellRetryTimer then sellRetryTimer:Cancel(); sellRetryTimer = nil end
 end
 
-local function CancelPendingReport()
-    if pendingReportTimer then pendingReportTimer:Cancel(); pendingReportTimer = nil end
-    pendingReportFn = nil
-    frame:UnregisterEvent("PLAYER_MONEY")
-end
-
-local AutoRepair  -- forward declaration; SellNextBatch calls AutoRepair, which is defined below
-
-local function SellNextBatch()
-    if not sellState then return end
-    if not MerchantFrame or not MerchantFrame:IsShown() then
-        CancelSellRetry()
-        sellState = nil
-        frame:UnregisterEvent("BAG_UPDATE_DELAYED")
-        return
-    end
-
-    local sold = 0
-    local remaining = 0
+-- Walk bags once, return (totalValue, count) for every grey item that has
+-- a cached sell price.  Locked items ARE counted — when UseContainerItem
+-- runs, the client locks the item immediately while the server processes
+-- the sale.  If we excluded locked items here, ScanJunk would report
+-- "0 remaining" the instant the sell loop finishes, before the server
+-- has actually removed (or rejected) anything.  Counting locked items
+-- means we only declare the sale complete when items are physically gone
+-- from the bag, which is the only signal that proves the server accepted
+-- the request.  Scrap's GetReport excludes locked items and would have
+-- the same premature-print risk at any merchant that rejects a sell.
+local function ScanJunk()
+    local total, count = 0, 0
     for bag = 0, (NUM_BAG_SLOTS or 4) do
-        for slot = 1, C_Container.GetContainerNumSlots(bag) do
+        local n = C_Container.GetContainerNumSlots(bag) or 0
+        for slot = 1, n do
             local info = C_Container.GetContainerItemInfo(bag, slot)
             if info and info.quality == 0 and not info.hasNoValue then
-                remaining = remaining + 1
-                if not info.isLocked then
-                    if not sellState.startMoney then
-                        sellState.startMoney = GetMoney()
-                    end
-                    C_Container.UseContainerItem(bag, slot)
-                    sellState.count = sellState.count + 1
-                    sold = sold + 1
-                    if sold >= SELL_BATCH then return end   -- pause; BAG_UPDATE_DELAYED will resume
+                local price = select(11, C_Item.GetItemInfo(info.itemID)) or 0
+                if price > 0 then
+                    total = total + price * (info.stackCount or 1)
+                    count = count + 1
                 end
             end
         end
     end
+    return total, count
+end
 
-    -- If any items are still locked (pending server confirmation), wait for the next event.
-    if remaining > 0 then return end
-
-    -- No remaining junk — finish up.
+local function ResetSellState()
+    saleTotal          = nil
+    saleCount          = nil
+    lastRemainingValue = nil
+    noProgressSince    = nil
     CancelSellRetry()
     frame:UnregisterEvent("BAG_UPDATE_DELAYED")
+end
 
-    local count      = sellState.count
-    local startMoney = sellState.startMoney or GetMoney()
-    sellState = nil
+-- Emit a "sold N for X" print using the currently-observed remaining
+-- value/count vs the captured saleTotal/saleCount.  Only prints when
+-- the delta is positive (something actually sold).  Used by both the
+-- normal-completion path and the hard-timeout bailout.
+local function PrintSold(remainingValue, remainingCount)
+    local soldCount = (saleCount or 0) - (remainingCount or 0)
+    local soldValue = (saleTotal or 0) - (remainingValue or 0)
+    if soldCount > 0 and soldValue > 0 then
+        VUI.Print("Quality of Life", format(
+            "Sold |cFFFFFF00%d|r junk item%s for %s",
+            soldCount, soldCount > 1 and "s" or "",
+            GetCoinTextureString(soldValue)))
+    end
+end
 
-    if count == 0 then
-        -- Nothing sold; still trigger repair if enabled (sell-first sequencing).
-        if db.autoRepair then AutoRepair() end
+local function SellNextBatch()
+    if not saleTotal then return end
+    if not MerchantFrame or not MerchantFrame:IsShown() then
+        ResetSellState()
         return
     end
 
-    -- Sell-first sequencing.  Server-side: UseContainerItem requests are sent
-    -- before RepairAllItems, so sell credits land in GetMoney() before the
-    -- repair deduction.  Client-side: RepairAllItems' "Repaired for X" print
-    -- fires synchronously, but the sell print waits for the PLAYER_MONEY
-    -- packet (~200ms RTT).  To keep the visible order sell-then-repair, the
-    -- AutoRepair() call is chained off DoReport (after the sell print) rather
-    -- than fired immediately after the listener is armed.
-    local capturedCount = count
-    local capturedStart = startMoney
-    local function DoReport()
-        if pendingReportFn ~= DoReport then return end
-        local earned = GetMoney() - capturedStart
-        if earned <= 0 then
-            -- No positive delta yet — the sell credit hasn't landed (or some
-            -- other deduction arrived first).  Rebase and wait for the next
-            -- PLAYER_MONEY.  The 2-second fallback timer reads the rebased
-            -- capturedStart and reports correctly even if PLAYER_MONEY is lost.
-            capturedStart = GetMoney()
-            return
+    -- Try to sell up to SELL_BATCH items.  Skip locked items (we can't
+    -- sell them while they're mid-something) but include them in the
+    -- remaining-value check below — they still occupy bag space and
+    -- haven't been confirmed sold yet.
+    local sold = 0
+    for bag = 0, (NUM_BAG_SLOTS or 4) do
+        local n = C_Container.GetContainerNumSlots(bag) or 0
+        for slot = 1, n do
+            local info = C_Container.GetContainerItemInfo(bag, slot)
+            if info and info.quality == 0 and not info.hasNoValue and not info.isLocked then
+                local price = select(11, C_Item.GetItemInfo(info.itemID)) or 0
+                if price > 0 then
+                    C_Container.UseContainerItem(bag, slot)
+                    sold = sold + 1
+                    if sold >= SELL_BATCH then break end
+                end
+            end
         end
-        CancelPendingReport()
-        VUI.Print("Quality of Life", format(
-            "Sold |cFFFFFF00%d|r junk item%s for %s",
-            capturedCount, capturedCount > 1 and "s" or "",
-            GetCoinTextureString(earned)))
-        -- Trigger repair AFTER the sell print so the messages appear in
-        -- sell-then-repair order.  CanMerchantRepair() inside AutoRepair
-        -- handles the case where the merchant has been closed in the gap.
-        if db.autoRepair then AutoRepair() end
+        if sold >= SELL_BATCH then break end
     end
-    CancelPendingReport()
-    pendingReportFn    = DoReport
-    pendingReportTimer = C_Timer.NewTimer(2, DoReport)
-    frame:RegisterEvent("PLAYER_MONEY")
+
+    -- Full ScanJunk (locked items included) — we only declare completion
+    -- when the server has actually removed items from the bag, not when
+    -- they're transiently locked while the request is in flight.
+    local remainingValue, remainingCount = ScanJunk()
+
+    if remainingValue == 0 then
+        PrintSold(0, 0)
+        ResetSellState()
+        return
+    end
+
+    -- Progress detection.  If remaining value dropped since the previous
+    -- cycle, items are being removed from the bag — sales are working,
+    -- reset the no-progress timer.  If it hasn't dropped for
+    -- MAX_NO_PROGRESS seconds, the vendor is rejecting our requests
+    -- (or some other persistent failure); bail out and report whatever
+    -- partial value did sell.  This is correct for both small and very
+    -- large junk piles — a 200-item drain that takes 8 seconds will
+    -- keep resetting the timer with every confirmed batch, while a
+    -- stuck vendor will time out cleanly after 5 idle seconds.
+    if lastRemainingValue == nil or remainingValue < lastRemainingValue then
+        lastRemainingValue = remainingValue
+        noProgressSince    = GetTime()
+    elseif noProgressSince and (GetTime() - noProgressSince) > MAX_NO_PROGRESS then
+        PrintSold(remainingValue, remainingCount)
+        ResetSellState()
+    end
 end
 
--- Schedule a safety retry in case BAG_UPDATE_DELAYED doesn't fire.
--- Called after every SellNextBatch invocation; no-op if selling finished.
+-- Safety retry: BAG_UPDATE_DELAYED can be coalesced or dropped under
+-- server throttling; a 0.5s fallback re-drives the loop until selling
+-- finishes.  Cancelled whenever BAG_UPDATE_DELAYED fires normally or
+-- ResetSellState runs.
 local function ScheduleSellRetry()
     CancelSellRetry()
-    if sellState then
+    if saleTotal then
         sellRetryTimer = C_Timer.NewTimer(SELL_RETRY_SEC, function()
             sellRetryTimer = nil
             SellNextBatch()
@@ -200,14 +229,22 @@ local function ScheduleSellRetry()
 end
 
 local function AutoSellJunk()
-    CancelPendingReport()
-    sellState = { count = 0, startMoney = nil }  -- snapshot deferred to first sell
+    local total, count = ScanJunk()
+    if total == 0 then return end   -- nothing to sell; print nothing
+    saleTotal          = total
+    saleCount          = count
+    lastRemainingValue = nil
+    noProgressSince    = GetTime()
     frame:RegisterEvent("BAG_UPDATE_DELAYED")
     SellNextBatch()
     ScheduleSellRetry()
 end
 
 -- ── Feature: Auto Repair ────────────────────────────────────
+-- Fires independently from MERCHANT_SHOW; never chained off
+-- AutoSellJunk.  Print uses GetRepairAllCost() directly — no
+-- GetMoney() delta, no race condition, no PLAYER_MONEY listener.
+--
 -- Funding source is controlled by db.repairFunding:
 --   "guild"    — try guild bank first, then personal covers any remainder.
 --                Skipped if the guild's info text contains [noautorepair]
@@ -216,10 +253,7 @@ end
 --                the remainder with personal gold regardless of withdrawal
 --                limit — we never silently under-repair.
 --   "personal" — always use personal gold, skip guild entirely.
---
--- Called from SellNextBatch (sell-first sequencing) so gold from junk
--- sales is already in GetMoney() when CanGuildBankRepair() is checked.
-AutoRepair = function()
+local function AutoRepair()
     if not CanMerchantRepair() then return end
     local cost, canRepair = GetRepairAllCost()
     if not canRepair or cost == 0 then return end
@@ -1084,39 +1118,28 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         AFK_Exit()
 
     elseif event == "MERCHANT_SHOW" then
-        -- Defer one frame so MerchantFrame is fully shown before we proceed.
-        -- MERCHANT_SHOW fires before Blizzard's MerchantFrame_OnShow handler
-        -- runs, so MerchantFrame:IsShown() returns false at this point and
-        -- SellNextBatch's safety guard would silently abort the sell.
+        -- Defer one frame so MerchantFrame is fully shown before we
+        -- check repair capability or scan bags.  MERCHANT_SHOW fires
+        -- before Blizzard's MerchantFrame_OnShow handler runs.
         --
-        -- Sell-first sequencing: junk is sold before repair fires, so junk-sale
-        -- gold is available for personal repair and the repair deduction cannot
-        -- race the sell PLAYER_MONEY delta.  AutoRepair is triggered from
-        -- SellNextBatch when selling finishes (or immediately if nothing to sell).
-        -- If only autoRepair is on (sell disabled), repair fires directly here.
+        -- AutoRepair and AutoSellJunk are fully independent — neither
+        -- depends on the other.  This matters at repair-only vendors
+        -- such as Delver's Supplies crates in Delves, where Blizzard
+        -- disables item sales entirely; AutoRepair must still fire.
+        -- Same pattern as Scrap (Button:OnMerchant in
+        -- jaliborc/Scrap addons/merchant/button.lua).
         C_Timer.After(0, function()
-            if not MerchantFrame or not MerchantFrame:IsShown() then return end
-            if db.autoSellJunk then
-                AutoSellJunk()
-            elseif db.autoRepair then
-                AutoRepair()
-            end
+            if db.autoRepair   then AutoRepair()  end
+            if db.autoSellJunk then AutoSellJunk() end
         end)
 
     elseif event == "MERCHANT_CLOSED" then
-        CancelSellRetry()
-        if sellState then
-            frame:UnregisterEvent("BAG_UPDATE_DELAYED")
-            sellState = nil
-        end
+        if saleTotal then ResetSellState() end
 
     elseif event == "BAG_UPDATE_DELAYED" then
         CancelSellRetry()
         SellNextBatch()
         ScheduleSellRetry()
-
-    elseif event == "PLAYER_MONEY" then
-        if pendingReportFn then pendingReportFn() end
 
     elseif event == "PLAYER_FLAGS_CHANGED" then
         -- arg1 is the unit whose flags changed; ignore non-player units.
