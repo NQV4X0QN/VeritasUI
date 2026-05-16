@@ -53,6 +53,7 @@ local pendingReportTimer = nil   -- 2-second fallback for the report
 -- ── /way — proximity auto-clear state ───────────────────────
 local wayTicker        = nil
 local WAY_ARRIVAL_YARDS = 10
+local WayCommand                       -- forward declaration; defined below frame:SetScript
 
 local function StopWaypointTracking()
     if wayTicker then wayTicker:Cancel(); wayTicker = nil end
@@ -1153,7 +1154,7 @@ end
 -- Uses Blizzard's native user-waypoint APIs so the pin appears on
 -- the World Map and the minimap arrow activates automatically
 -- (same behaviour as right-clicking the map and choosing "Set Waypoint").
-local function WayCommand(msg)
+WayCommand = function(msg)
     msg = strtrim(msg or ""):gsub(",", ".")
 
     -- ── Clear ──────────────────────────────────────────────

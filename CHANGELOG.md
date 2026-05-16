@@ -2,6 +2,12 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.33] - 2026-05-15
+
+### Fixed
+- `VeritasUI_QualityOfLife` — **`/way` command was non-functional for non-TomTom users.** `local function WayCommand(msg)` was declared at the bottom of the file, after `frame:SetScript("OnEvent", ...)`. Lua compiles free variables in a closure at definition time; since `WayCommand` was not yet declared when the OnEvent closure was compiled, references inside it resolved to the global `_G.WayCommand` (nil). At PLAYER_LOGIN, `SlashCmdList["VERITASUI_WAY"] = WayCommand` assigned nil, and typing `/way` silently failed. Fixed by adding a `local WayCommand` forward declaration before `frame:SetScript` and changing the definition from `local function WayCommand` to `WayCommand = function` so it populates the upvalue. TomTom users were unaffected (the registration block is skipped when TomTom is present).
+- `VeritasUI_PriorityRotation` — **Removed unused `usedCharSlot` variable from `BuildEntryFromCursor` in `Editor.lua`.** The variable was declared and assigned in two branches of the macro character-slot disambiguation logic but never read anywhere in the function. Dead code removed.
+
 ## [1.6.32] - 2026-05-15
 
 ### Fixed

@@ -120,7 +120,6 @@ local function BuildEntryFromCursor()
         end
 
         -- Decide which interpretation is correct:
-        local usedCharSlot = false
         if cName and cName ~= "" then
             -- If the MacroFrame is open on the character tab, prefer that
             if MacroFrame and MacroFrame:IsShown() then
@@ -128,12 +127,10 @@ local function BuildEntryFromCursor()
                     and PanelTemplates_GetSelectedTab(MacroFrame)
                 if selTab == 2 then
                     mName, mIcon, mBody = cName, cIcon, cBody
-                    usedCharSlot = true
                 end
             elseif not mName or mName == "" then
                 -- MacroFrame not open but raw index failed; use char slot
                 mName, mIcon, mBody = cName, cIcon, cBody
-                usedCharSlot = true
             end
         end
 
