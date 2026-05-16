@@ -379,7 +379,7 @@ local function BuildMainWindow()
                 -- ──────────────────────────────────────────────────────────
                 root:SetMinimumWidth(CW)
 
-                local n = C_SpecializationInfo.GetNumSpecializations() or 0
+                local n = GetNumSpecializations() or 0
                 for i = 1, n do
                     local id, name = C_SpecializationInfo.GetSpecializationInfo(i)
                     if id and name then

@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.32] - 2026-05-15
+
+### Fixed
+- `VeritasUI_PriorityRotation` — **Settings.lua crash when opening the spec switcher dropdown.** Fix #3 from v1.6.31 incorrectly migrated `GetNumSpecializations()` to `C_SpecializationInfo.GetNumSpecializations()`. That method does not exist in the `C_SpecializationInfo` namespace in Midnight 12.0.5 — only the legacy global `GetNumSpecializations()` is available. Opening the spec switcher dropdown triggered `attempt to call a nil value` at `Settings.lua:382`. Reverted that one call to the global; all other `C_SpecializationInfo` migrations from v1.6.31 are correct and preserved.
+
 ## [1.6.31] - 2026-05-15
 
 ### Fixed

@@ -1,7 +1,7 @@
 ## Interface: 120005
 ## Title: VeritasUI — Clean Solo
 ## Notes: Fades chat tabs, micro menu, and player frame; hides social button, bag bar, and clutter. |cFF888888by NQV4X0QN|r
-## Version: 1.6.31
+## Version: 1.6.32
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
 ## SavedVariables: VeritasUI_CleanSoloDB
