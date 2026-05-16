@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.35] - 2026-05-15
+
+### Fixed
+- `VeritasUI_QualityOfLife` — **Repair print appeared before sell print, breaking the visible sell-first ordering.** `RepairAllItems` triggers its `"Repaired for X"` print **synchronously** the instant `AutoRepair()` runs. The sell print is **asynchronous** — `DoReport` only fires after the server's sell `PLAYER_MONEY` packet arrives (~200ms RTT). Even though the logical sequencing was sell-first (UseContainerItem requests sent to the server before RepairAllItems), the client-side message order ended up repair-then-sell because the repair print didn't wait for any network round-trip. Fixed by chaining the `AutoRepair()` call off the *inside* of `DoReport` (after the sell `VUI.Print`), rather than firing it immediately after the listener is armed. The `earned ≤ 0` rebase guard is retained as a safety net for unrelated deductions during the gap, and `CanMerchantRepair()` inside `AutoRepair` handles the rare case where the merchant closes between the sell print and the chained repair call. The `count == 0` branch (no junk to sell) still calls `AutoRepair()` directly — no sell print means no ordering issue.
+
 ## [1.6.34] - 2026-05-15
 
 ### Fixed

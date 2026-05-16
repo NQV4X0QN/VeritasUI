@@ -150,21 +150,23 @@ local function SellNextBatch()
         return
     end
 
-    -- Set up sell reporting before triggering repair.  In normal network order,
-    -- sell credits (PLAYER_MONEY, positive delta) arrive before the repair
-    -- deduction, so DoReport fires and clears pendingReportFn before the repair
-    -- PLAYER_MONEY lands.  The earned<=0 rebase guard below handles the rare
-    -- high-latency case where a repair deduction arrives first.
+    -- Sell-first sequencing.  Server-side: UseContainerItem requests are sent
+    -- before RepairAllItems, so sell credits land in GetMoney() before the
+    -- repair deduction.  Client-side: RepairAllItems' "Repaired for X" print
+    -- fires synchronously, but the sell print waits for the PLAYER_MONEY
+    -- packet (~200ms RTT).  To keep the visible order sell-then-repair, the
+    -- AutoRepair() call is chained off DoReport (after the sell print) rather
+    -- than fired immediately after the listener is armed.
     local capturedCount = count
     local capturedStart = startMoney
     local function DoReport()
         if pendingReportFn ~= DoReport then return end
         local earned = GetMoney() - capturedStart
         if earned <= 0 then
-            -- A repair deduction arrived before the sell credit.
-            -- Rebase so the next PLAYER_MONEY (the sell credit) computes
-            -- the correct delta.  The 2-second fallback timer reads the
-            -- rebased capturedStart and reports sell proceeds correctly.
+            -- No positive delta yet — the sell credit hasn't landed (or some
+            -- other deduction arrived first).  Rebase and wait for the next
+            -- PLAYER_MONEY.  The 2-second fallback timer reads the rebased
+            -- capturedStart and reports correctly even if PLAYER_MONEY is lost.
             capturedStart = GetMoney()
             return
         end
@@ -173,16 +175,15 @@ local function SellNextBatch()
             "Sold |cFFFFFF00%d|r junk item%s for %s",
             capturedCount, capturedCount > 1 and "s" or "",
             GetCoinTextureString(earned)))
+        -- Trigger repair AFTER the sell print so the messages appear in
+        -- sell-then-repair order.  CanMerchantRepair() inside AutoRepair
+        -- handles the case where the merchant has been closed in the gap.
+        if db.autoRepair then AutoRepair() end
     end
     CancelPendingReport()
     pendingReportFn    = DoReport
     pendingReportTimer = C_Timer.NewTimer(2, DoReport)
     frame:RegisterEvent("PLAYER_MONEY")
-
-    -- Trigger repair after the sell report listener is armed (sell-first sequencing).
-    -- RepairAllItems calls happen after all UseContainerItem calls, so the server
-    -- processes sell credits before the repair deduction in normal network order.
-    if db.autoRepair then AutoRepair() end
 end
 
 -- Schedule a safety retry in case BAG_UPDATE_DELAYED doesn't fire.
