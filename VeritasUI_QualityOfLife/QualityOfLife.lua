@@ -1083,16 +1083,24 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         AFK_Exit()
 
     elseif event == "MERCHANT_SHOW" then
+        -- Defer one frame so MerchantFrame is fully shown before we proceed.
+        -- MERCHANT_SHOW fires before Blizzard's MerchantFrame_OnShow handler
+        -- runs, so MerchantFrame:IsShown() returns false at this point and
+        -- SellNextBatch's safety guard would silently abort the sell.
+        --
         -- Sell-first sequencing: junk is sold before repair fires, so junk-sale
         -- gold is available for personal repair and the repair deduction cannot
         -- race the sell PLAYER_MONEY delta.  AutoRepair is triggered from
         -- SellNextBatch when selling finishes (or immediately if nothing to sell).
         -- If only autoRepair is on (sell disabled), repair fires directly here.
-        if db.autoSellJunk then
-            AutoSellJunk()
-        elseif db.autoRepair then
-            AutoRepair()
-        end
+        C_Timer.After(0, function()
+            if not MerchantFrame or not MerchantFrame:IsShown() then return end
+            if db.autoSellJunk then
+                AutoSellJunk()
+            elseif db.autoRepair then
+                AutoRepair()
+            end
+        end)
 
     elseif event == "MERCHANT_CLOSED" then
         CancelSellRetry()

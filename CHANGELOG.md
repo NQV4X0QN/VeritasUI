@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.34] - 2026-05-15
+
+### Fixed
+- `VeritasUI_QualityOfLife` — **AutoSell Junk and AutoRepair completely non-functional on merchant visit.** `MERCHANT_SHOW` fires *before* Blizzard's `MerchantFrame_OnShow` handler runs, so `MerchantFrame:IsShown()` returns `false` at the moment our handler executes. `SellNextBatch`'s safety guard (`if not MerchantFrame:IsShown() then return end`) silently aborted the sell, and because `AutoRepair` is now chained off `SellNextBatch` (v1.6.30 sell-first sequencing), repair never fired either. Net effect: clicking a merchant did absolutely nothing — no error, no message, no sell, no repair. v1.6.29 masked this race condition with a 0.25s `C_Timer.After` delay before `AutoSellJunk`, which was removed in v1.6.30 when the sell-first refactor restructured the timing model. Fixed by deferring the `MERCHANT_SHOW` body by one frame (`C_Timer.After(0, ...)`), which runs after Blizzard's handler completes and `MerchantFrame` is fully shown. The `MerchantFrame:IsShown()` safety check is preserved inside the deferred closure to handle the edge case where the merchant is closed during the one-frame gap.
+
 ## [1.6.33] - 2026-05-15
 
 ### Fixed
