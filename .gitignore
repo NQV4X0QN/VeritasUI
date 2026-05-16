@@ -16,3 +16,4 @@ Desktop.ini
 
 # Zip packages (built artifacts)
 *.zip
+.claude/
