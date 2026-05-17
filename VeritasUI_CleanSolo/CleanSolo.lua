@@ -1,6 +1,44 @@
 -- VeritasUI_CleanSolo / CleanSolo.lua
 -- Fades or hides noisy default UI elements for solo play.
 -- Settings: Options → AddOns → Clean Solo  |  /cleansolo  |  /cs
+--
+-- ────────────────────────────────────────────────────────────────
+--  POLICY: /reload required to apply setting changes (by design)
+-- ────────────────────────────────────────────────────────────────
+--
+--  CleanSolo's features are implemented almost entirely via
+--  hooksecurefunc — chat-tab fade, transparent chat background, the
+--  social/voice/chat button hides, micro menu fade, player frame fade,
+--  bag button hides, macro name hide, and error text suppression all
+--  install Blizzard secure-function hooks at PLAYER_LOGIN.
+--
+--  hooksecurefunc has no inverse: once installed, a hook cannot be
+--  removed at runtime.  This means CleanSolo settings cannot cleanly
+--  toggle off mid-session — disabling a setting at runtime would
+--  leave the hook installed, which would either: (a) keep the side
+--  effect active despite the setting being "off", or (b) require
+--  every hook to add a self-disabling guard against its own setting,
+--  doubling the surface area of every feature for a minor UX win.
+--
+--  We chose (c): every CS setting is db-gated at hook-installation
+--  time on PLAYER_LOGIN.  Toggling a setting writes to saved-vars
+--  but does not unhook anything; the hook either fires (db is true,
+--  feature on) or fires-but-no-ops (db is false, feature off, but
+--  hook still installed harmlessly).  /reload re-runs PLAYER_LOGIN
+--  init with the new db values, which is when the hooks actually
+--  get re-evaluated against the current settings.
+--
+--  This is asymmetric with QualityOfLife's v1.6.28 mid-session-apply
+--  pattern (QoL setting changes take effect immediately).  The
+--  asymmetry is intentional: QoL features are mostly self-contained
+--  event handlers that can be event-unregistered cleanly, whereas
+--  CS features are hooks that cannot.
+--
+--  All CS setting tooltips and the on-toggle PrintOnOff message
+--  consistently mention "/reload to apply" so the user is never
+--  surprised by the policy.  See the tooltip strings in the
+--  options{} table inside InitializeOptions for the wording.
+-- ────────────────────────────────────────────────────────────────
 
 local ADDON_NAME     = "VeritasUI_CleanSolo"
 local SETTINGS_LABEL = "Clean Solo"
@@ -399,27 +437,37 @@ local function InitializeOptions()
 
     local options = {
         { key = "fadeChatTabs",        name = "Fade Chat Tabs",
-          tip = "Chat tabs fade out with the chat window and reappear on mouseover." },
+          tip = "Chat tabs fade out with the chat window and reappear on mouseover. "
+             .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "transparentChatBG",   name = "Transparent Chat Background",
           tip = "Sets the chat window background to fully transparent so only the text is visible when idle. "
              .. "Blizzard's built-in hover behavior reveals the background on mouseover. "
-             .. "Disabling this does not restore your previous alpha — use /chatconfig to adjust manually." },
+             .. "Disabling this does not restore your previous alpha — use /chatconfig to adjust manually. "
+             .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideSocialButton",    name = "Hide Social Button",
-          tip = "Hides the Quick Join / Communities toast button." },
+          tip = "Hides the Quick Join / Communities toast button. "
+             .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideChatButtons",     name = "Hide Chat Buttons",
-          tip = "Hides the chat scroll buttons and the new-window button." },
+          tip = "Hides the chat scroll buttons and the new-window button. "
+             .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideVoiceChatButton", name = "Hide Voice Chat Button",
-          tip = "Hides the voice chat icon near the chat frame." },
+          tip = "Hides the voice chat icon near the chat frame. "
+             .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "fadeMicroMenu",       name = "Fade Micro Menu",
-          tip = "The bottom-right menu bar fades out unless moused over." },
+          tip = "The bottom-right menu bar fades out unless moused over. "
+             .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "fadePlayerFrame",     name = "Fade Player Frame",
-          tip = "Your player frame fades out when idle and reappears in combat, when damaged, or on mouseover." },
+          tip = "Your player frame fades out when idle and reappears in combat, when damaged, or on mouseover. "
+             .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideBagButtons",      name = "Hide Bag Buttons",
-          tip = "Hides the bag bar buttons. You can still open bags with B." },
+          tip = "Hides the bag bar buttons. You can still open bags with B. "
+             .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideMacroNames",      name = "Hide Macro Names",
-          tip = "Hides the macro name text displayed on action bar buttons." },
+          tip = "Hides the macro name text displayed on action bar buttons. "
+             .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideErrorText",       name = "Hide Error Text",
-          tip = "Hides the red error messages like 'Not enough energy' and 'You're facing the wrong way'." },
+          tip = "Hides the red error messages like 'Not enough energy' and 'You're facing the wrong way'. "
+             .. "Requires |cFFFFFF00/reload|r to apply." },
     }
 
     for _, opt in ipairs(options) do
@@ -506,7 +554,7 @@ local function InitializeOptions()
     Settings.CreateDropdown(category, fadeSetting, GetBarOptions,
         "Select a bar to toggle its hover-fade. Faded bars become "
         .. "transparent when idle and reappear on mouseover. "
-        .. "|cFFFFFF00/reload|r to apply.")
+        .. "Requires |cFFFFFF00/reload|r to apply.")
 
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()

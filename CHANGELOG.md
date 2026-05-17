@@ -2,6 +2,12 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.43] - 2026-05-16
+
+### Documentation
+- `README.md` — **Two stale module descriptions corrected.** (1) Line 32 (AutoSell): replaced "reports earnings via gold delta" with "reports earnings by summing item sell prices, independent of any concurrent gold deductions (e.g. AutoRepair on the same merchant frame)" — v1.6.36 reverted from `GetMoney()` delta accounting to item-value summing as part of the AutoSell/AutoRepair decoupling that fixed the "Sold N for 0g" race; the README still described the pre-v1.6.36 mechanism. (2) Line 47 (PR): the bullet "Dynamic icon shows the current spell on the action bar" deleted entirely — the icon ticker was removed in v1.6.25 as part of PR architectural hardening (`Show()`/`SetTexture` on ActionButton children propagated taint causing Secret Value errors in Delves/M+/raids); the README still claimed the feature existed.
+- `VeritasUI_CleanSolo` — **`/reload`-required policy formalized as file-top comment block + tooltip consistency pass.** Per audit OQ#3, CleanSolo's `hooksecurefunc`-heavy implementation cannot cleanly toggle off mid-session (hooks have no inverse), so settings cannot apply live the way `QualityOfLife`'s v1.6.28 mid-session-apply pattern does. This asymmetry is intentional but was previously undocumented in the file itself, leaving any reader (or future audit) wondering whether it was a bug or a feature. Added a 38-line POLICY block at the top of `CleanSolo.lua` (lines 4–41) documenting: (a) why the module uses `hooksecurefunc` extensively, (b) why hooks can't be removed at runtime, (c) the chosen design (db-gating at hook-installation time on `PLAYER_LOGIN`), (d) the explicit asymmetry with `QualityOfLife` and why both are correct, (e) the policy that all CS setting tooltips and on-toggle messages mention `/reload to apply`. Also updated all 11 setting tooltips (10 checkboxes in the `options` table + the Fade Action Bars dropdown) to consistently end with "Requires `/reload` to apply." — the Fade Action Bars dropdown previously said "`/reload` to apply" (slightly different wording) and the 10 checkboxes said nothing about `/reload`. All tooltips now use the same suffix wording. No Lua logic changes.
+
 ## [1.6.42] - 2026-05-16
 
 ### Added
