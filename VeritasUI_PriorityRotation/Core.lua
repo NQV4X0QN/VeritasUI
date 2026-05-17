@@ -309,7 +309,19 @@ function PR:UpdateMacroStub()
 
     local idx = GetMacroIndexByName(self.MACRO_NAME)
     if idx > 0 then
-        EditMacro(idx, self.MACRO_NAME, macroIcon, macroBody)
+        -- pcall-wrap the EditMacro write — historically reliable but the
+        -- macro frame can be in a transient state during /reload bursts
+        -- or addon-driven CreateMacro pile-ups; a hard error here would
+        -- leave the user with a vague Lua popup instead of a clean
+        -- 'try again in a moment' message.  Matches the failure-return
+        -- contract used by the macro-list-full branch below.
+        local ok, err = pcall(EditMacro, idx, self.MACRO_NAME, macroIcon, macroBody)
+        if not ok then
+            VUI.Print("Priority Rotation",
+                "|cFFFF4444Couldn't update the Attack macro|r — "
+                .. tostring(err))
+            return false
+        end
         return true
     else
         if GetNumMacros() < (MAX_ACCOUNT_MACROS or 120) then
