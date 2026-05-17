@@ -325,7 +325,18 @@ function PR:UpdateMacroStub()
         return true
     else
         if GetNumMacros() < (MAX_ACCOUNT_MACROS or 120) then
-            CreateMacro(self.MACRO_NAME, macroIcon, macroBody)
+            -- pcall-wrap CreateMacro for the same reason F-7 wrapped
+            -- EditMacro at line 318 — the macro frame can be in a
+            -- transient state during /reload bursts.  Mirrors the
+            -- failure-return contract from EditMacro and the macro-
+            -- list-full branch below.
+            local ok, err = pcall(CreateMacro, self.MACRO_NAME, macroIcon, macroBody)
+            if not ok then
+                VUI.Print("Priority Rotation",
+                    "|cFFFF4444Couldn't create the Attack macro|r — "
+                    .. tostring(err))
+                return false
+            end
             return true
         else
             VUI.Print("Priority Rotation",
