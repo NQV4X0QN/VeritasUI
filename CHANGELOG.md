@@ -2,6 +2,17 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.39] - 2026-05-16
+
+### Added
+- `VeritasUI_PriorityRotation` — **One-time per-session diagnostic warnings for missing macros and stale spellIDs in compiled rotations.** Two parallel diagnostic gaps were closed in `Core.lua` `CompileSequence`. The macro branch (was lines 171–177) silently elided macro entries whose macros had been deleted or renamed since authoring — the rotation simply got shorter with no signal to the user. The spell branch (was lines 185–188) emitted `/cast <spellName>` text for stale `spellID`s without verifying the ID still resolved, so every key press surfaced an "Unknown spell: X" line in chat with no indication of which rotation slot was the culprit. Both branches now use the same warn-once-per-session pattern: file-scope `PR._missingMacroWarned = {}` and `PR._missingSpellWarned = {}` (declared with the `PR.*` constants block at line 65–66) track which names/IDs have already been reported. On a successful resolve the stored flag is cleared, so a future delete-and-recompile re-warns. On a missing macro or `C_Spell.GetSpellInfo`-nil spellID, a single `VUI.Print` "Missing macro X — entry skipped this session" or "Stale spell X (ID N) — entry skipped this session. Drag the current version of the spell back onto the slot." is emitted and the entry is elided from the compiled sequence as before. Subsequent compiles are silent until the entry resolves or `/reload` clears the table. The audit's optional Editor.lua red `[M]` visual indicator was deferred per minimal-change preference; rotation row icons remain unchanged.
+
+### Changed
+- `VeritasUI_PriorityRotation` — **`UpdateMacroStub` now `pcall`-guards `EditMacro` and returns false on failure.** `EditMacro(idx, name, icon, body)` at `Core.lua:273` was historically reliable but the macro frame can be in a transient state during `/reload` bursts or addon-driven `CreateMacro` pile-ups; a hard error here would surface as a vague Lua popup with no actionable recovery message. Wrapped in `pcall`; on failure prints `|cFFFF4444Couldn't update the Attack macro|r — <err>` via `VUI.Print` and returns `false`, matching the failure-return contract already used by the macro-list-full branch immediately below (line 280–283). `CreateMacro` at line 277 is intentionally not wrapped — F-7 scope is `EditMacro` only; a future audit cycle can address `CreateMacro` if its surface ever proves unreliable.
+
+### Fixed
+- `VeritasUI_PriorityRotation` — **`/pr settings` typed before Settings panel init now prints a friendly message instead of erroring on `Settings.OpenToCategory(nil)`.** `PR.settingsCategoryID` is set in `Settings.lua:512` after `category:GetID()` resolves; if the user types `/pr settings` during the brief PLAYER_LOGIN burst before that init line runs (timing-fragile, may need repeated tries to reproduce), `Core.lua:466` previously called `Settings.OpenToCategory(nil)` which depending on Blizzard's tolerance either silently no-op'd or surfaced a Lua error. Added a nil-check: if `PR.settingsCategoryID` is set, open the panel; otherwise emit `Priority Rotation is still loading — try again in a moment.` via `VUI.Print`. After PLAYER_LOGIN completes the panel opens normally as before.
+
 ## [1.6.38] - 2026-05-16
 
 ### Fixed

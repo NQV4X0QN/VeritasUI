@@ -514,7 +514,16 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
     local cmd = strtrim(msg or ""):lower()
 
     if cmd == "settings" then
-        Settings.OpenToCategory(PR.settingsCategoryID)
+        if PR.settingsCategoryID then
+            Settings.OpenToCategory(PR.settingsCategoryID)
+        else
+            -- Settings.lua hasn't reached its category-registration line
+            -- yet (rare: typing /pr settings during the PLAYER_LOGIN
+            -- burst before Settings panel init completes).  Friendly
+            -- message instead of Settings.OpenToCategory(nil) error.
+            VUI.Print("Priority Rotation",
+                "Priority Rotation is still loading — try again in a moment.")
+        end
 
     elseif cmd == "clear" then
         PR:CurrentProfile().spells = {}
