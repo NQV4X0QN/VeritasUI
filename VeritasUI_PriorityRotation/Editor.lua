@@ -146,14 +146,22 @@ local function BuildEntryFromCursor()
         -- Items dragged from a bag, character pane trinket slot, or
         -- merchant. cursorData holds the itemID; cursorSpellID is unused.
         local itemID = cursorData
-        local name, _, quality, _, _, _, _, _, equipLoc, icon = GetItemInfo(itemID)
-        if not name then
-            -- Item info isn't in the client cache yet. Rare for items the
-            -- player owns (which are always cached), but possible for
-            -- ephemeral cursor states. Ask the user to retry once cached.
+        -- GetItemInfo return values may be Secret Values in raid
+        -- encounters; guard the call and the equipLoc comparison.
+        -- Mirrors IsEquippableGear at QualityOfLife.lua:339-350.
+        local ok, name, _, quality, _, _, _, _, _, equipLoc, icon =
+            pcall(GetItemInfo, itemID)
+        if not ok or not name then
+            -- Item info isn't in the client cache yet (or returned a
+            -- Secret Value). Rare for items the player owns (which are
+            -- always cached), but possible for ephemeral cursor states.
+            -- Ask the user to retry once cached.
             return nil, "Item info not loaded yet — try again in a moment."
         end
-        if equipLoc ~= "INVTYPE_TRINKET" then
+        local okEq, isTrinket = pcall(function()
+            return equipLoc == "INVTYPE_TRINKET"
+        end)
+        if not okEq or not isTrinket then
             return nil, "Only trinkets can be added to the rotation right now."
         end
         return {
@@ -616,8 +624,12 @@ function PR:BuildEditor(parent, contentWidth)
                         e.icon = freshIcon
                     end
                 elseif e.itemID then
-                    local _, _, _, _, _, _, _, _, _, freshIcon = GetItemInfo(e.itemID)
-                    if freshIcon then
+                    -- GetItemInfo may return Secret Values in raid encounters;
+                    -- guard the call. Refresh is purely cosmetic — failure
+                    -- silently keeps the cached e.icon.
+                    local ok, _, _, _, _, _, _, _, _, _, freshIcon =
+                        pcall(GetItemInfo, e.itemID)
+                    if ok and freshIcon then
                         displayIcon = freshIcon
                         e.icon = freshIcon
                     end
