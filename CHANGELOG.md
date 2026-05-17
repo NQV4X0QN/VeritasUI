@@ -2,6 +2,22 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.44] - 2026-05-16
+
+### Changed
+- `VeritasUI_PriorityRotation` — **`/pr status` body now emits via `VUI.Print('Priority Rotation', ...)` matching F-38's `/pr diag` pattern.** F-38 (v1.6.42) unified the `/pr diag` output channel but was scoped to `/pr diag` only per the audit; `/pr status` retained the same header-uses-VUI.Print / body-uses-print mix that F-38 corrected. Per Observation #1 from `REMEDIATION_DELTA_AUDIT.md` (post-Phase 8 consistency cleanup, user-approved Phase 9 scope): bulk-converted 5 `print()` calls in `Core.lua:589-605` to `VUI.Print('Priority Rotation', ...)` using the same line-bounded perl regex as F-38. Multi-line prints (the `Macro:`/`On bar:`/`Keybind:` continuations) convert correctly because each trailing `)` still balances the opening `(` we replaced. All `/pr status` output now consistently prefixed.
+- `VeritasUI_PriorityRotation` — **`UpdateMacroStub` now `pcall`-guards `CreateMacro` symmetrically with the F-7 `EditMacro` wrapping.** F-7 (v1.6.39) wrapped `EditMacro` at `Core.lua:318` to catch transient macro-frame state during `/reload` bursts; `CreateMacro` at `Core.lua:328` is called under the same conditions but was left unwrapped per F-7's audit-defined scope. Per Observation #4 from `REMEDIATION_DELTA_AUDIT.md` (user-approved Phase 9 scope): wrapped in `pcall`; on failure prints `|cFFFF4444Couldn't create the Attack macro|r — <err>` via `VUI.Print` and returns `false`, matching the failure-return contract used by both the EditMacro branch above and the macro-list-full branch below. Both macro-write APIs in `UpdateMacroStub` now have identical pcall-and-return-false handling.
+
+### Documentation
+- `VeritasUI_PriorityRotation` — **Stale legacy-`GetItemInfo` comment in `Editor.lua` Refresh block updated to match F-37's migrated code.** F-37 (v1.6.42) migrated the actual API call from legacy `GetItemInfo` to `C_Item.GetItemInfo` at `Editor.lua:631`, but the descriptive comment immediately above (`Editor.lua:616-618`, the "Refresh icon" doc block) still named the legacy global. Per Observation #2 from `REMEDIATION_DELTA_AUDIT.md` (user-approved Phase 9 scope): updated comment text from "refresh icon from `GetItemInfo`" to "refresh icon from `C_Item.GetItemInfo`" so the comment matches the migrated code.
+
+### Skill maintenance (outside repo)
+- `~/.agents/skills/veritasui/SKILL.md` — Added `**Policy:**` field to the CleanSolo Module Inventory entry cross-referencing the v1.6.43 file-top POLICY block at `CleanSolo.lua:4-41` (F-10 / OQ#3). Captures the `hooksecurefunc`-required-`/reload` rationale, the intentional asymmetry with QoL, and the tooltip wording policy. Per Observation #3 from `REMEDIATION_DELTA_AUDIT.md` (user-approved Phase 9 scope). Skill files are outside the repo's git history; no separate commit but logged here so the change is discoverable from changelog history.
+
+### Deferred (per user direction in Phase 9)
+- Observation #5 (CHANGELOG "Conventions" subsection as standing format) — left for the user to decide naturally as future entries accumulate.
+- Observation #6 (`VUI.PrintRaw` body-text helper to suppress per-line prefixes in `/pr diag`) — left as YAGNI; `/pr diag` is a rarely-used diagnostic command and the current verbose output is acceptable.
+
 ## [1.6.43] - 2026-05-16
 
 ### Documentation
