@@ -2,6 +2,17 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.41] - 2026-05-16
+
+### Changed
+- `VeritasUI_CleanSolo` — **Defaults init now uses recursive `DeepCopy` instead of inline shallow copy (preventive).** The `ADDON_LOADED` handler in `CleanSolo.lua` previously initialized table-typed defaults with a one-level inline shallow copy (`for k2, v2 in pairs(v) do db[k][k2] = v2 end`). This is correct for the only currently-existing table default (`fadeActionBars = {}`, an empty table with no nested keys), but any future nested default would silently alias the `defaults` constant under the shallow-copy idiom — mutating `db.<table>.<nested>` would mutate `defaults.<table>.<nested>` at runtime, an extremely subtle aliasing bug that only surfaces when the user's saved-vars and the constant both end up pointing at the same subtable. Replaced with the recursive `DeepCopy` pattern ported verbatim from `ZoneQuests.lua:357-362` (the audit-blessed implementation, also documented in SKILL.md Known Landmines under "Table defaults must be deep-copied on first init"). Behavior unchanged for the current single flat table default; future-proof against new nested defaults.
+
+### Documentation
+- `VeritasUI_AdvancedOptions` — **`KNOWN_CVARS` policy formalized as comment block (per audit OQ#2).** The master CVar list at `Browser.lua:49-67` includes some Midnight-removed CVar names. The audit raised this as F-12 (apparent drift); investigation confirmed it is policy: `C_CVar.GetCVarInfo` returns `nil` for removed names, and the Strategy 3 probe loop silently skips any name that returns nil. Removing entries from `KNOWN_CVARS` would risk accidentally pruning a CVar that does exist on this client (Blizzard restoring or renaming a CVar between patch cycles is not unprecedented), and the cost of keeping a dead entry is one wasted probe per `/reload` (negligible). Replaced the previous one-line "extend freely; invalid names are harmlessly skipped" comment with a full POLICY block at the same site (`Browser.lua:49-66`) explicitly: (1) calling out `C_CVar.GetCVarInfo`-nil as the silent-skip mechanism, (2) cross-referencing the Strategy 3 loop where the probe runs (line 225), (3) documenting the rationale for never pruning entries, (4) tagging the policy with its formalization version (v1.6.41) and origin (audit OQ#2). No code change. Future audit cycles should treat apparent stale entries in `KNOWN_CVARS` as policy, not drift.
+
+### Conventions
+- **`KNOWN_CVARS` is intentionally broad.** Dead names from previous patch cycles are silently skipped at runtime via `C_CVar.GetCVarInfo` returning nil. Entries are NOT pruned on Midnight removals — removing a name risks accidentally removing a CVar that does exist. See the policy comment at `VeritasUI_AdvancedOptions/Browser.lua:49-66`. This is policy, not drift.
+
 ## [1.6.40] - 2026-05-16
 
 ### Changed

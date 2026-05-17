@@ -48,7 +48,22 @@ local filteredList   = {}    -- current search-filtered view
 
 -- Master list of known CVars to probe when no enumeration API is
 -- available.  Sorted alphabetically for human readability.
--- Extend this list freely — invalid names are harmlessly skipped.
+--
+-- POLICY (formalized v1.6.41 per audit OQ#2): KNOWN_CVARS is
+-- intentionally broad.  Dead names — CVars that existed in earlier
+-- builds but have been removed in Midnight or any subsequent patch
+-- cycle — are silently skipped at runtime via C_CVar.GetCVarInfo
+-- returning nil (see Strategy 3 loop at line 225).  Entries are NOT
+-- pruned on Midnight removals.
+--
+-- Rationale: removing a name from this list risks accidentally
+-- removing a CVar that does exist on this client.  The cost of
+-- keeping a dead name is one wasted probe per /reload (negligible);
+-- the cost of removing a live name is a CVar that silently drops
+-- out of the All CVars tab and becomes invisible to the user.
+--
+-- Therefore: extend freely; do not prune.  Apparent stale entries
+-- are policy, not drift.
 local KNOWN_CVARS = {
     -- Action Bars
     "ActionButtonUseKeyDown", "alwaysShowActionBars", "countdownForCooldowns",
