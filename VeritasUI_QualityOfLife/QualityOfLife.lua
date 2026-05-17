@@ -297,7 +297,14 @@ local function AutoRepair()
     local useGuild = db.repairFunding ~= "personal"
         and IsInGuild()
         and CanGuildBankRepair()
-        and not (GetGuildInfoText() or ""):find("[noautorepair]", 1, true)
+        -- Case-insensitive, whitespace-tolerant `[noautorepair]` match.
+        -- The user is at the mercy of whatever the GM typed in guild
+        -- info — `[NoAutoRepair]`, `[ noautorepair ]`, `[NOAUTOREPAIR]`
+        -- all mean the same thing and all suppress the guild-bank repair.
+        -- Internal whitespace (`[no auto repair]`) is intentionally NOT
+        -- matched so a GM who really did mean a different bracketed tag
+        -- isn't accidentally interpreted as the suppression convention.
+        and not (GetGuildInfoText() or ""):lower():find("%[%s*noautorepair%s*%]")
 
     if useGuild then
         RepairAllItems(true)   -- guild funds first
