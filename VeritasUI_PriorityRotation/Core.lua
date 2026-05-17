@@ -471,6 +471,14 @@ local ef = CreateFrame("Frame")
 ef:RegisterEvent("ADDON_LOADED")
 ef:RegisterEvent("PLAYER_LOGIN")
 ef:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
+-- UPDATE_MACROS fires when any macro is created, edited, deleted, or
+-- reordered.  We re-run the compile so the F-5 missing-macro warning
+-- surfaces immediately on external deletion (the user has no other
+-- trigger; PR's own editor is debounced separately).  ScheduleCompile's
+-- 0.3s debounce coalesces editor bursts (rapid save/rename/reorder) into
+-- a single recompile, and CompileSequence's `if not self.db then return`
+-- guard at line 150 makes any early fire (before ADDON_LOADED) a no-op.
+ef:RegisterEvent("UPDATE_MACROS")
 -- PLAYER_REGEN_ENABLED is owned by VUI.CombatQueue (Lib.lua).
 -- All deferred post-combat actions go through VUI.CombatQueue.Add().
 
@@ -501,6 +509,15 @@ ef:SetScript("OnEvent", function(_, event, arg1)
             format("Switched to |cFFFFFF00%s|r.", PR:GetCurrentSpecLabel()))
         PR:RefreshUI()
         PR:ScheduleScan(1)
+
+    elseif event == "UPDATE_MACROS" then
+        -- Route through ScheduleCompile so editor bursts (rapid
+        -- save/rename/reorder) collapse into one recompile 0.3s after
+        -- the last fire.  CompileSequence then surfaces the F-5 warning
+        -- for any rotation entry whose macro was deleted, and the now-
+        -- missing entry is elided so the rotation continues working
+        -- with whatever else is in the profile.
+        PR:ScheduleCompile()
     end
 end)
 
