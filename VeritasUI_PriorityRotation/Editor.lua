@@ -614,8 +614,8 @@ function PR:BuildEditor(parent, contentWidth)
             local e   = spells[i]
             if e and (e.spellID or e.macroName or e.itemID) then
                 -- Refresh icon: for macros, re-read the current macro icon;
-                -- for items, refresh icon from GetItemInfo (in case the item
-                -- got upgraded / changed quality).
+                -- for items, refresh icon from C_Item.GetItemInfo (in case
+                -- the item got upgraded / changed quality).
                 local displayIcon = e.icon
                 if e.macroName then
                     local _, freshIcon = GetMacroInfo(e.macroName)
