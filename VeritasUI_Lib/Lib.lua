@@ -113,7 +113,18 @@ function VUI.SuppressFrame(f)
     VUI.SafeHide(f)
     hooksecurefunc(f, "Show", function(self)
         self:SetAlpha(0)
-        if not InCombatLockdown() then self:Hide() end
+        if not InCombatLockdown() then
+            self:Hide()
+        else
+            -- Combat-locked Show: alpha 0 hides it visually, but the
+            -- frame is still :IsShown() and re-asserts on layout passes.
+            -- Defer the Hide until PLAYER_REGEN_ENABLED.  IsShown guard
+            -- handles the case where Blizzard already hid the frame
+            -- itself between Show and the queue drain.
+            VUI.CombatQueue.Add(function()
+                if self:IsShown() then self:Hide() end
+            end)
+        end
     end)
 end
 
