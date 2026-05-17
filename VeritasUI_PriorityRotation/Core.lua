@@ -592,16 +592,16 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         local macroExists = macroIdx and macroIdx > 0
         local override   = PR.overrides[PR.MACRO_NAME]
         VUI.Print("Priority Rotation", "Status:")
-        print("  Enabled:  " .. yn(PR:IsEnabled()))
-        print("  Macro:    " .. yn(macroExists)
+        VUI.Print("Priority Rotation", "  Enabled:  " .. yn(PR:IsEnabled()))
+        VUI.Print("Priority Rotation", "  Macro:    " .. yn(macroExists)
             .. (macroExists and "" or "  — run |cFFFFFF00/pr macro|r"))
-        print("  On bar:   " .. (override
+        VUI.Print("Priority Rotation", "  On bar:   " .. (override
             and "|cFF00FF00slot " .. override.slot .. "|r"
             or  "|cFFFF4444no|r  — run |cFFFFFF00/pr scan|r"))
-        print("  Keybind:  " .. ((override and override.keys)
+        VUI.Print("Priority Rotation", "  Keybind:  " .. ((override and override.keys)
             and "|cFF00FF00" .. tconcat(override.keys, ", ") .. "|r"
             or  "|cFFFF8800none|r — assign a key to the macro's bar slot"))
-        print("  Compiled: " .. #PR.compiledSequence .. " step(s)")
+        VUI.Print("Priority Rotation", "  Compiled: " .. #PR.compiledSequence .. " step(s)")
 
     elseif cmd == "debug" then
         PR.debug = not PR.debug
