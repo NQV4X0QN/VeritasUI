@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.37] - 2026-05-16
+
+### Fixed
+- `VeritasUI_QualityOfLife` — **AutoSell `C_Item.GetItemInfo` calls now pcall-protected against Midnight Secret Values.** v1.6.36's rewrite to item-value summing reinstated `C_Item.GetItemInfo` at `ScanJunk` (lines 117-133) and `SellNextBatch` (lines 159-185) without preserving the pcall protection that v1.3.18 and v1.3.22 had established for this exact API. The Item Level overlay paths in the same file (lines 339-368) remained pcall'd, confirming the inconsistency was unintentional. Realistic exposure window: a player who starts selling near a hub vendor, then is pulled into combat (trash respawn in Stormwind / Dornogal) before the sell completes, would hit a Secret-Value comparison error on the next `SellNextBatch` cycle, producing a Lua error popup with `BAG_UPDATE_DELAYED` still registered. Fixed using the per-call pcall pattern that mirrors `QualityOfLife.lua:339-350` (the `IsEquippableGear` defensive pattern): the `info.quality == 0 and not info.hasNoValue` check is wrapped in `pcall(function() ... end)`, the `C_Item.GetItemInfo` call is wrapped in `pcall(C_Item.GetItemInfo, info.itemID)` capturing the 11th return positionally, and the `price > 0` arithmetic is wrapped in a third `pcall(function() ... end)` that returns the contribution (`price * stackCount`) on success. Items that fail any of the three guards are skipped (treated as not-junk / not-sellable). `SellNextBatch` applies the same three-pcall pattern with the additional `info.isLocked` clause in the first guard. The closure-helper alternative proposed in the audit was rejected in favor of inline per-call pcalls so the fix matches the file's established defensive idiom exactly. No other AutoSell behavior modified — locked-items-as-remaining accounting, no-progress timeout, decoupled AutoRepair, MERCHANT_SHOW one-frame defer, and BAG_UPDATE_DELAYED retry are all preserved verbatim.
+
 ## [1.6.36] - 2026-05-16
 
 ### Changed

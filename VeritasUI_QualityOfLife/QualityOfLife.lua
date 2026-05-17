@@ -120,11 +120,29 @@ local function ScanJunk()
         local n = C_Container.GetContainerNumSlots(bag) or 0
         for slot = 1, n do
             local info = C_Container.GetContainerItemInfo(bag, slot)
-            if info and info.quality == 0 and not info.hasNoValue then
-                local price = select(11, C_Item.GetItemInfo(info.itemID)) or 0
-                if price > 0 then
-                    total = total + price * (info.stackCount or 1)
-                    count = count + 1
+            if info then
+                -- info.quality / info.hasNoValue may be secret values in
+                -- raid encounters; guard the comparison.  Items that fail
+                -- the check are skipped (treated as not-junk).  Mirrors the
+                -- defensive pattern at IsEquippableGear (lines 339-350).
+                local okJ, isJunk = pcall(function()
+                    return info.quality == 0 and not info.hasNoValue
+                end)
+                if okJ and isJunk then
+                    local okP, _, _, _, _, _, _, _, _, _, _, price =
+                        pcall(C_Item.GetItemInfo, info.itemID)
+                    if okP then
+                        -- price may be a secret value; guard arithmetic.
+                        local okC, contrib = pcall(function()
+                            if price and price > 0 then
+                                return price * (info.stackCount or 1)
+                            end
+                        end)
+                        if okC and contrib then
+                            total = total + contrib
+                            count = count + 1
+                        end
+                    end
                 end
             end
         end
@@ -172,12 +190,30 @@ local function SellNextBatch()
         local n = C_Container.GetContainerNumSlots(bag) or 0
         for slot = 1, n do
             local info = C_Container.GetContainerItemInfo(bag, slot)
-            if info and info.quality == 0 and not info.hasNoValue and not info.isLocked then
-                local price = select(11, C_Item.GetItemInfo(info.itemID)) or 0
-                if price > 0 then
-                    C_Container.UseContainerItem(bag, slot)
-                    sold = sold + 1
-                    if sold >= SELL_BATCH then break end
+            if info then
+                -- info.quality / info.hasNoValue / info.isLocked may be
+                -- secret values in raid encounters; guard the comparison.
+                -- Items that fail the check are skipped (treated as not-
+                -- sellable).  Mirrors IsEquippableGear (lines 339-350).
+                local okJ, isSellable = pcall(function()
+                    return info.quality == 0
+                        and not info.hasNoValue
+                        and not info.isLocked
+                end)
+                if okJ and isSellable then
+                    local okP, _, _, _, _, _, _, _, _, _, _, price =
+                        pcall(C_Item.GetItemInfo, info.itemID)
+                    if okP then
+                        -- price may be a secret value; guard the comparison.
+                        local okC, hasPrice = pcall(function()
+                            return price and price > 0
+                        end)
+                        if okC and hasPrice then
+                            C_Container.UseContainerItem(bag, slot)
+                            sold = sold + 1
+                            if sold >= SELL_BATCH then break end
+                        end
+                    end
                 end
             end
         end
