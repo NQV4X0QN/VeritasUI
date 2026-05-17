@@ -146,11 +146,11 @@ local function BuildEntryFromCursor()
         -- Items dragged from a bag, character pane trinket slot, or
         -- merchant. cursorData holds the itemID; cursorSpellID is unused.
         local itemID = cursorData
-        -- GetItemInfo return values may be Secret Values in raid
+        -- C_Item.GetItemInfo return values may be Secret Values in raid
         -- encounters; guard the call and the equipLoc comparison.
         -- Mirrors IsEquippableGear at QualityOfLife.lua:339-350.
         local ok, name, _, quality, _, _, _, _, _, equipLoc, icon =
-            pcall(GetItemInfo, itemID)
+            pcall(C_Item.GetItemInfo, itemID)
         if not ok or not name then
             -- Item info isn't in the client cache yet (or returned a
             -- Secret Value). Rare for items the player owns (which are
@@ -624,11 +624,11 @@ function PR:BuildEditor(parent, contentWidth)
                         e.icon = freshIcon
                     end
                 elseif e.itemID then
-                    -- GetItemInfo may return Secret Values in raid encounters;
-                    -- guard the call. Refresh is purely cosmetic — failure
-                    -- silently keeps the cached e.icon.
+                    -- C_Item.GetItemInfo may return Secret Values in raid
+                    -- encounters; guard the call. Refresh is purely cosmetic
+                    -- — failure silently keeps the cached e.icon.
                     local ok, _, _, _, _, _, _, _, _, _, freshIcon =
-                        pcall(GetItemInfo, e.itemID)
+                        pcall(C_Item.GetItemInfo, e.itemID)
                     if ok and freshIcon then
                         displayIcon = freshIcon
                         e.icon = freshIcon
