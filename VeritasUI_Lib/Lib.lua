@@ -29,6 +29,11 @@ end
 local VUI = {}
 _G.VeritasUI = VUI
 VUI.VERSION = "1.6.41"
+-- Diagnostic gate.  When true, opt-in error prints surface from
+-- normally-silent paths (currently: CombatQueue pcall failures, see
+-- Lib.lua:348).  Off by default to avoid clutter; flip at runtime via
+-- /run VeritasUI.debug = true and reproduce the issue.
+VUI.debug = false
 
 ----------------------------------------------------------------
 --  Print helpers
@@ -334,7 +339,18 @@ cqFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 cqFrame:SetScript("OnEvent", function()
     local pending = queue
     queue = {}
-    for _, fn in ipairs(pending) do pcall(fn) end
+    for _, fn in ipairs(pending) do
+        -- Errors inside queued closures are caught (the queue must
+        -- always finish draining; one bad action shouldn't strand the
+        -- rest in combat-locked state).  Surface failures only when
+        -- VUI.debug is on so users can reproduce silent CombatQueue
+        -- bugs by flipping the flag and triggering the path again.
+        local ok, err = pcall(fn)
+        if not ok and VUI.debug then
+            print("|cFFFF4444[VeritasUI]|r CombatQueue error: "
+                .. tostring(err))
+        end
+    end
 end)
 
 -- NOTE: VUI.AttachSlimScrollbar was removed in v1.6.18.
