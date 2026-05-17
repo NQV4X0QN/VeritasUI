@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.40] - 2026-05-16
+
+### Changed
+- `VeritasUI_QualityOfLife` — **`[noautorepair]` guild-info parsing is now case-insensitive and tolerant of whitespace inside the brackets.** The auto-repair feature respects a longstanding guild-convention tag in `GetGuildInfoText()` — if the tag is present, the guild-bank repair branch is skipped and personal gold covers the cost. Previously the parser at `QualityOfLife.lua:264` (now line 300 after F-1's expansion) used `:find("[noautorepair]", 1, true)`, a plain literal match that only fired on the exact lowercase string `[noautorepair]`. A GM who typed `[NoAutoRepair]`, `[ noautorepair ]`, or `[NOAUTOREPAIR]` would have their suppression intent silently ignored and the user's repairs would still hit the guild bank. The user is at the mercy of whatever the GM typed; defensive parsing only ever makes the feature more reliable. Replaced with `:lower():find("%[%s*noautorepair%s*%]")` — case-insensitive (`:lower()` first), tolerant of optional whitespace immediately inside both brackets. Internal whitespace (`[no auto repair]`) is intentionally NOT matched so a GM who really did mean a different bracketed tag isn't accidentally swept up by the suppression convention. Resolves OQ#4.
+
+### Fixed
+- `VeritasUI_QualityOfLife` — **`/way` usage hint now states "coordinates must be positive 0–100"** so users who type `/way -5 50` (or any negative coordinate) understand why the command rejected their input. The current `(%d+%.?%d*)` parse pattern correctly refuses to match negative numbers (which don't exist in WoW maps — coordinates are always 0–100 within a map's UV space), but the rejected input falls through to the usage hint without explaining the constraint. The 0–100 range check at `QualityOfLife.lua:1278` does emit a friendly "Coordinates must be between 0 and 100." message, but only on a successful parse where the values exceed 100; negative coordinates fail to parse entirely and never reach that line. Updated the usage hint text inline to make the constraint discoverable on the first failed attempt. No pattern change, no behavior change for valid input — purely a clarity fix per the F-31 pre-resolved decision.
+
 ## [1.6.39] - 2026-05-16
 
 ### Added

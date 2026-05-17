@@ -1267,7 +1267,7 @@ WayCommand = function(msg)
     if not (mapID and x and y) then
         VUI.Print("Quality of Life",
             "Usage: |cFFFFFF00/way #mapID x y|r or |cFFFFFF00/way x y|r  "
-            .. "(e.g. |cFFFFFF00/way #2351 45.2 56.3|r)  —  "
+            .. "(coordinates must be positive 0–100, e.g. |cFFFFFF00/way #2351 45.2 56.3|r)  —  "
             .. "|cFFFFFF00/way clear|r to remove.")
         return
     end
