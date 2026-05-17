@@ -29,7 +29,7 @@ Functional enhancements that don't fit the "hide/fade" category.
 
 - **Map Coordinates** — displays player and cursor coordinates on the World Map using native tooltip backdrop textures; draggable with a lock/unlock icon button; position persists across sessions
 - **Item Level Overlays** — shows color-coded item levels on gear in bags, character panel, bank, warband bank, and merchant windows; uses a universal `SetItemButtonQuality` hook with a dedicated merchant scanner
-- **Auto Sell Junk** — automatically sells gray items when visiting a merchant using event-driven batch selling; reports earnings via gold delta
+- **Auto Sell Junk** — automatically sells gray items when visiting a merchant using event-driven batch selling; reports earnings by summing item sell prices, independent of any concurrent gold deductions (e.g. AutoRepair on the same merchant frame)
 - **Auto Repair** — automatically repairs gear at repair merchants, attempting guild funds first with source reporting
 - **TomTom-compatible Waypoints** — `/way #mapID x y [label]` or `/way x y [label]` places a native Blizzard waypoint pin on the World Map and activates the minimap directional arrow; `/way clear` removes it; reads the same format used by most online guides (e.g. `/way #2351 45.2 56.3`)
 
@@ -44,7 +44,6 @@ One-button spell cycling system for accessibility.
 - Per-spec profiles with drag-and-drop editor — supports spellbook spells, `/macro` macros, and equipped trinkets
 - `PortraitFrameTemplate` settings window registered as a Tier A UIPanel (behaves like Blizzard's Journeys/Collections panels)
 - Built-in Tools section: spec switcher dropdown, Spellbook and Macros toggle buttons
-- Dynamic icon shows the current spell on the action bar
 - Frequency tuning per entry for weighted distribution (interleave compiler)
 
 Settings: `/pr` or `/pr settings`
