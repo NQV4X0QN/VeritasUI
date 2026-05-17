@@ -28,7 +28,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.6.37"
+VUI.VERSION = "1.6.38"
 
 ----------------------------------------------------------------
 --  Print helpers
@@ -144,7 +144,7 @@ end
 ----------------------------------------------------------------
 local HOVER_FADE_IN   = 0.2
 local HOVER_FADE_OUT  = 0.5
-local HOVER_POLL_RATE = 0.1    -- ~10 Hz always
+local HOVER_FADE_POLL_RATE = 0.1    -- ~10 Hz always
 local HOVER_LEAVE_GRACE = 0.15 -- seconds after last "not over" before fading
 
 function VUI.HookHoverFade(target, shouldStayVisible)
@@ -204,7 +204,7 @@ function VUI.HookHoverFade(target, shouldStayVisible)
     -- propagation that causes Secret Value errors in Midnight Delves.
     poll:SetScript("OnUpdate", function(self, elapsed)
         self._t = (self._t or 0) + elapsed
-        if self._t < HOVER_POLL_RATE then return end
+        if self._t < HOVER_FADE_POLL_RATE then return end
         self._t = 0
         if IsLocked() then graceSince = nil; return end
         if IsMouseOverAny() then
@@ -241,7 +241,7 @@ local FADE_IN_TIME     = 0.20
 local FADE_OUT_TIME    = 0.50
 local FADE_OUT_DELAY   = 0.50
 local HEALTH_IDLE_TIME = 3.0
-local HOVER_POLL_RATE  = 0.20
+local PLAYER_FRAME_HOVER_POLL_RATE  = 0.20
 
 function VUI.HookPlayerFrameFade(frame, inCombatRef)
     if not frame then return end
@@ -287,7 +287,7 @@ function VUI.HookPlayerFrameFade(frame, inCombatRef)
                 wasShowing = true
             end
             if not pollTicker then
-                pollTicker = C_Timer.NewTicker(HOVER_POLL_RATE, function()
+                pollTicker = C_Timer.NewTicker(PLAYER_FRAME_HOVER_POLL_RATE, function()
                     if not ShouldShow() then Evaluate() end
                 end)
             end
