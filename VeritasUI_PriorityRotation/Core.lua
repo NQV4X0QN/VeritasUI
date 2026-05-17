@@ -58,6 +58,11 @@ PR.compiledSequence = {}
 PR.compiledNames    = {}   -- step → display name, built during compile
 PR.overrides        = {}   -- [macroName] = { slot, keys } — populated by scan
 PR.debug            = false
+-- Diagnostic state — keys are the offending name/ID, value `true` means
+-- "we have already warned about this one this session".  Cleared when
+-- the underlying macro/spell becomes valid again so a subsequent
+-- delete-and-recompile re-warns.  Survives until /reload.
+PR._missingMacroWarned = {}
 
 ----------------------------------------------------------------
 --  Debug output — gated on PR.debug; never clutters normal play.
@@ -174,6 +179,18 @@ function PR:CompileSequence()
                         macrotext = mBody
                         entryName = "[MACRO:" .. (mName or e.macroName) .. "]"
                         if mIcon then e.icon = mIcon end   -- keep editor icon current
+                        -- Macro is back; reset warning state so a future
+                        -- delete-and-recompile warns again.
+                        PR._missingMacroWarned[e.macroName] = nil
+                    elseif not PR._missingMacroWarned[e.macroName] then
+                        -- Macro has been deleted or renamed since the entry
+                        -- was authored.  Without this warning the entry is
+                        -- silently elided from the rotation and the user
+                        -- has no signal that anything is wrong.
+                        PR._missingMacroWarned[e.macroName] = true
+                        VUI.Print("Priority Rotation", format(
+                            "|cFFFF8800Missing macro|r |cFFFFFF00%s|r — entry skipped this session. Recreate the macro in |cFFFFFF00/macro|r.",
+                            e.macroName))
                     end
                 elseif e.itemID then
                     local useTarget = e.itemName
