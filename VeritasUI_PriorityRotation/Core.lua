@@ -63,6 +63,7 @@ PR.debug            = false
 -- the underlying macro/spell becomes valid again so a subsequent
 -- delete-and-recompile re-warns.  Survives until /reload.
 PR._missingMacroWarned = {}
+PR._missingSpellWarned = {}
 
 ----------------------------------------------------------------
 --  Debug output — gated on PR.debug; never clutters normal play.
@@ -200,8 +201,29 @@ function PR:CompileSequence()
                     macrotext = "/use " .. useTarget
                     entryName = "[ITEM:" .. (e.itemName or tostring(e.itemID)) .. "]"
                 elseif e.spellName then
-                    macrotext = "/cast " .. e.spellName
-                    entryName = e.spellName
+                    -- Validate spellID resolves; stale IDs would otherwise
+                    -- emit /cast lines that surface as "Unknown spell"
+                    -- chat noise at every key press, with no diagnostic.
+                    -- Skip and warn once per session per stale ID.  A
+                    -- missing spellID (older profile entry) is allowed
+                    -- through unchanged — only stored IDs are validated.
+                    local stale = false
+                    if e.spellID then
+                        local info = C_Spell.GetSpellInfo(e.spellID)
+                        if info == nil then stale = true end
+                    end
+                    if not stale then
+                        macrotext = "/cast " .. e.spellName
+                        entryName = e.spellName
+                        if e.spellID then
+                            PR._missingSpellWarned[e.spellID] = nil
+                        end
+                    elseif not PR._missingSpellWarned[e.spellID] then
+                        PR._missingSpellWarned[e.spellID] = true
+                        VUI.Print("Priority Rotation", format(
+                            "|cFFFF8800Stale spell|r |cFFFFFF00%s|r (ID %d) — entry skipped this session. Drag the current version of the spell back onto the slot.",
+                            e.spellName, e.spellID))
+                    end
                 end
 
                 if macrotext then
