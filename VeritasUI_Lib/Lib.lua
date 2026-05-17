@@ -28,7 +28,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.6.41"
+VUI.VERSION = "1.6.42"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: CombatQueue pcall failures, see
 -- Lib.lua:348).  Off by default to avoid clutter; flip at runtime via
@@ -415,7 +415,16 @@ function VUI.RegisterManagedPanel(frameName, opts)
     -- Frame doesn't need to exist yet — UIPanelWindows is a string-keyed
     -- lookup the manager consults at ShowUIPanel time. Registering at file
     -- load (before CreateFrame) is the Blizzard-native pattern.
-    if type(frameName) ~= "string" then return end
+    if type(frameName) ~= "string" then
+        -- Caller passed nil, a frame object, or some other non-string.
+        -- Previously this returned silently, leaving the developer to
+        -- debug "why isn't my panel registered?" with no signal.  Print
+        -- a warning before the bail so the bug is immediately visible.
+        VUI.Print("Lib", format(
+            "RegisterManagedPanel: bad frameName (got %s, expected string)",
+            type(frameName)))
+        return
+    end
     opts = opts or {}
     UIPanelWindows[frameName] = {
         area      = opts.area      or "left",

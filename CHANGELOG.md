@@ -2,6 +2,19 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.42] - 2026-05-16
+
+### Added
+- `VeritasUI_Lib` — **`VUI.debug` diagnostic flag (file-scope, default `false`).** Opt-in gate for prints from normally-silent paths. Currently used by `CombatQueue` (see below); future silent paths can adopt the same pattern. Flip at runtime via `/run VeritasUI.debug = true` and reproduce the issue. Off by default to keep normal play uncluttered.
+
+### Changed
+- `VeritasUI_Lib` — **`CombatQueue` now surfaces queued-closure errors when `VUI.debug` is on.** The `PLAYER_REGEN_ENABLED` drain at `Lib.lua:342-353` previously did `for _, fn in ipairs(pending) do pcall(fn) end` — errors caught (the queue must always finish draining; one bad action shouldn't strand the rest in combat-locked state) but completely silent, leaving developers and users unable to diagnose stuck-frame symptoms with no error trail. Wrapped the `pcall` to capture the error and print `|cFFFF4444[VeritasUI]|r CombatQueue error: <err>` only when `VUI.debug == true`. Behavior unchanged when the flag is off (still silent, queue still drains fully); when the flag is on, every queued-closure failure surfaces with its full Lua error message.
+- `VeritasUI_PriorityRotation` — **Editor `GetItemInfo` migrated from legacy global to `C_Item.GetItemInfo` namespace.** Two sites in `Editor.lua` (`BuildEntryFromCursor` line 153; `Refresh` icon path line 631), both already pcall-wrapped by F-2 in v1.6.38. Return-value signature is identical between the legacy global and `C_Item.GetItemInfo` in 12.0.5 — both return `(name, link, quality, level, minLevel, type, subType, stack, equipLoc, texture, sellPrice, classID, ...)` so the positional captures remain correct without modification. Brings `Editor.lua` into namespace-consistency with `QualityOfLife.lua`'s `SetupItemLevels` paths, which use `C_Item.GetItemInfo` throughout. One of the last legacy-global call sites in the suite is now removed.
+- `VeritasUI_PriorityRotation` — **`/pr diag` body now emits via `VUI.Print('Priority Rotation', ...)` instead of bare `print()`.** The diagnostic command had a header that already used `VUI.Print` but body lines used bare `print()`, creating a mixed-channel output where the header had the `[Priority Rotation]` prefix and 46 body lines didn't. Bulk-converted all 46 `print()` calls in `Core.lua:632-779` to `VUI.Print('Priority Rotation', ...)` via a line-bounded perl regex. Indentation and color-code formatting preserved verbatim. The single multi-line `print` (the slot-type diagnostic at line 710) converts correctly because the trailing `)` on the continuation line still balances the opening `(` we replaced. All `/pr diag` output now consistently prefixed. Tag chosen as `'Priority Rotation'` (matching the existing header) rather than the audit-suggested `'/pr diag'` to keep the prefix consistent across the entire PR module's output. The same `print()`/`VUI.Print` mix exists in `/pr status` (lines 589-604) but is out of F-38's scope and left untouched.
+
+### Fixed
+- `VeritasUI_Lib` — **`RegisterManagedPanel` now warns instead of silently returning on bad input.** `Lib.lua:418` rejected non-string `frameName` (nil, frame objects, numbers — all caller-side bugs) by returning silently. A developer registering a panel and forgetting to pass the frame's name as a string would see "panel not registered" with no error to debug. Added `VUI.Print("Lib", "RegisterManagedPanel: bad frameName (got <type>, expected string)")` before the `return` so the bug is immediately visible at file-load time. The string check itself is unchanged — non-strings still bail out and don't pollute `UIPanelWindows`.
+
 ## [1.6.41] - 2026-05-16
 
 ### Changed
