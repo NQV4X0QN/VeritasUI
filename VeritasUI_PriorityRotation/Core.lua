@@ -629,7 +629,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
 
     elseif cmd == "diag" then
         VUI.Print("Priority Rotation", "|cFFFFFF0012.0.5 API Diagnostic|r")
-        print("─────────────────────────────────────────")
+        VUI.Print("Priority Rotation", "─────────────────────────────────────────")
 
         local G = "|cFF00FF00"
         local R = "|cFFFF4444"
@@ -637,59 +637,59 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         local E = "|r"
 
         local hasIssecret = type(issecretvalue) == "function"
-        print("  issecretvalue():          " .. (hasIssecret and G.."available"..E or R.."NOT FOUND"..E))
+        VUI.Print("Priority Rotation", "  issecretvalue():          " .. (hasIssecret and G.."available"..E or R.."NOT FOUND"..E))
 
         local hasFreeze = type(table.freeze) == "function"
-        print("  table.freeze():           " .. (hasFreeze and G.."available (12.0.5 confirmed)"..E or Y.."not found (pre-12.0.5?)"..E))
+        VUI.Print("Priority Rotation", "  table.freeze():           " .. (hasFreeze and G.."available (12.0.5 confirmed)"..E or Y.."not found (pre-12.0.5?)"..E))
 
         local hasRegBtn = C_ActionBar and type(C_ActionBar.RegisterActionUIButton) == "function"
-        print("  C_ActionBar.RegisterActionUIButton: " .. (hasRegBtn and G.."available"..E or R.."NOT FOUND"..E))
+        VUI.Print("Priority Rotation", "  C_ActionBar.RegisterActionUIButton: " .. (hasRegBtn and G.."available"..E or R.."NOT FOUND"..E))
 
         local hasUnregBtn = C_ActionBar and type(C_ActionBar.UnregisterActionUIButton) == "function"
-        print("  C_ActionBar.UnregisterActionUIButton: " .. (hasUnregBtn and G.."available"..E or R.."NOT FOUND"..E))
+        VUI.Print("Priority Rotation", "  C_ActionBar.UnregisterActionUIButton: " .. (hasUnregBtn and G.."available"..E or R.."NOT FOUND"..E))
 
         local hasSecrets = C_Secrets and type(C_Secrets) == "table"
-        print("  C_Secrets namespace:      " .. (hasSecrets and G.."available"..E or R.."NOT FOUND"..E))
+        VUI.Print("Priority Rotation", "  C_Secrets namespace:      " .. (hasSecrets and G.."available"..E or R.."NOT FOUND"..E))
 
         local hasRestrict = C_RestrictedActions and type(C_RestrictedActions) == "table"
-        print("  C_RestrictedActions:       " .. (hasRestrict and G.."available"..E or R.."NOT FOUND"..E))
+        VUI.Print("Priority Rotation", "  C_RestrictedActions:       " .. (hasRestrict and G.."available"..E or R.."NOT FOUND"..E))
 
-        print("─────────────────────────────────────────")
+        VUI.Print("Priority Rotation", "─────────────────────────────────────────")
         local cvarOk, cvarErr = pcall(C_CVar.SetCVar, "ActionButtonUseKeyDown", "0")
         if cvarOk then
-            print("  SetCVar ActionButtonUseKeyDown: " .. G .. "OK" .. E)
+            VUI.Print("Priority Rotation", "  SetCVar ActionButtonUseKeyDown: " .. G .. "OK" .. E)
         else
-            print("  SetCVar ActionButtonUseKeyDown: " .. R .. "BLOCKED" .. E)
-            print("    Error: " .. Y .. tostring(cvarErr) .. E)
+            VUI.Print("Priority Rotation", "  SetCVar ActionButtonUseKeyDown: " .. R .. "BLOCKED" .. E)
+            VUI.Print("Priority Rotation", "    Error: " .. Y .. tostring(cvarErr) .. E)
         end
 
         local execOk, execErr = pcall(function()
             PR.rotBtn:Execute("local t = newtable(); t[1] = 'diag_test'")
         end)
         if execOk then
-            print("  :Execute() newtable():    " .. G .. "OK" .. E)
+            VUI.Print("Priority Rotation", "  :Execute() newtable():    " .. G .. "OK" .. E)
         else
-            print("  :Execute() newtable():    " .. R .. "BLOCKED" .. E)
-            print("    Error: " .. Y .. tostring(execErr) .. E)
+            VUI.Print("Priority Rotation", "  :Execute() newtable():    " .. R .. "BLOCKED" .. E)
+            VUI.Print("Priority Rotation", "    Error: " .. Y .. tostring(execErr) .. E)
         end
 
         local macroOk, macroResult = pcall(GetMacroIndexByName, PR.MACRO_NAME)
         if macroOk then
             local idx = macroResult or 0
             if idx > 0 then
-                print("  GetMacroIndexByName(\"" .. PR.MACRO_NAME .. "\"): " .. G .. "idx=" .. idx .. E)
+                VUI.Print("Priority Rotation", "  GetMacroIndexByName(\"" .. PR.MACRO_NAME .. "\"): " .. G .. "idx=" .. idx .. E)
             else
-                print("  GetMacroIndexByName(\"" .. PR.MACRO_NAME .. "\"): " .. Y .. "not found (idx=0)" .. E)
+                VUI.Print("Priority Rotation", "  GetMacroIndexByName(\"" .. PR.MACRO_NAME .. "\"): " .. Y .. "not found (idx=0)" .. E)
             end
             if hasIssecret and issecretvalue(macroResult) then
-                print("    ⚠ macroIndex is a |cFFFF8800SECRET VALUE|r")
+                VUI.Print("Priority Rotation", "    ⚠ macroIndex is a |cFFFF8800SECRET VALUE|r")
             end
         else
-            print("  GetMacroIndexByName: " .. R .. "ERROR" .. E .. " — " .. tostring(macroResult))
+            VUI.Print("Priority Rotation", "  GetMacroIndexByName: " .. R .. "ERROR" .. E .. " — " .. tostring(macroResult))
         end
 
-        print("─────────────────────────────────────────")
-        print("  Scanning slots 1-120 with GetActionInfo:")
+        VUI.Print("Priority Rotation", "─────────────────────────────────────────")
+        VUI.Print("Priority Rotation", "  Scanning slots 1-120 with GetActionInfo:")
         local macroIdx    = macroOk and macroResult or 0
         local foundSlots  = 0
         local macroSlots  = {}
@@ -707,7 +707,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
                         if typeSecret or idSecret then
                             secretSlots = secretSlots + 1
                             if secretSlots <= 5 then
-                                print("    Slot " .. Y .. slot .. E .. ": type="
+                                VUI.Print("Priority Rotation", "    Slot " .. Y .. slot .. E .. ": type="
                                     .. (typeSecret and "|cFFFF8800<SECRET>|r" or tostring(actionType))
                                     .. "  id="
                                     .. (idSecret and "|cFFFF8800<SECRET>|r" or tostring(id)))
@@ -721,62 +721,62 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             else
                 errorSlots = errorSlots + 1
                 if errorSlots <= 3 then
-                    print("    Slot " .. Y .. slot .. E .. ": " .. R .. "ERROR" .. E .. " — " .. tostring(actionType))
+                    VUI.Print("Priority Rotation", "    Slot " .. Y .. slot .. E .. ": " .. R .. "ERROR" .. E .. " — " .. tostring(actionType))
                 end
             end
         end
 
-        print("  Summary:")
-        print("    Populated slots: " .. Y .. foundSlots .. E)
-        print("    Secret values:   " .. (secretSlots > 0 and R .. secretSlots .. E or G .. "0" .. E))
+        VUI.Print("Priority Rotation", "  Summary:")
+        VUI.Print("Priority Rotation", "    Populated slots: " .. Y .. foundSlots .. E)
+        VUI.Print("Priority Rotation", "    Secret values:   " .. (secretSlots > 0 and R .. secretSlots .. E or G .. "0" .. E))
         if secretSlots > 5 then
-            print("      (showing first 5 of " .. secretSlots .. ")")
+            VUI.Print("Priority Rotation", "      (showing first 5 of " .. secretSlots .. ")")
         end
-        print("    Errored slots:   " .. (errorSlots > 0 and R .. errorSlots .. E or G .. "0" .. E))
+        VUI.Print("Priority Rotation", "    Errored slots:   " .. (errorSlots > 0 and R .. errorSlots .. E or G .. "0" .. E))
         if #macroSlots > 0 then
-            print("    \"" .. PR.MACRO_NAME .. "\" macro found on: " .. G .. "slot(s) " .. table.concat(macroSlots, ", ") .. E)
+            VUI.Print("Priority Rotation", "    \"" .. PR.MACRO_NAME .. "\" macro found on: " .. G .. "slot(s) " .. table.concat(macroSlots, ", ") .. E)
         else
-            print("    \"" .. PR.MACRO_NAME .. "\" macro found on: " .. R .. "NO SLOTS" .. E)
+            VUI.Print("Priority Rotation", "    \"" .. PR.MACRO_NAME .. "\" macro found on: " .. R .. "NO SLOTS" .. E)
             if macroIdx > 0 then
-                print("      (macro exists at idx=" .. macroIdx .. " but no slot matched)")
+                VUI.Print("Priority Rotation", "      (macro exists at idx=" .. macroIdx .. " but no slot matched)")
             else
-                print("      (macro not in macro list — create with /pr macro)")
+                VUI.Print("Priority Rotation", "      (macro not in macro list — create with /pr macro)")
             end
         end
 
-        print("─────────────────────────────────────────")
+        VUI.Print("Priority Rotation", "─────────────────────────────────────────")
         local stepOk, stepVal = pcall(function() return PR.rotBtn:GetAttribute("step") end)
         if stepOk then
             local stepNum = tonumber(stepVal)
             if hasIssecret and issecretvalue(stepVal) then
-                print("  rotBtn:GetAttribute('step'): |cFFFF8800SECRET VALUE|r")
+                VUI.Print("Priority Rotation", "  rotBtn:GetAttribute('step'): |cFFFF8800SECRET VALUE|r")
             elseif stepNum then
-                print("  rotBtn:GetAttribute('step'): " .. G .. stepNum .. E)
+                VUI.Print("Priority Rotation", "  rotBtn:GetAttribute('step'): " .. G .. stepNum .. E)
             else
-                print("  rotBtn:GetAttribute('step'): " .. Y .. tostring(stepVal) .. " (type=" .. type(stepVal) .. ")" .. E)
+                VUI.Print("Priority Rotation", "  rotBtn:GetAttribute('step'): " .. Y .. tostring(stepVal) .. " (type=" .. type(stepVal) .. ")" .. E)
             end
         else
-            print("  rotBtn:GetAttribute('step'): " .. R .. "ERROR" .. E .. " — " .. tostring(stepVal))
+            VUI.Print("Priority Rotation", "  rotBtn:GetAttribute('step'): " .. R .. "ERROR" .. E .. " — " .. tostring(stepVal))
         end
 
-        print("─────────────────────────────────────────")
+        VUI.Print("Priority Rotation", "─────────────────────────────────────────")
         local override = PR.overrides[PR.MACRO_NAME]
         if override then
-            print("  Override slot: " .. G .. override.slot .. E)
+            VUI.Print("Priority Rotation", "  Override slot: " .. G .. override.slot .. E)
             if override.keys then
-                print("  Bound keys:   " .. G .. table.concat(override.keys, ", ") .. E)
+                VUI.Print("Priority Rotation", "  Bound keys:   " .. G .. table.concat(override.keys, ", ") .. E)
             else
-                print("  Bound keys:   " .. Y .. "none (macro found but no keybind assigned)" .. E)
+                VUI.Print("Priority Rotation", "  Bound keys:   " .. Y .. "none (macro found but no keybind assigned)" .. E)
             end
         else
-            print("  Override:     " .. R .. "not active" .. E .. " (run /pr scan)")
+            VUI.Print("Priority Rotation", "  Override:     " .. R .. "not active" .. E .. " (run /pr scan)")
         end
 
-        print("─────────────────────────────────────────")
-        print("  " .. Y .. "Run /pr diag in different contexts:" .. E)
-        print("    • Open world (no secrets)")
-        print("    • Inside M+/raid (secrets active)")
-        print("    • In combat vs. out of combat")
+        VUI.Print("Priority Rotation", "─────────────────────────────────────────")
+        VUI.Print("Priority Rotation", "  " .. Y .. "Run /pr diag in different contexts:" .. E)
+        VUI.Print("Priority Rotation", "    • Open world (no secrets)")
+        VUI.Print("Priority Rotation", "    • Inside M+/raid (secrets active)")
+        VUI.Print("Priority Rotation", "    • In combat vs. out of combat")
 
     elseif cmd == "help" then
         VUI.Print("Priority Rotation", "Commands:")
