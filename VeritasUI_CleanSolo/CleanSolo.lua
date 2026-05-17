@@ -521,14 +521,23 @@ frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 ~= ADDON_NAME then return end
         VeritasUI_CleanSoloDB = VeritasUI_CleanSoloDB or {}
+        -- Deep-copy table defaults to avoid sharing references with the
+        -- defaults constant (mutating db.<table>.<key> would otherwise
+        -- mutate defaults.<table>.<key> at runtime — silent table
+        -- aliasing across saved-vars and the constant).  Currently safe
+        -- because fadeActionBars is a flat table, but future nested
+        -- defaults need the recursive pattern to be correct.  Mirrors
+        -- ZoneQuests.lua:357-362.  See Known Landmines in SKILL.md.
+        local function DeepCopy(t)
+            local c = {}
+            for k, v in pairs(t) do
+                c[k] = (type(v) == "table") and DeepCopy(v) or v
+            end
+            return c
+        end
         for k, v in pairs(defaults) do
             if VeritasUI_CleanSoloDB[k] == nil then
-                if type(v) == "table" then
-                    VeritasUI_CleanSoloDB[k] = {}
-                    for k2, v2 in pairs(v) do VeritasUI_CleanSoloDB[k][k2] = v2 end
-                else
-                    VeritasUI_CleanSoloDB[k] = v
-                end
+                VeritasUI_CleanSoloDB[k] = (type(v) == "table") and DeepCopy(v) or v
             end
         end
         db = VeritasUI_CleanSoloDB
