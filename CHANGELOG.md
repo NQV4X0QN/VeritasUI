@@ -2,6 +2,16 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.46] - 2026-06-05
+
+### Added
+- `VeritasUI_AuctionHouse` — **Phase 1: session lifecycle + mandatory throttle queue + money helpers (foundation, no user-facing feature yet).**
+  - **Session lifecycle (`Core.lua`)** — handles `AUCTION_HOUSE_SHOW` / `AUCTION_HOUSE_CLOSED` / `AUCTION_HOUSE_DISABLED`, tracks `AH.isOpen` / `AH.disabled`, and broadcasts `AH_OPEN` / `AH_CLOSED` / `AH_DISABLED` on a new in-module event bus.
+  - **`AH.Events` pub/sub bus (`Core.lua`)** — a minimal `On(name, fn)` / `Fire(name, ...)` bus (pcall-isolated handlers). `VeritasUI_Lib` has no EventBus and the suite's module-independence rule forbids cross-module coupling, so the AH module owns its own. Defined before sibling files so they can subscribe at file-load time.
+  - **`Throttle.lua` — mandatory AH send-queue.** Blizzard rate-limits AH traffic and gates its own SellFrame on `IsThrottledMessageSystemReady()`. This queue dispatches one send at a time only when the throttle system is ready, re-arms on `AUCTION_HOUSE_THROTTLED_SYSTEM_READY`, re-queues the in-flight send at the head on `AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED`, and clears on `AH_CLOSED`. Public API: `Enqueue(fn, label)`, `Clear()`, `PendingCount()`, `IsAwaiting()`. All later-phase AH queries (browse/search/replicate/owned) must route through this rather than calling `C_AuctionHouse` directly.
+  - **`Money.lua` — copper formatting/rounding helpers.** `Format` (Blizzard coin-icon string via `C_CurrencyInfo.GetCoinTextureString`), `FormatText` ("12g 34s 56c"), `Breakdown`, and `SanitizePrice` (mirrors Blizzard's `AuctionHouseUtil.SanitizeAuctionHousePrice`: rounds up to copper, or to silver when `C_AuctionHouse.SupportsCopperValues()` is false). **Verified in-game: retail AH returns `SupportsCopperValues() == false`, so prices round up to the nearest silver** (e.g. `SanitizePrice(12345.6) == 12400`). This is a convenience/consistency layer, NOT a Secret-Value taint boundary (see design §2.1 — AH money is plain copper integers).
+  - **`/ah diag` expanded** with session state (AH open / disabled), throttle state (ready / awaiting / pending), and a money-helper self-test line. New **`/ah throttletest`** enqueues a no-op send to verify the queue end-to-end (requires the AH open).
+
 ## [1.6.45] - 2026-06-05
 
 ### Added

@@ -1,10 +1,12 @@
 ## Interface: 120005
 ## Title: VeritasUI — Auction House
 ## Notes: Auction House price database, tooltip prices, search, and selling tools. |cFF888888by NQV4X0QN|r
-## Version: 1.6.45
+## Version: 1.6.46
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
 ## SavedVariables: VeritasUI_AuctionHouseDB
 
 Core.lua
+Money.lua
+Throttle.lua
 Settings.lua
