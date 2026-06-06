@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.48] - 2026-06-05
+
+### Added
+- `VeritasUI_AuctionHouse` — **Phase 3: auction prices in item tooltips (first user-visible feature).**
+  - **`Tooltip.lua`** — appends the stored market price to item tooltips via the modern hook `TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, fn)` (verified 12.0.5). The callback reads the item link from `data.hyperlink` (falling back to `TooltipUtil.GetDisplayedItem`), looks it up with `AH.DB.GetMarketPriceForLink`, and adds an **"Auction (each)"** line in Blizzard coin-icon style plus an optional grey **"N seen · X days old"** annotation. Pure database read — no live AH query, works away from the Auction House, read-only (no taint). `pcall`-guarded so a malformed link can never error a tooltip; re-derives the link per tooltip rebuild so lines never stack. Items with no stored price show nothing (no empty line).
+  - **`Settings.lua`** — three real, persisted checkboxes (all default on), bound to `AH.db.settings` via `Settings.RegisterAddOnSetting` → `Settings.CreateCheckbox`: *Show Auction Price in Tooltips*, *Show Quantity Seen*, *Show Price Age*.
+  - **Phase 2 price accuracy confirmed:** spot-checked tooltip prices against the live Auction House in-game and they match — validating the full scan → per-unit keying → storage → readback pipeline produces correct values, not just plausible counts.
+
 ## [1.6.47] - 2026-06-05
 
 ### Added
