@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.45] - 2026-06-05
+
+### Added
+- `VeritasUI_AuctionHouse` — **New 7th module (Phase 0 scaffolding).** Adds the foundation for an Auctionator-class Auction House module: full-scan price database, tooltip prices, search/browse, selling assistance, and owned-auction cancelling — built clean-room against the modern `C_AuctionHouse` API (Interface 120005), native-only (no LibStub/LibCBOR/Ace), and styled to be indistinguishable from Blizzard's own AH UI. **This release is scaffolding only — no AH features are active yet.** Phase 0 delivers: (a) `VeritasUI_AuctionHouse.toc` (`RequiredDeps: VeritasUI_Lib`, `SavedVariables: VeritasUI_AuctionHouseDB`); (b) `Core.lua` — seeds `VeritasUI_AuctionHouseDB = { dbVersion=1, prices={}, settings={} }` via recursive `DeepCopy` (the anti-aliasing pattern used by CleanSolo/ZoneQuests), registers `/ah` + `/auctionhouse` with `help`/`diag`/`settings` subcommands, and prints a load line on `PLAYER_LOGIN`; (c) `Settings.lua` — a discovery-only Blizzard Settings category + shared Reload-UI label. The module's main UI will be **injected tabs on Blizzard's `AuctionHouseFrame`** (matching the native Buy/Sell/Auctions tab strip) rather than a standalone window, so no `RegisterManagedPanel` is used — the one intentional divergence from the PriorityRotation/AdvancedOptions panel pattern. Full design, verified API facts, and the phased build plan live in `AUCTIONHOUSE_DESIGN.md` (skill directory). `/ah diag` reports module version, DB readiness, schema version, priced-item count, and AH-open state.
+
+### Notes
+- All 8 version strings (7 module TOCs + `Lib.lua` `VUI.VERSION`) bumped to 1.6.45 in lockstep. The suite's skill `sync-check.sh` was updated to count version-bearing files dynamically (no longer hardcoded to 6) so it stays accurate as modules are added.
+
 ## [1.6.44] - 2026-05-16
 
 ### Changed
