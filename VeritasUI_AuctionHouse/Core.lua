@@ -21,6 +21,7 @@ local pairs       = pairs
 local ipairs      = ipairs
 local type        = type
 local format      = string.format
+local floor       = math.floor
 local strtrim     = strtrim
 local CreateFrame = CreateFrame
 local C_AuctionHouse = C_AuctionHouse
@@ -83,7 +84,8 @@ AH.disabled = false   -- true after AUCTION_HOUSE_DISABLED (this session)
 local defaults = {
     dbVersion = 1,     -- schema version for the price DB (bump on layout change)
     prices    = {},    -- [itemKeyString] = price-history record (Phase 2)
-    settings  = {},    -- user toggles (Phase 3+)
+    settings  = {},    -- user toggles (Phase 3+); settings.retentionDays optional
+    lastScan  = 0,     -- Unix time of last full replicate scan (Phase 2 scan-floor)
 }
 
 local db
@@ -174,11 +176,30 @@ ef:SetScript("OnEvent", function(_, event, arg1)
 end)
 
 ----------------------------------------------------------------
+--  Scan reporting (Phase 2)
+--
+--  Replicate.lua fires these on the AH.Events bus; Core owns the user-facing
+--  chat output so the scanner stays UI-agnostic.
+----------------------------------------------------------------
+AH.Events.On("AH_SCAN_START", function()
+    VUI.Print(AH.TAG, "Full scan started…")
+end)
+
+AH.Events.On("AH_SCAN_COMPLETE", function(committed, rows)
+    VUI.Print(AH.TAG, format(
+        "Scan complete — |cFF00FF00%d|r items priced from |cFFFFFF00%d|r auctions.",
+        committed or 0, rows or 0))
+end)
+
+AH.Events.On("AH_SCAN_FAILED", function(err)
+    VUI.Print(AH.TAG, "|cFFFF4444Scan failed:|r " .. tostring(err))
+end)
+
+----------------------------------------------------------------
 --  Slash Commands
 --
---  Phase 1 surface: help / diag / settings / throttletest.
---  Feature subcommands (scan, etc.) are added by the phase that
---  implements them.
+--  Phase 2 surface: help / diag / scan / wipe / throttletest / settings.
+--  Feature subcommands are added by the phase that implements them.
 ----------------------------------------------------------------
 SLASH_VERITASUI_AH1 = "/ah"
 SLASH_VERITASUI_AH2 = "/auctionhouse"
@@ -186,7 +207,10 @@ SLASH_VERITASUI_AH2 = "/auctionhouse"
 local function PrintHelp()
     VUI.Print(AH.TAG, "Commands:")
     print("  |cFFFFFF00/ah|r              — show this help")
+    print("  |cFFFFFF00/ah scan|r         — full price scan (AH open; 15-min cooldown)")
+    print("  |cFFFFFF00/ah scan force|r   — scan now, ignoring the cooldown")
     print("  |cFFFFFF00/ah diag|r         — diagnostic / state dump")
+    print("  |cFFFFFF00/ah wipe|r         — clear the price database")
     print("  |cFFFFFF00/ah throttletest|r — enqueue a no-op AH send (AH must be open)")
     print("  |cFFFFFF00/ah settings|r     — open settings panel")
 end
@@ -196,15 +220,28 @@ local function PrintDiag()
     print(format("  version:      |cFFFFFF00%s|r", tostring(AH.VERSION)))
     print(format("  db ready:     %s", AH.db and "|cFF00FF00yes|r" or "|cFFFF4444no|r"))
     if AH.db then
-        local n = 0
-        for _ in pairs(AH.db.prices) do n = n + 1 end
+        local n = AH.DB and AH.DB.GetItemCount() or 0
         print(format("  db schema:    v%s", tostring(AH.db.dbVersion)))
-        print(format("  priced items: %d", n))
+        print(format("  priced items: |cFFFFFF00%d|r", n))
     end
 
     -- Session state.
     print(format("  AH open:      %s", AH.isOpen and "|cFF00FF00yes|r" or "no"))
     print(format("  AH disabled:  %s", AH.disabled and "|cFFFF4444yes|r" or "no"))
+
+    -- Scan state (Phase 2).
+    if AH.Replicate then
+        local wait = AH.Replicate.SecondsUntilReady()
+        local readyText
+        if AH.Replicate.IsScanning() then
+            readyText = format("|cFFFFFF00scanning %d%%|r", floor(AH.Replicate.Progress() * 100))
+        elseif wait > 0 then
+            readyText = format("cooldown %d:%02d", floor(wait / 60), wait % 60)
+        else
+            readyText = "|cFF00FF00ready|r"
+        end
+        print(format("  scan:         %s", readyText))
+    end
 
     -- Throttle state.
     if AH.Throttle then
@@ -248,6 +285,22 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             Settings.OpenToCategory(AH.settingsCategoryID)
         else
             VUI.Print(AH.TAG, "Settings are still loading — try again in a moment.")
+        end
+
+    elseif cmd == "scan" or cmd == "scan force" then
+        if not AH.Replicate then
+            VUI.Print(AH.TAG, "Scanner not loaded.")
+            return
+        end
+        local ok, reason = AH.Replicate.Start(cmd == "scan force")
+        if not ok then
+            VUI.Print(AH.TAG, reason or "Scan could not start.")
+        end
+
+    elseif cmd == "wipe" then
+        if AH.DB then
+            AH.DB.Wipe()
+            VUI.Print(AH.TAG, "Price database cleared.")
         end
 
     elseif cmd == "diag" then

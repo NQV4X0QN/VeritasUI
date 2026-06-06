@@ -2,6 +2,15 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.47] - 2026-06-05
+
+### Added
+- `VeritasUI_AuctionHouse` — **Phase 2: full-scan price database (first real data).**
+  - **`Replicate.lua` — chunked full-scan driver.** `C_AuctionHouse.ReplicateItems()` → `REPLICATE_ITEM_LIST_UPDATE` → reads `GetNumReplicateItems()` rows via `GetReplicateItemInfo` + `GetReplicateItemLink`. **The row loop runs in a coroutine sliced to an ~8 ms/frame budget** so even a 50k–200k+ row snapshot never hitches the client (verified in-game on a ~278k-auction snapshot with no visible stutter). Per-row policy: skip bid-only auctions (`buyoutPrice == 0`), normalize to per-unit price (`floor(buyout / count)`), aggregate per key (min unit price + summed qty), commit once per item. Enforces a persisted **15-minute scan floor** (`/ah scan force` overrides). Fires `AH_SCAN_START` / `AH_SCAN_PROGRESS` / `AH_SCAN_COMPLETE` / `AH_SCAN_FAILED` on the module event bus; aborts cleanly if the AH closes mid-scan.
+  - **`Database.lua` — native price store (no LibCBOR).** Key scheme (resolves design OQ#3): `p:<speciesID>` for battle pets, `i:<itemID>:<itemLevel>` for equippable gear (ilvl from `C_Item.GetDetailedItemLevelInfo` so variants don't collide — NOT `GetReplicateItemInfo`'s `level`, which is required *player* level), `i:<itemID>` for everything else (commodities/mats/consumables). The full 4-field `C_AuctionHouse` ItemKey is intentionally not used — `itemID[:ilvl]` is the right pricing granularity and Midnight dropped suffixes. Per-unit copper integers; per-day `{min,max,qty}` history; prune-on-write at a 14-day retention default. API: `MakeKey`, `Record`, `GetMarketPrice`, `GetMarketPriceForLink`, `GetPriceHistory`, `GetItemCount`, `GetPriceAge`, `Wipe`.
+  - **`/ah scan`** (+ `scan force`) and **`/ah wipe`** commands; scan progress/complete chat reporting; `/ah diag` now shows live scan state (ready / cooldown / scanning %) and the real priced-item count.
+  - Verified in-game: a scan priced **8,327 distinct items from 278,623 auctions**, persisted across `/reload`, with the scan floor enforced and no frame hitch. (Per-item price *accuracy* is spot-checkable in Phase 3 once tooltip prices render.)
+
 ## [1.6.46] - 2026-06-05
 
 ### Added
