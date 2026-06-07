@@ -209,10 +209,56 @@ local function PrintHelp()
     print("  |cFFFFFF00/ah|r              — show this help")
     print("  |cFFFFFF00/ah scan|r         — full price scan (AH open; 15-min cooldown)")
     print("  |cFFFFFF00/ah scan force|r   — scan now, ignoring the cooldown")
+    print("  |cFFFFFF00/ah search <text>|r — test browse query (AH open; prints results)")
     print("  |cFFFFFF00/ah diag|r         — diagnostic / state dump")
     print("  |cFFFFFF00/ah wipe|r         — clear the price database")
     print("  |cFFFFFF00/ah throttletest|r — enqueue a no-op AH send (AH must be open)")
     print("  |cFFFFFF00/ah settings|r     — open settings panel")
+end
+
+-- Phase 4 diagnostic: run a browse query through AH.Search and print the first
+-- handful of results, so the query layer is verifiable before the UI exists.
+local function SearchTest(term)
+    if not AH.Search then
+        VUI.Print(AH.TAG, "Search layer not loaded.")
+        return
+    end
+    if term == "" then
+        VUI.Print(AH.TAG, "Usage: |cFFFFFF00/ah search <text>|r")
+        return
+    end
+
+    -- One-shot listeners scoped to this test (the bus has no unsubscribe; we gate on
+    -- a local 'done' flag so stale fires after completion are ignored).
+    local done = false
+    VUI.Print(AH.TAG, format("Searching for |cFFFFFF00%s|r ...", term))
+
+    AH.Events.On("AH_BROWSE_UPDATE", function(results, full)
+        if done then return end
+        local n = #results
+        if not full then
+            print(format("  ... %d so far (paging)", n))
+            return
+        end
+        done = true
+        VUI.Print(AH.TAG, format("Browse complete — |cFF00FF00%d|r distinct items:", n))
+        for i = 1, math.min(n, 10) do
+            local r = results[i]
+            local info = AH.Search.GetKeyInfo(r.itemKey)
+            local name = (info and info.itemName) or ("itemID " .. tostring(r.itemID))
+            local price = AH.Money and AH.Money.Format(r.minPrice) or tostring(r.minPrice)
+            print(format("  %2d. %s  |cFFFFFFFF%s|r  x%d", i, name, price, r.totalQuantity))
+        end
+        if n > 10 then print(format("  ... and %d more", n - 10)) end
+    end)
+
+    AH.Events.On("AH_BROWSE_FAILED", function()
+        if done then return end
+        done = true
+        VUI.Print(AH.TAG, "|cFFFF4444Browse failed|r (server error).")
+    end)
+
+    AH.Search.Browse(term)
 end
 
 local function PrintDiag()
@@ -278,7 +324,11 @@ local function ThrottleTest()
 end
 
 SlashCmdList["VERITASUI_AH"] = function(msg)
-    local cmd = strtrim(msg or ""):lower()
+    msg = strtrim(msg or "")
+    -- Split into the first word (command, case-insensitive) + the rest (argument,
+    -- ORIGINAL case preserved — item names in /ah search are case-sensitive to read).
+    local word, rest = msg:match("^(%S*)%s*(.-)$")
+    local cmd = (word or ""):lower()
 
     if cmd == "settings" then
         if AH.settingsCategoryID then
@@ -287,14 +337,26 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             VUI.Print(AH.TAG, "Settings are still loading — try again in a moment.")
         end
 
-    elseif cmd == "scan" or cmd == "scan force" then
+    elseif cmd == "scan" then
         if not AH.Replicate then
             VUI.Print(AH.TAG, "Scanner not loaded.")
             return
         end
-        local ok, reason = AH.Replicate.Start(cmd == "scan force")
+        local force = (rest:lower() == "force")
+        local ok, reason = AH.Replicate.Start(force)
         if not ok then
             VUI.Print(AH.TAG, reason or "Scan could not start.")
+        end
+
+    elseif cmd == "search" then
+        SearchTest(rest)
+
+    elseif cmd == "buytest" then
+        if AH.Buy then
+            local id, qty = rest:match("^(%S+)%s*(%S*)$")
+            AH.Buy.RunTest(id, qty)
+        else
+            VUI.Print(AH.TAG, "Buy engine not loaded.")
         end
 
     elseif cmd == "wipe" then

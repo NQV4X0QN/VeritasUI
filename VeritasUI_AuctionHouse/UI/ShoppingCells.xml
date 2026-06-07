@@ -1,0 +1,74 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+  <!--
+    VeritasUI_AuctionHouse / UI/ShoppingCells.xml
+    Clean-room cell templates for the Shopping tab's results table, driven by
+    Blizzard's native TableBuilder (CreateTableBuilder). TableBuilder pools cell
+    frames by template NAME, which requires XML-registered virtual templates. This
+    is the standard native UI authoring path (Blizzard's own AH cells live in
+    Blizzard_AuctionHouseTableBuilder.xml; we define our own equivalents here,
+    modern and minimal, rather than depend on AH-internal templates).
+
+    Each cell mixin implements the TableBuilder cell contract: an Init method
+    (one-time, receives the column's cellParameters) and a Populate method
+    (per row, binds data). Three cell types cover our columns:
+      VUIAHTextCell   plain left text (Available); Init(fieldName)
+      VUIAHMoneyCell  native coin display (Price, Scanned); Init(fieldName)
+      VUIAHItemCell   icon plus quality-colored name (Name); reads itemKey
+  -->
+
+  <!-- Plain text cell -->
+  <Frame name="VUIAHTextCellTemplate" mixin="VUIAHTextCellMixin" virtual="true">
+    <Size x="0" y="16"/>
+    <Layers>
+      <Layer level="BACKGROUND">
+        <FontString parentKey="Text" inherits="GameFontHighlightSmall" justifyH="LEFT">
+          <Anchors>
+            <Anchor point="LEFT" x="6" y="0"/>
+            <Anchor point="RIGHT" x="0" y="0"/>
+          </Anchors>
+        </FontString>
+      </Layer>
+    </Layers>
+  </Frame>
+
+  <!-- Money cell: native MoneyDisplayFrame with AH coin icons. Right-justified (the
+       default, no leftAlign) but anchored with a right-edge margin so the coins don't
+       jam against the column edge — matches native's Price/buyout columns. -->
+  <Frame name="VUIAHMoneyCellTemplate" mixin="VUIAHMoneyCellMixin" virtual="true">
+    <Size x="0" y="16"/>
+    <Frames>
+      <Frame parentKey="MoneyDisplay" inherits="MoneyDisplayFrameTemplate">
+        <KeyValues>
+          <KeyValue key="useAuctionHouseCopperValue" value="true" type="boolean"/>
+          <KeyValue key="useAuctionHouseIcons" value="true" type="boolean"/>
+        </KeyValues>
+        <Anchors>
+          <Anchor point="RIGHT" x="-12" y="0"/>
+        </Anchors>
+      </Frame>
+    </Frames>
+  </Frame>
+
+  <!-- Item cell: icon + quality-colored name -->
+  <Frame name="VUIAHItemCellTemplate" mixin="VUIAHItemCellMixin" virtual="true">
+    <Size x="0" y="18"/>
+    <Layers>
+      <Layer level="ARTWORK">
+        <Texture parentKey="Icon">
+          <Size x="16" y="16"/>
+          <Anchors>
+            <Anchor point="LEFT" x="6" y="0"/>
+          </Anchors>
+        </Texture>
+      </Layer>
+      <Layer level="BACKGROUND">
+        <FontString parentKey="Text" inherits="GameFontHighlightSmall" justifyH="LEFT">
+          <Anchors>
+            <Anchor point="LEFT" relativeKey="$parent.Icon" relativePoint="RIGHT" x="4" y="0"/>
+            <Anchor point="RIGHT" x="0" y="0"/>
+          </Anchors>
+        </FontString>
+      </Layer>
+    </Layers>
+  </Frame>
+</Ui>

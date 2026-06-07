@@ -2,6 +2,19 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.49] - 2026-06-06
+
+### Added
+- `VeritasUI_AuctionHouse` — **Phase 4: the Shopping tab (first in-AH UI) + verified protected-buy foundation.** The module's vision was refined this release to **a modernized, clean-room reimplementation of Auctionator** — its feature set (Shopping / Selling / Cancelling) rebuilt on *modern* Blizzard UI (where Auctionator still uses legacy assets), indistinguishable from today's default UI. The earlier "Browse" tab was repurposed into a **Shopping** tab to match Auctionator's model (Auctionator has no Browse tab; it doesn't re-skin Blizzard's native Buy).
+  - **`UI/TabInject.lua` — native tab injection.** Injects our own tab into Blizzard's `AuctionHouseFrame`, matching the Buy/Sell/Auctions strip pixel-for-pixel. Our tab button lives under our *own* root frame (the inherited `parentArray="Tabs"` would otherwise silently pollute Blizzard's tab array), inherits `AuctionHouseFrameTabTemplate`, hooks `SetDisplayMode` (guarded on `#mode > 0` so our own teardown doesn't fight our clicks), re-injects idempotently on every AH open, and guards against the TSM sub-0.5 scale corruption.
+  - **`Search.lua` — the query engine.** Keyword **browse** via `SendBrowseQuery` (throttle-queued, paginated to completion) plus a **drill-down** engine for per-item detail that handles the documented `SendSearchQuery` cold-cache trap by construction (gate on `GetItemKeyInfo`, validate-and-retry on false-empties, request-token matching, bounded timeout). Includes **shift-clicked-item / pasted-link normalization** (extracts the plain item name; a raw `|Hitem:…|h` string matches nothing on the AH server) — exposed for the search box so shift-clicking an item into Shopping Just Works.
+  - **`UI/ShoppingTab.lua` + `UI/ShoppingCells.{lua,xml}` — the Shopping tab UI.** Search strip (`SearchBoxTemplate` with built-in clear button, Search / Search Options / Add To List), left **Shopping Lists / Recent Searches** sub-tabs (native `PanelTopTabButtonTemplate`), and a results table built on Blizzard's native **`TableBuilder`** — tab-bordered column headers, native `MoneyDisplayFrame` coin cells, `WowScrollBoxList` + `MinimalScrollBar`, columns **Price · Name · Available** matching Auctionator and native Buy exactly. Panels use the native **`auctionhouse-background-index`** atlas (not a fabricated fill — found in the game's own assets) for an authentically modern look.
+  - **Protected-buy path PROVEN taint-clean (`Buy.lua`, resolves design OQ#5 — the project's highest-risk unknown).** Verified in-game that our own hardware-event button can drive the restricted commodity-purchase flow (`StartCommoditiesPurchase` → `COMMODITY_PRICE_UPDATED` quote → `ConfirmCommoditiesPurchase` → purchase succeeded) with **zero taint / blocked-action errors**. This unblocks the entire write side of the module — buying *and* Phase-5 selling (`PostItem`/`PostCommodity`) *and* Phase-6 cancelling (`CancelAuction`) all rely on this same capability. Hard rules recorded: protected calls must originate from a genuine hardware event and must NOT be throttle-queued (deferral strips the hardware context).
+  - **Tooltip/DB note:** the scanned/DB market price intentionally appears only in item tooltips (its proper home), not as a results column — exact-match-only, blank on a miss, never an estimate (a wrong price is worse than no price).
+
+### Notes
+- The Shopping tab ships with search + results fully working and native-faithful. Selling/buying UI, drill-down, and the Shopping Lists / Recent Searches content are stubbed ("coming in a later layer") and land in subsequent passes — consistent with the suite's foundation-first, ship-each-phase cadence.
+
 ## [1.6.48] - 2026-06-05
 
 ### Added
