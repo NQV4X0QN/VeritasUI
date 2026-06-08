@@ -35,6 +35,8 @@ local INSET    = 8
 local SB_INSET = 16
 local LEFT_W   = 230  -- left container width (narrowed — lists hold short search terms,
                       -- so the reclaimed width goes to the results columns on the right)
+local LEFT_ROW_H = 20 -- left-panel row height (list headers / items / recent entries)
+local LEFT_INDENT = 18 -- x-indent for list ITEMS under their header (vs headers at 8)
 
 -- Right-panel result columns. Widened to fill the results box (esp. Name); the left
 -- panel was narrowed to give this room. Anchor-based; tune in-game.
@@ -61,6 +63,16 @@ local ui = {
     sortHeaders = {},   -- native header frames registered by our sort owner (RegisterHeader)
     leftMode  = "lists",   -- "lists" | "recent" (sub-tab selection)
     detail    = nil,       -- drill-down overlay state (built by BuildDetail)
+    -- Layer 3 left-panel state:
+    leftScrollBox = nil,   -- WowScrollBoxList inside leftContainer
+    leftView      = nil,
+    leftElements  = {},    -- flat element model (rebuilt by RefreshLeftPanel)
+    expanded      = {},     -- [listTable] = true when its items are shown. Keyed by the
+                            -- list TABLE (not index) so it survives create/delete reorders.
+                            -- Multiple lists may be expanded at once.
+    selectedList  = nil,    -- index of the list that's the highlighted/"active" target for
+                            -- Add To List (the last one the user clicked); nil = none.
+    listSearching = false, -- true while a multi-term list search is in flight
 }
 
 -- Forward declarations for the drill-down detail view + sort plumbing. Defined later;
@@ -69,6 +81,9 @@ local ui = {
 local OpenDetail, CloseDetail, BuildDetail, OnDetailResults, ApplySort, RefreshDataProvider
 local SelectCommodityThrough, DetailRefresh, UpdateCommodityTotal
 local PaintRowSelection, RepaintDetailSelection
+-- Layer 3 left-panel + list-search forward decls (bound as shared upvalues).
+local RefreshLeftPanel, RebuildLeftElements, OnLeftRowClick, SetActiveList
+local DoSearchTerm, RecordRecent, ToggleListExpanded, ShowAddToListMenu
 
 ----------------------------------------------------------------
 --  Helpers (carried over from the verified browse view, unchanged)
@@ -265,27 +280,195 @@ function RefreshDataProvider()
     ui.scrollBox:SetDataProvider(CreateIndexRangeDataProvider(#ui.rows))
 end
 
--- Honest stub for not-yet-wired Layer-2/3/4 controls.
-local function Stub(label)
-    VUI.Print(AH.TAG, label .. " — coming in a later layer (Shopping is built in stages).")
+----------------------------------------------------------------
+--  Left-panel sub-tab switching + content (Shopping Lists / Recent Searches)
+--
+--  The left container holds a WowScrollBoxList whose elements are a FLAT model
+--  rebuilt on every change (RebuildLeftElements). Element kinds:
+--    { kind="listheader", listIndex, list, name, count, expanded, selected }
+--    { kind="listitem",   listIndex, itemIndex, term }       -- an item under an expanded list
+--    { kind="recent",     recentIndex, term }                -- a recent-search row
+--  Any number of lists may be expanded at once (ui.expanded, keyed by list table). The
+--  selected list (ui.selectedList) is the highlighted Add-To-List target.
+----------------------------------------------------------------
+-- Rebuild ui.leftElements from persisted data for the current ui.leftMode.
+function RebuildLeftElements()
+    local els = {}
+    if ui.leftMode == "lists" then
+        local lists = AH.Lists and AH.Lists.GetAll() or {}
+        for li, list in ipairs(lists) do
+            local items = list.items or {}
+            local isExpanded = ui.expanded[list] and true or false
+            els[#els + 1] = {
+                kind = "listheader", listIndex = li, list = list,
+                name = list.name or "(unnamed)", count = #items,
+                expanded = isExpanded, selected = (ui.selectedList == li),
+            }
+            if isExpanded then
+                for ii, term in ipairs(items) do
+                    els[#els + 1] = {
+                        kind = "listitem", listIndex = li, itemIndex = ii, term = term,
+                    }
+                end
+            end
+        end
+    else -- recent
+        local recent = AH.Recent and AH.Recent.GetAll() or {}
+        for ri, term in ipairs(recent) do
+            els[#els + 1] = { kind = "recent", recentIndex = ri, term = term }
+        end
+    end
+    ui.leftElements = els
+    return els
 end
 
-----------------------------------------------------------------
---  Left-panel sub-tab switching (Shopping Lists / Recent Searches)
-----------------------------------------------------------------
-local function UpdateLeftMode()
+-- Re-read persisted data, rebuild the model, repaint the left ScrollBox + sub-tab state
+-- + empty placeholder. Safe to call any time after Build.
+function RefreshLeftPanel()
     if not ui.leftInset then return end
     local isLists = (ui.leftMode == "lists")
-    -- Native tab selection state via PanelTemplates_SetTab on the sub-tab container
-    -- (tab id 1 = Shopping Lists, 2 = Recent Searches).
     if ui.subTabContainer then
         PanelTemplates_SetTab(ui.subTabContainer, isLists and 1 or 2)
     end
+
+    RebuildLeftElements()
+
+    -- Empty-state placeholder (only when there are no rows to show).
     if ui.leftPlaceholder then
-        ui.leftPlaceholder:SetText(isLists
-            and "No shopping lists yet.\n(Create one with New List — coming soon.)"
-            or  "No recent searches yet.")
+        if #ui.leftElements == 0 then
+            ui.leftPlaceholder:SetText(isLists
+                and "No shopping lists yet.\nClick New List to create one."
+                or  "No recent searches yet.\nSearch for an item to begin.")
+            ui.leftPlaceholder:Show()
+        else
+            ui.leftPlaceholder:Hide()
+        end
     end
+
+    if ui.leftScrollBox then
+        ui.leftScrollBox:SetDataProvider(CreateIndexRangeDataProvider(#ui.leftElements))
+    end
+end
+
+-- Select + expand a list (no toggle, no search). Used after creating a new (empty) list
+-- so it appears open and highlighted as the Add To List target.
+function SetActiveList(li)
+    local list = AH.Lists.Get(li)
+    if not list then return end
+    ui.selectedList = li
+    ui.expanded[list] = true
+    RefreshLeftPanel()
+end
+
+-- Toggle one list's expansion (independent of others — multiple may be open at once),
+-- mark it as the selected/highlight target, and on EXPAND run its whole-list search.
+-- Collapsing does not search (you're just hiding the items).
+function ToggleListExpanded(li)
+    local list = AH.Lists.Get(li)
+    if not list then return end
+    ui.selectedList = li
+    local nowExpanded = not ui.expanded[list]
+    ui.expanded[list] = nowExpanded or nil   -- nil (not false) so the table stays sparse
+    RefreshLeftPanel()
+
+    if nowExpanded then
+        local items = list.items or {}
+        if #items > 0 then
+            if ui.detail and ui.detail.built and ui.detail.frame:IsShown() then CloseDetail() end
+            ui.rows = {}; RefreshDataProvider(); SetStatus("Searching list...")
+            AH.Search.SearchList(items, list.name)
+        end
+    end
+end
+
+-- Left-row click dispatch. button = "LeftButton" | "RightButton".
+function OnLeftRowClick(el, button)
+    if not el then return end
+
+    if button == "RightButton" then
+        -- Right-click = remove. Item/recent removal is immediate; whole-list delete
+        -- routes through a confirm popup.
+        if el.kind == "listheader" then
+            StaticPopup_Show("VUIAH_DELETE_LIST", el.name, nil, { listIndex = el.listIndex })
+        elseif el.kind == "listitem" then
+            AH.Lists.RemoveItem(el.listIndex, el.itemIndex)
+            RefreshLeftPanel()
+        elseif el.kind == "recent" then
+            AH.Recent.Remove(el.recentIndex)
+            RefreshLeftPanel()
+        end
+        return
+    end
+
+    -- Left-click.
+    if el.kind == "listheader" then
+        ToggleListExpanded(el.listIndex)        -- expand/collapse (+ search on expand)
+    elseif el.kind == "listitem" then
+        DoSearchTerm(el.term)                   -- search just this term
+    elseif el.kind == "recent" then
+        DoSearchTerm(el.term)
+    end
+end
+
+-- Right-click a RESULTS-panel row → native context menu to add that specific item to a
+-- Shopping List (or a new one). Uses the modern MenuUtil context-menu API (the 11.x
+-- replacement for EasyMenu/UIDropDownMenu). The item is added by its resolved NAME (the
+-- same normalized term a manual search would store), so a later list search re-runs it
+-- identically. Falls back silently if the menu API or the item name isn't available.
+function ShowAddToListMenu(entry)
+    if not (entry and MenuUtil and MenuUtil.CreateContextMenu) then return end
+    local info = AH.Search.GetKeyInfo(entry.itemKey)
+    local name = info and info.itemName
+    if not name or name == "" then
+        VUI.Print(AH.TAG, "Item info not loaded yet — try again in a moment.")
+        return
+    end
+
+    MenuUtil.CreateContextMenu(ui.content, function(owner, root)
+        root:CreateTitle(name)
+        local lists = AH.Lists.GetAll()
+        if #lists == 0 then
+            local disabled = root:CreateButton("(no lists yet)")
+            disabled:SetEnabled(false)
+        else
+            for li, list in ipairs(lists) do
+                -- A checkmark shows when the item is already in that list; clicking an
+                -- already-checked list removes it (toggle), matching native check-menu feel.
+                root:CreateCheckbox(
+                    list.name or "(unnamed)",
+                    function() -- isSelected
+                        for _, t in ipairs(list.items or {}) do
+                            if t:lower() == name:lower() then return true end
+                        end
+                        return false
+                    end,
+                    function() -- onClick (toggle)
+                        local present
+                        for ii, t in ipairs(list.items or {}) do
+                            if t:lower() == name:lower() then present = ii; break end
+                        end
+                        if present then
+                            AH.Lists.RemoveItem(li, present)
+                        else
+                            AH.Lists.AddItem(li, name)
+                        end
+                        RefreshLeftPanel()
+                    end
+                )
+            end
+        end
+        root:CreateDivider()
+        root:CreateButton("New List…", function()
+            -- Stash the pending item so the New List popup adds it on create.
+            ui.pendingAddItem = name
+            StaticPopup_Show("VUIAH_NEW_LIST")
+        end)
+    end)
+end
+
+-- Honest stub for not-yet-wired Layer-4 controls (Search Options / Import / Export).
+local function Stub(label)
+    VUI.Print(AH.TAG, label .. " — coming in a later layer (Shopping is built in stages).")
 end
 
 ----------------------------------------------------------------
@@ -328,21 +511,55 @@ local function Build(content)
     addBtn:SetSize(90, 22)
     addBtn:SetPoint("LEFT", optBtn, "RIGHT", 5, 0)
     addBtn:SetText("Add To List")
-    addBtn:SetScript("OnClick", function() Stub("Add To List") end)
+    addBtn:SetScript("OnClick", function()
+        -- Add the current search term to the SELECTED list. Guards: need a term + a list.
+        local term = AH.Search.NormalizeSearchTerm(searchBox:GetText() or "")
+        if term == "" then
+            VUI.Print(AH.TAG, "Type or search an item first, then Add To List.")
+            return
+        end
+        if ui.leftMode ~= "lists" or not ui.selectedList then
+            VUI.Print(AH.TAG, "Select a shopping list on the left first (or make one with New List).")
+            return
+        end
+        if AH.Lists.AddItem(ui.selectedList, term) then
+            RefreshLeftPanel()
+            VUI.Print(AH.TAG, format("Added |cFFFFFFFF%s|r to the list.", term))
+        else
+            VUI.Print(AH.TAG, format("|cFFFFFFFF%s|r is already in the list.", term))
+        end
+    end)
 
-    local function DoSearch()
-        local raw = searchBox:GetText() or ""
-        local term = AH.Search.NormalizeSearchTerm(raw)
+    -- Centralized recent-search recorder: every search entry point routes through here.
+    function RecordRecent(term)
+        if AH.Recent and AH.Recent.Add(term) then
+            -- Only repaint the left panel if Recent is the visible mode (cheap otherwise).
+            if ui.leftMode == "recent" then RefreshLeftPanel() end
+        end
+    end
+
+    -- Run a single-item search for `raw` (typed text, a recent entry, or a list item).
+    -- Supersedes any in-flight list search (they share the one browse slot), records the
+    -- term as recent, and populates the search box so the UI reflects what's showing.
+    function DoSearchTerm(raw)
+        local term = AH.Search.NormalizeSearchTerm(raw or "")
         if term == "" then return end
+        if AH.Search.IsListSearching and AH.Search.IsListSearching() then
+            AH.Search.CancelListSearch()
+        end
+        ui.listSearching = false
+        searchBox:SetText(term)
         searchBox:ClearFocus()
+        if ui.detail and ui.detail.built and ui.detail.frame:IsShown() then CloseDetail() end
         ui.rows = {}
         RefreshDataProvider()
         SetStatus("Searching...")
-        AH.Search.Browse(raw)
+        RecordRecent(term)
+        AH.Search.Browse(term)
     end
-    ui.DoSearch = DoSearch
-    searchBtn:SetScript("OnClick", DoSearch)
-    searchBox:SetScript("OnEnterPressed", function(self) DoSearch(); self:ClearFocus() end)
+    ui.DoSearch = function() DoSearchTerm(searchBox:GetText()) end
+    searchBtn:SetScript("OnClick", ui.DoSearch)
+    searchBox:SetScript("OnEnterPressed", function(self) ui.DoSearch(); self:ClearFocus() end)
 
     --======================== LEFT PANEL ========================--
     -- Per Auctionator Main.xml: the lists/recents container is a FIXED-WIDTH (280)
@@ -360,7 +577,7 @@ local function Build(content)
     newBtn:SetSize(74, 22)
     newBtn:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", 5, INSET)
     newBtn:SetText("New List")
-    newBtn:SetScript("OnClick", function() Stub("New List") end)
+    newBtn:SetScript("OnClick", function() StaticPopup_Show("VUIAH_NEW_LIST") end)
 
     -- The fixed-width left container (lists OR recents share this region; we toggle a
     -- placeholder inside for Layer 1).
@@ -389,6 +606,83 @@ local function Build(content)
     leftScrollBar:SetPoint("BOTTOMLEFT", leftContainer, "BOTTOMRIGHT", 4, 2)
     ui.leftScrollBar = leftScrollBar
 
+    -- Left ScrollBox: renders the flat ui.leftElements model (list headers / items /
+    -- recent entries). Inset a few px inside the container's border. Each row is a Button
+    -- carrying its own arrow (headers), count text (headers), and label fontstring.
+    local leftScrollBox = CreateFrame("Frame", nil, leftContainer, "WowScrollBoxList")
+    leftScrollBox:SetPoint("TOPLEFT",     leftContainer, "TOPLEFT",     5, -5)
+    leftScrollBox:SetPoint("BOTTOMRIGHT", leftContainer, "BOTTOMRIGHT", -5, 5)
+    ui.leftScrollBox = leftScrollBox
+
+    local leftView = CreateScrollBoxListLinearView()
+    leftView:SetElementExtent(LEFT_ROW_H)
+    leftView:SetElementInitializer("Button", function(row, index)
+        local el = ui.leftElements[index]
+        if not el then return end
+        row._vuiEl = el
+
+        -- One-time child construction (rows recycle across data-provider swaps).
+        if not row._vuiBuilt then
+            row._vuiBuilt = true
+            local hl = row:CreateTexture(nil, "HIGHLIGHT")
+            hl:SetAllPoints(); hl:SetColorTexture(1, 1, 1, 0.07)
+            -- Gold selection band — shown on a list header while it's expanded. This (plus
+            -- the indented children beneath it) is how Blizzard's own AH Buy-tab category
+            -- list signals expansion: NO arrow glyph, just highlight + indentation. We
+            -- deliberately dropped the rotating arrow (no native AH precedent; the legacy
+            -- Arrow-*-Up art is off-center so it drifts when flipped).
+            local sel = row:CreateTexture(nil, "BACKGROUND")
+            sel:SetAllPoints(); sel:SetAtlas("auctionhouse-ui-row-select", false); sel:Hide()
+            row._vuiSel = sel
+            -- Right-aligned count text (list headers: "(N)").
+            local count = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            count:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+            count:SetJustifyH("RIGHT")
+            row._vuiCount = count
+            -- Main label.
+            local label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            label:SetJustifyH("LEFT")
+            label:SetWordWrap(false)
+            row._vuiLabel = label
+            row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            row:SetScript("OnClick", function(self, button)
+                OnLeftRowClick(self._vuiEl, button)
+            end)
+        end
+
+        local label, count, sel = row._vuiLabel, row._vuiCount, row._vuiSel
+        count:SetText("")
+        sel:Hide()
+
+        if el.kind == "listheader" then
+            -- Native AH Buy-tab style: no arrow. Expansion reads from the gold band +
+            -- the indented child rows beneath. Header label uses the brighter/heavier
+            -- font so it stands apart from its indented (dimmer) items.
+            label:ClearAllPoints()
+            label:SetPoint("LEFT", row, "LEFT", 10, 0)
+            label:SetPoint("RIGHT", count, "LEFT", -4, 0)
+            label:SetFontObject("GameFontNormalSmall")
+            label:SetText(el.name)
+            count:SetText("(" .. (el.count or 0) .. ")")
+            -- Gold band marks the EXPANDED header (the native Buy-tab expansion cue).
+            if el.expanded then sel:Show() end
+        elseif el.kind == "listitem" then
+            label:ClearAllPoints()
+            label:SetPoint("LEFT", row, "LEFT", LEFT_INDENT + 6, 0)
+            label:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+            label:SetFontObject("GameFontHighlightSmall")
+            label:SetText(el.term)
+        else -- recent
+            label:ClearAllPoints()
+            label:SetPoint("LEFT", row, "LEFT", 8, 0)
+            label:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+            label:SetFontObject("GameFontHighlightSmall")
+            label:SetText(el.term)
+        end
+    end)
+    ScrollUtil.InitScrollBoxListWithScrollBar(leftScrollBox, leftScrollBar, leftView)
+    ui.leftView = leftView
+
     local leftPlaceholder = leftContainer:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     leftPlaceholder:SetPoint("CENTER", leftContainer, "CENTER", 0, 0)
     leftPlaceholder:SetWidth(LEFT_W - 24)
@@ -410,14 +704,14 @@ local function Build(content)
     tabLists:SetID(1)
     tabLists:SetText("Shopping Lists")
     tabLists:SetPoint("BOTTOMLEFT", subTabContainer, "BOTTOMLEFT", 0, 0)
-    tabLists:SetScript("OnClick", function() ui.leftMode = "lists"; UpdateLeftMode() end)
+    tabLists:SetScript("OnClick", function() ui.leftMode = "lists"; RefreshLeftPanel() end)
     ui.tabLists = tabLists
 
     local tabRecent = CreateFrame("Button", nil, subTabContainer, "PanelTopTabButtonTemplate")
     tabRecent:SetID(2)
     tabRecent:SetText("Recent Searches")
     tabRecent:SetPoint("LEFT", tabLists, "RIGHT", -16, 0)   -- native tab strip overlaps slightly
-    tabRecent:SetScript("OnClick", function() ui.leftMode = "recent"; UpdateLeftMode() end)
+    tabRecent:SetScript("OnClick", function() ui.leftMode = "recent"; RefreshLeftPanel() end)
     ui.tabRecent = tabRecent
 
     -- Tell PanelTemplates how many tabs the container has (sizes + enables them).
@@ -523,12 +817,18 @@ local function Build(content)
         -- Row-click → drill into this item's individual auctions. `index` is the 1-based
         -- position into ui.rows (the index-range data provider); read the browse row back
         -- from there. Re-bound each init (rows recycle) so the captured index is current.
+        -- RIGHT-click → context menu to add this specific item to a Shopping List.
         row._vuiIndex = index
         if not row._vuiClickWired then
-            row:RegisterForClicks("LeftButtonUp")
-            row:SetScript("OnClick", function(self)
+            row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            row:SetScript("OnClick", function(self, button)
                 local entry = ui.rows[self._vuiIndex]
-                if entry and entry.itemKey then OpenDetail(entry) end
+                if not (entry and entry.itemKey) then return end
+                if button == "RightButton" then
+                    ShowAddToListMenu(entry)
+                else
+                    OpenDetail(entry)
+                end
             end)
             row._vuiClickWired = true
         end
@@ -586,7 +886,7 @@ local function Build(content)
     -- container's anchored width is resolved.
     C_Timer.After(0, function() EnsureArranged() end)
 
-    UpdateLeftMode()   -- seed left-panel sub-tab state + placeholder text
+    RefreshLeftPanel()   -- seed left-panel sub-tab state + render persisted lists/recent
 end
 
 ----------------------------------------------------------------
@@ -1281,6 +1581,120 @@ keyInfoFrame:SetScript("OnEvent", function()
         if ui.scrollBox and #ui.rows > 0 then RefreshDataProvider() end
     end)
 end)
+
+----------------------------------------------------------------
+--  List-search subscriptions (Layer 3) — whole-list multi-term search
+--
+--  These drive the SAME right-hand results table as a single browse, but the rows are
+--  the cross-term aggregate AH.Search builds. Progress is shown in the status overlay
+--  ("Searching list 3/8…") so a long list reads as live, not hung.
+----------------------------------------------------------------
+AH.Events.On("AH_LISTSEARCH_START", function(listName, total)
+    ui.listSearching = true
+    if ui.detail and ui.detail.built and ui.detail.frame:IsShown() then CloseDetail() end
+    ui.rows = {}; RefreshDataProvider()
+    SetStatus(format("Searching list%s — 0/%d…",
+        listName and (" '" .. listName .. "'") or "", total or 0))
+end)
+
+AH.Events.On("AH_LISTSEARCH_UPDATE", function(results, done, total, term)
+    ui.rows = results or {}
+    RefreshDataProvider()
+    -- While rows are accumulating, show progress only when nothing's visible yet;
+    -- once rows appear, clear the overlay so it doesn't obscure them.
+    if #ui.rows == 0 then
+        SetStatus(format("Searching… %d/%d", done or 0, total or 0))
+    else
+        SetStatus("")
+    end
+end)
+
+AH.Events.On("AH_LISTSEARCH_COMPLETE", function(results)
+    ui.listSearching = false
+    ui.rows = results or {}
+    RefreshDataProvider()
+    SetStatus(#ui.rows == 0 and "No auctions found for this list." or "")
+end)
+
+AH.Events.On("AH_LISTSEARCH_FAILED", function(reason)
+    ui.listSearching = false
+    SetStatus("List search failed — " .. (reason or "try again") .. ".")
+end)
+
+----------------------------------------------------------------
+--  StaticPopups: New List (edit box) + Delete List (confirm)
+----------------------------------------------------------------
+StaticPopupDialogs["VUIAH_NEW_LIST"] = {
+    text         = "Name your new shopping list:",
+    button1      = ACCEPT or "Accept",
+    button2      = CANCEL or "Cancel",
+    hasEditBox   = true,
+    maxLetters   = 40,
+    timeout      = 0,
+    whileDead    = true,
+    hideOnEscape = true,
+    enterClicksFirstButton = true,
+    OnShow = function(self)
+        local eb = self.editBox or (self.GetEditBox and self:GetEditBox())
+        if eb then eb:SetText(""); eb:SetFocus() end
+    end,
+    OnAccept = function(self)
+        local eb = self.editBox or (self.GetEditBox and self:GetEditBox())
+        local name = eb and eb:GetText() or ""
+        local idx, err = AH.Lists.Create(name)
+        if idx then
+            ui.leftMode = "lists"
+            SetActiveList(idx)   -- select + expand the new list
+            -- If this New List came from a result-row "New List…", add that item now.
+            local pending = ui.pendingAddItem
+            ui.pendingAddItem = nil
+            if pending then
+                AH.Lists.AddItem(idx, pending)
+                RefreshLeftPanel()
+                VUI.Print(AH.TAG, format("Created list |cFFFFFFFF%s|r and added |cFFFFFFFF%s|r.",
+                    strtrim(name), pending))
+            else
+                VUI.Print(AH.TAG, format("Created list |cFFFFFFFF%s|r.", strtrim(name)))
+            end
+        elseif err == "duplicate name" then
+            VUI.Print(AH.TAG, "A list with that name already exists.")
+        elseif err == "empty name" then
+            VUI.Print(AH.TAG, "List name cannot be empty.")
+        end
+    end,
+    OnCancel = function() ui.pendingAddItem = nil end,
+    EditBoxOnEnterPressed = function(self)
+        -- Route through StaticPopup_OnClick so the dialog's OnAccept runs with the proper
+        -- (frame, data) context and the popup is dismissed — calling parent.OnAccept
+        -- directly fails because OnAccept lives on the dialog TABLE, not the frame.
+        StaticPopup_OnClick(self:GetParent(), 1)
+    end,
+    EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+}
+
+StaticPopupDialogs["VUIAH_DELETE_LIST"] = {
+    text         = "Delete shopping list \"%s\"?",
+    button1      = DELETE or "Delete",
+    button2      = CANCEL or "Cancel",
+    timeout      = 0,
+    whileDead    = true,
+    hideOnEscape = true,
+    showAlert    = true,
+    OnAccept = function(self, data)
+        local li = data and data.listIndex
+        if not li then return end
+        local list = AH.Lists.Get(li)
+        if list then ui.expanded[list] = nil end   -- drop its expansion state (table-keyed)
+        -- Fix up the selected index across the removal-induced reindex.
+        if ui.selectedList == li then
+            ui.selectedList = nil
+        elseif ui.selectedList and ui.selectedList > li then
+            ui.selectedList = ui.selectedList - 1
+        end
+        AH.Lists.Delete(li)
+        RefreshLeftPanel()
+    end,
+}
 
 ----------------------------------------------------------------
 --  Register the tab with the injector

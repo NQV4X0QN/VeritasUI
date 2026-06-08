@@ -2,6 +2,20 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.51] - 2026-06-07
+
+### Added
+- `VeritasUI_AuctionHouse` — **Phase 4 Layer 3: Shopping Lists persistence, Recent Searches, and whole-list multi-term search.** The Shopping tab's left panel is now fully functional (previously stubbed).
+  - **`Shopping.lua` — new persistence layer (UI-agnostic, mirrors `Search.lua`'s separation).** `AH.Lists` (create / delete / rename / add-item / remove-item) and `AH.Recent` (move-to-top, deduped, capped at 20), both over a new account-wide `AH.db.shopping = { lists, recent }` container. Terms are stored normalized (plain item name via `AH.Search.NormalizeSearchTerm`) so a shift-clicked link and a typed name dedupe identically. No `dbVersion` bump — this is UI state, not price-DB layout, so `InitDB`'s nil-seed upgrades any pre-Layer-3 saved var transparently with no migration.
+  - **Shopping Lists left panel** — a `WowScrollBoxList` rendering saved lists as expandable headers (item count shown) with their search terms indented beneath. Any number of lists may be expanded at once. Expansion is signaled the native AH Buy-tab way — a gold selection band on the expanded header (`auctionhouse-ui-row-select`) plus the indented child rows — with no arrow glyph.
+  - **Recent Searches left panel** — every search (button, Enter, shift-click, list-item click) is recorded newest-first and persists across `/reload` and relog.
+  - **Whole-list multi-term search (`AH.Search.SearchList`).** Clicking a list header runs every term in the list sequentially through the existing throttle-queued browse engine (in a new `silent` mode that suppresses single-search events), accumulating results deduped by itemKey-string and keeping the lowest price seen per item. Progress is surfaced via a new `AH_LISTSEARCH_*` event family; results fill the same native results table.
+  - **New List / Add To List wiring.** New List opens a native `StaticPopup` (Enter-to-create now works, routed through `StaticPopup_OnClick`). Add To List adds the current search term to the selected list. Left-row left-click searches; right-click removes (list deletion via a confirm popup).
+  - **Right-click a results row → add that specific item to a list.** A native `MenuUtil.CreateContextMenu` lists each Shopping List (checkbox: checked = already present, click toggles add/remove) plus **New List…** (creates a list and adds the item in one step). Adds the exact item you clicked without retyping its name.
+
+### Fixed
+- `VeritasUI_AuctionHouse` — the Add To List button targeted a stale internal field after the multi-expand refactor and would always report "select a list first"; it now correctly targets the selected list.
+
 ## [1.6.50] - 2026-06-07
 
 ### Added

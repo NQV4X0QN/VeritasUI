@@ -86,6 +86,11 @@ local defaults = {
     prices    = {},    -- [itemKeyString] = price-history record (Phase 2)
     settings  = {},    -- user toggles (Phase 3+); settings.retentionDays optional
     lastScan  = 0,     -- Unix time of last full replicate scan (Phase 2 scan-floor)
+    -- Phase 4 Layer 3: Shopping tab persistence (UI feature, NOT price-DB layout —
+    -- so this does NOT bump dbVersion, which gates the prices schema specifically).
+    --   lists  = array of { name = "...", items = { "term", ... } }
+    --   recent = newest-first array of search-term strings (capped in Shopping.lua)
+    shopping  = { lists = {}, recent = {} },
 }
 
 local db

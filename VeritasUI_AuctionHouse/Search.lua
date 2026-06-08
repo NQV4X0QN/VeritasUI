@@ -123,6 +123,9 @@ local browse = {
     token   = 0,       -- monotonic; guards stale paginate callbacks
     term    = nil,
     results = nil,     -- last GetBrowseResults() snapshot
+    silent  = false,   -- when true (driven by list search), suppress the single-search
+                       -- AH_BROWSE_* events; the list coordinator fires AH_LISTSEARCH_*
+    onComplete = nil,  -- optional fn(success, adaptedResults) called once on full/failure
 }
 
 -- Adapt a BrowseResultInfo into a flat, UI-friendly row. NOTE: name/icon/quality are
@@ -166,10 +169,14 @@ function AH.Search.Browse(term, opts)
     -- what the AH server matches on (a raw |Hitem:..|h string matches nothing).
     local searchString = NormalizeSearchTerm(term)
 
-    browse.token   = browse.token + 1
-    browse.active  = true
-    browse.term    = searchString
-    browse.results = nil
+    browse.token      = browse.token + 1
+    browse.active     = true
+    browse.term       = searchString
+    browse.results    = nil
+    -- silent + onComplete drive the list-search coordinator (below). A normal UI search
+    -- leaves both unset, so it fires AH_BROWSE_* as before.
+    browse.silent     = opts.silent and true or false
+    browse.onComplete = opts.onComplete
 
     local query = {
         searchString     = searchString,
@@ -180,7 +187,9 @@ function AH.Search.Browse(term, opts)
     if opts.minLevel then query.minLevel = opts.minLevel end
     if opts.maxLevel then query.maxLevel = opts.maxLevel end
 
-    AH.Events.Fire("AH_BROWSE_START", browse.term)
+    if not browse.silent then
+        AH.Events.Fire("AH_BROWSE_START", browse.term)
+    end
     AH.Throttle.Enqueue(function()
         C_AuctionHouse.SendBrowseQuery(query)
     end, "browse")
@@ -212,7 +221,10 @@ local function OnBrowseResults()
         full = okf and hf or false
     end
 
-    AH.Events.Fire("AH_BROWSE_UPDATE", AdaptBrowseList(browse.results), full)
+    local adapted = AdaptBrowseList(browse.results)
+    if not browse.silent then
+        AH.Events.Fire("AH_BROWSE_UPDATE", adapted, full)
+    end
 
     if not full then
         -- Page in the rest (throttled), guarded against a stale browse superseding us.
@@ -224,17 +236,171 @@ local function OnBrowseResults()
         end, "browse-more")
     else
         browse.active = false
+        -- Completion handoff for the list-search coordinator (only set in silent mode).
+        local cb = browse.onComplete
+        browse.onComplete = nil
+        if cb then pcall(cb, true, adapted) end
     end
 end
 
 local function OnBrowseFailure()
     if not browse.active then return end
     browse.active = false
-    AH.Events.Fire("AH_BROWSE_FAILED")
+    local silent = browse.silent
+    local cb = browse.onComplete
+    browse.onComplete = nil
+    if cb then
+        pcall(cb, false, nil)        -- list coordinator advances past the failed term
+    elseif not silent then
+        AH.Events.Fire("AH_BROWSE_FAILED")
+    end
 end
 
 ----------------------------------------------------------------
---  ITEM SCAN sub-system (drill-down) — the search-scan engine
+--  LIST SEARCH coordinator (Layer 3) — search every term in a Shopping List
+--
+--  Auctionator's defining Shopping feature: run a whole saved list at once and show
+--  the aggregated cheapest-per-item results. We drive the existing single-term browse
+--  SEQUENTIALLY (one term at a time, each in `silent` mode so it doesn't fire the
+--  single-search UI events), waiting for each to fully paginate before starting the
+--  next. Sequential — not parallel — because the browse subsystem holds ONE active
+--  query + token; this also keeps us well under the 100/min cap and lets the throttle
+--  queue pace us naturally.
+--
+--  Results accumulate deduped by itemKey-string, keeping the LOWEST minPrice seen for
+--  a given item across terms (a term like "flask" can surface the same item twice).
+--
+--  Events (distinct from the single-search AH_BROWSE_* family):
+--    AH_LISTSEARCH_START  (listName, termCount)
+--    AH_LISTSEARCH_UPDATE (accumResults, doneTerms, totalTerms, currentTerm)
+--    AH_LISTSEARCH_COMPLETE (accumResults)
+--    AH_LISTSEARCH_FAILED (reason)        -- only on a hard precondition failure
+----------------------------------------------------------------
+local listSearch = {
+    active   = false,
+    token    = 0,
+    terms    = nil,    -- array of term strings to run
+    index    = 0,      -- index of the term currently running
+    name     = nil,    -- list name (for events/UI)
+    accum    = nil,    -- [itemKeyString] = adapted row (lowest minPrice kept)
+    order    = nil,    -- insertion-ordered array of itemKeyStrings (stable UI order)
+}
+
+local function ListKeyStr(row)
+    local k = row.itemKey
+    if type(k) ~= "table" then return tostring(row.itemID or "?") end
+    return (k.itemID or 0) .. " " .. (k.itemSuffix or 0) .. " "
+        .. (k.itemLevel or 0) .. " " .. (k.battlePetSpeciesID or 0)
+end
+
+-- Merge one term's adapted results into the accumulator (dedupe by key, keep cheapest).
+local function ListAccumulate(rows)
+    if type(rows) ~= "table" then return end
+    for i = 1, #rows do
+        local row = rows[i]
+        local ks  = ListKeyStr(row)
+        local cur = listSearch.accum[ks]
+        if not cur then
+            listSearch.accum[ks] = row
+            listSearch.order[#listSearch.order + 1] = ks
+        else
+            -- Keep the lowest non-zero minPrice across terms (a broad term like "flask"
+            -- can surface the same item another term already added).
+            local a, b = cur.minPrice or 0, row.minPrice or 0
+            if b > 0 and (a == 0 or b < a) then
+                listSearch.accum[ks] = row
+            end
+        end
+    end
+end
+
+-- Flatten the accumulator into an array in stable insertion order for the UI.
+local function ListSnapshot()
+    local out = {}
+    for i = 1, #listSearch.order do
+        local row = listSearch.accum[listSearch.order[i]]
+        if row then out[#out + 1] = row end
+    end
+    return out
+end
+
+local function ListFinish()
+    listSearch.active = false
+    browse.silent = false
+    browse.onComplete = nil
+end
+
+local RunNextListTerm   -- forward decl (mutually referenced in the completion closure)
+
+RunNextListTerm = function()
+    if not listSearch.active then return end
+    local myToken = listSearch.token
+
+    listSearch.index = listSearch.index + 1
+    local i = listSearch.index
+    local total = #listSearch.terms
+
+    if i > total then
+        -- All terms done — deliver the final aggregate once and finish.
+        local snap = ListSnapshot()
+        ListFinish()
+        AH.Events.Fire("AH_LISTSEARCH_COMPLETE", snap)
+        return
+    end
+
+    local term = listSearch.terms[i]
+    -- Run this term silently; on completion, accumulate, push a progress update, recurse.
+    AH.Search.Browse(term, {
+        silent = true,
+        onComplete = function(success, adapted)
+            -- A stale completion (superseded list search) must not advance us.
+            if not (listSearch.active and listSearch.token == myToken) then return end
+            if success and adapted then ListAccumulate(adapted) end
+            AH.Events.Fire("AH_LISTSEARCH_UPDATE", ListSnapshot(), i, total, term)
+            -- Chain the next term. A tiny defer keeps us off the same frame as the
+            -- event handler and lets the throttle queue breathe.
+            C_Timer.After(0, RunNextListTerm)
+        end,
+    })
+end
+
+-- Public: search every term in `terms` (array of strings) under display name `listName`.
+-- Returns true if started. No-ops cleanly if the AH is closed or the list is empty.
+function AH.Search.SearchList(terms, listName)
+    if not AH.isOpen then
+        AH.Events.Fire("AH_LISTSEARCH_FAILED", "Auction House is closed")
+        return false
+    end
+    if type(terms) ~= "table" or #terms == 0 then
+        AH.Events.Fire("AH_LISTSEARCH_FAILED", "list is empty")
+        return false
+    end
+
+    -- Supersede any in-flight list search (and any single browse it had running).
+    listSearch.token  = listSearch.token + 1
+    listSearch.active = true
+    listSearch.terms  = terms
+    listSearch.index  = 0
+    listSearch.name   = listName
+    listSearch.accum  = {}
+    listSearch.order  = {}
+    browse.active     = false   -- drop any single browse mid-flight
+
+    AH.Events.Fire("AH_LISTSEARCH_START", listName, #terms)
+    RunNextListTerm()
+    return true
+end
+
+function AH.Search.CancelListSearch()
+    if listSearch.active then
+        listSearch.token = listSearch.token + 1   -- invalidate pending completions
+        ListFinish()
+    end
+end
+
+function AH.Search.IsListSearching() return listSearch.active end
+
+
 --
 --  Single active request at a time (the UI shows one item's detail at once); a new
 --  QueryItem supersedes any in-flight one. Callback contract:
@@ -520,5 +686,9 @@ AH.Events.On("AH_CLOSED", function()
     if scan.active then
         scan.token = scan.token + 1
         ScanFinish(false)
+    end
+    if listSearch.active then
+        listSearch.token = listSearch.token + 1   -- invalidate pending completions
+        ListFinish()
     end
 end)
