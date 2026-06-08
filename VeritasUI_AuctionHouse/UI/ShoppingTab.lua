@@ -57,8 +57,18 @@ local ui = {
     view      = nil,
     status    = nil,
     rows      = {},
+    sort      = { order = nil, field = nil, kind = nil, dir = 1 },  -- active column sort (dir 1=asc, -1=desc)
+    sortHeaders = {},   -- native header frames registered by our sort owner (RegisterHeader)
     leftMode  = "lists",   -- "lists" | "recent" (sub-tab selection)
+    detail    = nil,       -- drill-down overlay state (built by BuildDetail)
 }
+
+-- Forward declarations for the drill-down detail view + sort plumbing. Defined later;
+-- referenced as upvalues here so functions that mention them (sort owner, browse handlers)
+-- bind to the SAME upvalue rather than capturing a nil global.
+local OpenDetail, CloseDetail, BuildDetail, OnDetailResults, ApplySort, RefreshDataProvider
+local SelectCommodityThrough, DetailRefresh, UpdateCommodityTotal
+local PaintRowSelection, RepaintDetailSelection
 
 ----------------------------------------------------------------
 --  Helpers (carried over from the verified browse view, unchanged)
@@ -122,8 +132,126 @@ local function EnsureArranged()
     return true
 end
 
-local function RefreshDataProvider()
+-- Sortable value for a row given a field+kind. Returns a comparable scalar.
+--   "money"  → copper int (minPrice)
+--   "number" → numeric (totalQuantity)
+--   "name"   → resolved item name lowercased (async-cached; "" until it streams in,
+--              so unresolved rows sort together at the top of an A→Z pass — they
+--              re-sort automatically on the ITEM_KEY_ITEM_INFO_RECEIVED refresh)
+local function SortValue(entry, field, kind)
+    if kind == "name" then
+        local info = AH.Search.GetKeyInfo(entry.itemKey)
+        local n = info and info.itemName
+        return (n and n ~= "") and n:lower() or ""
+    end
+    local v = entry[field]
+    return tonumber(v) or 0
+end
+
+-- Stable comparator: primary by the active column, ties broken by name then itemID so
+-- the order is deterministic (table.sort is not stable on its own).
+local function MakeComparator(field, kind, dir)
+    return function(a, b)
+        local av, bv = SortValue(a, field, kind), SortValue(b, field, kind)
+        if av ~= bv then
+            if dir < 0 then return av > bv end
+            return av < bv
+        end
+        local an = SortValue(a, "name", "name")
+        local bn = SortValue(b, "name", "name")
+        if an ~= bn then return an < bn end
+        return (a.itemID or 0) < (b.itemID or 0)
+    end
+end
+
+-- Reorder ui.rows in place per the active sort (no-op if no column selected).
+function ApplySort()
+    local s = ui.sort
+    if not (s and s.field and #ui.rows > 1) then return end
+    table.sort(ui.rows, MakeComparator(s.field, s.kind, s.dir))
+end
+
+----------------------------------------------------------------
+--  NATIVE sort header owner
+--
+--  Verified via live-client introspection (/ah hdrdump) — the native
+--  AuctionHouseTableHeaderStringTemplate is NOT a static label: its Init(owner, text,
+--  sortOrder) registers with an OWNER and drives both the sort arrow (.Arrow child,
+--  atlas auctionhouse-ui-sortarrow) AND the interactive hover/active highlight off that
+--  owner's protocol. With our previous empty `{}` owner the header was inert — no arrow,
+--  no highlight, dead click. The real owner contract (method names confirmed from the
+--  live Buy-tab header's owner) is:
+--    owner:RegisterHeader(headerFrame)         -- Init calls this; we track the frame
+--    owner:SetSortOrder(sortOrder)             -- header OnClick calls this
+--    owner:GetSortOrderState(sortOrder) -> n   -- UpdateArrow reads this; n is a member
+--                                                 of the GLOBAL table AuctionHouseSortOrderState
+--    owner:UpdateHeaders()                     -- re-run UpdateArrow on every header
+--  Confirmed AuctionHouseSortOrderState (global, NOT under Enum.):
+--    None=1, PrimarySorted=2, PrimaryReversed=3, Sorted=4, Reversed=5
+--  Arrow shows for any non-None state; Sorted/PrimarySorted = up (ascending),
+--  Reversed/PrimaryReversed = down (descending). We use PrimarySorted/PrimaryReversed
+--  (we only ever have one active sort column → it's always the "primary").
+--
+--  We map our three columns to Enum.AuctionHouseSortOrder values (Price=0, Name=1) used
+--  purely as stable per-column IDENTIFIERS for this owner — NOT passed to any server
+--  query (our sort is client-side on ui.rows). The "Available" column has no clean
+--  AuctionHouseSortOrder member, so it gets a private high ID; identity is all the owner
+--  needs. Sort field/kind are carried on the column spec, keyed by that sortOrder id.
+----------------------------------------------------------------
+local SOS = _G.AuctionHouseSortOrderState or
+    { None = 1, PrimarySorted = 2, PrimaryReversed = 3, Sorted = 4, Reversed = 5 }
+
+local sortOwner = {}
+ui.sortOwner = sortOwner
+
+-- sortOrder id → { field, kind } for our columns (populated in AddColumn).
+ui.sortSpecByOrder = {}
+
+function sortOwner:RegisterHeader(headerFrame)
+    -- Track each native header so UpdateHeaders can refresh them all. Idempotent.
+    for _, h in ipairs(ui.sortHeaders) do
+        if h == headerFrame then return end
+    end
+    ui.sortHeaders[#ui.sortHeaders + 1] = headerFrame
+end
+
+function sortOwner:GetAuctionHouseFrame()
+    return AuctionHouseFrame
+end
+
+-- Header OnClick → establish/flip the sort. Same column toggles direction; a new column
+-- starts ascending. Then re-sort rows, refresh every header's arrow, and re-provide.
+function sortOwner:SetSortOrder(sortOrder)
+    local spec = ui.sortSpecByOrder[sortOrder]
+    if not spec then return end
+    local s = ui.sort
+    if s.order == sortOrder then
+        s.dir = -s.dir
+    else
+        s.order, s.field, s.kind, s.dir = sortOrder, spec.field, spec.kind, 1
+    end
+    self:UpdateHeaders()
+    RefreshDataProvider()
+end
+
+-- UpdateArrow reads this per header to decide arrow visibility + direction.
+function sortOwner:GetSortOrderState(sortOrder)
+    if ui.sort.order ~= sortOrder then
+        return SOS.None
+    end
+    return (ui.sort.dir > 0) and SOS.PrimarySorted or SOS.PrimaryReversed
+end
+
+-- Re-run each native header's own UpdateArrow so arrows reflect the active sort.
+function sortOwner:UpdateHeaders()
+    for _, h in ipairs(ui.sortHeaders) do
+        if h.UpdateArrow then h:UpdateArrow() end
+    end
+end
+
+function RefreshDataProvider()
     if not ui.scrollBox then return end
+    ApplySort()
     -- Arrange first so columns have widths + headers exist before rows are added. If the
     -- frame hasn't been laid out yet (width 0), retry next frame.
     if not EnsureArranged() then
@@ -385,12 +513,24 @@ local function Build(content)
     local view = CreateScrollBoxListLinearView()
     view:SetElementExtent(ROW_H)
     view:SetElementInitializer("Button", function(row, index)
-        -- TableBuilder populates the cells; we only add a hover highlight once.
+        -- TableBuilder populates the cells; we add a hover highlight + click once.
         if not row._vuiHl then
             local hl = row:CreateTexture(nil, "HIGHLIGHT")
             hl:SetAllPoints()
             hl:SetColorTexture(1, 1, 1, 0.06)
             row._vuiHl = hl
+        end
+        -- Row-click → drill into this item's individual auctions. `index` is the 1-based
+        -- position into ui.rows (the index-range data provider); read the browse row back
+        -- from there. Re-bound each init (rows recycle) so the captured index is current.
+        row._vuiIndex = index
+        if not row._vuiClickWired then
+            row:RegisterForClicks("LeftButtonUp")
+            row:SetScript("OnClick", function(self)
+                local entry = ui.rows[self._vuiIndex]
+                if entry and entry.itemKey then OpenDetail(entry) end
+            end)
+            row._vuiClickWired = true
         end
     end)
     ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
@@ -407,13 +547,21 @@ local function Build(content)
     ScrollUtil.RegisterTableBuilder(scrollBox, tb, function(elementData) return elementData end)
     ui.tableBuilder = tb
 
-    local function AddColumn(headerText, width, cellTemplate, cellParam)
+    local function AddColumn(headerText, width, cellTemplate, cellParam, sortOrder, sortField, sortKind)
         local col = tb:AddColumn()
-        -- AuctionHouseTableHeaderStringMixin:Init(owner, headerText, sortOrder).
-        -- owner is a table; if it lacks RegisterHeader AND sortOrder is nil, the header
-        -- is non-interactive (no sort yet — Layer 3+). We pass a bare owner + the text +
-        -- nil sortOrder, which is exactly the "static label" case.
-        col:ConstructHeader("BUTTON", "AuctionHouseTableHeaderStringTemplate", {}, headerText, nil)
+        -- AuctionHouseTableHeaderStringMixin:Init(owner, headerText, sortOrder). Passing
+        -- our real sortOwner + a sortOrder id activates the NATIVE machinery: Init calls
+        -- owner:RegisterHeader(self); the header's own OnClick calls owner:SetSortOrder;
+        -- its UpdateArrow reads owner:GetSortOrderState. This lights the genuine sort
+        -- arrow AND the interactive hover/active highlight — no fabrication. (Verified
+        -- owner contract via /ah hdrdump against the live 12.0.5 client.)
+        if sortOrder ~= nil then
+            ui.sortSpecByOrder[sortOrder] = { field = sortField, kind = sortKind }
+            col:ConstructHeader("BUTTON", "AuctionHouseTableHeaderStringTemplate",
+                ui.sortOwner, headerText, sortOrder)
+        else
+            col:ConstructHeader("BUTTON", "AuctionHouseTableHeaderStringTemplate", {}, headerText, nil)
+        end
         col:ConstructCells("FRAME", cellTemplate, cellParam)
         col:SetCellPadding(4, 4)
         if width then col:SetFixedConstraints(width, 0) else col:SetFillConstraints(1.0, 0) end
@@ -422,9 +570,16 @@ local function Build(content)
     -- Price (fixed) · Name (fills the rest) · Available (fixed). Matches Auctionator and
     -- native Buy exactly — no "Scanned" column (it duplicated the live Price and deviated
     -- from native; the scanned/DB market price lives in item TOOLTIPS, its proper home).
-    AddColumn("Price",     COL_PRICE_W, "VUIAHMoneyCellTemplate", "minPrice")
-    AddColumn("Name",      nil,         "VUIAHItemCellTemplate")
-    AddColumn("Available", COL_AVAIL_W, "VUIAHTextCellTemplate",  "totalQuantity")
+    -- sortOrder ids: Price/Name reuse Enum.AuctionHouseSortOrder.Price/Name (0/1) as stable
+    -- per-column identifiers (NOT sent to any server query — sort is client-side); Available
+    -- has no clean enum member, so it gets a private high id (identity is all the owner needs).
+    local SO = Enum and Enum.AuctionHouseSortOrder or {}
+    AddColumn("Price",     COL_PRICE_W, "VUIAHMoneyCellTemplate", "minPrice",
+        SO.Price or 0, "minPrice", "money")
+    AddColumn("Name",      nil,         "VUIAHItemCellTemplate",  nil,
+        SO.Name or 1,  "name", "name")
+    AddColumn("Available", COL_AVAIL_W, "VUIAHTextCellTemplate",  "totalQuantity",
+        1000,          "totalQuantity", "number")
 
     -- Arrange once after layout settles so the column headers render immediately when
     -- the tab is first shown (before any search). Deferred a frame so the header
@@ -435,9 +590,657 @@ local function Build(content)
 end
 
 ----------------------------------------------------------------
+--  DRILL-DOWN DETAIL VIEW (Layer 2)
+--
+--  Clicking a browse row opens this over the results inset: Back + item header, a
+--  native TableBuilder list of that item's individual auctions (Price / Qty / Time
+--  Left / Seller), and an adaptive footer:
+--    • COMMODITY (fungible: ore/herbs/potions) — a quantity box + a two-step Buy
+--      (Start → server quote → Confirm), each step a hardware-event button click,
+--      driven by the proven AH.Buy commodity engine.
+--    • ITEM (gear/pet: unique auctionID) — select a row, then a single-click Buy
+--      (C_AuctionHouse.PlaceBid via AH.Buy.BuyItem) — one protected call, no quote.
+--  Both protected calls originate from the Buy button's OnClick (a genuine hardware
+--  event) and are NOT routed through the throttle queue (§2.6 / OQ#5). The FEEDING
+--  search (AH.Search.QueryItem) is throttle-queued; the buy CALL is not.
+--
+--  To avoid any overlay bleed-through (and to sidestep fabricating an opaque fill —
+--  native-asset discipline), we HIDE the browse list/headers/scrollbar while the
+--  detail view is shown and restore them on Back. The detail view reuses the SAME
+--  cell templates (VUIAHMoneyCellTemplate / VUIAHTextCellTemplate) — no new XML.
+----------------------------------------------------------------
+
+-- Single largest-unit time-left string ("2d", "14h", "3m"); blank if unknown. Uses
+-- Blizzard's own SecondsToTime so the wording matches the default UI.
+local function TimeLeftText(secs)
+    if not secs or secs <= 0 then return "" end
+    if SecondsToTime then
+        local ok, s = pcall(SecondsToTime, secs, true, false, 1)  -- noSeconds, abbrev, 1 unit
+        if ok and s and s ~= "" then return s end
+    end
+    return ""
+end
+
+local function clamp(n, lo, hi)
+    if n < lo then return lo end
+    if n > hi then return hi end
+    return n
+end
+
+local function DetailStatus(text)
+    local d = ui.detail
+    if not (d and d.status) then return end
+    if text and text ~= "" then d.status:SetText(text); d.status:Show()
+    else d.status:Hide() end
+end
+
+-- TableBuilder needs a resolved header-container width before Arrange (mirrors the
+-- Push the auction rows into the headerless list (plain index-range provider; the row
+-- initializer reads ui.detail.rows[index] and fills price + quantity).
+function DetailRefresh()
+    local d = ui.detail
+    if not (d and d.scrollBox) then return end
+    d.scrollBox:SetDataProvider(CreateIndexRangeDataProvider(#d.rows))
+end
+
+-- Paint ONE row's gold selection overlay against the current selection state. Reads the
+-- row's own _vuiIndex, so it works whether called from the element initializer or a live
+-- ForEachFrame walk. Commodities select cumulatively (rows 1..selThrough); items select
+-- the single selIndex row.
+function PaintRowSelection(row)
+    if not (row and row._vuiSel and row._vuiIndex) then return end
+    local d = ui.detail
+    local selected = false
+    if d then
+        if d.isCommodity then
+            selected = d.selThrough ~= nil and row._vuiIndex <= d.selThrough
+        else
+            selected = d.selIndex == row._vuiIndex
+        end
+    end
+    if selected then row._vuiSel:Show() else row._vuiSel:Hide() end
+end
+
+-- Repaint selection on all CURRENTLY-REALIZED rows. The data-provider swap in DetailRefresh
+-- only re-runs the element initializer when the row set changes; a pure selection change
+-- (same rows, different highlight) leaves realized frames untouched — so we walk the live
+-- frames directly. This is what makes a click visibly update the gold highlight.
+function RepaintDetailSelection()
+    local d = ui.detail
+    if not (d and d.scrollBox and d.scrollBox.ForEachFrame) then return end
+    d.scrollBox:ForEachFrame(function(row) PaintRowSelection(row) end)
+end
+
+-- Cumulative commodity selection: clicking row N selects rows 1..N (cheapest through N),
+-- sums their quantities into the Quantity box, highlights them gold, and re-renders — the
+-- native commodity-buy behavior. Clicking the same row again toggles the selection off.
+function SelectCommodityThrough(index)
+    local d = ui.detail
+    if not (d and d.isCommodity and d.rows) then return end
+    if d.selThrough == index then
+        d.selThrough = nil           -- click same row again → clear
+    else
+        d.selThrough = index
+    end
+    local total = 0
+    if d.selThrough then
+        if d.selThrough >= #d.rows and d.serverQty then
+            -- Selecting through the last row = "buy all" → use the server's authoritative
+            -- total (the row-sum can under-count vs the server quantity).
+            total = d.serverQty
+        else
+            for i = 1, d.selThrough do
+                total = total + (d.rows[i] and d.rows[i].quantity or 0)
+            end
+        end
+    end
+    local cap = d.serverQty or d.maxQty or total
+    -- Programmatic SetNumber: OnTextChanged's `userInput` arg is false here, so it won't
+    -- clear the selection we're setting (no home-grown flag needed).
+    if total > 0 and d.qtyBox then
+        d.qtyBox:SetNumber(math.min(total, cap))
+    elseif d.qtyBox then
+        d.qtyBox:SetNumber(1)
+    end
+    UpdateCommodityTotal()
+    RepaintDetailSelection()         -- repaint the gold highlight on live rows 1..selThrough
+end
+
+-- Re-run the drill-down for the open item (after a purchase, to drop the bought row).
+local function DetailRequery()
+    local d = ui.detail
+    if not (d and d.entry) then return end
+    d.rows = {}; DetailRefresh(); DetailStatus("Loading...")
+    AH.Search.QueryItem(d.entry, OnDetailResults)
+end
+
+-- Running total for the commodity qty selector via the native MoneyDisplayFrame. Sum is
+-- a local estimate from the cheapest unit; the authoritative total is the server quote
+-- shown on the Buy→Confirm button. We tint the label "(est.)" so it never reads as final.
+function UpdateCommodityTotal()
+    local d = ui.detail
+    if not (d and d.isCommodity and d.totalMoney) then return end
+    local qty = clamp(tonumber(d.qtyBox:GetNumber()) or 1, 1, d.maxQty or 1)
+    -- Blended total: fill `qty` units from the cheapest rows upward (how a commodity
+    -- purchase actually fills across price tiers), summing unit×take per tier.
+    local remaining, total = qty, 0
+    for i = 1, #d.rows do
+        if remaining <= 0 then break end
+        local r = d.rows[i]
+        local take = math.min(remaining, r.quantity or 0)
+        total = total + take * (r.unitPrice or 0)
+        remaining = remaining - take
+    end
+    local unit = (d.rows[1] and d.rows[1].unitPrice) or 0   -- cheapest unit (Unit Price line)
+    if d.unitMoney and d.unitMoney.SetAmount then d.unitMoney:SetAmount(unit) end
+    if d.totalMoney.SetAmount then d.totalMoney:SetAmount(total) end
+end
+
+-- Reset the footer to its idle state for the current mode (commodity vs item).
+local function ResetBuyControls()
+    local d = ui.detail
+    if not d then return end
+    d.buyState = "idle"
+    if d.isCommodity then
+        d.qtyLabel:Show(); d.qtyBox:Show()
+        d.unitLabel:Show(); d.unitMoney:Show()
+        d.totalLabel:Show(); d.totalMoney:Show(); d.itemHint:Hide()
+        d.buyBtn:SetText("Buy"); d.buyBtn:Enable()
+        UpdateCommodityTotal()
+    else
+        d.qtyLabel:Hide(); d.qtyBox:Hide()
+        d.unitLabel:Hide(); d.unitMoney:Hide()
+        d.totalLabel:Hide(); d.totalMoney:Hide(); d.itemHint:Show()
+        d.selIndex = nil; d.selected = nil
+        d.buyBtn:SetText("Buy"); d.buyBtn:Disable()
+    end
+end
+
+function BuildDetail()
+    local d = ui.detail
+    if d and d.built then return end
+    d = ui.detail or {}
+    ui.detail = d
+    d.built = true
+    d.rows  = {}
+
+    -- The detail surface occupies the SAME right-hand region the browse results used
+    -- (the left Shopping Lists panel stays visible). Parented to ui.content — NOT to
+    -- ui.rightInset — so that inset's border doesn't enclose us as a "box". OpenDetail
+    -- hides the browse right-side widgets (rightInset/scrollbox/headers) while this shows.
+    local frame = CreateFrame("Frame", nil, ui.content)
+    -- Match the browse rightInset's VERTICAL extent exactly (top+bottom+left) so the detail
+    -- panels line up level with the Shopping Lists frame. Extend ONLY the right edge — to
+    -- content right −8 (the browse inset stops at −16 to leave its own scrollbar room) —
+    -- reclaiming ~8px of dead chrome while still leaving a little margin past our scrollbar.
+    frame:SetPoint("TOPLEFT",     ui.rightInset, "TOPLEFT",     0, 0)
+    frame:SetPoint("BOTTOMLEFT",  ui.rightInset, "BOTTOMLEFT",  0, 0)
+    frame:SetPoint("RIGHT",       ui.content,    "RIGHT",       -8, 0)
+    frame:Hide()
+    d.frame = frame
+
+    --— Back as a real button (native uses a framed button), then a TWO-PANE split: a WIDE
+    --  left detail pane and a NARROW right list pane (native ratio is roughly 2:1). —--
+    local back = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    back:SetSize(90, 22)
+    back:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -4)
+    back:SetText("Back")
+    back:SetScript("OnClick", function() CloseDetail() end)
+    d.backBtn = back
+
+    -- Panes start below the Back button and stop short of the bottom. The LEFT (detail)
+    -- pane is WIDE; the RIGHT (list) pane is NARROW — just price + quantity. Scrollbar
+    -- lives OUTSIDE the right inset, on the chrome.
+    local PANES_TOP   = -32
+    local RIGHT_PANE_W = 200   -- list column: price + qty, room for large gold AND large qty
+    local SB_GAP       = 10    -- chrome room for the scrollbar right of the inset (was 18 —
+                               -- too wide, left dead space; the MinimalScrollBar needs ~10)
+
+    -- RIGHT list inset. Background = the verified native commodities-market atlas (the same
+    -- one CommoditiesBuyFrame.Background uses) — it has NO baked-in category divider, unlike
+    -- auctionhouse-background-index (whose vertical divider was showing as the stray line +
+    -- doubled edge). Scrollbar lives out on the chrome in SB_GAP.
+    local rightInset = CreateFrame("Frame", nil, frame, "InsetFrameTemplate")
+    rightInset:SetWidth(RIGHT_PANE_W)
+    rightInset:SetPoint("TOPRIGHT",    frame, "TOPRIGHT",    -SB_GAP, PANES_TOP)
+    rightInset:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -SB_GAP, 2)
+    if rightInset.Bg then
+        rightInset.Bg:SetAtlas("auctionhouse-background-buy-noncommodities-market", false)
+        rightInset.Bg:SetHorizTile(false); rightInset.Bg:SetVertTile(false)
+    end
+    d.rightInset = rightInset
+    local rightPane = CreateFrame("Frame", nil, rightInset)
+    rightPane:SetPoint("TOPLEFT",     rightInset, "TOPLEFT",     4, -4)
+    rightPane:SetPoint("BOTTOMRIGHT", rightInset, "BOTTOMRIGHT", -4, 4)
+    d.rightPane = rightPane
+
+    -- LEFT detail inset: WIDE, fills from the left edge to just before the right inset.
+    -- Background = the verified native non-commodities-market atlas (no divider).
+    local leftInset = CreateFrame("Frame", nil, frame, "InsetFrameTemplate")
+    leftInset:SetPoint("TOPLEFT",     frame, "TOPLEFT",  0, PANES_TOP)
+    leftInset:SetPoint("BOTTOMRIGHT", rightInset, "BOTTOMLEFT", -2, 0)   -- narrow divider gap
+    if leftInset.Bg then
+        leftInset.Bg:SetAtlas("auctionhouse-background-buy-noncommodities-market", false)
+        leftInset.Bg:SetHorizTile(false); leftInset.Bg:SetVertTile(false)
+    end
+    d.leftInset = leftInset
+    local leftPane = CreateFrame("Frame", nil, leftInset)
+    leftPane:SetPoint("TOPLEFT",     leftInset, "TOPLEFT",     4, -4)
+    leftPane:SetPoint("BOTTOMRIGHT", leftInset, "BOTTOMRIGHT", -4, 4)
+    d.leftPane = leftPane
+
+    -- Item card: a THIN 1px-bordered banner (NOT InsetFrameTemplate, which draws a heavy
+    -- beveled frame). Uses BackdropTemplate with Blizzard's 1px tooltip-style edge file so
+    -- the border is a clean single line, matching native ItemDisplay's thin border. The
+    -- header atlas fills inside it.
+    local card = CreateFrame("Frame", nil, leftPane, "BackdropTemplate")
+    card:SetPoint("TOPLEFT",  leftPane, "TOPLEFT",  8, -8)
+    card:SetPoint("TOPRIGHT", leftPane, "TOPRIGHT", -8, -8)
+    card:SetHeight(62)
+    card:SetBackdrop({
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 12,
+        insets   = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    card:SetBackdropBorderColor(0.25, 0.25, 0.25, 1)   -- dull dark grey, inset look (was 0.5 — too bright)
+    d.card = card
+    -- Header background atlas behind the card content (inside the thin border).
+    local cardBg = card:CreateTexture(nil, "BACKGROUND")
+    cardBg:SetPoint("TOPLEFT", card, "TOPLEFT", 3, -3)
+    cardBg:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -3, 3)
+    cardBg:SetAtlas("auctionhouse-background-buy-noncommodities-header", false)
+    cardBg:SetHorizTile(false); cardBg:SetVertTile(false)
+
+    local icon = card:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(40, 40)
+    icon:SetPoint("LEFT", card, "LEFT", 12, 0)
+    icon:Hide()
+    d.icon = icon
+    -- Real circular mask (TempPortraitAlphaMask is a circular mask that ships in every
+    -- client — verified-present native asset, used widely for round icons).
+    local mask = card:CreateMaskTexture()
+    mask:SetAllPoints(icon)
+    mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask",
+        "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    icon:AddMaskTexture(mask)
+    d.iconMask = mask
+    -- Native circular item border ring — sized noticeably larger than the icon so it reads
+    -- as a ring AROUND it (native ratio is ~1.4x), not a tight outline.
+    local iconBorder = card:CreateTexture(nil, "OVERLAY")
+    iconBorder:SetPoint("CENTER", icon, "CENTER", 0, 0)
+    iconBorder:SetSize(56, 56)
+    iconBorder:SetAtlas("auctionhouse-itemicon-border-white", false)
+    iconBorder:Hide()
+    d.iconBorder = iconBorder
+
+    local nameFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    nameFS:SetPoint("LEFT", icon, "RIGHT", 12, 0)
+    nameFS:SetPoint("RIGHT", card, "RIGHT", -8, 0)
+    nameFS:SetJustifyH("LEFT")
+    nameFS:SetWordWrap(true)
+    nameFS:SetMaxLines(2)
+    d.nameFS = nameFS
+
+    -- Stacked controls below the card. Indented further right to match native spacing.
+    local ROW_LABEL_X = 24   -- label left inset within the left pane (indented)
+    local VALUE_X     = 130  -- where values/inputs begin
+
+    -- Quantity row: "Quantity" + input + Max (Max sits right of the input).
+    local qtyLabel = leftPane:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    qtyLabel:SetPoint("TOPLEFT", card, "BOTTOMLEFT", ROW_LABEL_X, -24)
+    qtyLabel:SetText("Quantity")
+    d.qtyLabel = qtyLabel
+
+    local qtyBox = CreateFrame("EditBox", nil, leftPane, "VUIAHInputBoxTemplate")
+    qtyBox:SetSize(110, 26)   -- not too wide; a couple px taller to match native proportions
+    qtyBox:SetPoint("LEFT", leftPane, "LEFT", VALUE_X, 0)
+    qtyBox:SetPoint("TOP", qtyLabel, "TOP", 0, 6)
+    qtyBox:SetAutoFocus(false)
+    qtyBox:SetNumeric(true)
+    qtyBox:SetFontObject("ChatFontNormal")
+    qtyBox:SetTextInsets(6, 6, 0, 0)
+    qtyBox:SetJustifyH("LEFT")
+    qtyBox:SetNumber(1)
+    qtyBox:SetScript("OnTextChanged", function(self, userInput)
+        if ui.detail.buyState == "quoted" then
+            AH.Buy.CancelCommodity()
+            ui.detail.buyState = "idle"
+            ui.detail.buyBtn:SetText("Buy"); ui.detail.buyBtn:Enable()
+        end
+        -- Manual typing clears any cumulative row selection (the highlight no longer
+        -- reflects the entered number). We use the NATIVE `userInput` arg (true only for
+        -- real keystrokes; false for programmatic SetNumber) instead of a home-grown flag —
+        -- that flag was racing, so SelectCommodityThrough's own SetNumber tripped the clear,
+        -- wiping the selection + scroll-resetting via DetailRefresh. Repaint, don't rebuild.
+        if userInput and ui.detail and ui.detail.selThrough ~= nil then
+            ui.detail.selThrough = nil
+            RepaintDetailSelection()
+        end
+        UpdateCommodityTotal()
+    end)
+    qtyBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    qtyBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    d.qtyBox = qtyBox
+
+    -- Unit Price row: "Unit Price" + MoneyDisplay.
+    local unitLabel = leftPane:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    unitLabel:SetPoint("TOPLEFT", qtyLabel, "BOTTOMLEFT", 0, -22)
+    unitLabel:SetText("Unit Price")
+    d.unitLabel = unitLabel
+
+    local unitMoney = CreateFrame("Frame", nil, leftPane, "VUIAHPanelMoneyTemplate")
+    unitMoney:SetPoint("LEFT", leftPane, "LEFT", VALUE_X, 0)
+    unitMoney:SetPoint("TOP", unitLabel, "TOP", 0, 0)
+    if unitMoney.SetAmount then unitMoney:SetAmount(0) end
+    d.unitMoney = unitMoney
+
+    -- Total Price row: "Total Price" + MoneyDisplay.
+    local totalLabel = leftPane:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    totalLabel:SetPoint("TOPLEFT", unitLabel, "BOTTOMLEFT", 0, -22)
+    totalLabel:SetText("Total Price")
+    d.totalLabel = totalLabel
+
+    local totalMoney = CreateFrame("Frame", nil, leftPane, "VUIAHPanelMoneyTemplate")
+    totalMoney:SetPoint("LEFT", leftPane, "LEFT", VALUE_X, 0)
+    totalMoney:SetPoint("TOP", totalLabel, "TOP", 0, 0)
+    if totalMoney.SetAmount then totalMoney:SetAmount(0) end
+    d.totalMoney = totalMoney
+
+    -- Buy button: anchored to the SAME grid as the qty box + money values (leftPane LEFT +
+    -- VALUE_X) so its left edge lines up exactly — the previous totalLabel-relative offset
+    -- put it on a different reference, which is why it drifted right. Width matches the box.
+    local buyBtn = CreateFrame("Button", nil, leftPane, "UIPanelButtonTemplate")
+    buyBtn:SetSize(110, 26)
+    buyBtn:SetPoint("LEFT", leftPane, "LEFT", VALUE_X, 0)
+    buyBtn:SetPoint("TOP", totalLabel, "BOTTOM", 0, -30)
+    buyBtn:SetText("Buy")
+    d.buyBtn = buyBtn
+
+    -- Item-mode hint (shown instead of the quantity/price rows for non-commodity items).
+    local itemHint = leftPane:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    itemHint:SetPoint("TOPLEFT", card, "BOTTOMLEFT", ROW_LABEL_X, -24)
+    itemHint:SetPoint("RIGHT", leftPane, "RIGHT", -8, 0)
+    itemHint:SetJustifyH("LEFT")
+    itemHint:SetText("Select an auction from the list, then Buy.")
+    d.itemHint = itemHint
+
+    -- The Buy button: branches on commodity (two-step quote/confirm) vs item (single
+    -- PlaceBid). EVERY protected call here originates from this OnClick (hardware event).
+    buyBtn:SetScript("OnClick", function(self)
+        local dd = ui.detail
+        if not dd then return end
+
+        if dd.isCommodity then
+            if dd.buyState == "idle" then
+                local qty = clamp(tonumber(dd.qtyBox:GetNumber()) or 1, 1, dd.maxQty or 1)
+                dd.buyQty = qty
+                dd.buyState = "quoting"
+                self:Disable(); self:SetText("Requesting quote...")
+                AH.Buy.StartCommodity(dd.itemID, qty, function(state, p1, p2)
+                    local d2 = ui.detail
+                    if not d2 then return end
+                    if state == "quote" then
+                        d2.buyState = "quoted"
+                        self:Enable()
+                        self:SetText("Confirm  " .. (AH.Money and AH.Money.Format(p2) or tostring(p2)))
+                        DetailStatus("")
+                    elseif state == "unavailable" then
+                        d2.buyState = "idle"
+                        self:Enable(); self:SetText("Buy")
+                        DetailStatus("Price unavailable - try again.")
+                    elseif state == "success" then
+                        DetailStatus("Purchased.")
+                        ResetBuyControls()
+                        C_Timer.After(0.4, DetailRequery)
+                    elseif state == "failed" then
+                        d2.buyState = "idle"
+                        self:Enable(); self:SetText("Buy")
+                        DetailStatus("Purchase failed.")
+                    end
+                end)
+            elseif dd.buyState == "quoted" then
+                dd.buyState = "buying"
+                self:Disable(); self:SetText("Buying...")
+                AH.Buy.ConfirmCommodity()
+                -- Safety: if neither success nor fail arrives, un-stick the button.
+                C_Timer.After(2, function()
+                    if ui.detail and ui.detail.buyState == "buying" then
+                        ResetBuyControls(); DetailStatus("")
+                    end
+                end)
+            end
+        else
+            -- Item path: buy the selected auction's full buyout in one protected call.
+            local sel = dd.selected
+            if not (sel and sel.auctionID and sel.price) then return end
+            self:Disable(); self:SetText("Buying...")
+            AH.Buy.BuyItem(sel.auctionID, sel.price)
+            DetailStatus("Purchased.")
+            C_Timer.After(0.5, DetailRequery)
+        end
+    end)
+
+    --— headerless auction list (native has NO column headers; just price-left / qty-right).
+    --  Plain WowScrollBoxList of Button rows, each with a left MoneyDisplay (price) + a
+    --  right quantity fontstring — no TableBuilder, so there's nothing to draw headers.
+    --  Scrollbar sits OUTSIDE the inset, on the chrome in the SB_GAP (native placement). —--
+    local scrollBar = CreateFrame("EventFrame", nil, frame, "MinimalScrollBar")
+    scrollBar:SetPoint("TOPLEFT",    rightInset, "TOPRIGHT", 4, -2)
+    scrollBar:SetPoint("BOTTOMLEFT", rightInset, "BOTTOMRIGHT", 4, 2)
+    scrollBar:Hide()
+    d.scrollBar = scrollBar
+
+    local scrollBox = CreateFrame("Frame", nil, rightPane, "WowScrollBoxList")
+    scrollBox:SetPoint("TOPLEFT",     rightPane, "TOPLEFT", 0, 0)
+    scrollBox:SetPoint("BOTTOMRIGHT", rightPane, "BOTTOMRIGHT", 0, 0)
+    d.scrollBox = scrollBox
+
+    local status = scrollBox:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    status:SetPoint("CENTER", scrollBox, "CENTER", 0, 0)
+    status:SetTextColor(0.7, 0.7, 0.7)
+    status:Hide()
+    d.status = status
+
+    local view = CreateScrollBoxListLinearView()
+    view:SetElementExtent(ROW_H)
+    view:SetElementInitializer("Button", function(row, index)
+        -- Native banded-row visuals, using the EXACT atlases Blizzard's commodity list uses
+        -- (verified via /ah rowdump): a full-width rowstripe background on every row, a hover
+        -- highlight, and a gold selection overlay. No alternation — native uses rowstripe-1
+        -- uniformly (confirmed: all rows reported auctionhouse-rowstripe-1).
+        if not row._vuiStripe then
+            local bg = row:CreateTexture(nil, "BACKGROUND")
+            bg:SetAllPoints()
+            bg:SetAtlas("auctionhouse-rowstripe-1", false)   -- full-width row band
+            row._vuiStripe = bg
+        end
+        if not row._vuiHl then
+            local hl = row:CreateTexture(nil, "HIGHLIGHT")
+            hl:SetAllPoints()
+            hl:SetAtlas("auctionhouse-ui-row-highlight", false)   -- native hover highlight
+            row._vuiHl = hl
+        end
+        -- Gold selection overlay (native auctionhouse-ui-row-select). Cumulative for
+        -- commodities: rows 1..selThrough show it.
+        if not row._vuiSel then
+            local s = row:CreateTexture(nil, "OVERLAY")
+            s:SetAllPoints()
+            s:SetAtlas("auctionhouse-ui-row-select", false)
+            s:Hide()
+            row._vuiSel = s
+        end
+        -- Build the two columns once. Native gives PRICE the bulk of the row width (so big
+        -- gold values don't clip) and pins the small QUANTITY number to the far right. Price
+        -- is right-justified up to a fixed right reserve; quantity occupies that reserve.
+        if not row._vuiPrice then
+            local QTY_RESERVE = 76   -- right-side space reserved for the quantity (fits 6 digits)
+            local price = CreateFrame("Frame", nil, row, "VUIAHRowMoneyTemplate")
+            price:SetPoint("LEFT",  row, "LEFT",  6, 0)
+            price:SetPoint("RIGHT", row, "RIGHT", -QTY_RESERVE, 0)   -- price spans most of the row
+            price:EnableMouse(false)   -- let clicks fall through to the row Button (the
+                                       -- MoneyDisplayFrame is mouse-enabled by default and
+                                       -- was swallowing the first click over the price half)
+            row._vuiPrice = price
+            local qty = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            qty:SetPoint("RIGHT", row, "RIGHT", -8, 0)   -- quantity pinned far-right
+            qty:SetJustifyH("RIGHT")
+            row._vuiQty = qty
+        end
+
+        local data = ui.detail and ui.detail.rows and ui.detail.rows[index]
+        if data then
+            if row._vuiPrice.SetAmount then row._vuiPrice:SetAmount(data.unitPrice or 0) end
+            row._vuiQty:SetText(data.quantity and tostring(data.quantity) or "")
+        end
+
+        row._vuiIndex = index
+        PaintRowSelection(row)   -- show gold overlay if this row is in the selection
+        if not row._vuiClickWired then
+            row:RegisterForClicks("LeftButtonUp")
+            row:SetScript("OnClick", function(self)
+                local d3 = ui.detail
+                if not d3 then return end
+                if d3.isCommodity then
+                    -- Cumulative select: clicking row N selects rows 1..N (cheapest through
+                    -- N), fills the quantity with their summed quantity — native behavior.
+                    SelectCommodityThrough(self._vuiIndex)
+                else
+                    local ent = d3.rows[self._vuiIndex]
+                    if not (ent and ent.auctionID and ent.unitPrice) then return end  -- buyout only
+                    d3.selIndex = self._vuiIndex
+                    d3.selected = { auctionID = ent.auctionID, price = ent.unitPrice }
+                    d3.buyBtn:SetText("Buy  " .. (AH.Money and AH.Money.Format(ent.unitPrice) or ent.unitPrice))
+                    d3.buyBtn:Enable()
+                    RepaintDetailSelection()   -- repaint selection on live rows
+                end
+            end)
+            row._vuiClickWired = true
+        end
+    end)
+    ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
+    d.view = view
+end
+
+function OpenDetail(entry)
+    BuildDetail()
+    local d = ui.detail
+    d.entry       = entry
+    d.itemID      = entry.itemID or (entry.itemKey and entry.itemKey.itemID)
+    d.isCommodity = nil   -- resolved when results arrive
+    d.rows        = {}
+    d.selIndex    = nil
+    d.selThrough  = nil
+    d.selected    = nil
+    d.maxQty      = 1
+    d.serverQty   = nil
+    d.buyState    = "idle"
+
+    -- Hide the browse RIGHT-side widgets (the left Shopping Lists panel stays visible).
+    if ui.scrollBox then ui.scrollBox:Hide() end
+    if ui.scrollBar then ui.scrollBar:Hide() end
+    if ui.headerContainer then ui.headerContainer:Hide() end
+    if ui.rightInset then ui.rightInset:Hide() end
+    d.frame:Show()
+    d.scrollBar:Show()
+
+    -- Header name/icon from cached key info (may be nil until it streams in).
+    local info = AH.Search.GetKeyInfo(entry.itemKey)
+    if info and info.itemName and info.itemName ~= "" then
+        local r, g, b = 1, 1, 1
+        if info.quality and C_Item and C_Item.GetItemQualityColor then
+            local cr, cg, cb = C_Item.GetItemQualityColor(info.quality)
+            if cr then r, g, b = cr, cg, cb end
+        end
+        d.nameFS:SetText(info.itemName); d.nameFS:SetTextColor(r, g, b)
+        if info.iconFileID then
+            d.icon:SetTexture(info.iconFileID); d.icon:Show()
+            -- Tint the native circular border ring to the item's quality color.
+            d.iconBorder:SetVertexColor(r, g, b); d.iconBorder:Show()
+        else
+            d.icon:Hide(); d.iconBorder:Hide()
+        end
+    else
+        d.nameFS:SetText("Loading..."); d.nameFS:SetTextColor(0.7, 0.7, 0.7)
+        d.icon:Hide(); d.iconBorder:Hide()
+    end
+
+    -- Detail panes start hidden until the mode (commodity/item) is known.
+    d.qtyLabel:Hide(); d.qtyBox:Hide()
+    d.unitLabel:Hide(); d.unitMoney:Hide()
+    d.totalLabel:Hide(); d.totalMoney:Hide(); d.itemHint:Hide()
+    d.buyBtn:Disable(); d.buyBtn:SetText("Buy")
+
+    DetailStatus("Loading...")
+    DetailRefresh()
+    AH.Search.QueryItem(entry, OnDetailResults)
+end
+
+function CloseDetail()
+    local d = ui.detail
+    if not (d and d.built) then return end
+    AH.Search.CancelItemQuery()
+    if AH.Buy.IsActive() then AH.Buy.CancelCommodity() end
+    d.frame:Hide()
+    d.scrollBar:Hide()
+    if ui.scrollBox then ui.scrollBox:Show() end
+    if ui.scrollBar then ui.scrollBar:Show() end
+    if ui.headerContainer then ui.headerContainer:Show() end
+    if ui.rightInset then ui.rightInset:Show() end
+end
+
+-- AH.Search.QueryItem callback (may fire multiple times: progressive pages + requery).
+function OnDetailResults(state, data)
+    local d = ui.detail
+    if not (d and d.built and d.frame:IsShown()) then return end
+
+    if state == "failed" then
+        d.rows = {}; DetailRefresh(); DetailStatus("Search failed - try again.")
+        return
+    elseif state == "empty" then
+        d.rows = {}; DetailRefresh(); DetailStatus("No auctions found.")
+        return
+    elseif state ~= "results" or not data then
+        return
+    end
+
+    -- First results page establishes the mode + footer; later pages just extend rows.
+    local firstResolve = (d.isCommodity == nil)
+    d.isCommodity = data.isCommodity and true or false
+
+    local entries = data.entries or {}
+    -- Pre-format the time-left field the text cell reads (cells read named fields only).
+    local total = 0
+    for _, e in ipairs(entries) do
+        e.timeLeftText = TimeLeftText(e.timeLeftSeconds)
+        total = total + (e.quantity or 0)
+    end
+    d.rows   = entries
+    d.maxQty = (total > 0) and total or 1
+    -- Server's authoritative total quantity (may exceed the summed visible rows due to
+    -- pagination/rounding). When the user selects through the LAST row ("buy all"), native
+    -- fills the box with THIS, not the client row-sum — so capture it once results are full.
+    if data.isFull and C_AuctionHouse and C_AuctionHouse.GetCommoditySearchResultsQuantity and d.itemID then
+        local ok, q = pcall(C_AuctionHouse.GetCommoditySearchResultsQuantity, d.itemID)
+        if ok and q and q > 0 then d.serverQty = q end
+    end
+
+    if d.qtyBox then
+        local cur = tonumber(d.qtyBox:GetNumber()) or 1
+        if cur > d.maxQty then d.qtyBox:SetNumber(d.maxQty) end
+    end
+
+    DetailStatus(#entries == 0 and (data.isFull and "No auctions found." or "Loading...") or "")
+    DetailRefresh()
+
+    if firstResolve then ResetBuyControls() end
+end
+
+----------------------------------------------------------------
 --  Browse engine subscriptions (verified; unchanged from the browse view)
 ----------------------------------------------------------------
 AH.Events.On("AH_BROWSE_START", function()
+    -- A fresh search supersedes any open drill-down — return to the results list.
+    if ui.detail and ui.detail.built and ui.detail.frame:IsShown() then CloseDetail() end
     ui.rows = {}; RefreshDataProvider(); SetStatus("Searching...")
 end)
 

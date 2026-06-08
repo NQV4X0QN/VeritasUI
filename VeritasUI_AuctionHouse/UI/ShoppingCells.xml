@@ -71,4 +71,57 @@
       </Layer>
     </Layers>
   </Frame>
+  <!-- Left detail-pane money display (Unit/Total price). Left-justified with AH copper
+       rounding + AH coin icons applied via KeyValues BEFORE OnLoad — which is what makes
+       a zero coin-part omit ("5s", not "5s 0c"). Setting these flags in Lua after
+       CreateFrame is too late, so this template exists to get the native zero-eliding. -->
+  <Frame name="VUIAHPanelMoneyTemplate" inherits="MoneyDisplayFrameTemplate" virtual="true">
+    <KeyValues>
+      <KeyValue key="useAuctionHouseCopperValue" value="true" type="boolean"/>
+      <KeyValue key="useAuctionHouseIcons" value="true" type="boolean"/>
+      <KeyValue key="leftAlign" value="true" type="boolean"/>
+    </KeyValues>
+  </Frame>
+  <!-- Right-aligned row money (auction list price column). Same AH copper/icons + zero-
+       eliding KeyValues as the panel template, but WITHOUT leftAlign so it right-justifies. -->
+  <Frame name="VUIAHRowMoneyTemplate" inherits="MoneyDisplayFrameTemplate" virtual="true">
+    <KeyValues>
+      <KeyValue key="useAuctionHouseCopperValue" value="true" type="boolean"/>
+      <KeyValue key="useAuctionHouseIcons" value="true" type="boolean"/>
+    </KeyValues>
+  </Frame>
+  <!-- Modern AH quantity input box. Three-slice atlas border (Left/Middle/Right =
+       auctionhouse-ui-inputfield-{left,middle,right}, verified native). All three slices
+       anchor to the editbox TOP+BOTTOM so they share ONE height (the editbox's) — using
+       useAtlasSize forced their native height instead, misaligning the slices. -->
+  <EditBox name="VUIAHInputBoxTemplate" virtual="true" autoFocus="false">
+    <Layers>
+      <Layer level="BACKGROUND">
+        <Texture parentKey="Left" atlas="auctionhouse-ui-inputfield-left">
+          <Size x="8" y="0"/>
+          <Anchors>
+            <Anchor point="TOPLEFT"/>
+            <Anchor point="BOTTOMLEFT"/>
+          </Anchors>
+        </Texture>
+        <Texture parentKey="Right" atlas="auctionhouse-ui-inputfield-right">
+          <Size x="8" y="0"/>
+          <Anchors>
+            <Anchor point="TOPRIGHT"/>
+            <Anchor point="BOTTOMRIGHT"/>
+          </Anchors>
+        </Texture>
+        <Texture parentKey="Middle" atlas="auctionhouse-ui-inputfield-middle">
+          <Anchors>
+            <Anchor point="TOPLEFT" relativeKey="$parent.Left" relativePoint="TOPRIGHT"/>
+            <Anchor point="BOTTOMRIGHT" relativeKey="$parent.Right" relativePoint="BOTTOMLEFT"/>
+          </Anchors>
+        </Texture>
+      </Layer>
+    </Layers>
+    <FontString inherits="ChatFontNormal"/>
+    <Scripts>
+      <OnEscapePressed>self:ClearFocus()</OnEscapePressed>
+    </Scripts>
+  </EditBox>
 </Ui>

@@ -2,6 +2,22 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.50] - 2026-06-07
+
+### Added
+- `VeritasUI_AuctionHouse` — **Phase 4 Layer 2: the Shopping-tab drill-down + buying.** Clicking a results row now opens an individual-auction detail view modeled pixel-faithfully on Blizzard's native commodity/item buy display, wired to the proven `AH.Buy` engine.
+  - **Two-pane drill-down (`UI/ShoppingTab.lua`).** A wide LEFT detail pane (item card + Quantity / Unit Price / Total Price / Buy) beside a narrower RIGHT auction list, each in its own themed inset. The item card uses the real circular icon mask + native item-border ring + quality-colored name on the `auctionhouse-background-buy-noncommodities-header` atlas, with a thin 1px tooltip-style border (not the heavy `InsetFrameTemplate` bevel).
+  - **Native banded auction list (no fabricated textures).** Every row draws the verified native atlases — `auctionhouse-rowstripe-1` (full-width row band), `auctionhouse-ui-row-highlight` (hover), `auctionhouse-ui-row-select` (gold selection) — discovered by live-client introspection, not guessed. Price-left / quantity-right, headerless, matching native. Columns size so large gold values and large quantities both fit without clipping.
+  - **Cumulative commodity selection.** Clicking row N selects rows 1..N (cheapest through N), highlights them gold, and fills the Quantity box with their summed quantity — the native commodity-buy behavior. "Select-all" (through the last row) uses the server's authoritative `GetCommoditySearchResultsQuantity` rather than the client row-sum; manual typing clears the selection (via the native `OnTextChanged` `userInput` flag). Total Price is a blended fill across price tiers.
+  - **Buy Now, both paths, through the real UI.** Commodity: two-step `StartCommodity` → quote → `ConfirmCommodity`. Item: single `PlaceBid` buyout. Both fire from the Buy button's genuine hardware event (never throttle-queued), re-querying after purchase to refresh the list.
+  - **Modern quantity input** — three-slice `auctionhouse-ui-inputfield-{left,middle,right}` atlas field (verified native), replacing the legacy beveled `InputBoxTemplate`.
+
+### Changed
+- `VeritasUI_AuctionHouse` — **native sort headers on the Shopping results table.** The Price / Name / Available column headers are now interactive, driving Blizzard's own header sort-state protocol (`RegisterHeader` / `SetSortOrder` / `GetSortOrderState` / `UpdateHeaders` against the global `AuctionHouseSortOrderState`), so the genuine native sort arrow and blue hover/active highlight light up exactly as on the Buy/Sell tabs. Click toggles ascending/descending; sort is client-side and stable.
+
+### Removed
+- `VeritasUI_AuctionHouse` — retired the Layer-2 development scaffolding now that the real Buy UI supersedes it: the `/ah buytest` validation harness (the OQ#5 taint test, its job done) and the `/ah rowdump` introspection probe. The live `AH.Buy` engine (`StartCommodity` / `ConfirmCommodity` / `CancelCommodity` / `IsActive` / `BuyItem`) is unchanged.
+
 ## [1.6.49] - 2026-06-06
 
 ### Added

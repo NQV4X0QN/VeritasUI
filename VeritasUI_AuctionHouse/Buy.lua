@@ -1,11 +1,11 @@
 -- VeritasUI_AuctionHouse / Buy.lua
--- Phase 4 (Shopping tab) — PROTECTED PURCHASE engine + validation harness.
+-- Phase 4 (Shopping tab) — PROTECTED PURCHASE engine.
 --
 -- ⚠️ This is the module's FIRST protected WRITE path. Buying is a restricted action
--- (StartCommoditiesPurchase has HasRestrictions=true at 12.0.5) and directly tests
--- design OQ#5: "can our own hardware-event button call a protected C_AuctionHouse
--- function taint-clean?" Everything prior (scan, tooltips, browse, drill-down) was
--- read-only. We validate this in isolation BEFORE building the Buy UI around it.
+-- (StartCommoditiesPurchase has HasRestrictions=true at 12.0.5) and resolves design OQ#5:
+-- "can our own hardware-event button call a protected C_AuctionHouse function taint-clean?"
+-- Proven YES — verified in-game via a validation harness (since removed); the Shopping
+-- tab's Buy button now drives this engine directly.
 --
 -- VERIFIED two-step commodity flow (Blizzard_AuctionHouseBuyDialog.lua, 12.0.5):
 --   1. HARDWARE click -> C_AuctionHouse.StartCommoditiesPurchase(itemID, quantity)
@@ -20,11 +20,6 @@
 -- hardware event (button OnClick) and must NOT be routed through the throttle queue
 -- (which defers execution and would strip the hardware-event context). Searches that
 -- FEED the buy still go through the queue; the buy CALLS themselves do not.
---
--- The validation harness (/ah buytest) creates a real on-screen button the user clicks,
--- because a button OnClick is an unambiguous hardware event (a slash handler's
--- hardware-event status is murkier). If this proves taint-clean, the same engine powers
--- the Shopping tab's Buy Now; if blocked, we fall back to mirroring Blizzard's dialog.
 
 local ADDON_NAME, AH = ...
 local VUI = _G.VeritasUI
@@ -105,6 +100,36 @@ end
 function AH.Buy.IsActive() return buy.active end
 
 ----------------------------------------------------------------
+--  Item buyout (single-step, no quote)
+--
+--  Unlike a commodity (fungible; quoted then confirmed in two hardware clicks), an
+--  ITEM auction (gear/pet — non-fungible, unique auctionID) is bought with a SINGLE
+--  protected call: C_AuctionHouse.PlaceBid(auctionID, bidAmount) where bidAmount is the
+--  auction's full buyout. There is no server quote round-trip — the Shopping detail
+--  view's Buy button IS the confirmation (the same model as Blizzard's own item-buy
+--  flow and Auctionator's BuyItemDialog — studied for reference only, zero code reuse).
+--
+--  PlaceBid HasRestrictions=true at 12.0.5 (verified §2.6, recorded OQ#5 / Progress Log
+--  12), so the SAME taint rule proven for the commodity path applies verbatim: the call
+--  MUST originate from a genuine hardware event and MUST NOT be routed through the
+--  throttle queue (deferral strips the hardware-event context). The feeding SEARCH still
+--  goes through the queue; this protected CALL does not.
+--
+--  No callback/quote machinery: PlaceBid is fire-and-go. The detail view re-runs its
+--  drill-down query after the click to reflect the now-removed auction (a re-query is
+--  self-evidently correct and needs no completion event whose exact name/payload we
+--  can't verify against on-disk source right now).
+----------------------------------------------------------------
+function AH.Buy.BuyItem(auctionID, bidAmount)
+    if not (C_AuctionHouse and C_AuctionHouse.PlaceBid) then return false end
+    if not AH.isOpen then return false end
+    if not auctionID or not bidAmount then return false end
+    -- PROTECTED CALL — direct, from the hardware-event caller. NOT queued.
+    C_AuctionHouse.PlaceBid(auctionID, bidAmount)
+    return true
+end
+
+----------------------------------------------------------------
 --  Event wiring — drives the quote/result callbacks
 ----------------------------------------------------------------
 local ef = CreateFrame("Frame")
@@ -138,119 +163,5 @@ end)
 if AH.Events and AH.Events.On then
     AH.Events.On("AH_CLOSED", function()
         if buy.active then ResetBuy() end
-    end)
-end
-
-----------------------------------------------------------------
---  Validation harness:  /ah buytest <itemID> [qty]
---
---  Creates a real, centered confirm button (hardware-event source). First click
---  initiates the purchase + quote; once the quote arrives the button relabels to show
---  the total and a second click confirms. This is the OQ#5 taint test — watch for a
---  blocked-action / taint error on either protected call.
-----------------------------------------------------------------
-local harness  -- the test button frame (created on first use)
-
-local function EnsureHarness()
-    if harness then return harness end
-
-    local b = CreateFrame("Button", "VUI_AH_BuyTestButton", UIParent, "UIPanelButtonTemplate")
-    b:SetSize(280, 32)
-    b:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
-    b:SetFrameStrata("DIALOG")
-    b:Hide()
-
-    -- A small close/cancel handle (right-click cancels the test).
-    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-
-    b:SetScript("OnClick", function(self, mouseButton)
-        if mouseButton == "RightButton" then
-            AH.Buy.CancelCommodity()
-            self:Hide()
-            VUI.Print(AH.TAG, "Buy test cancelled.")
-            return
-        end
-
-        if not AH.Buy.IsActive() then
-            -- FIRST hardware click → initiate purchase + request quote.
-            VUI.Print(AH.TAG, "buytest: calling StartCommoditiesPurchase (PROTECTED)...")
-            self:SetText("Requesting quote...")
-            self:Disable()
-            AH.Buy.StartCommodity(self._itemID, self._qty, function(state, p1, p2)
-                if state == "quote" then
-                    local total = AH.Money and AH.Money.Format(p2) or tostring(p2)
-                    self:Enable()
-                    self:SetText("CONFIRM BUY  " .. tostring(self._qty) .. "x  =  " .. total)
-                    self._readyToConfirm = true
-                    VUI.Print(AH.TAG, "buytest: quote received — click again to confirm, right-click to cancel.")
-                elseif state == "unavailable" then
-                    self:Enable()
-                    self:SetText("Price unavailable — click to retry")
-                    self._readyToConfirm = false
-                    VUI.Print(AH.TAG, "|cFFFFFF00buytest: price unavailable.|r")
-                elseif state == "success" then
-                    self:Hide()
-                    VUI.Print(AH.TAG, "|cFF00FF00buytest: PURCHASE SUCCEEDED — protected path is TAINT-CLEAN.|r")
-                elseif state == "failed" then
-                    self:Enable()
-                    self:SetText("Failed — click to retry")
-                    self._readyToConfirm = false
-                    VUI.Print(AH.TAG, "|cFFFF4444buytest: purchase failed:|r " .. tostring(p1))
-                end
-            end)
-
-        elseif self._readyToConfirm then
-            -- SECOND hardware click → confirm the quoted purchase.
-            VUI.Print(AH.TAG, "buytest: calling ConfirmCommoditiesPurchase (PROTECTED)...")
-            self._readyToConfirm = false
-            self:SetText("Purchasing...")
-            self:Disable()
-            -- Re-enable shortly in case neither success nor fail fires (so the button
-            -- isn't stuck), mirroring Blizzard's 2s safety timer.
-            C_Timer.After(2, function()
-                if self:IsShown() and not self:IsEnabled() then
-                    self:Enable()
-                    self:SetText("(no result yet) — click to retry")
-                end
-            end)
-            AH.Buy.ConfirmCommodity()
-        end
-    end)
-
-    harness = b
-    return b
-end
-
-function AH.Buy.RunTest(itemID, qty)
-    if not AH.isOpen then
-        VUI.Print(AH.TAG, "Open the Auction House first, then /ah buytest <itemID> [qty].")
-        return
-    end
-    itemID = tonumber(itemID)
-    qty = tonumber(qty) or 1
-    if not itemID then
-        VUI.Print(AH.TAG, "Usage: |cFFFFFF00/ah buytest <itemID> [quantity]|r (commodity items only).")
-        return
-    end
-
-    -- Prime the client with a commodity search first so the quote system has data.
-    VUI.Print(AH.TAG, "buytest: searching commodity " .. itemID .. " x" .. qty .. " ...")
-    AH.Search.QueryItem({ itemKey = C_AuctionHouse.MakeItemKey(itemID) }, function(state, data)
-        if state == "results" and data and data.isCommodity then
-            local b = EnsureHarness()
-            b._itemID = itemID
-            b._qty = qty
-            b._readyToConfirm = false
-            b:Enable()
-            b:SetText("Buy " .. qty .. "x  (itemID " .. itemID .. ") — click to quote")
-            b:Show()
-            VUI.Print(AH.TAG, "buytest: commodity found — CLICK THE CENTERED BUTTON to test the protected buy. Right-click cancels.")
-        elseif state == "results" and data and not data.isCommodity then
-            VUI.Print(AH.TAG, "|cFFFFFF00buytest: that itemID is an ITEM, not a commodity.|r This harness tests the commodity path only.")
-        elseif state == "empty" then
-            VUI.Print(AH.TAG, "buytest: no auctions found for that itemID.")
-        elseif state == "failed" then
-            VUI.Print(AH.TAG, "|cFFFF4444buytest: search failed:|r " .. tostring(data))
-        end
     end)
 end

@@ -325,7 +325,6 @@ end
 
 SlashCmdList["VERITASUI_AH"] = function(msg)
     msg = strtrim(msg or "")
-    -- Split into the first word (command, case-insensitive) + the rest (argument,
     -- ORIGINAL case preserved — item names in /ah search are case-sensitive to read).
     local word, rest = msg:match("^(%S*)%s*(.-)$")
     local cmd = (word or ""):lower()
@@ -350,14 +349,6 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
 
     elseif cmd == "search" then
         SearchTest(rest)
-
-    elseif cmd == "buytest" then
-        if AH.Buy then
-            local id, qty = rest:match("^(%S+)%s*(%S*)$")
-            AH.Buy.RunTest(id, qty)
-        else
-            VUI.Print(AH.TAG, "Buy engine not loaded.")
-        end
 
     elseif cmd == "wipe" then
         if AH.DB then
