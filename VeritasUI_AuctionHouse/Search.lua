@@ -284,6 +284,7 @@ local listSearch = {
     name     = nil,    -- list name (for events/UI)
     accum    = nil,    -- [itemKeyString] = adapted row (lowest minPrice kept)
     order    = nil,    -- insertion-ordered array of itemKeyStrings (stable UI order)
+    opts     = nil,    -- server-side filter opts applied to EVERY term's browse
 }
 
 local function ListKeyStr(row)
@@ -350,23 +351,30 @@ RunNextListTerm = function()
 
     local term = listSearch.terms[i]
     -- Run this term silently; on completion, accumulate, push a progress update, recurse.
-    AH.Search.Browse(term, {
-        silent = true,
-        onComplete = function(success, adapted)
-            -- A stale completion (superseded list search) must not advance us.
-            if not (listSearch.active and listSearch.token == myToken) then return end
-            if success and adapted then ListAccumulate(adapted) end
-            AH.Events.Fire("AH_LISTSEARCH_UPDATE", ListSnapshot(), i, total, term)
-            -- Chain the next term. A tiny defer keeps us off the same frame as the
-            -- event handler and lets the throttle queue breathe.
-            C_Timer.After(0, RunNextListTerm)
-        end,
-    })
+    -- Merge the list's server-side filter opts (rarity/toggles/level) into every term so
+    -- a filtered list search restricts each term identically to a single filtered search.
+    local browseOpts = { silent = true }
+    if listSearch.opts then
+        browseOpts.filters  = listSearch.opts.filters
+        browseOpts.minLevel = listSearch.opts.minLevel
+        browseOpts.maxLevel = listSearch.opts.maxLevel
+    end
+    browseOpts.onComplete = function(success, adapted)
+        -- A stale completion (superseded list search) must not advance us.
+        if not (listSearch.active and listSearch.token == myToken) then return end
+        if success and adapted then ListAccumulate(adapted) end
+        AH.Events.Fire("AH_LISTSEARCH_UPDATE", ListSnapshot(), i, total, term)
+        -- Chain the next term. A tiny defer keeps us off the same frame as the
+        -- event handler and lets the throttle queue breathe.
+        C_Timer.After(0, RunNextListTerm)
+    end
+    AH.Search.Browse(term, browseOpts)
 end
 
 -- Public: search every term in `terms` (array of strings) under display name `listName`.
--- Returns true if started. No-ops cleanly if the AH is closed or the list is empty.
-function AH.Search.SearchList(terms, listName)
+-- `opts` (optional) carries server-side filter state (filters/minLevel/maxLevel) applied
+-- to every term. Returns true if started. No-ops cleanly if the AH is closed or empty.
+function AH.Search.SearchList(terms, listName, opts)
     if not AH.isOpen then
         AH.Events.Fire("AH_LISTSEARCH_FAILED", "Auction House is closed")
         return false
@@ -384,6 +392,7 @@ function AH.Search.SearchList(terms, listName)
     listSearch.name   = listName
     listSearch.accum  = {}
     listSearch.order  = {}
+    listSearch.opts   = opts
     browse.active     = false   -- drop any single browse mid-flight
 
     AH.Events.Fire("AH_LISTSEARCH_START", listName, #terms)

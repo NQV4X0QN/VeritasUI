@@ -375,8 +375,9 @@ function ToggleListExpanded(li)
         local items = list.items or {}
         if #items > 0 then
             if ui.detail and ui.detail.built and ui.detail.frame:IsShown() then CloseDetail() end
+            if AH.Filter then AH.Filter.Close() end
             ui.rows = {}; RefreshDataProvider(); SetStatus("Searching list...")
-            AH.Search.SearchList(items, list.name)
+            AH.Search.SearchList(items, list.name, AH.Filter and AH.Filter.GetServerOpts() or nil)
         end
     end
 end
@@ -466,9 +467,30 @@ function ShowAddToListMenu(entry)
     end)
 end
 
--- Honest stub for not-yet-wired Layer-4 controls (Search Options / Import / Export).
-local function Stub(label)
-    VUI.Print(AH.TAG, label .. " — coming in a later layer (Shopping is built in stages).")
+-- Show a browse-row item's tooltip on hover. Browse rows carry an itemKey (and often an
+-- appearanceLink); we resolve the richest source available: an item hyperlink → SetHyperlink;
+-- otherwise SetItemByID(itemID), which covers commodities and most gear for a name/quality/
+-- stats preview. Wrapped so a nil/secret value can never error. Mirrors the suite's
+-- read-only tooltip discipline (no protected calls, no taint).
+local function ShowRowTooltip(row, entry)
+    if not (entry and entry.itemKey) then return end
+    GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+    local shown = false
+    -- Prefer a true item hyperlink (gear variants render their exact roll this way).
+    local link = entry.appearanceLink or entry.itemLink
+    if type(link) == "string" and link ~= "" then
+        local ok = pcall(GameTooltip.SetHyperlink, GameTooltip, link)
+        shown = ok
+    end
+    if not shown and entry.itemID and GameTooltip.SetItemByID then
+        pcall(GameTooltip.SetItemByID, GameTooltip, entry.itemID)
+        shown = true
+    end
+    if shown then GameTooltip:Show() else GameTooltip:Hide() end
+end
+
+local function HideRowTooltip()
+    GameTooltip:Hide()
 end
 
 ----------------------------------------------------------------
@@ -501,11 +523,46 @@ local function Build(content)
     searchBtn:SetText(SEARCH or "Search")
     ui.searchBtn = searchBtn
 
-    local optBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    optBtn:SetSize(110, 22)
+    local optBtn = AH.Filter.CreateButton(content)
+    -- y 0: clean LEFT→RIGHT chain. The button's FRAME is 22h (same as its siblings), so
+    -- chaining by vertical center aligns all three on one grid with NO y-offset. The taller
+    -- visible pill is achieved by the button's background TEXTURE overflowing the frame
+    -- symmetrically (see F.CreateButton), not by moving the frame — so no staircase.
     optBtn:SetPoint("LEFT", searchBtn, "RIGHT", 5, 0)
-    optBtn:SetText("Search Options")
-    optBtn:SetScript("OnClick", function() Stub("Search Options") end)
+    -- The Filter button (reskinned native dropdown button) toggles AH.Filter's flyout.
+    -- Changing a CLIENT-side control (item level / max buyout) re-filters the rows we
+    -- already have without a new server query; register that handler here.
+    AH.Filter.SetClientChangeHandler(function()
+        ui.rows = AH.Filter.ApplyClient(ui.allRows or {})
+        RefreshDataProvider()
+        SetStatus(#ui.rows == 0 and "No matches for the current filters." or "")
+    end)
+    -- Server-side filter change → re-run the CURRENT search with the new GetServerOpts so
+    -- the flyout behaves dynamically like Blizzard's (no manual re-Search). Debounced 0.3s
+    -- so toggling several rarity boxes in a row collapses into one query. Re-runs whichever
+    -- search is active: a multi-term list search (if a list is expanded) or the single term
+    -- in the search box. No-op if there's nothing to re-run yet.
+    AH.Filter.SetServerChangeHandler(function()
+        if ui._serverFilterTimer then ui._serverFilterTimer:Cancel() end
+        ui._serverFilterTimer = C_Timer.NewTimer(0.3, function()
+            ui._serverFilterTimer = nil
+            local opts = AH.Filter.GetServerOpts()
+            -- Prefer re-running an expanded list search; otherwise the search-box term.
+            if ui.leftMode == "lists" and ui.selectedList then
+                local list = AH.Lists and AH.Lists.Get(ui.selectedList)
+                if list and ui.expanded[list] and #(list.items or {}) > 0 then
+                    ui.rows = {}; RefreshDataProvider(); SetStatus("Searching list...")
+                    AH.Search.SearchList(list.items, list.name, opts)
+                    return
+                end
+            end
+            local term = AH.Search.NormalizeSearchTerm(searchBox:GetText() or "")
+            if term ~= "" then
+                ui.rows = {}; RefreshDataProvider(); SetStatus("Searching...")
+                AH.Search.Browse(term, opts)
+            end
+        end)
+    end)
 
     local addBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
     addBtn:SetSize(90, 22)
@@ -555,7 +612,8 @@ local function Build(content)
         RefreshDataProvider()
         SetStatus("Searching...")
         RecordRecent(term)
-        AH.Search.Browse(term)
+        if AH.Filter then AH.Filter.Close() end
+        AH.Search.Browse(term, AH.Filter and AH.Filter.GetServerOpts() or nil)
     end
     ui.DoSearch = function() DoSearchTerm(searchBox:GetText()) end
     searchBtn:SetScript("OnClick", ui.DoSearch)
@@ -718,46 +776,32 @@ local function Build(content)
     PanelTemplates_SetNumTabs(subTabContainer, 2)
     PanelTemplates_SetTab(subTabContainer, 1)
 
-    -- Import / Export at the container's bottom-right (Auctionator: Export RIGHT =
-    -- RecentsContainer RIGHT x=20; Import RIGHT = Export LEFT).
-    local exportBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    exportBtn:SetSize(68, 22)
-    exportBtn:SetPoint("BOTTOM", newBtn, "BOTTOM", 0, 0)
-    exportBtn:SetPoint("RIGHT", leftScrollBar, "RIGHT", 0, 0)
-    exportBtn:SetText("Export")
-    exportBtn:SetScript("OnClick", function() Stub("Export") end)
-
-    local importBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    importBtn:SetSize(68, 22)
-    importBtn:SetPoint("RIGHT", exportBtn, "LEFT", -4, 0)
-    importBtn:SetPoint("BOTTOM", newBtn, "BOTTOM", 0, 0)
-    importBtn:SetText("Import")
-    importBtn:SetScript("OnClick", function() Stub("Import") end)
+    -- Import / Export / Export Results were intentionally REMOVED (2026-06-10). For a
+    -- single-user, ~1-character account they serve no purpose: same-account alts already
+    -- share shopping lists via the account-wide saved var, the SavedVariables file IS the
+    -- backup, and the clean VeritasUI-native blob only round-trips into ANOTHER VeritasUI
+    -- install (cross-account/sharing only). Decision recorded in AUCTIONHOUSE_DESIGN.md.
+    -- The New List button (above) remains as the sole bottom-left control.
 
     --======================== RIGHT PANEL (results) ========================--
     -- Per Auctionator Main.xml: ResultsListing anchors TOPLEFT = ListsContainer.ScrollBar
     -- TOPRIGHT x=5 (the split is defined by the LEFT scrollbar's right edge), BOTTOMRIGHT
     -- = parent BOTTOMRIGHT x=-20. The results inset is drawn AROUND the listing.
-    -- Column headers = native tab-bordered ColumnDisplayButtonTemplate buttons.
-    local exportResultsBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    exportResultsBtn:SetSize(120, 22)
-    exportResultsBtn:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -8, INSET)
-    exportResultsBtn:SetText("Export Results")
-    exportResultsBtn:SetScript("OnClick", function() Stub("Export Results") end)
 
     -- Results inset: from the left scrollbar's right edge across to near the frame's
     -- right edge. The scrollbar sits OUTSIDE the inset's right border in the small
     -- remaining margin (content right is now -8 from the frame edge; inset right -16
     -- leaves ~8px for the bar).
     local rightInset = CreateFrame("Frame", nil, content, "InsetFrameTemplate")
-    -- LEFT (horizontal only) keys off the left scrollbar's right edge; TOP keys off the
-    -- left container so both panels' tops are governed by ONE shared reference and align
-    -- exactly. (Previously TOPLEFT also pinned the top to the scrollbar, whose own top is
-    -- leftContainer −2, dragging the right panel down a couple px.)
+    -- LEFT (horizontal only) keys off the left scrollbar's right edge; TOP and BOTTOM both
+    -- key off leftContainer so BOTH panels are governed by ONE shared reference and align
+    -- exactly, top and bottom. (BOTTOM previously anchored to the now-removed Export Results
+    -- button; anchoring to leftContainer BOTTOM keeps the panels flush and reclaims that
+    -- button's former space for the results list.)
     rightInset:SetPoint("LEFT",   leftScrollBar, "RIGHT", 8, 0)
     rightInset:SetPoint("RIGHT",  content,       "RIGHT", -16, 0)
     rightInset:SetPoint("TOP",    leftContainer, "TOP",   0, 0)
-    rightInset:SetPoint("BOTTOM", exportResultsBtn, "TOP", 0, 8)   -- +8 to match the left panel (newBtn TOP +8); was +6, sitting 2px lower
+    rightInset:SetPoint("BOTTOM", leftContainer, "BOTTOM", 0, 0)
     ui.rightInset = rightInset
     -- Native AH background atlas (see left inset) instead of the template's marble.
     if rightInset.Bg then
@@ -830,6 +874,13 @@ local function Build(content)
                     OpenDetail(entry)
                 end
             end)
+            -- Hover → item tooltip (read-only; lets the user inspect an item and verify
+            -- filters without drilling in). Reads the current row via _vuiIndex (rebound
+            -- each init as rows recycle).
+            row:SetScript("OnEnter", function(self)
+                ShowRowTooltip(self, ui.rows[self._vuiIndex])
+            end)
+            row:SetScript("OnLeave", HideRowTooltip)
             row._vuiClickWired = true
         end
     end)
@@ -1545,7 +1596,9 @@ AH.Events.On("AH_BROWSE_START", function()
 end)
 
 AH.Events.On("AH_BROWSE_UPDATE", function(results, full)
-    ui.rows = results or {}; RefreshDataProvider()
+    ui.allRows = results or {}
+    ui.rows = AH.Filter and AH.Filter.ApplyClient(ui.allRows) or ui.allRows
+    RefreshDataProvider()
     if #ui.rows == 0 then
         SetStatus(full and "No auctions found." or "Searching...")
     else
@@ -1598,7 +1651,8 @@ AH.Events.On("AH_LISTSEARCH_START", function(listName, total)
 end)
 
 AH.Events.On("AH_LISTSEARCH_UPDATE", function(results, done, total, term)
-    ui.rows = results or {}
+    ui.allRows = results or {}
+    ui.rows = AH.Filter and AH.Filter.ApplyClient(ui.allRows) or ui.allRows
     RefreshDataProvider()
     -- While rows are accumulating, show progress only when nothing's visible yet;
     -- once rows appear, clear the overlay so it doesn't obscure them.
@@ -1611,7 +1665,8 @@ end)
 
 AH.Events.On("AH_LISTSEARCH_COMPLETE", function(results)
     ui.listSearching = false
-    ui.rows = results or {}
+    ui.allRows = results or {}
+    ui.rows = AH.Filter and AH.Filter.ApplyClient(ui.allRows) or ui.allRows
     RefreshDataProvider()
     SetStatus(#ui.rows == 0 and "No auctions found for this list." or "")
 end)

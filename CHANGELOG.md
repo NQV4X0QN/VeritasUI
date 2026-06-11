@@ -2,6 +2,19 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.6.52] - 2026-06-10
+
+### Added
+- `VeritasUI_AuctionHouse` — **Phase 4 Layer 4: the Shopping tab's Filter control** — a clean-room reproduction of Blizzard's native Buy-tab Filter button + filter flyout, extended with our own filters, all in one flyout (no tab-hopping). New file `UI/FilterFlyout.lua`.
+  - **Reskinned Filter button** replacing the old "Search Options" stub. Built from the verified native dropdown-button atlas family (`common-dropdown-b-button` + `-hover`/`-pressed`/`-open`/`-disabled`), `GameFontNormal` label, with the native script-driven state swaps (OnEnter/OnLeave/OnMouseDown/OnMouseUp). Hover highlights in every state including while the flyout is open; the button swaps to the `-open` art while the flyout shows. Frame sits on the same grid as its Search / Add To List siblings (visible pill height is decoupled onto the background texture so alignment and height are independent).
+  - **Native-faithful flyout** — `common-dropdown-bg` panel, `GameFontHighlight` section headers, texture-built checkboxes (`common-dropdown-ticksquare` + `common-dropdown-icon-checkmark-yellow`), and `common-search-border-*` numeric fields. Sections, top→bottom: **Level Range** · Uncollected/Usable/Current Expansion Only · **Equipment:** Upgrades Only · **Rarity** (7 quality checkboxes, quality-colored) · **More Filters:** Item Level, Max Buyout. Reproduced clean-room (our own frame/state); the native flyout frame is never reused.
+  - **Filters split by mechanism (verified against `Enum.AuctionHouseFilter`, 14 members):** Level Range → `query.minLevel/maxLevel`; the four toggles (`UncollectedOnly=1`, `UsableOnly=2`, `CurrentExpansionOnly=3`, `UpgradesOnly=4`), `ExactMatch=5`, and the seven qualities (6–12) are all **server-side** `filters[]` members passed to `SendBrowseQuery`. Item Level + Max Buyout are **client-side** post-filters on the result rows (no native query field exists for them).
+  - **Dynamic, like Blizzard's:** changing any server-side control re-runs the current search (single term or whole-list) with the new filters, debounced 0.3s so toggling several boxes collapses into one query; client-side controls re-filter the shown rows instantly with no re-query. Clicking outside the flyout closes it (via `GLOBAL_MOUSE_DOWN`, non-intercepting — your click still lands).
+  - **Result-row tooltips** — hovering a results row now shows the item tooltip (prefers a true item hyperlink, falls back to `SetItemByID`), so items can be inspected without drilling in.
+
+### Removed
+- `VeritasUI_AuctionHouse` — **Import / Export / Export Results buttons** (were honest stubs). For a single-user, ~1-character account they serve no purpose: same-account characters already share shopping lists via the account-wide saved variable, the `WTF/.../SavedVariables/VeritasUI_AuctionHouse.lua` file already serves as the backup/transfer artifact, and a clean VeritasUI-native export blob would only round-trip into another VeritasUI install (a cross-account/sharing case that does not apply). The results panel reclaims the freed space; the New List button remains the sole bottom-left control.
+
 ## [1.6.51] - 2026-06-07
 
 ### Added
