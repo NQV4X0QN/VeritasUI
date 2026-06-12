@@ -86,11 +86,9 @@ local defaults = {
     prices    = {},    -- [itemKeyString] = price-history record (Phase 2)
     settings  = {},    -- user toggles (Phase 3+); settings.retentionDays optional
     lastScan  = 0,     -- Unix time of last full replicate scan (Phase 2 scan-floor)
-    -- Phase 4 Layer 3: Shopping tab persistence (UI feature, NOT price-DB layout —
-    -- so this does NOT bump dbVersion, which gates the prices schema specifically).
-    --   lists  = array of { name = "...", items = { "term", ... } }
-    --   recent = newest-first array of search-term strings (capped in Shopping.lua)
-    shopping  = { lists = {}, recent = {} },
+    -- Sell strip: itemIDs the user has hidden from the native-Sell-tab bag strip
+    -- (dyes, saved reagents, etc.). [itemID] = true. See UI/SellStrip.lua.
+    sellBlocklist = {},
 }
 
 local db
@@ -114,6 +112,8 @@ function AH:InitDB()
             db[k] = (type(v) == "table") and DeepCopy(v) or v
         end
     end
+    -- Shopping tab removed: drop its now-orphaned persistence container if present.
+    db.shopping = nil
     AH.db = db
 end
 
@@ -203,7 +203,7 @@ end)
 ----------------------------------------------------------------
 --  Slash Commands
 --
---  Phase 2 surface: help / diag / scan / wipe / throttletest / settings.
+--  Surface: help / diag / scan / wipe / settings.
 --  Feature subcommands are added by the phase that implements them.
 ----------------------------------------------------------------
 SLASH_VERITASUI_AH1 = "/ah"
@@ -214,56 +214,10 @@ local function PrintHelp()
     print("  |cFFFFFF00/ah|r              — show this help")
     print("  |cFFFFFF00/ah scan|r         — full price scan (AH open; 15-min cooldown)")
     print("  |cFFFFFF00/ah scan force|r   — scan now, ignoring the cooldown")
-    print("  |cFFFFFF00/ah search <text>|r — test browse query (AH open; prints results)")
     print("  |cFFFFFF00/ah diag|r         — diagnostic / state dump")
     print("  |cFFFFFF00/ah wipe|r         — clear the price database")
-    print("  |cFFFFFF00/ah throttletest|r — enqueue a no-op AH send (AH must be open)")
+    print("  |cFFFFFF00/ah blocked|r      — manage sell-strip hidden items")
     print("  |cFFFFFF00/ah settings|r     — open settings panel")
-end
-
--- Phase 4 diagnostic: run a browse query through AH.Search and print the first
--- handful of results, so the query layer is verifiable before the UI exists.
-local function SearchTest(term)
-    if not AH.Search then
-        VUI.Print(AH.TAG, "Search layer not loaded.")
-        return
-    end
-    if term == "" then
-        VUI.Print(AH.TAG, "Usage: |cFFFFFF00/ah search <text>|r")
-        return
-    end
-
-    -- One-shot listeners scoped to this test (the bus has no unsubscribe; we gate on
-    -- a local 'done' flag so stale fires after completion are ignored).
-    local done = false
-    VUI.Print(AH.TAG, format("Searching for |cFFFFFF00%s|r ...", term))
-
-    AH.Events.On("AH_BROWSE_UPDATE", function(results, full)
-        if done then return end
-        local n = #results
-        if not full then
-            print(format("  ... %d so far (paging)", n))
-            return
-        end
-        done = true
-        VUI.Print(AH.TAG, format("Browse complete — |cFF00FF00%d|r distinct items:", n))
-        for i = 1, math.min(n, 10) do
-            local r = results[i]
-            local info = AH.Search.GetKeyInfo(r.itemKey)
-            local name = (info and info.itemName) or ("itemID " .. tostring(r.itemID))
-            local price = AH.Money and AH.Money.Format(r.minPrice) or tostring(r.minPrice)
-            print(format("  %2d. %s  |cFFFFFFFF%s|r  x%d", i, name, price, r.totalQuantity))
-        end
-        if n > 10 then print(format("  ... and %d more", n - 10)) end
-    end)
-
-    AH.Events.On("AH_BROWSE_FAILED", function()
-        if done then return end
-        done = true
-        VUI.Print(AH.TAG, "|cFFFF4444Browse failed|r (server error).")
-    end)
-
-    AH.Search.Browse(term)
 end
 
 local function PrintDiag()
@@ -294,38 +248,11 @@ local function PrintDiag()
         print(format("  scan:         %s", readyText))
     end
 
-    -- Throttle state.
-    if AH.Throttle then
-        local ready = false
-        if C_AuctionHouse and C_AuctionHouse.IsThrottledMessageSystemReady then
-            local ok, r = pcall(C_AuctionHouse.IsThrottledMessageSystemReady)
-            ready = ok and r or false
-        end
-        print(format("  throttle:     ready=%s  awaiting=%s  pending=%d",
-            ready and "|cFF00FF00yes|r" or "no",
-            AH.Throttle.IsAwaiting() and "yes" or "no",
-            AH.Throttle.PendingCount()))
-    end
-
     -- Money helper self-test (verifies format + sanitize without needing the AH).
     if AH.Money then
         print(format("  money fmt:    %s  |  sanitize(12345.6)=%d",
             AH.Money.Format(123456), AH.Money.SanitizePrice(12345.6)))
     end
-end
-
--- Phase 1 DoD: verify the throttle queue with a throwaway no-op send. Requires
--- the AH to be open (IsThrottledMessageSystemReady is only meaningful then).
-local function ThrottleTest()
-    if not AH.isOpen then
-        VUI.Print(AH.TAG, "Open the Auction House first, then run |cFFFFFF00/ah throttletest|r.")
-        return
-    end
-    VUI.Print(AH.TAG, format("Enqueuing no-op send (pending before: %d)...",
-        AH.Throttle.PendingCount()))
-    AH.Throttle.Enqueue(function()
-        VUI.Print(AH.TAG, "|cFF00FF00Throttle dispatch fired|r — queue is working.")
-    end, "throttletest")
 end
 
 SlashCmdList["VERITASUI_AH"] = function(msg)
@@ -352,9 +279,6 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             VUI.Print(AH.TAG, reason or "Scan could not start.")
         end
 
-    elseif cmd == "search" then
-        SearchTest(rest)
-
     elseif cmd == "wipe" then
         if AH.DB then
             AH.DB.Wipe()
@@ -364,8 +288,14 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
     elseif cmd == "diag" then
         PrintDiag()
 
-    elseif cmd == "throttletest" then
-        ThrottleTest()
+    elseif cmd == "blocked" then
+        if AH.SellStrip then
+            if rest:lower() == "clear" then
+                AH.SellStrip.ClearBlocked()
+            else
+                AH.SellStrip.ListBlocked()
+            end
+        end
 
     else
         -- Default + explicit "help": print the command list.

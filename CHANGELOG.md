@@ -2,6 +2,22 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.0] - 2026-06-11
+
+### Changed
+- `VeritasUI_AuctionHouse` — **major refocus.** The module is no longer a "modernized Auctionator." Direct comparison against Midnight's native Auction House showed the planned Shopping/Buy/Cancelling clone duplicated functionality Blizzard now ships (category sidebar, sortable columns, Filter flyout with Required-Level/rarity/toggles, drill-down + Buy Now, Favorites-as-shopping-list). The module is refocused to do only what native does **not**: a price database feeding tooltip prices, plus the one genuinely-missing convenience — Auctionator's sellable-items bag panel, rebuilt natively on the default Sell tab.
+
+### Added
+- `VeritasUI_AuctionHouse` — **Sell strip (`UI/SellStrip.lua`)**: a horizontal strip of your sellable bag items mounted in the empty band under the native Sell tab's "Create Auction" button.
+  - **Click an icon → the item loads into Blizzard's own Sell form** via `AuctionHouseFrame:SetPostItem(ItemLocation)` (the same path the native bag right-click uses). You verify, then click Blizzard's own Create Auction. **We never make a protected call — Blizzard owns the post entirely**, proven taint-clean in-game (populate-from-addon-code → native post produced no `ADDON_ACTION_BLOCKED`).
+  - **Sellable predicate:** unbound items with a vendor sell price (verified to match native auctionability across the test bags). **Right-click an icon to hide it** from the strip (per-itemID blocklist; `/ah blocked` to list, `/ah blocked clear` to reset) — for dyes, saved reagents, etc.
+  - **Mouse-wheel horizontal scroll** (no arrows). **Loaded-stack desaturation** mirrors Blizzard graying the bag item (hooks `SetPostItem`/`ClearPostItem`, matched by bag+slot, source-agnostic). **Native inset card** behind the icons using the `auctionhouse-itemheaderframe` atlas (the same art as the sell-slot card above). Quality-colored icon borders (`WhiteIconFrame`, no action-button glow) and correctly-sized **Midnight profession reagent-quality tier markers**.
+  - The native **Buyout Mode checkbox is hidden** (it occupied the strip's space; the user always sells in buyout mode).
+- `VeritasUI_AuctionHouse` — kept from earlier phases: the full-AH price scan (`/ah scan`), the native price database, and **auction prices in item tooltips** (the module's primary native-beating value).
+
+### Removed
+- `VeritasUI_AuctionHouse` — **the entire Shopping tab and its dependencies** (`Search.lua`, `Buy.lua`, `Shopping.lua`, `Throttle.lua`, `UI/TabInject.lua`, `UI/ShoppingTab.lua`, `UI/ShoppingCells.{lua,xml}`, `UI/FilterFlyout.lua` — ~4,200 lines). These cloned native Buy-tab functionality and were retired with the refocus above. The techniques (clean tab injection, taint-clean protected writes, live-client introspection) are preserved in git history and were reused where relevant. `Throttle.lua` was removed as dead code once no live AH queries remained (the price scan uses `ReplicateItems` directly). Orphaned `shopping` saved-variable data self-cleans on load.
+
 ## [1.6.52] - 2026-06-10
 
 ### Added
