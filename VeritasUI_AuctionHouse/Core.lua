@@ -165,7 +165,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
 
     elseif event == "PLAYER_LOGIN" then
         VUI.Print(AH.TAG,
-            format("v%s loaded — |cFFFFFF00/ah|r for commands.", AH.VERSION))
+            format("v%s loaded — |cFFFFFF00/ah|r", AH.VERSION))
         ef:UnregisterEvent("PLAYER_LOGIN")
 
     elseif event == "AUCTION_HOUSE_SHOW" then

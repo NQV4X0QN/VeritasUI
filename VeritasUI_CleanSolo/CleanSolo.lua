@@ -606,7 +606,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         SetupActionBarFading()
 
         self:UnregisterEvent("PLAYER_LOGIN")
-        VUI.Print("Clean Solo", "Loaded. Type |cFFFFFF00/cleansolo|r to open settings.")
+        VUI.Print("Clean Solo", format("v%s loaded — |cFFFFFF00/cs|r", VUI.VERSION))
 
     elseif event == "PLAYER_REGEN_DISABLED" then
         if self._playerEvaluate then

@@ -2,6 +2,15 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.3] - 2026-06-12
+
+### Changed
+- **Standardized every module's login message** to one consistent format: `[Module] vX.Y.Z loaded — /slash` (and `[Zone Quests] vX.Y.Z active for <zone> — /zq`). Previously some modules printed a version and a slash command while others just said "Loaded. Type /xxx to open settings." with no version. The version is pulled dynamically from `VUI.VERSION`, so these lines stay correct on every future bump. Clean Solo now advertises its short `/cs` alias. (`VeritasUI_AdvancedOptions/Core.lua`, `VeritasUI_AuctionHouse/Core.lua`, `VeritasUI_CleanSolo/CleanSolo.lua`, `VeritasUI_PriorityRotation/Core.lua`, `VeritasUI_QualityOfLife/QualityOfLife.lua`, `VeritasUI_ZoneQuests/ZoneQuests.lua`)
+
+### Documentation / repo housekeeping
+- **README brought current** — added the `VeritasUI_AuctionHouse` module (was entirely absent), corrected "six folders" → "seven" in the install steps, refreshed the Clean Solo (added Transparent Chat Background, Fade Action Bars) and Quality of Life (added AFK Screen, Repair Funding option) feature lists, corrected the Advanced Options CVar-enumeration description for Midnight (which removed `C_Console`), and removed a stale third-party-addon reference from the Priority Rotation description.
+- **Removed two stale release-zip artifacts** (`VeritasUI-v1.6.32.zip`, `VeritasUI-v1.6.33.zip`) that were committed before `.gitignore` excluded `*.zip`; release zips live only on the GitHub Releases page.
+
 ## [1.7.2] - 2026-06-12
 
 Two roadmap items for `VeritasUI_AuctionHouse`, both AH-only; no other module changed. Each verified in-game.

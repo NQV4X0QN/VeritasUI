@@ -507,7 +507,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         C_Timer.After(2, function() PR:UpdateMacroStub() end)
         PR:ScheduleScan(4)
         VUI.Print("Priority Rotation",
-            format("v%s loaded — |cFFFFFF00/pr|r to open.", PR.VERSION))
+            format("v%s loaded — |cFFFFFF00/pr|r", PR.VERSION))
 
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
         local newKey = PR:GetProfileKey()

@@ -187,7 +187,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
 
     elseif event == "PLAYER_LOGIN" then
         VUI.Print("Advanced Options",
-            format("v%s loaded — |cFFFFFF00/ao|r to open.", AO.VERSION))
+            format("v%s loaded — |cFFFFFF00/ao|r", AO.VERSION))
         ef:UnregisterEvent("PLAYER_LOGIN")
     end
 end)
