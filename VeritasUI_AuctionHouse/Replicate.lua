@@ -69,12 +69,10 @@ local function ArmWatchdog()
         if scanning and not co then
             scanning = false
             progress = 0
-            -- The client can't distinguish a server-side replicate cooldown from
-            -- a genuinely lost request, so the message names the likeliest cause
-            -- without asserting it. (The server enforces its own ~15-min gap
-            -- between full scans, separate from our floor.)
-            AH.Events.Fire("AH_SCAN_FAILED",
-                "no auction data received — the AH may be on its scan cooldown; try again shortly")
+            -- Honest failure: we sent the request and got no data back in time.
+            -- We do NOT speculate a cause (server cooldown vs. dropped event are
+            -- indistinguishable client-side). Core owns the user-facing wording.
+            AH.Events.Fire("AH_SCAN_FAILED")
         end
     end)
 end
@@ -228,9 +226,15 @@ end
 ----------------------------------------------------------------
 --  Public: kick off a scan
 --
+--  Start(force, auto):
+--    force = true  → ignore the 15-min floor (manual "/ah scan force").
+--    auto  = true  → this is the auto-on-open scan; threaded into AH_SCAN_START
+--                    so Core can word the start message differently. Does NOT
+--                    affect gating — auto-scans still honor the floor (called
+--                    with force=false), so they silently no-op when too recent.
 --  Returns true if a scan was started, false + reason otherwise.
 ----------------------------------------------------------------
-function AH.Replicate.Start(force)
+function AH.Replicate.Start(force, auto)
     if scanning then
         return false, "A scan is already running."
     end
@@ -251,7 +255,7 @@ function AH.Replicate.Start(force)
 
     progress = 0
     scanning = true
-    AH.Events.Fire("AH_SCAN_START")
+    AH.Events.Fire("AH_SCAN_START", auto and true or false)
 
     -- Fire the replicate request; the actual row read happens when
     -- REPLICATE_ITEM_LIST_UPDATE fires (handled below). Arm the watchdog so a
@@ -290,5 +294,29 @@ AH.Events.On("AH_CLOSED", function()
         if driver then driver:Hide() end
         progress = 0
         if VUI.debug then VUI.Print(AH.TAG, "Scan aborted (AH closed).") end
+    end
+end)
+
+----------------------------------------------------------------
+--  Auto-scan on AH open
+--
+--  When the AH opens, kick off a scan to keep tooltip prices fresh so the user
+--  never has to type /ah scan. Gated by the SAME 15-min floor as manual scans
+--  (Start(false)), so it silently no-ops if a scan ran recently — no spam on
+--  every AH visit. Honors the db.settings.autoScan toggle (default ON when
+--  unset). Passes auto=true so Core words the start message distinctly. The
+--  decline return (too-recent / not-ready) is intentionally ignored: only a
+--  real start prints, via the AH_SCAN_START event.
+----------------------------------------------------------------
+local function AutoScanEnabled()
+    local s = AH.db and AH.db.settings
+    if not s then return true end          -- default on before settings exist
+    if s.autoScan == nil then return true end
+    return s.autoScan
+end
+
+AH.Events.On("AH_OPEN", function()
+    if AutoScanEnabled() then
+        AH.Replicate.Start(false, true)    -- force=false (honor floor), auto=true
     end
 end)

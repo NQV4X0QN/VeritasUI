@@ -185,8 +185,12 @@ end)
 --  Replicate.lua fires these on the AH.Events bus; Core owns the user-facing
 --  chat output so the scanner stays UI-agnostic.
 ----------------------------------------------------------------
-AH.Events.On("AH_SCAN_START", function()
-    VUI.Print(AH.TAG, "Full scan started…")
+AH.Events.On("AH_SCAN_START", function(auto)
+    if auto then
+        VUI.Print(AH.TAG, "Auto-scanning prices…")
+    else
+        VUI.Print(AH.TAG, "Full scan started…")
+    end
 end)
 
 AH.Events.On("AH_SCAN_COMPLETE", function(committed, rows)
@@ -196,7 +200,13 @@ AH.Events.On("AH_SCAN_COMPLETE", function(committed, rows)
 end)
 
 AH.Events.On("AH_SCAN_FAILED", function(err)
-    VUI.Print(AH.TAG, "|cFFFF4444Scan failed:|r " .. tostring(err))
+    -- User-facing wording is fixed and cause-neutral: it failed and prices are
+    -- not fresh. Any underlying error string (e.g. a coroutine error) is only
+    -- surfaced under VUI.debug — we never assert a root cause to the user.
+    VUI.Print(AH.TAG, "|cFFFF4444Scan failed —|r Prices were not updated; try again shortly.")
+    if VUI.debug and err and err ~= "" then
+        VUI.Print(AH.TAG, "|cFF888888[debug] scan-fail detail: " .. tostring(err) .. "|r")
+    end
 end)
 
 ----------------------------------------------------------------

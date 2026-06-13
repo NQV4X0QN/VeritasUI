@@ -48,24 +48,20 @@ end
 ----------------------------------------------------------------
 --  The price line builder
 ----------------------------------------------------------------
-local LABEL_COLOR = "|cFF00CCFF"   -- VUI cyan, matches VUI.Print prefix tint
-local VALUE_COLOR = "|cFFFFFFFF"
+local AGE_COLOR = "|cFF808080"   -- grey, for the secondary "N seen · X days" line
 
--- Compute the price line + optional extras line for a DB key. Returns
---   priceLabel, priceValue, extrasLine  (any may be nil if not applicable)
--- The CALLER decides how to render them, because GameTooltip and the custom
--- BattlePetTooltip frame need different emit mechanisms (AddDoubleLine vs. a
--- manual right-aligned font string).
-local function BuildPriceLines(key)
+-- Compute the raw price + optional extras line for a DB key. Returns
+--   price (int copper), extrasLine (string|nil)   — or nil if no price/disabled.
+-- The CALLER renders the price: the GameTooltip path uses the native
+-- SetTooltipMoney money frame (pixel-identical to the "Sell Price:" line); the
+-- battle-pet path falls back to a text coin string (its custom frame has no
+-- money-frame support).
+local function BuildPriceData(key)
     if not S("ttShowPrice") then return nil end
     if not (AH.DB and key) then return nil end
 
     local price = AH.DB.GetMarketPrice(key)
     if not price or price <= 0 then return nil end
-
-    local money = AH.Money and AH.Money.Format(price) or tostring(price)
-    local priceLabel = LABEL_COLOR .. "Auction (each)|r"
-    local priceValue = VALUE_COLOR .. money .. "|r"
 
     local extras = {}
     if S("ttShowQty") then
@@ -83,16 +79,33 @@ local function BuildPriceLines(key)
             extras[#extras + 1] = (age == 1 and "1 day old" or (age .. " days old"))
         end
     end
-    local extrasLine = (#extras > 0) and ("|cFF808080" .. table.concat(extras, "  ·  ") .. "|r") or nil
+    local extrasLine = (#extras > 0) and (AGE_COLOR .. table.concat(extras, "  ·  ") .. "|r") or nil
 
-    return priceLabel, priceValue, extrasLine
+    return price, extrasLine
 end
 
--- GameTooltip path: append via the standard double-line / line API.
+-- GameTooltip path: render the price with Blizzard's OWN embedded money frame via
+-- the global SetTooltipMoney(frame, money, type, prefixText, suffixText). This is
+-- the exact mechanism the native "Sell Price:" line uses, so the coin model, coin
+-- size, AND font are pixel-identical — no text-coin approximation. The "Auction:"
+-- label rides in as prefixText. (SetTooltipMoney verified present at 12.0.5 via
+-- live probe; AddLine fallback only if the global is ever missing.)
+local SetTooltipMoney = SetTooltipMoney
+-- Prefix label for the native money line. The trailing spaces widen "Auction:"
+-- (narrower than "Sell Price:") so the FIRST coin digit lines up with the native
+-- Sell Price coins — and because the money frame anchors right after the prefix,
+-- that alignment holds for ALL values (500, 11g49s, 60s…), not just one. Tuned by
+-- eye; add/remove a trailing space here to shift the whole column left/right.
+local PRICE_PREFIX = "Auction:  "   -- "Auction:" + 2 spaces
 local function AppendPriceForKey(tooltip, key)
-    local label, value, extras = BuildPriceLines(key)
-    if not label then return end
-    tooltip:AddDoubleLine(label, value)
+    local price, extras = BuildPriceData(key)
+    if not price then return end
+    if SetTooltipMoney then
+        SetTooltipMoney(tooltip, price, nil, PRICE_PREFIX)
+    else
+        local coins = AH.Money and AH.Money.Format(price) or tostring(price)
+        tooltip:AddLine("Auction:  " .. coins, 1, 1, 1)
+    end
     if extras then tooltip:AddLine(extras) end
 end
 
@@ -140,14 +153,18 @@ end
 ----------------------------------------------------------------
 
 -- Append our price line(s) to a custom battle-pet tooltip FRAME (BattlePetTooltip
--- / FloatingBattlePetTooltip). These are NOT GameTooltips — they have :AddLine
--- but no AddDoubleLine, so we render the price as a single combined line.
+-- / FloatingBattlePetTooltip). These are NOT GameTooltips — no money-frame support,
+-- so this path renders a text coin string (the GameTooltip path uses SetTooltipMoney).
 local function AppendPetPrice(petTooltip, speciesID)
     if not (petTooltip and speciesID) then return end
-    local label, value, extras = BuildPriceLines("p:" .. speciesID)
-    if not label then return end
-    -- Single combined line (label + value) since the pet frame has no double-line.
-    petTooltip:AddLine(label .. "  " .. value)
+    local price, extras = BuildPriceData("p:" .. speciesID)
+    if not price then return end
+    -- The custom BattlePetTooltip frame has no money-frame support, so this path
+    -- uses a text coin string (the modern GetCoinTextureString via AH.Money.Format).
+    -- It won't be pixel-identical to a GameTooltip money frame, but BattlePetTooltip
+    -- has no native money line to match against anyway.
+    local coins = AH.Money and AH.Money.Format(price) or tostring(price)
+    petTooltip:AddLine("Auction:  " .. coins, 1, 1, 1)
     if extras then petTooltip:AddLine(extras) end
 end
 

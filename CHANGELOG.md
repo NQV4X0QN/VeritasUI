@@ -2,6 +2,17 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.2] - 2026-06-12
+
+Two roadmap items for `VeritasUI_AuctionHouse`, both AH-only; no other module changed. Each verified in-game.
+
+### Added
+- `VeritasUI_AuctionHouse` — **auto-scan on Auction House open.** Opening the AH now automatically runs a price scan so tooltip prices stay fresh without typing `/ah scan`. It reuses the same 15-minute cooldown as a manual scan, so it silently does nothing if you scanned recently. A new **"Auto-scan on Auction House open"** checkbox (default on) in the AH settings panel controls it. You get a distinct "Auto-scanning prices…" start message, plus the usual success ("Scan complete — …") or failure message, so you always know whether to keep the window open and whether prices actually refreshed. (`Replicate.lua`, `Core.lua`, `Settings.lua`)
+
+### Changed
+- `VeritasUI_AuctionHouse` — **tooltip price line redesigned to match Blizzard's native "Sell Price:" line exactly.** The label is now `Auction:` (was "Auction (each)"), rendered in the same white, same font, and — crucially — using Blizzard's own embedded money frame (`SetTooltipMoney`) so the coin icons are the exact same model and size as the Sell Price coins, with the amount aligned directly beneath them. Previously the line used a right-justified text coin string, which used a different coin texture and font height. Battle-pet tooltips keep a text coin string (their custom frame has no money-frame support). (`Tooltip.lua`)
+- `VeritasUI_AuctionHouse` — the scan-failure chat message is now cause-neutral: **"Scan failed — Prices were not updated; try again shortly."** (previously speculated a server cooldown, which the client cannot actually confirm). (`Replicate.lua`, `Core.lua`)
+
 ## [1.7.1] - 2026-06-12
 
 Audit/robustness pass over the `VeritasUI_AuctionHouse` module (the v1.7.0 refocus shipped quickly; this is the follow-up quality review). All changes are AH-only; no other module touched. Each item below was verified in-game.
