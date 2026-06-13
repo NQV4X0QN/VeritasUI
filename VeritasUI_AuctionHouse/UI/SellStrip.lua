@@ -107,17 +107,31 @@ local function CollectItems()
         local n = C_Container and C_Container.GetContainerNumSlots(bag) or 0
         for slot = 1, n do
             local info = C_Container.GetContainerItemInfo(bag, slot)
-            if info and info.hyperlink and not info.isBound then
+            if info and info.hyperlink then
+                -- info.isBound may be a secret value in some contexts; guard the
+                -- comparison. Items that fail any guard are skipped (treated as
+                -- not-sellable). Mirrors QoL ScanJunk / IsEquippableGear discipline.
+                local okB, unbound = pcall(function() return not info.isBound end)
                 local itemID = info.itemID
-                if itemID and not (block and block[itemID]) then
-                    local sellPrice = select(11, C_Item.GetItemInfo(info.hyperlink))
-                    if sellPrice and sellPrice > 0 then
-                        out[#out + 1] = {
-                            bag = bag, slot = slot, link = info.hyperlink,
-                            itemID = itemID, texture = info.iconFileID,
-                            count = info.stackCount, quality = info.quality,
-                            name = info.hyperlink:match("%[(.-)%]") or "",
-                        }
+                if okB and unbound and itemID and not (block and block[itemID]) then
+                    -- The vendor sell price (GetItemInfo index 11) and the
+                    -- comparison against it may both touch a secret value; guard
+                    -- the call and the arithmetic separately, as QoL ScanJunk does.
+                    local okP, sellPrice = pcall(function()
+                        return select(11, C_Item.GetItemInfo(info.hyperlink))
+                    end)
+                    if okP then
+                        local okC, sellable = pcall(function()
+                            return sellPrice and sellPrice > 0
+                        end)
+                        if okC and sellable then
+                            out[#out + 1] = {
+                                bag = bag, slot = slot, link = info.hyperlink,
+                                itemID = itemID, texture = info.iconFileID,
+                                count = info.stackCount, quality = info.quality,
+                                name = info.hyperlink:match("%[(.-)%]") or "",
+                            }
+                        end
                     end
                 end
             end
@@ -191,7 +205,10 @@ end
 -- only guaranteed primitives: a plain Button + icon texture + count fontstring +
 -- a quality border + a hover highlight.
 local function MakeButton(parent, index)
-    local b = CreateFrame("Button", "VUIAHSellStripBtn" .. index, parent)
+    -- Anonymous frame: these buttons are never referenced by global name (no XML
+    -- template inheritance, no _G lookups), so naming them would only pollute the
+    -- global namespace. `index` is still used for left-offset positioning below.
+    local b = CreateFrame("Button", nil, parent)
     b:SetSize(ICON, ICON)
     b:SetPoint("LEFT", parent, "LEFT", PAD_L + (index - 1) * STEP, 0)
     b:EnableMouse(true)
@@ -388,9 +405,9 @@ function AH.SellStrip.ListBlocked()
     VUI.Print(AH.TAG, "Sell-strip blocklist:")
     for itemID in pairs(block) do
         local name = C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID)
-        print(("  |cFFFFFF00%s|r (id %d)"):format(name or "item", itemID))
+        VUI.Print(AH.TAG, ("  |cFFFFFF00%s|r (id %d)"):format(name or "item", itemID))
     end
-    print("  |cFF888888/ah blocked clear|r to empty the list.")
+    VUI.Print(AH.TAG, "  |cFF888888/ah blocked clear|r to empty the list.")
 end
 
 function AH.SellStrip.ClearBlocked()

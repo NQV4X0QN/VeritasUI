@@ -1,8 +1,8 @@
 -- VeritasUI_AuctionHouse / Database.lua
--- Native price database (Phase 2). Hand-rolled, no LibCBOR (suite rule: no
+-- Native price database. Hand-rolled, no LibCBOR (suite rule: no
 -- external libraries). Account-wide, persisted in VeritasUI_AuctionHouseDB.prices.
 --
--- KEY SCHEME (Phase 2 decision, resolves design OQ#3):
+-- KEY SCHEME (resolves design OQ#3):
 --   "p:<speciesID>"          battle pets (speciesID parsed from the battlepet link)
 --   "i:<itemID>:<itemLevel>" equippable gear (ilvl appended so variants don't collide)
 --   "i:<itemID>"             everything else (commodities, mats, consumables, recipes…)

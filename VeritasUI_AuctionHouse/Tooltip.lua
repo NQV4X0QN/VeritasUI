@@ -1,12 +1,12 @@
 -- VeritasUI_AuctionHouse / Tooltip.lua
--- Phase 3: append the stored market price to item tooltips.
+-- Append the stored market price to item AND battle-pet tooltips.
 --
 -- Pure DB READ — no live AH query, works offline (away from the AH), and is
--- read-only so it carries no taint risk. Uses the modern tooltip hook
--- (verified 12.0.5): TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, fn).
--- The callback receives (tooltip, data); data.hyperlink is the item link, which
--- AH.DB keys/prices directly. (TooltipUtil.GetDisplayedItem is the fallback path
--- for the rare case data.hyperlink is absent but a GUID is present.)
+-- read-only so it carries no taint risk. Two distinct mechanisms (verified 12.0.5):
+--   * Items: TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item).
+--   * Battle pets: hooksecurefunc("BattlePetToolTip_Show", fn) — pets do NOT use
+--     TooltipDataProcessor; the global is called with speciesID as arg 1, and the
+--     frame shown is the custom BattlePetTooltip (not a GameTooltip).
 
 local ADDON_NAME, AH = ...
 local VUI = _G.VeritasUI
@@ -19,7 +19,7 @@ local pairs                = pairs
 
 AH.Tooltip = {}
 
--- Defaults for the Phase 3 toggles. Seeded into db.settings on first run; all on.
+-- Defaults for the tooltip toggles. Seeded into db.settings on first run; all on.
 local TT_DEFAULTS = {
     ttShowPrice = true,   -- show "AH:" market price line
     ttShowAge   = true,   -- annotate stale prices with their age in days
@@ -51,27 +51,30 @@ end
 local LABEL_COLOR = "|cFF00CCFF"   -- VUI cyan, matches VUI.Print prefix tint
 local VALUE_COLOR = "|cFFFFFFFF"
 
--- Append our line(s) to a tooltip for the given item link, if we have a price.
-local function AppendPrice(tooltip, link)
-    if not S("ttShowPrice") then return end
-    if not (AH.DB and link) then return end
+-- Compute the price line + optional extras line for a DB key. Returns
+--   priceLabel, priceValue, extrasLine  (any may be nil if not applicable)
+-- The CALLER decides how to render them, because GameTooltip and the custom
+-- BattlePetTooltip frame need different emit mechanisms (AddDoubleLine vs. a
+-- manual right-aligned font string).
+local function BuildPriceLines(key)
+    if not S("ttShowPrice") then return nil end
+    if not (AH.DB and key) then return nil end
 
-    local price, key = AH.DB.GetMarketPriceForLink(link)
-    if not price or price <= 0 then return end
+    local price = AH.DB.GetMarketPrice(key)
+    if not price or price <= 0 then return nil end
 
-    -- Main price line: "Auction (each): 12g 34s 56c"
     local money = AH.Money and AH.Money.Format(price) or tostring(price)
-    tooltip:AddDoubleLine(
-        LABEL_COLOR .. "Auction (each)|r",
-        VALUE_COLOR .. money .. "|r")
+    local priceLabel = LABEL_COLOR .. "Auction (each)|r"
+    local priceValue = VALUE_COLOR .. money .. "|r"
 
-    -- Optional quantity-seen + age annotations on a secondary line.
     local extras = {}
     if S("ttShowQty") then
         local hist = AH.DB.GetPriceHistory(key)
-        local today = hist[1]
-        if today and today.qty and today.qty > 0 then
-            extras[#extras + 1] = today.qty .. " seen"
+        -- hist is sorted newest-first, so hist[1] is the most-recently-recorded
+        -- day's entry (not necessarily *today* — the last scan may be older).
+        local latest = hist[1]
+        if latest and latest.qty and latest.qty > 0 then
+            extras[#extras + 1] = latest.qty .. " seen"
         end
     end
     if S("ttShowAge") then
@@ -80,9 +83,24 @@ local function AppendPrice(tooltip, link)
             extras[#extras + 1] = (age == 1 and "1 day old" or (age .. " days old"))
         end
     end
-    if #extras > 0 then
-        tooltip:AddLine("|cFF808080" .. table.concat(extras, "  ·  ") .. "|r")
-    end
+    local extrasLine = (#extras > 0) and ("|cFF808080" .. table.concat(extras, "  ·  ") .. "|r") or nil
+
+    return priceLabel, priceValue, extrasLine
+end
+
+-- GameTooltip path: append via the standard double-line / line API.
+local function AppendPriceForKey(tooltip, key)
+    local label, value, extras = BuildPriceLines(key)
+    if not label then return end
+    tooltip:AddDoubleLine(label, value)
+    if extras then tooltip:AddLine(extras) end
+end
+
+-- Append our line(s) to a tooltip for the given item link, if we have a price.
+local function AppendPrice(tooltip, link)
+    if not (AH.DB and link) then return end
+    local key = AH.DB.MakeKey(link)
+    if key then AppendPriceForKey(tooltip, key) end
 end
 
 ----------------------------------------------------------------
@@ -109,6 +127,51 @@ local function OnItemTooltip(tooltip, data)
     pcall(AppendPrice, tooltip, link)
 end
 
+----------------------------------------------------------------
+--  Battle-pet tooltips
+--
+--  VERIFIED (against Auctionator's clean-room reference + Blizzard API usage):
+--  battle-pet tooltips do NOT flow through TooltipDataProcessor /
+--  Enum.TooltipDataType.BattlePet. The correct hook is the global function
+--  BattlePetToolTip_Show(speciesID, ...) — Blizzard hands us the speciesID as
+--  arg 1 directly, which maps straight to our DB key "p:<speciesID>". The frame
+--  shown is the custom BattlePetTooltip (not a GameTooltip), and chat-link pets
+--  use FloatingBattlePetTooltip via FloatingBattlePet_Toggle.
+----------------------------------------------------------------
+
+-- Append our price line(s) to a custom battle-pet tooltip FRAME (BattlePetTooltip
+-- / FloatingBattlePetTooltip). These are NOT GameTooltips — they have :AddLine
+-- but no AddDoubleLine, so we render the price as a single combined line.
+local function AppendPetPrice(petTooltip, speciesID)
+    if not (petTooltip and speciesID) then return end
+    local label, value, extras = BuildPriceLines("p:" .. speciesID)
+    if not label then return end
+    -- Single combined line (label + value) since the pet frame has no double-line.
+    petTooltip:AddLine(label .. "  " .. value)
+    if extras then petTooltip:AddLine(extras) end
+end
+
+local function HookBattlePetTooltips()
+    -- Caged pet hovered in bags / AH / anywhere → BattlePetTooltip.
+    if type(BattlePetToolTip_Show) == "function" then
+        hooksecurefunc("BattlePetToolTip_Show", function(speciesID)
+            pcall(AppendPetPrice, BattlePetTooltip, speciesID)
+        end)
+    elseif VUI.debug then
+        VUI.Print(AH.TAG, "|cFFFF4444BattlePetToolTip_Show missing|r — pet prices unavailable.")
+    end
+
+    -- Chat-link / floating pet tooltip → FloatingBattlePetTooltip. Its species id
+    -- is on the frame after the toggle, so read it from the frame.
+    if type(FloatingBattlePet_Toggle) == "function" then
+        hooksecurefunc("FloatingBattlePet_Toggle", function()
+            if FloatingBattlePetTooltip and FloatingBattlePetTooltip:IsShown() then
+                pcall(AppendPetPrice, FloatingBattlePetTooltip, FloatingBattlePetTooltip.speciesID)
+            end
+        end)
+    end
+end
+
 local function Register()
     if not (TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall
             and Enum and Enum.TooltipDataType) then
@@ -118,6 +181,7 @@ local function Register()
         return
     end
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, OnItemTooltip)
+    HookBattlePetTooltips()
 end
 
 ----------------------------------------------------------------

@@ -2,6 +2,25 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.1] - 2026-06-12
+
+Audit/robustness pass over the `VeritasUI_AuctionHouse` module (the v1.7.0 refocus shipped quickly; this is the follow-up quality review). All changes are AH-only; no other module touched. Each item below was verified in-game.
+
+### Added
+- `VeritasUI_AuctionHouse` — **battle-pet prices in tooltips.** Caged-pet auction prices were already recorded in the scan database (keyed by species) but never surfaced, because battle-pet tooltips do **not** flow through the item tooltip system. Added the correct hook (`BattlePetToolTip_Show`, which hands us the species id directly) so the "Auction (each)" line now appears on battle-pet tooltips in the AH, bags, and chat links. (`Tooltip.lua`)
+
+### Fixed
+- `VeritasUI_AuctionHouse` — **sell strip hardened against Midnight Secret Values.** The bag-scan that builds the sellable-items strip now wraps the bound-check, the `C_Item.GetItemInfo` call, and the vendor-price comparison in the suite's three-pcall pattern (mirroring QualityOfLife's AutoSell). A single problematic item is skipped instead of erroring the whole strip refresh. (`UI/SellStrip.lua`)
+- `VeritasUI_AuctionHouse` — **price scan no longer strands on a dropped server response.** Added a watchdog: if `ReplicateItems()` is issued but `REPLICATE_ITEM_LIST_UPDATE` never arrives, the scan state resets cleanly and reports an honest message instead of leaving `/ah scan` permanently reporting "a scan is already running" until the AH is reopened. (`Replicate.lua`)
+- `VeritasUI_AuctionHouse` — **a single malformed row no longer aborts an entire price scan.** The per-row read inside the scan coroutine is now pcall-isolated, so one bad row out of a 200k+ snapshot is skipped rather than discarding the whole scan. (`Replicate.lua`)
+- `VeritasUI_AuctionHouse` — settings panel no longer depends on cross-frame event-dispatch order to seed its tooltip-toggle defaults (it now seeds them itself before reading them). (`Settings.lua`, `Tooltip.lua`)
+
+### Changed
+- `VeritasUI_AuctionHouse` — all `/ah` diagnostic and help output now routes through the standard `VUI.Print` formatter, so every line carries the `[Auction House]` prefix (matching the rest of the suite). (`Core.lua`, `UI/SellStrip.lua`)
+
+### Removed
+- `VeritasUI_AuctionHouse` — **dead-code sweep left over from the v1.7.0 Shopping-tab cut.** Removed the orphaned `AH.Money.SanitizePrice` helper (its only caller, the auction-posting path, was cut), a no-subscriber `AH_SCAN_PROGRESS` event broadcast, an unused local, and a global frame name on the strip buttons; scrubbed stale comments that still referenced removed files (`Throttle.lua`, `Search.lua`), a non-existent `/ah search` command, and obsolete development-phase tags. Comment-and-cleanup only — no behavioral change. (`Core.lua`, `Money.lua`, `Replicate.lua`, `Database.lua`, `Settings.lua`, `Tooltip.lua`, `UI/SellStrip.lua`)
+
 ## [1.7.0] - 2026-06-11
 
 ### Changed

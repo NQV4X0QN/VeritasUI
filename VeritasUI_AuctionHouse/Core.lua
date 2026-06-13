@@ -2,10 +2,10 @@
 -- Module init, saved variables, internal event bus, AH session lifecycle,
 -- slash commands.
 --
--- PHASE 1: adds the AH session lifecycle (AUCTION_HOUSE_SHOW/CLOSED/DISABLED),
--- a tiny internal pub/sub bus (AH.Events) that later phases hook, and /ah
--- diagnostics for the throttle queue + money helpers. Still no user-facing
--- feature — this is foundation (per AUCTIONHOUSE_DESIGN.md §2.7/2.8, Phase 1).
+-- Owns the AH session lifecycle (AUCTION_HOUSE_SHOW/CLOSED/DISABLED), a tiny
+-- internal pub/sub bus (AH.Events) that sibling files hook, the price-DB saved
+-- vars, and the /ah slash surface (help / scan / wipe / diag / blocked /
+-- settings). See AUCTIONHOUSE_DESIGN.md §2.8 (lifecycle).
 
 local ADDON_NAME, AH = ...
 local VUI = _G.VeritasUI
@@ -18,7 +18,6 @@ end
 --  Localize hot globals
 ----------------------------------------------------------------
 local pairs       = pairs
-local ipairs      = ipairs
 local type        = type
 local format      = string.format
 local floor       = math.floor
@@ -37,8 +36,8 @@ AH.TAG     = "Auction House"   -- chat prefix for VUI.Print
 --
 --  A minimal in-module pub/sub. VeritasUI_Lib has no EventBus, and a change in
 --  one module must never require edits in another (suite design rule #4), so the
---  AH module owns its own. Defined FIRST so sibling files (Throttle.lua, and
---  later Replicate/Search/etc.) can subscribe at their own file-load time.
+--  AH module owns its own. Defined FIRST so sibling files (Replicate.lua, etc.)
+--  can subscribe at their own file-load time.
 --
 --    AH.Events.On(name, fn)   -- subscribe; fn(...) receives Fire's varargs
 --    AH.Events.Fire(name, ...) -- publish to all subscribers (pcall-isolated)
@@ -77,15 +76,15 @@ AH.disabled = false   -- true after AUCTION_HOUSE_DISABLED (this session)
 ----------------------------------------------------------------
 --  Defaults & state
 --
---  Account-wide saved var. The price database (Phase 2) lives under
---  db.prices; we seed the container now so later phases have a stable
---  shape to write into. UI/feature toggles get added as phases land.
+--  Account-wide saved var. The price database lives under db.prices; the
+--  container shape below is stable and seeded on first run so every reader has
+--  a predictable structure to work against.
 ----------------------------------------------------------------
 local defaults = {
     dbVersion = 1,     -- schema version for the price DB (bump on layout change)
-    prices    = {},    -- [itemKeyString] = price-history record (Phase 2)
-    settings  = {},    -- user toggles (Phase 3+); settings.retentionDays optional
-    lastScan  = 0,     -- Unix time of last full replicate scan (Phase 2 scan-floor)
+    prices    = {},    -- [itemKeyString] = price-history record (see Database.lua)
+    settings  = {},    -- user toggles (tooltip display); settings.retentionDays optional
+    lastScan  = 0,     -- Unix time of last full replicate scan (scan-floor bookkeeping)
     -- Sell strip: itemIDs the user has hidden from the native-Sell-tab bag strip
     -- (dyes, saved reagents, etc.). [itemID] = true. See UI/SellStrip.lua.
     sellBlocklist = {},
@@ -121,12 +120,12 @@ end
 --  Session lifecycle  (design §2.8)
 --
 --  AUCTION_HOUSE_SHOW    → AH open; queries allowed. Fire "AH_OPEN".
---  AUCTION_HOUSE_CLOSED  → tear down; cancel in-flight queue. Fire "AH_CLOSED".
+--  AUCTION_HOUSE_CLOSED  → tear down; abort any in-flight scan. Fire "AH_CLOSED".
 --  AUCTION_HOUSE_DISABLED→ AH unavailable this session (e.g. another AH addon
 --                          or a server gate). Degrade gracefully. Fire "AH_DISABLED".
 --
---  Core only owns the state + the event broadcast. Throttle.lua subscribes to
---  "AH_CLOSED" to clear its queue; later phases subscribe to "AH_OPEN" to scan.
+--  Core only owns the state + the event broadcast. Replicate.lua subscribes to
+--  "AH_CLOSED" to abort an in-flight scan.
 ----------------------------------------------------------------
 local function OnAuctionHouseShow()
     AH.isOpen = true
@@ -181,7 +180,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
 end)
 
 ----------------------------------------------------------------
---  Scan reporting (Phase 2)
+--  Scan reporting
 --
 --  Replicate.lua fires these on the AH.Events bus; Core owns the user-facing
 --  chat output so the scanner stays UI-agnostic.
@@ -203,38 +202,37 @@ end)
 ----------------------------------------------------------------
 --  Slash Commands
 --
---  Surface: help / diag / scan / wipe / settings.
---  Feature subcommands are added by the phase that implements them.
+--  Surface: help / scan / wipe / diag / blocked / settings.
 ----------------------------------------------------------------
 SLASH_VERITASUI_AH1 = "/ah"
 SLASH_VERITASUI_AH2 = "/auctionhouse"
 
 local function PrintHelp()
     VUI.Print(AH.TAG, "Commands:")
-    print("  |cFFFFFF00/ah|r              — show this help")
-    print("  |cFFFFFF00/ah scan|r         — full price scan (AH open; 15-min cooldown)")
-    print("  |cFFFFFF00/ah scan force|r   — scan now, ignoring the cooldown")
-    print("  |cFFFFFF00/ah diag|r         — diagnostic / state dump")
-    print("  |cFFFFFF00/ah wipe|r         — clear the price database")
-    print("  |cFFFFFF00/ah blocked|r      — manage sell-strip hidden items")
-    print("  |cFFFFFF00/ah settings|r     — open settings panel")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah|r              — show this help")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah scan|r         — full price scan (AH open; 15-min cooldown)")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah scan force|r   — scan now, ignoring the cooldown")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah diag|r         — diagnostic / state dump")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah wipe|r         — clear the price database")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah blocked|r      — manage sell-strip hidden items")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah settings|r     — open settings panel")
 end
 
 local function PrintDiag()
     VUI.Print(AH.TAG, "Diagnostics:")
-    print(format("  version:      |cFFFFFF00%s|r", tostring(AH.VERSION)))
-    print(format("  db ready:     %s", AH.db and "|cFF00FF00yes|r" or "|cFFFF4444no|r"))
+    VUI.Print(AH.TAG, format("  version:      |cFFFFFF00%s|r", tostring(AH.VERSION)))
+    VUI.Print(AH.TAG, format("  db ready:     %s", AH.db and "|cFF00FF00yes|r" or "|cFFFF4444no|r"))
     if AH.db then
         local n = AH.DB and AH.DB.GetItemCount() or 0
-        print(format("  db schema:    v%s", tostring(AH.db.dbVersion)))
-        print(format("  priced items: |cFFFFFF00%d|r", n))
+        VUI.Print(AH.TAG, format("  db schema:    v%s", tostring(AH.db.dbVersion)))
+        VUI.Print(AH.TAG, format("  priced items: |cFFFFFF00%d|r", n))
     end
 
     -- Session state.
-    print(format("  AH open:      %s", AH.isOpen and "|cFF00FF00yes|r" or "no"))
-    print(format("  AH disabled:  %s", AH.disabled and "|cFFFF4444yes|r" or "no"))
+    VUI.Print(AH.TAG, format("  AH open:      %s", AH.isOpen and "|cFF00FF00yes|r" or "no"))
+    VUI.Print(AH.TAG, format("  AH disabled:  %s", AH.disabled and "|cFFFF4444yes|r" or "no"))
 
-    -- Scan state (Phase 2).
+    -- Scan state.
     if AH.Replicate then
         local wait = AH.Replicate.SecondsUntilReady()
         local readyText
@@ -245,21 +243,22 @@ local function PrintDiag()
         else
             readyText = "|cFF00FF00ready|r"
         end
-        print(format("  scan:         %s", readyText))
+        VUI.Print(AH.TAG, format("  scan:         %s", readyText))
     end
 
-    -- Money helper self-test (verifies format + sanitize without needing the AH).
+    -- Money helper self-test (verifies coin formatting without needing the AH).
     if AH.Money then
-        print(format("  money fmt:    %s  |  sanitize(12345.6)=%d",
-            AH.Money.Format(123456), AH.Money.SanitizePrice(12345.6)))
+        VUI.Print(AH.TAG, format("  money fmt:    %s", AH.Money.Format(123456)))
     end
 end
 
 SlashCmdList["VERITASUI_AH"] = function(msg)
     msg = strtrim(msg or "")
-    -- ORIGINAL case preserved — item names in /ah search are case-sensitive to read).
+    -- Split into command word + remainder. Both are lowercased: every subcommand
+    -- and argument here is case-insensitive ("force", "clear").
     local word, rest = msg:match("^(%S*)%s*(.-)$")
-    local cmd = (word or ""):lower()
+    local cmd  = (word or ""):lower()
+    rest = (rest or ""):lower()
 
     if cmd == "settings" then
         if AH.settingsCategoryID then
@@ -273,7 +272,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             VUI.Print(AH.TAG, "Scanner not loaded.")
             return
         end
-        local force = (rest:lower() == "force")
+        local force = (rest == "force")
         local ok, reason = AH.Replicate.Start(force)
         if not ok then
             VUI.Print(AH.TAG, reason or "Scan could not start.")
@@ -290,7 +289,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
 
     elseif cmd == "blocked" then
         if AH.SellStrip then
-            if rest:lower() == "clear" then
+            if rest == "clear" then
                 AH.SellStrip.ClearBlocked()
             else
                 AH.SellStrip.ListBlocked()

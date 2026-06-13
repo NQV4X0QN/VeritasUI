@@ -1,10 +1,10 @@
 -- VeritasUI_AuctionHouse / Settings.lua
 -- Native Blizzard Settings entry (Options → AddOns → Auction House).
 --
--- PHASE 3: real toggles for the tooltip price display, bound to AH.db.settings.
--- NOTE: unlike PR/AO, the module's MAIN UI is INJECTED TABS on Blizzard's
--- AuctionHouseFrame (see AUCTIONHOUSE_DESIGN.md §2.9) — so we deliberately do
--- NOT register a managed UIPanel window here. This category holds global toggles only.
+-- Real toggles for the tooltip price display, bound to AH.db.settings.
+-- NOTE: this module has no managed UIPanel window — its in-AH UI is the sell
+-- strip mounted on Blizzard's native Sell tab (see UI/SellStrip.lua). This
+-- Settings category holds the global tooltip toggles only.
 
 local ADDON_NAME, AH = ...
 local VUI = _G.VeritasUI
@@ -15,12 +15,19 @@ local SETTINGS_LABEL = "Auction House"
 local function BuildNativeSettingsPanel()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
 
-    -- Tooltip toggles bind directly to AH.db.settings (seeded by Tooltip.SeedDefaults
-    -- on PLAYER_LOGIN; InitDB on ADDON_LOADED guarantees AH.db exists by now).
+    -- Seed the tooltip defaults here too, so this panel never depends on
+    -- Tooltip.lua's PLAYER_LOGIN frame having fired first (cross-frame event
+    -- dispatch order is not guaranteed). SeedDefaults is the single seeding
+    -- authority and is idempotent — calling it from both paths only fills nils.
+    if AH.Tooltip and AH.Tooltip.SeedDefaults then
+        AH.Tooltip.SeedDefaults()
+    end
+
+    -- Tooltip toggles bind directly to AH.db.settings (InitDB on ADDON_LOADED
+    -- guarantees AH.db exists; SeedDefaults above guarantees the keys exist).
     local store = AH.db and AH.db.settings
     if store then
         local function AddCheckbox(key, default, name, tip)
-            if store[key] == nil then store[key] = default end
             local setting = Settings.RegisterAddOnSetting(
                 category, ADDON_NAME .. "_" .. key, key,
                 store, "boolean", name, default)
