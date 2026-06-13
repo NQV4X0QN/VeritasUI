@@ -387,7 +387,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
             SyncTracking(false)
             if db.enabled then
                 VUI.Print("Zone Quests", "v" .. VUI.VERSION .. " active for |cFFFFCC00"
-                    .. ZoneName() .. "|r  —  /zq")
+                    .. ZoneName() .. "|r  —  |cFFFFFF00/zq|r")
             end
         end)
 

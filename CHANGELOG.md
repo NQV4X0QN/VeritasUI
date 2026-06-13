@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.4] - 2026-06-12
+
+### Fixed
+- **Zone Quests login message** — its `/zq` slash command now renders in the same yellow as every other module's command. The other five modules wrap their command in the yellow color code; Zone Quests' was plain (white), an oversight from the v1.7.3 login-message standardization. Purely cosmetic — all six login lines are now visually consistent. (`VeritasUI_ZoneQuests/ZoneQuests.lua`)
+
 ## [1.7.3] - 2026-06-12
 
 ### Changed
