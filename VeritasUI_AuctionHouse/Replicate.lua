@@ -23,7 +23,7 @@
 -- Scan floor: Blizzard/-server throttle replicate heavily; we enforce a 15-min
 -- minimum between scans (design §2.2), persisted across sessions.
 
-local ADDON_NAME, AH = ...
+local _, AH = ...
 local VUI = _G.VeritasUI
 if not VUI then return end
 
@@ -38,44 +38,33 @@ AH.Replicate = {}
 local SCAN_FLOOR_SECONDS    = 15 * 60   -- minimum gap between full scans
 local ROWS_PER_SLICE        = 2000      -- safety cap on rows per frame
 local FRAME_BUDGET_MS       = 8         -- ~8ms/frame work budget (debugprofilestop)
-local SCAN_WATCHDOG_SECONDS = 45        -- max wait for REPLICATE_ITEM_LIST_UPDATE before bailing
 
 local scanning   = false   -- a scan coroutine is in progress
 local co                    -- the active coroutine
 local driver               -- OnUpdate ticker frame
 local progress   = 0        -- 0..1
-local watchdog             -- C_Timer handle guarding the request→event window
 
 ----------------------------------------------------------------
---  Watchdog: ReplicateItems() may never produce a
---  REPLICATE_ITEM_LIST_UPDATE (server throttle/gate/lost event). Without a
---  bound, `scanning` would stay true forever and every later /ah scan would
---  return "A scan is already running" until the AH is closed. Arm on request,
---  cancel once the coroutine begins (the driver owns progress from there).
+--  Scan lifecycle — why there is NO timeout (do not re-add one)
+--
+--  ReplicateItems() -> REPLICATE_ITEM_LIST_UPDATE can take a long, UNBOUNDED
+--  time: the snapshot is 8k-270k+ rows, and the request may sit QUEUED behind
+--  the throttle system before the server even begins assembling it. Delivery
+--  time has no fixed upper bound, so a fixed-timeout "watchdog" cannot tell
+--  "lost forever" from "still coming" — it can only race a slow-but-successful
+--  scan and kill it. A 45s watchdog (added v1.7.1) did exactly that: it
+--  discarded scans whose data arrived a few seconds later, which is what made
+--  scanning fail roughly half the time.
+--
+--  The proven model (what Auctionator does) is: NO timeout. Fire the request,
+--  wait for the event however long it takes, process it when it lands.
+--
+--  The only real risk — `scanning` left stuck true if the event genuinely never
+--  comes in a session — is handled WITHOUT a failure timer: a scan only lives
+--  within one AH session, so we reset the flag on AH open and AH close (see the
+--  AH_OPEN / AH_CLOSED handlers below). A fresh AH session can therefore always
+--  start a new scan, with no false "already running" and no false "scan failed".
 ----------------------------------------------------------------
-local function CancelWatchdog()
-    if watchdog then
-        watchdog:Cancel()
-        watchdog = nil
-    end
-end
-
-local function ArmWatchdog()
-    CancelWatchdog()
-    watchdog = C_Timer.NewTimer(SCAN_WATCHDOG_SECONDS, function()
-        watchdog = nil
-        -- Only bail if we are still waiting for the snapshot (no coroutine yet).
-        -- If `co` exists the scan is draining normally and must not be touched.
-        if scanning and not co then
-            scanning = false
-            progress = 0
-            -- Honest failure: we sent the request and got no data back in time.
-            -- We do NOT speculate a cause (server cooldown vs. dropped event are
-            -- indistinguishable client-side). Core owns the user-facing wording.
-            AH.Events.Fire("AH_SCAN_FAILED")
-        end
-    end)
-end
 
 ----------------------------------------------------------------
 --  Scan-floor bookkeeping (persisted)
@@ -226,15 +215,15 @@ end
 ----------------------------------------------------------------
 --  Public: kick off a scan
 --
---  Start(force, auto):
---    force = true  → ignore the 15-min floor (manual "/ah scan force").
---    auto  = true  → this is the auto-on-open scan; threaded into AH_SCAN_START
---                    so Core can word the start message differently. Does NOT
---                    affect gating — auto-scans still honor the floor (called
---                    with force=false), so they silently no-op when too recent.
+--  Start(auto):
+--    auto = true → this is the auto-on-open scan; threaded into AH_SCAN_START
+--                  so Core can word the start message differently.
+--  The 15-min floor is ALWAYS honored (no force override — Auctionator proves
+--  bypassing it just fires ReplicateItems into the server's own cooldown, which
+--  is a silent no-op that looks like a failure).
 --  Returns true if a scan was started, false + reason otherwise.
 ----------------------------------------------------------------
-function AH.Replicate.Start(force, auto)
+function AH.Replicate.Start(auto)
     if scanning then
         return false, "A scan is already running."
     end
@@ -245,22 +234,20 @@ function AH.Replicate.Start(force, auto)
         return false, "C_AuctionHouse.ReplicateItems unavailable."
     end
 
-    if not force then
-        local wait = AH.Replicate.SecondsUntilReady()
-        if wait > 0 then
-            return false, string.format("Next scan available in %d:%02d.",
-                floor(wait / 60), wait % 60)
-        end
+    local wait = AH.Replicate.SecondsUntilReady()
+    if wait > 0 then
+        return false, string.format("Next scan available in %d:%02d.",
+            floor(wait / 60), wait % 60)
     end
 
     progress = 0
     scanning = true
     AH.Events.Fire("AH_SCAN_START", auto and true or false)
 
-    -- Fire the replicate request; the actual row read happens when
-    -- REPLICATE_ITEM_LIST_UPDATE fires (handled below). Arm the watchdog so a
-    -- dropped/withheld event can't strand `scanning` permanently.
-    ArmWatchdog()
+    -- Fire the replicate request; the row read happens when
+    -- REPLICATE_ITEM_LIST_UPDATE fires (handled below). No timeout — we wait for
+    -- the event however long the (queued, possibly 270k-row) snapshot takes. See
+    -- the "Scan lifecycle — why there is NO timeout" note near the top.
     C_AuctionHouse.ReplicateItems()
     return true
 end
@@ -274,12 +261,7 @@ ef:SetScript("OnEvent", function(_, event)
     if event == "REPLICATE_ITEM_LIST_UPDATE" then
         -- The snapshot is ready to read. Only act if WE initiated a scan
         -- (scanning == true) and we're not already draining a coroutine.
-        -- Note: this event fires repeatedly during a single scan; the `co`
-        -- guard makes every fire after the first a no-op.
         if not scanning or co then return end
-        -- The snapshot arrived: the request→event window closed, so stand the
-        -- watchdog down before it can fire on a now-progressing scan.
-        CancelWatchdog()
         co = coroutine.create(ProcessAllRows)
         EnsureDriver():Show()
     end
@@ -287,7 +269,6 @@ end)
 
 -- Abort any in-flight scan if the AH closes mid-scan.
 AH.Events.On("AH_CLOSED", function()
-    CancelWatchdog()
     if scanning then
         scanning = false
         co = nil
@@ -301,12 +282,12 @@ end)
 --  Auto-scan on AH open
 --
 --  When the AH opens, kick off a scan to keep tooltip prices fresh so the user
---  never has to type /ah scan. Gated by the SAME 15-min floor as manual scans
---  (Start(false)), so it silently no-ops if a scan ran recently — no spam on
---  every AH visit. Honors the db.settings.autoScan toggle (default ON when
---  unset). Passes auto=true so Core words the start message distinctly. The
---  decline return (too-recent / not-ready) is intentionally ignored: only a
---  real start prints, via the AH_SCAN_START event.
+--  never has to type /ah scan. Gated by the SAME 15-min floor as a manual scan,
+--  so it silently no-ops if a scan ran recently — no spam on every AH visit.
+--  Honors the db.settings.autoScan toggle (default ON when unset). Passes
+--  auto=true so Core words the start message distinctly. The decline return
+--  (too-recent / not-ready) is intentionally ignored: only a real start prints,
+--  via the AH_SCAN_START event.
 ----------------------------------------------------------------
 local function AutoScanEnabled()
     local s = AH.db and AH.db.settings
@@ -316,7 +297,17 @@ local function AutoScanEnabled()
 end
 
 AH.Events.On("AH_OPEN", function()
+    -- F-2 stuck-flag guard (the correct fix that replaces the old watchdog): a
+    -- scan only lives within one AH session. If a prior session ended with
+    -- `scanning` still true (event genuinely never delivered, no AH_CLOSED seen),
+    -- clear it here so a fresh session can always start a new scan — no false
+    -- "A scan is already running", and no failure timer needed.
+    if scanning and not co then
+        scanning = false
+        progress = 0
+    end
+
     if AutoScanEnabled() then
-        AH.Replicate.Start(false, true)    -- force=false (honor floor), auto=true
+        AH.Replicate.Start(true)    -- auto=true (15-min floor always honored)
     end
 end)

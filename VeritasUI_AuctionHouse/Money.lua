@@ -5,7 +5,7 @@
 -- "Secret Values". This module is a convenience/consistency layer for display
 -- only — it is NOT a taint boundary and does no Secret handling.
 
-local ADDON_NAME, AH = ...
+local _, AH = ...
 local VUI = _G.VeritasUI
 if not VUI then return end
 

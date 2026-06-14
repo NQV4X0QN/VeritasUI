@@ -2,6 +2,21 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.5] - 2026-06-13
+
+### Fixed
+- `VeritasUI_AuctionHouse` — **Auction House scans no longer fail intermittently.** The price scan was failing roughly half the time with "Scan failed." Root cause: a 45-second watchdog (added in v1.7.1 as a well-intentioned safety net) was declaring failure and **discarding the snapshot** when it arrived later than 45s — which a large, queued Auction House snapshot (200k+ rows) frequently does. The watchdog has been removed entirely; the scanner now waits for the data however long it takes, matching the proven model used by established scanners. The genuine "stuck flag" risk the watchdog was meant to address is now handled correctly by resetting scan state on Auction House open/close, with no failure timer. (`Replicate.lua`)
+- `VeritasUI_AuctionHouse` — **sell-strip tooltips now update while scrolling.** Previously, scrolling the sellable-items strip with the mouse held still kept showing the first item's tooltip; you had to move off and back. The tooltip now refreshes to whatever item is under the cursor on each scroll (and hides if you scroll onto an empty slot). (`UI/SellStrip.lua`)
+
+### Removed
+- `VeritasUI_AuctionHouse` — **the `/ah scan force` option.** Bypassing the 15-minute cooldown just fired a replicate request into the server's own cooldown — a silent no-op that looked like a failure. The cooldown is now always honored, matching how reliable scanners behave. `/ah scan` is unchanged.
+
+### Added
+- `VeritasUI_AuctionHouse` — **`/ah check`** diagnostic: shift-click an item after the command to see its stored price, age, and derived database key. Useful for confirming a scan recorded an item correctly.
+
+### Internal
+- `VeritasUI_AuctionHouse` — removed an unused `ADDON_NAME` local from five files (kept where actually used).
+
 ## [1.7.4] - 2026-06-12
 
 ### Fixed

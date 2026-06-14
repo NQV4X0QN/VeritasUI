@@ -8,7 +8,7 @@
 --     TooltipDataProcessor; the global is called with speciesID as arg 1, and the
 --     frame shown is the custom BattlePetTooltip (not a GameTooltip).
 
-local ADDON_NAME, AH = ...
+local _, AH = ...
 local VUI = _G.VeritasUI
 if not VUI then return end
 

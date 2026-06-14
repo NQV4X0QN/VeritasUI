@@ -25,7 +25,7 @@
 -- icons is simpler, fully under our control, and uses only certain APIs.)
 -- ============================================================================
 
-local ADDON_NAME, AH = ...
+local _, AH = ...
 local VUI = _G.VeritasUI
 if not VUI then return end
 
@@ -73,6 +73,25 @@ local state = {
 }
 
 local Refresh, UpdateVisibility, Render   -- forward decls
+
+----------------------------------------------------------------
+--  Tooltip for a strip button (shared by OnEnter and by scroll-refresh).
+--
+--  Factored out so a scroll can re-show the tooltip for whatever button is
+--  CURRENTLY under the cursor: scrolling reassigns each button's .data without
+--  the mouse moving, so no OnEnter fires and a stale tooltip would otherwise
+--  linger until the user moves off and back. Render() calls this for the
+--  hovered button after re-laying-out the page.
+----------------------------------------------------------------
+local function ShowButtonTooltip(button)
+    if not (button and button.data) then return end
+    GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+    pcall(GameTooltip.SetHyperlink, GameTooltip, button.data.link)
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("|cFF00FF00Click|r to load into the Sell form.", 1, 1, 1)
+    GameTooltip:AddLine("|cFFFF8800Right-click|r to hide from this strip.", 1, 1, 1)
+    GameTooltip:Show()
+end
 
 ----------------------------------------------------------------
 --  Hide the Buyout Mode checkbox (it collides with the strip; user always sells
@@ -245,13 +264,7 @@ local function MakeButton(parent, index)
     hl:SetColorTexture(1, 1, 1, 0.25)
 
     b:SetScript("OnEnter", function(self)
-        if not self.data then return end
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        pcall(GameTooltip.SetHyperlink, GameTooltip, self.data.link)
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("|cFF00FF00Click|r to load into the Sell form.", 1, 1, 1)
-        GameTooltip:AddLine("|cFFFF8800Right-click|r to hide from this strip.", 1, 1, 1)
-        GameTooltip:Show()
+        ShowButtonTooltip(self)
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
@@ -286,6 +299,23 @@ function Render()
 
     for i = 1, VISIBLE do
         SetButton(state.buttons[i], state.items[state.offset + i])
+    end
+
+    -- After a re-layout (e.g. mouse-wheel scroll), the cursor may still be over a
+    -- button whose .data just changed — but no OnEnter fired because the mouse
+    -- didn't move. Re-show the tooltip for whichever visible button is currently
+    -- under the cursor so it always reflects the item actually being hovered. If
+    -- the cursor is over the strip but on a now-empty/hidden slot, hide the stale
+    -- tooltip rather than leave it showing the old item.
+    if state.strip:IsMouseOver() then
+        for i = 1, VISIBLE do
+            local b = state.buttons[i]
+            if b:IsShown() and b:IsMouseOver() then
+                ShowButtonTooltip(b)
+                return
+            end
+        end
+        GameTooltip:Hide()
     end
 end
 

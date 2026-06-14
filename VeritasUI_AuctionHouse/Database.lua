@@ -21,7 +21,7 @@
 -- Secret Values). Day = floor(time()/86400) (absolute Unix day; comparison/pruning
 -- works identically to a custom epoch, with no magic constant to carry).
 
-local ADDON_NAME, AH = ...
+local _, AH = ...
 local VUI = _G.VeritasUI
 if not VUI then return end
 

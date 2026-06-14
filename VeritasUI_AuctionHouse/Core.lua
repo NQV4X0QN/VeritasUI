@@ -221,8 +221,8 @@ local function PrintHelp()
     VUI.Print(AH.TAG, "Commands:")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah|r              — show this help")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah scan|r         — full price scan (AH open; 15-min cooldown)")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah scan force|r   — scan now, ignoring the cooldown")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah diag|r         — diagnostic / state dump")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah check|r        — show stored price for a shift-clicked item")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah wipe|r         — clear the price database")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah blocked|r      — manage sell-strip hidden items")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah settings|r     — open settings panel")
@@ -262,13 +262,65 @@ local function PrintDiag()
     end
 end
 
+----------------------------------------------------------------
+--  /ah check <item link>  — DIAGNOSTIC
+--
+--  Dump the stored price record for a shift-clicked item, so we can see whether
+--  a scan actually updated it. Compare before/after a scan: if `seen`/`market`
+--  don't change across a successful scan, that item's row is being skipped
+--  (leading hypothesis: cold item-data cache → GetReplicateItemLink nil → row
+--  dropped; see design §2.2). Also prints the derived key so a key mismatch
+--  between the scanned link and the tooltip link would be visible.
+----------------------------------------------------------------
+local function PrintCheck(rawArg)
+    if not AH.DB then
+        VUI.Print(AH.TAG, "DB not loaded.")
+        return
+    end
+    -- Pull the first hyperlink out of the raw (original-case) argument.
+    local link = rawArg and rawArg:match("|H.-|h.-|h")
+    if not link then
+        VUI.Print(AH.TAG, "Usage: |cFFFFFF00/ah check|r then shift-click an item link.")
+        return
+    end
+
+    local key = AH.DB.MakeKey(link)
+    VUI.Print(AH.TAG, "Check: " .. link)
+    VUI.Print(AH.TAG, format("  derived key:  |cFFFFFF00%s|r", tostring(key)))
+    if not key then
+        VUI.Print(AH.TAG, "  |cFFFF4444MakeKey returned nil|r — this link can't be priced.")
+        return
+    end
+
+    local price = AH.DB.GetMarketPrice(key)
+    local age   = AH.DB.GetPriceAge(key)
+    local today = AH.DB.Today()
+    VUI.Print(AH.TAG, format("  stored price: %s",
+        price and AH.Money.Format(price) or "|cFFFF4444(none — never recorded)|r"))
+    VUI.Print(AH.TAG, format("  age:          %s",
+        age and (age .. " day(s)") or "|cFFFF4444n/a|r"))
+    VUI.Print(AH.TAG, format("  today / seen: %d / %s",
+        today, age and tostring(today - age) or "—"))
+
+    local hist = AH.DB.GetPriceHistory(key)
+    if hist[1] then
+        VUI.Print(AH.TAG, format("  latest day:   day %d — min %s, qty %d",
+            hist[1].day, AH.Money.Format(hist[1].min or 0), hist[1].qty or 0))
+    else
+        VUI.Print(AH.TAG, "  history:      |cFFFF4444empty|r")
+    end
+end
+
 SlashCmdList["VERITASUI_AH"] = function(msg)
     msg = strtrim(msg or "")
-    -- Split into command word + remainder. Both are lowercased: every subcommand
-    -- and argument here is case-insensitive ("force", "clear").
-    local word, rest = msg:match("^(%S*)%s*(.-)$")
+    -- Split into command word + remainder. `rest` is lowercased for case-insensitive
+    -- subcommand args ("clear"); `rawRest` preserves ORIGINAL case for args that
+    -- must not be mangled — notably item links (/ah check), whose hyperlink data
+    -- and item name are case-sensitive.
+    local word, rawRest = msg:match("^(%S*)%s*(.-)$")
     local cmd  = (word or ""):lower()
-    rest = (rest or ""):lower()
+    rawRest = rawRest or ""
+    local rest = rawRest:lower()
 
     if cmd == "settings" then
         if AH.settingsCategoryID then
@@ -282,8 +334,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             VUI.Print(AH.TAG, "Scanner not loaded.")
             return
         end
-        local force = (rest == "force")
-        local ok, reason = AH.Replicate.Start(force)
+        local ok, reason = AH.Replicate.Start()
         if not ok then
             VUI.Print(AH.TAG, reason or "Scan could not start.")
         end
@@ -296,6 +347,9 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
 
     elseif cmd == "diag" then
         PrintDiag()
+
+    elseif cmd == "check" then
+        PrintCheck(rawRest)
 
     elseif cmd == "blocked" then
         if AH.SellStrip then
