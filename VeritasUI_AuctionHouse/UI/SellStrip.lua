@@ -188,9 +188,23 @@ local function SetButton(button, data)
     else
         button.count:Hide()
     end
-    local q = data.quality
-    if q and q > 1 and C_Item and C_Item.GetItemQualityColor then
-        local r, g, b = C_Item.GetItemQualityColor(q)
+    -- Quality border: mirror Blizzard's item-button behavior — EVERY item shows a
+    -- border (verified via live region probe: native buttons carry an always-shown
+    -- BORDER-layer edge on junk AND a quality overlay on colored items). We reproduce
+    -- that as one vertex-colored ring. Color = BAG_ITEM_QUALITY_COLORS (the bag palette:
+    -- Common = gray 0.659, Uncommon = green, Rare = blue, …; full table verified via
+    -- /dump). Poor (0) has no bag-palette entry, so fall back to GetItemQualityColor(0),
+    -- which is gray — matching the gray edge native draws on junk. Default missing
+    -- quality to Common so a nil quality still renders the gray edge, never nothing.
+    local q = data.quality or 1
+    local color = BAG_ITEM_QUALITY_COLORS and BAG_ITEM_QUALITY_COLORS[q]
+    local r, g, b
+    if color then
+        r, g, b = color.r, color.g, color.b
+    elseif C_Item and C_Item.GetItemQualityColor then
+        r, g, b = C_Item.GetItemQualityColor(q)   -- Poor (0) → gray
+    end
+    if r then
         button.border:SetVertexColor(r, g, b)
         button.border:Show()
     else

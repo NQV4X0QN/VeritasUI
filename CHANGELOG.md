@@ -2,6 +2,13 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.6] - 2026-06-13
+
+### Fixed
+- `VeritasUI_AuctionHouse` — **item tooltips no longer trigger a Lua error.** v1.7.2 switched the tooltip "Auction:" price line to the global `SetTooltipMoney` to pixel-match the native "Sell Price:" line. That function reuses Blizzard's *shared, pooled* money frame; calling it from our (insecure) addon context tainted that pool, and Blizzard's own Sell Price render then crashed doing arithmetic on a Secret Value (`MoneyFrame.lua:340`, "secret number value … tainted by VeritasUI_AuctionHouse") — item sell-price money is a Secret Value in Midnight. Once the pooled frame was tainted in a session, *every* item hover that drew a sell price threw. The price line now renders through a **private money frame we create and own** (`TooltipMoneyFrameTemplate`), driven by our plain-integer database price — so Blizzard's pool is never touched and its secure render is never disturbed. Same coins, same font as native, no crash. (`Tooltip.lua`)
+- `VeritasUI_AuctionHouse` — **the tooltip "Auction:" coins now align under the native "Sell Price:" coins** across every denomination combination. The price frame is shifted so each line's leftmost visible coin lines up: matching-denomination lines (gold↔gold, silver↔silver) align coin-for-coin; mismatched lines (e.g. a silver-only Sell Price vs. a gold Auction price) align at the block's left edge and stay inside the tooltip border. This is self-correcting across any font and value width — no hand-tuned spacing. (`Tooltip.lua`)
+- `VeritasUI_AuctionHouse` — **the Sell-tab sellable-items strip now draws a border on *every* item, matching Blizzard's bags.** Previously only Uncommon (green) and above showed a colored edge; Poor (junk) and Common ("general") items had bare icons. Native item buttons border every item — gray on junk and common, colored above — so the strip now does too, using Blizzard's own bag quality palette (`BAG_ITEM_QUALITY_COLORS`). (`UI/SellStrip.lua`)
+
 ## [1.7.5] - 2026-06-13
 
 ### Fixed
