@@ -110,6 +110,12 @@ end
 --     to the line, and hidden on the tooltip's OnHide so it never orphans.
 local PRICE_PREFIX = "Auction:"
 
+-- Fixed x-offset (px, from the "Auction:" label's LEFT edge) at which the coin block
+-- starts, chosen so our coins line up under the native "Sell Price:" coin column.
+-- TUNING KNOB: increase to nudge the coins RIGHT, decrease to nudge LEFT. Starting at
+-- 78 ≈ the pixel width of "Sell Price:" + its gap in the tooltip font; dial to taste.
+local COIN_COLUMN_X = 78
+
 -- Inline atlas coin markup. Native money-frame coins probe at 13x13, but inline |A|
 -- markup renders a hair larger at the same number, so 12 matches the eye better.
 -- (One-line tunable if it still looks off.)
@@ -176,13 +182,17 @@ local function RenderCoinLine(tooltip, price)
     local left = _G[name .. "TextLeft" .. tooltip:NumLines()]
     if not left then return true end
 
-    -- Our owned ARIALN coin fontstring, anchored just after the label on the same row.
-    -- It's a child of the tooltip (so it renders + auto-hides with it) but is NOT a
-    -- managed line region (so Blizzard's layout never repositions it).
+    -- Our owned ARIALN coin fontstring, placed at a FIXED column so its left edge lines
+    -- up with the native "Sell Price:" coin column. We anchor to OUR label's LEFT edge
+    -- (same row → correct Y) with a constant x-offset = the column position. The native
+    -- coin column is the width of "Sell Price:" + its gap, which is constant for the
+    -- tooltip font, so a fixed offset aligns them. We deliberately do NOT read GetLeft()
+    -- of the freshly-added label or the money frame (stale/nil mid-layout → the throw
+    -- that vanished the line earlier). COIN_COLUMN_X is the single tuning knob.
     local fs = GetCoinFontString(tooltip)
     fs:SetText(CoinMarkup(price))
     fs:ClearAllPoints()
-    fs:SetPoint("LEFT", left, "RIGHT", 6, 0)   -- gap after the label; tune if needed
+    fs:SetPoint("LEFT", left, "LEFT", COIN_COLUMN_X, 0)
     fs:Show()
     return true
 end
