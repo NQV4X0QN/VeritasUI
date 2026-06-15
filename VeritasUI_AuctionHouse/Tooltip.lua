@@ -114,14 +114,14 @@ local PRICE_PREFIX = "Auction:"
 -- starts, chosen so our coins line up under the native "Sell Price:" coin column.
 -- TUNING KNOB: increase to nudge the coins RIGHT, decrease to nudge LEFT. Starting at
 -- 78 ≈ the pixel width of "Sell Price:" + its gap in the tooltip font; dial to taste.
-local COIN_COLUMN_X = 88
+local COIN_COLUMN_X = 81
 
 -- Inline atlas coin markup. Native money-frame coins probe at 13x13, but inline |A|
--- markup renders larger at the same number, so 11 matches the native coin size by eye.
+-- markup renders a hair larger at the same number, so 12 matches the eye better.
 -- (One-line tunable if it still looks off.)
-local COIN_G = "|A:Coin-Gold:11:11|a"
-local COIN_S = "|A:Coin-Silver:11:11|a"
-local COIN_C = "|A:Coin-Copper:11:11|a"
+local COIN_G = "|A:Coin-Gold:12:12|a"
+local COIN_S = "|A:Coin-Silver:12:12|a"
+local COIN_C = "|A:Coin-Copper:12:12|a"
 
 -- Build the coin string for a copper amount: number immediately followed by its coin,
 -- a space between denominations (matches GetCoinTextureString's grouping). Only nonzero
