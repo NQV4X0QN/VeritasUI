@@ -155,6 +155,26 @@ local function RenderCoinLine(tooltip, price)
     -- Left = white label (matches native "Sell Price:" white); right = coin markup,
     -- also white so the digits read like the native amount.
     tooltip:AddDoubleLine(PRICE_PREFIX, CoinMarkup(price), 1, 1, 1, 1, 1, 1)
+
+    -- Re-font the RIGHT column to the native money font so the digits match the
+    -- "Sell Price:" line exactly (probe-confirmed NumberFontNormalRight = ARIALN/14/
+    -- OUTLINE). AddDoubleLine defaults the right column to GameTooltipText (Friz
+    -- Quadrata); we override only OUR line's right fontstring.
+    --
+    -- CAVEAT (watch in-game): GameTooltip REUSES line fontstrings across hovers. If
+    -- Blizzard doesn't reset the font object when a slot is reused, this could bleed
+    -- onto an unrelated later line at the same index. We re-assert on every rebuild
+    -- (our PostCall fires each time) and our line is always appended last, which
+    -- minimizes it — but if a non-priced tooltip shows ARIALN where it shouldn't,
+    -- this is the cause and we revert to the inherited font.
+    local name = tooltip.GetName and tooltip:GetName()
+    if name then
+        local right = _G[name .. "TextRight" .. tooltip:NumLines()]
+        if right and right.SetFontObject and _G.NumberFontNormalRight then
+            right:SetFontObject(_G.NumberFontNormalRight)
+            right:SetTextColor(1, 1, 1)   -- NumberFont* objects carry their own color; force white
+        end
+    end
     return true
 end
 
