@@ -160,28 +160,45 @@ local function RenderCoinLine(tooltip, price)
 
     -- Re-font the RIGHT column to the native money font so digits match "Sell Price:"
     -- (probe-confirmed NumberFontNormalRight = ARIALN/14/OUTLINE). AddDoubleLine
-    -- defaults the right column to GameTooltipText (Friz Quadrata).
-    --
-    -- NOTE: we deliberately do NOT re-anchor the right fontstring to left-align under
-    -- the native coin column. That was tried and REVERTED — manually ClearAllPoints +
-    -- SetPoint on a tooltip's own line fontstring, plus reading tooltip:GetLeft() mid-
-    -- layout, threw inside the caller's pcall and made the ENTIRE Auction line vanish.
-    -- AddDoubleLine's right-justified placement is accepted as-is; cosmetic column
-    -- alignment under Sell Price is not worth risking the line's existence. (If we ever
-    -- revisit: do it from a deferred C_Timer.After(0) AFTER the tooltip has laid out,
-    -- with full nil-guards, never inside the synchronous PostCall.)
-    --
-    -- CAVEAT (watch in-game): GameTooltip reuses line fontstrings across hovers; if a
-    -- reused slot isn't reset by Blizzard, this font could bleed onto a later line.
-    -- Re-asserted every rebuild and our line is always last. If a non-priced tooltip
-    -- shows ARIALN, this is the cause.
+    -- defaults the right column to GameTooltipText (Friz Quadrata). We keep
+    -- AddDoubleLine specifically because it lets the LABEL stay Friz (matching the
+    -- native "Sell Price:" label) while the NUMBERS become ARIALN — a single AddLine
+    -- is one fontstring/one font and could not match both halves.
     local name = tooltip.GetName and tooltip:GetName()
-    if name then
-        local right = _G[name .. "TextRight" .. tooltip:NumLines()]
-        if right and right.SetFontObject and _G.NumberFontNormalRight then
-            right:SetFontObject(_G.NumberFontNormalRight)
-            right:SetTextColor(1, 1, 1)   -- NumberFont* objects carry their own color; force white
-        end
+    if not name then return true end
+    local idx   = tooltip:NumLines()
+    local right = _G[name .. "TextRight" .. idx]
+    if right and right.SetFontObject and _G.NumberFontNormalRight then
+        right:SetFontObject(_G.NumberFontNormalRight)
+        right:SetTextColor(1, 1, 1)   -- NumberFont* objects carry their own color; force white
+    end
+
+    -- COLUMN ALIGNMENT (the SAFE way — see the v1.7.7-dev revert for the unsafe way):
+    -- AddDoubleLine right-justifies the right column to the tooltip edge; native Sell
+    -- Price money is LEFT-anchored at a fixed column. We left-justify our right
+    -- fontstring and anchor its LEFT to the native money frame's LEFT, so our first
+    -- digit lines up under Sell Price's first digit.
+    --
+    -- WHY DEFERRED + pcall: doing this synchronously inside the PostCall threw (nil
+    -- GetLeft mid-layout) and the caller's pcall swallowed it, vanishing the WHOLE
+    -- line. Here it runs on the next frame (AFTER layout, so positions are valid) and
+    -- is pcall-wrapped — the line is ALREADY rendered by then, so any failure simply
+    -- leaves it right-justified; it can never make the line disappear. We anchor
+    -- relative to the money frame (no GetLeft arithmetic that could be nil), capture
+    -- the line index now (stable for a static hover), and re-confirm everything is
+    -- shown inside the timer.
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            pcall(function()
+                if not (right and tooltip.IsShown and tooltip:IsShown()) then return end
+                local m = _G.GameTooltipMoneyFrame1
+                if not (m and m:IsShown()) then return end   -- no native Sell Price line
+                -- Sanity: only realign the line we added (its text is still our coins).
+                right:SetJustifyH("LEFT")
+                right:ClearAllPoints()
+                right:SetPoint("LEFT", m, "LEFT", 0, 0)        -- first digit under first digit
+            end)
+        end)
     end
     return true
 end
