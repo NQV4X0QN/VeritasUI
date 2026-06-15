@@ -164,41 +164,31 @@ local function RenderCoinLine(tooltip, price)
     -- AddDoubleLine specifically because it lets the LABEL stay Friz (matching the
     -- native "Sell Price:" label) while the NUMBERS become ARIALN — a single AddLine
     -- is one fontstring/one font and could not match both halves.
-    local name = tooltip.GetName and tooltip:GetName()
-    if not name then return true end
-    local idx   = tooltip:NumLines()
-    local right = _G[name .. "TextRight" .. idx]
-    if right and right.SetFontObject and _G.NumberFontNormalRight then
-        right:SetFontObject(_G.NumberFontNormalRight)
-        right:SetTextColor(1, 1, 1)   -- NumberFont* objects carry their own color; force white
-    end
-
-    -- COLUMN ALIGNMENT (the SAFE way — see the v1.7.7-dev revert for the unsafe way):
-    -- AddDoubleLine right-justifies the right column to the tooltip edge; native Sell
-    -- Price money is LEFT-anchored at a fixed column. We left-justify our right
-    -- fontstring and anchor its LEFT to the native money frame's LEFT, so our first
-    -- digit lines up under Sell Price's first digit.
     --
-    -- WHY DEFERRED + pcall: doing this synchronously inside the PostCall threw (nil
-    -- GetLeft mid-layout) and the caller's pcall swallowed it, vanishing the WHOLE
-    -- line. Here it runs on the next frame (AFTER layout, so positions are valid) and
-    -- is pcall-wrapped — the line is ALREADY rendered by then, so any failure simply
-    -- leaves it right-justified; it can never make the line disappear. We anchor
-    -- relative to the money frame (no GetLeft arithmetic that could be nil), capture
-    -- the line index now (stable for a static hover), and re-confirm everything is
-    -- shown inside the timer.
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0, function()
-            pcall(function()
-                if not (right and tooltip.IsShown and tooltip:IsShown()) then return end
-                local m = _G.GameTooltipMoneyFrame1
-                if not (m and m:IsShown()) then return end   -- no native Sell Price line
-                -- Sanity: only realign the line we added (its text is still our coins).
-                right:SetJustifyH("LEFT")
-                right:ClearAllPoints()
-                right:SetPoint("LEFT", m, "LEFT", 0, 0)        -- first digit under first digit
-            end)
-        end)
+    -- COLUMN-ALIGNMENT ABANDONED (two failed attempts — do NOT re-try without a
+    -- fundamentally different approach):
+    --   (a) Synchronous re-anchor inside the PostCall threw on a nil GetLeft mid-
+    --       layout; the caller's pcall swallowed it and the WHOLE line vanished.
+    --   (b) Deferred (C_Timer.After) re-anchor to GameTooltipMoneyFrame1: a LEFT-to-
+    --       LEFT point inherits the money frame's Y too, so our coins jumped onto the
+    --       Sell Price ROW; and because the PostCall re-fires on every tooltip rebuild
+    --       while the timer keeps re-anchoring, it FLICKERED in a feedback loop.
+    -- Both fought AddDoubleLine's own layout from outside and traded one instability
+    -- for another. The feature is solid right-justified, which is itself a native
+    -- convention. We accept it. (A real fix would need a custom non-DoubleLine line
+    -- whose own layout we fully own — out of scope for a cosmetic gain.)
+    --
+    -- CAVEAT (watch in-game): GameTooltip reuses line fontstrings across hovers; if a
+    -- reused slot isn't reset by Blizzard this font could bleed onto a later line.
+    -- Re-asserted every rebuild and our line is always last. If a non-priced tooltip
+    -- shows ARIALN, this is the cause.
+    local name = tooltip.GetName and tooltip:GetName()
+    if name then
+        local right = _G[name .. "TextRight" .. tooltip:NumLines()]
+        if right and right.SetFontObject and _G.NumberFontNormalRight then
+            right:SetFontObject(_G.NumberFontNormalRight)
+            right:SetTextColor(1, 1, 1)   -- NumberFont* objects carry their own color; force white
+        end
     end
     return true
 end
