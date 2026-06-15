@@ -114,7 +114,7 @@ local PRICE_PREFIX = "Auction:"
 -- starts, chosen so our coins line up under the native "Sell Price:" coin column.
 -- TUNING KNOB: increase to nudge the coins RIGHT, decrease to nudge LEFT. Starting at
 -- 78 ≈ the pixel width of "Sell Price:" + its gap in the tooltip font; dial to taste.
-local COIN_COLUMN_X = 71
+local COIN_COLUMN_X = 70
 
 -- Inline atlas coin markup. Native money-frame coins probe at 13x13, but inline |A|
 -- markup renders a hair larger at the same number, so 12 matches the eye better.
