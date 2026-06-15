@@ -110,10 +110,12 @@ end
 --     to the line, and hidden on the tooltip's OnHide so it never orphans.
 local PRICE_PREFIX = "Auction:"
 
--- Inline atlas coin markup at the native 13x13 size (probe-verified atlas names + size).
-local COIN_G = "|A:Coin-Gold:13:13|a"
-local COIN_S = "|A:Coin-Silver:13:13|a"
-local COIN_C = "|A:Coin-Copper:13:13|a"
+-- Inline atlas coin markup. Native money-frame coins probe at 13x13, but inline |A|
+-- markup renders a hair larger at the same number, so 12 matches the eye better.
+-- (One-line tunable if it still looks off.)
+local COIN_G = "|A:Coin-Gold:12:12|a"
+local COIN_S = "|A:Coin-Silver:12:12|a"
+local COIN_C = "|A:Coin-Copper:12:12|a"
 
 -- Build the coin string for a copper amount: number immediately followed by its coin,
 -- a space between denominations (matches GetCoinTextureString's grouping). Only nonzero
@@ -156,23 +158,49 @@ local function RenderCoinLine(tooltip, price)
     -- also white so the digits read like the native amount.
     tooltip:AddDoubleLine(PRICE_PREFIX, CoinMarkup(price), 1, 1, 1, 1, 1, 1)
 
-    -- Re-font the RIGHT column to the native money font so the digits match the
-    -- "Sell Price:" line exactly (probe-confirmed NumberFontNormalRight = ARIALN/14/
-    -- OUTLINE). AddDoubleLine defaults the right column to GameTooltipText (Friz
-    -- Quadrata); we override only OUR line's right fontstring.
+    -- Re-anchor + re-font the RIGHT column.
     --
-    -- CAVEAT (watch in-game): GameTooltip REUSES line fontstrings across hovers. If
-    -- Blizzard doesn't reset the font object when a slot is reused, this could bleed
-    -- onto an unrelated later line at the same index. We re-assert on every rebuild
-    -- (our PostCall fires each time) and our line is always appended last, which
-    -- minimizes it — but if a non-priced tooltip shows ARIALN where it shouldn't,
-    -- this is the cause and we revert to the inherited font.
+    -- (1) FONT: AddDoubleLine defaults the right column to GameTooltipText (Friz
+    --     Quadrata); set it to the native money font (probe-confirmed
+    --     NumberFontNormalRight = ARIALN/14/OUTLINE) so digits match "Sell Price:".
+    --
+    -- (2) ALIGNMENT: AddDoubleLine RIGHT-justifies its right column against the
+    --     tooltip's right edge — but the native "Sell Price:" money is LEFT-anchored
+    --     at a fixed column just after the label, not right-justified. So we left-
+    --     justify our right fontstring and re-anchor its LEFT edge to sit under the
+    --     native coin column (read from GameTooltipMoneyFrame1's leftmost visible
+    --     coin, the same column "Sell Price:" uses). GetLeft() on a HIDDEN coin button
+    --     is garbage, so only read a shown one; fall back to leaving it right-justified
+    --     if the native money frame isn't present (e.g. an item with no Sell Price).
+    --
+    -- CAVEAT (watch in-game): GameTooltip reuses line fontstrings AND sizes its width
+    -- assuming the right column hugs the right edge. Moving ours left should be safe
+    -- (it's a real visible tooltip fontstring), but the tooltip may end up a touch
+    -- wider, and the font set could in theory bleed onto a reused slot. We re-assert
+    -- every rebuild and our line is always last. If a non-priced tooltip shows ARIALN,
+    -- or the layout misbehaves, this block is the cause.
     local name = tooltip.GetName and tooltip:GetName()
     if name then
         local right = _G[name .. "TextRight" .. tooltip:NumLines()]
         if right and right.SetFontObject and _G.NumberFontNormalRight then
             right:SetFontObject(_G.NumberFontNormalRight)
             right:SetTextColor(1, 1, 1)   -- NumberFont* objects carry their own color; force white
+            right:SetJustifyH("LEFT")
+
+            -- Align our coins' LEFT edge to the native Sell Price coin column.
+            local m = _G.GameTooltipMoneyFrame1
+            local nativeX
+            if m and m:IsShown() then
+                for _, denom in ipairs({ "GoldButton", "SilverButton", "CopperButton" }) do
+                    local b = m[denom]
+                    if b and b:IsShown() then nativeX = b:GetLeft(); break end
+                end
+                nativeX = nativeX or m:GetLeft()
+            end
+            if nativeX then
+                right:ClearAllPoints()
+                right:SetPoint("LEFT", tooltip, "LEFT", nativeX - tooltip:GetLeft(), 0)
+            end
         end
     end
     return true
