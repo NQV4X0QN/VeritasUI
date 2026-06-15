@@ -154,42 +154,50 @@ AH.Tooltip.CoinMarkup = CoinMarkup
 -- left and the coins in the right column, matching the native "Sell Price:" layout.
 local function RenderCoinLine(tooltip, price)
     if not tooltip.AddDoubleLine then return false end
-    -- Left = white label (matches native "Sell Price:" white); right = coin markup,
-    -- also white so the digits read like the native amount.
+    -- AddDoubleLine gives us TWO separately-fontable columns on one line: keep the LEFT
+    -- "Auction:" label in the tooltip font (Friz, matching native "Sell Price:") and
+    -- make the RIGHT coin column ARIALN. Both white. (A single AddLine is one font and
+    -- could not keep the label Friz while the numbers are ARIALN.)
     tooltip:AddDoubleLine(PRICE_PREFIX, CoinMarkup(price), 1, 1, 1, 1, 1, 1)
 
-    -- Re-font the RIGHT column to the native money font so digits match "Sell Price:"
-    -- (probe-confirmed NumberFontNormalRight = ARIALN/14/OUTLINE). AddDoubleLine
-    -- defaults the right column to GameTooltipText (Friz Quadrata). We keep
-    -- AddDoubleLine specifically because it lets the LABEL stay Friz (matching the
-    -- native "Sell Price:" label) while the NUMBERS become ARIALN — a single AddLine
-    -- is one fontstring/one font and could not match both halves.
-    --
-    -- COLUMN-ALIGNMENT ABANDONED (two failed attempts — do NOT re-try without a
-    -- fundamentally different approach):
-    --   (a) Synchronous re-anchor inside the PostCall threw on a nil GetLeft mid-
-    --       layout; the caller's pcall swallowed it and the WHOLE line vanished.
-    --   (b) Deferred (C_Timer.After) re-anchor to GameTooltipMoneyFrame1: a LEFT-to-
-    --       LEFT point inherits the money frame's Y too, so our coins jumped onto the
-    --       Sell Price ROW; and because the PostCall re-fires on every tooltip rebuild
-    --       while the timer keeps re-anchoring, it FLICKERED in a feedback loop.
-    -- Both fought AddDoubleLine's own layout from outside and traded one instability
-    -- for another. The feature is solid right-justified, which is itself a native
-    -- convention. We accept it. (A real fix would need a custom non-DoubleLine line
-    -- whose own layout we fully own — out of scope for a cosmetic gain.)
-    --
-    -- CAVEAT (watch in-game): GameTooltip reuses line fontstrings across hovers; if a
-    -- reused slot isn't reset by Blizzard this font could bleed onto a later line.
-    -- Re-asserted every rebuild and our line is always last. If a non-priced tooltip
-    -- shows ARIALN, this is the cause.
     local name = tooltip.GetName and tooltip:GetName()
-    if name then
-        local right = _G[name .. "TextRight" .. tooltip:NumLines()]
-        if right and right.SetFontObject and _G.NumberFontNormalRight then
-            right:SetFontObject(_G.NumberFontNormalRight)
-            right:SetTextColor(1, 1, 1)   -- NumberFont* objects carry their own color; force white
-        end
+    if not name then return true end
+    local idx   = tooltip:NumLines()
+    local left  = _G[name .. "TextLeft"  .. idx]
+    local right = _G[name .. "TextRight" .. idx]
+    if not (left and right) then return true end
+
+    -- (1) Re-font the RIGHT column to the native money font so digits match "Sell
+    --     Price:" (probe-confirmed NumberFontNormalRight = ARIALN/14/OUTLINE).
+    --     AddDoubleLine defaults the right column to GameTooltipText (Friz Quadrata).
+    if right.SetFontObject and _G.NumberFontNormalRight then
+        right:SetFontObject(_G.NumberFontNormalRight)
+        right:SetTextColor(1, 1, 1)   -- NumberFont* objects carry their own color; force white
     end
+
+    -- (2) ALIGNMENT — the approach that WORKS (verified in a prior session): anchor the
+    --     RIGHT column's LEFT edge to the SAME LINE's LEFT label RIGHT edge, with a
+    --     small gap. The coins then sit just after "Auction:" instead of being right-
+    --     justified to the tooltip edge.
+    --
+    --     Why this is safe where the two prior attempts were not:
+    --       * Anchored to the SAME-LINE label (TextLeft<idx> → TextRight<idx>), so it
+    --         inherits the correct row Y — no jumping onto the Sell Price row (the bug
+    --         when we anchored to GameTooltipMoneyFrame1, a different frame/row).
+    --       * Pure RELATIVE anchor (SetPoint to a sibling region) — no GetLeft()/
+    --         GetWidth() arithmetic, so nothing can be nil and throw (the bug that
+    --         vanished the line when done synchronously with coordinate math).
+    --       * No timer fighting the PostCall, so no flicker feedback loop.
+    --     Done synchronously here because it touches only sibling fontstrings on the
+    --     line we just added; both exist (guarded above).
+    --
+    --     NOTE: because the gap after the label is fixed, "Auction:" and "Sell Price:"
+    --     being different widths means the NUMBERS won't column-align with each other —
+    --     that's expected and matches the verified-good reference; the goal is coins
+    --     sitting naturally after the label, not a shared number column.
+    right:SetJustifyH("LEFT")
+    right:ClearAllPoints()
+    right:SetPoint("LEFT", left, "RIGHT", 10, 0)
     return true
 end
 
