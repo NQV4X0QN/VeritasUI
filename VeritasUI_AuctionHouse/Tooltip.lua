@@ -84,113 +84,126 @@ local function BuildPriceData(key)
     return price, extrasLine
 end
 
--- GameTooltip path: render the price through a MoneyFrame WE OWN.
+-- GameTooltip path: render the price as a SELF-RENDERED coin widget.
 --
--- WHY NOT SetTooltipMoney (the v1.7.2 approach — REMOVED, it crashed):
---   SetTooltipMoney reuses Blizzard's pooled GameTooltipMoneyFrame. Calling it from
---   our insecure context taints that shared pool; Blizzard's OWN "Sell Price:" render
---   then runs through the tainted pool and throws doing secret-value arithmetic
---   (MoneyFrame.lua:340, "secret number value … tainted by VeritasUI_AuctionHouse").
---   Item sell-price money IS a Secret Value in Midnight. Our DB price is a plain
---   integer, so OUR frame never does secret arithmetic and is crash-safe even when
---   tainted — but we must never touch Blizzard's pool. See SKILL.md Known Landmines.
+-- WHY NOT MoneyFrame_Update (v1.7.6 "private MoneyFrame" — REMOVED, it ALSO crashed):
+--   v1.7.6 rendered through our own TooltipMoneyFrameTemplate, believing that since
+--   OUR price is a plain integer the update was crash-safe. WRONG — proven in-game by
+--   /ah probe + a Delve repro: MoneyFrame_Update throws at MoneyFrame.lua:340 on
+--   'silverWidth' (a Secret Value) — an INTERNAL coin-column width Blizzard's own layout
+--   math computes, which becomes Secret in instanced content (Delves/M+/raids). It has
+--   nothing to do with our price. So MoneyFrame_Update itself is unsafe from our context;
+--   we must not call it at all. (The v1.7.6 SKILL/design-doc "crash-safe — verified
+--   in-game" claim is hereby falsified — see Known Landmines correction.)
 --
--- HOW THIS STAYS CLEAN:
---   * Our own MoneyFrame (TooltipMoneyFrameTemplate — verified 12.0.5: valid + has a
---     PrefixText region) gives coin glyphs pixel-identical to the Sell Price line.
---   * Parented to UIParent, NOT the tooltip, so we never modify the tooltip's child
---     list (another taint vector). Anchored to our blank line, raised to TOOLTIP
---     strata, and hidden on tooltip OnHide so it never orphans.
---   * NAMED, because MoneyFrame_Update may resolve its coin-button children by
---     _G[name.."GoldButton"]; an anonymous frame could break.
---   * STATIC type fed our plain-integer price (never player money, never a Secret).
---   * pcall-guarded with a text-coin fallback (the week-stable pre-1.7.2 rendering)
---     so any API drift degrades gracefully instead of crashing.
-local PRICE_PREFIX = "Auction:  "   -- trailing spaces tune the coin column under Sell Price
+-- HOW THIS RENDERS NATIVELY WITHOUT ANY MONEY MATH (probe-verified specs 12.0.5):
+--   * Coins  = the Coin-Gold / Coin-Silver / Coin-Copper atlases at 13x13, emitted as
+--              inline |A:atlas:h:w|a markup in a fontstring. Pure text → zero Blizzard
+--              arithmetic → cannot throw on a Secret Value, in any content.
+--   * Numbers= the NumberFontNormalRight FONT OBJECT (probe-confirmed = ARIALN.TTF / 14 /
+--              OUTLINE — Blizzard's own money font), so digits are pixel-identical to the
+--              "Sell Price:" line and track any future Blizzard font change automatically.
+--   * Label  = a real tooltip AddLine ("Auction:"), so the label inherits the exact
+--              tooltip body font the native "Sell Price:" label uses — no font guessing.
+--   * The coin fontstring is parented to UIParent (never the tooltip — touching the
+--     tooltip's child list is itself a taint vector), raised to TOOLTIP strata, anchored
+--     to the line, and hidden on the tooltip's OnHide so it never orphans.
+local PRICE_PREFIX = "Auction:"
 
-local moneyFrames = {}   -- [tooltip] = our private MoneyFrame
-local mfCount = 0
+-- Fixed x-offset (px, from the "Auction:" label's LEFT edge) at which the coin block
+-- starts, chosen so our coins line up under the native "Sell Price:" coin column.
+-- TUNING KNOB: increase to nudge the coins RIGHT, decrease to nudge LEFT. Starting at
+-- 78 ≈ the pixel width of "Sell Price:" + its gap in the tooltip font; dial to taste.
+local COIN_COLUMN_X = 70
 
-local function GetMoneyFrame(tooltip)
-    local mf = moneyFrames[tooltip]
-    if mf then return mf end
-    mfCount = mfCount + 1
-    mf = CreateFrame("Frame", "VUIAHTooltipMoney" .. mfCount, UIParent, "TooltipMoneyFrameTemplate")
-    mf:SetFrameStrata("TOOLTIP")
-    mf:SetFrameLevel(1000)
-    -- STATIC so it shows OUR amount, not the player's money (default money type).
-    if MoneyFrame_SetType then
-        MoneyFrame_SetType(mf, "STATIC")
-    elseif MoneyTypeInfo then
-        mf.info = MoneyTypeInfo.STATIC
-        mf.moneyType = "STATIC"
-    end
-    moneyFrames[tooltip] = mf
-    -- Hide with the tooltip so the frame never lingers over empty screen (it is
-    -- parented to UIParent, so it won't auto-hide with the tooltip).
-    tooltip:HookScript("OnHide", function() mf:Hide() end)
-    return mf
+-- Inline atlas coin markup. Native money-frame coins probe at 13x13, but inline |A|
+-- markup renders a hair larger at the same number, so 12 matches the eye better.
+-- (One-line tunable if it still looks off.)
+local COIN_G = "|A:Coin-Gold:12:12|a"
+local COIN_S = "|A:Coin-Silver:12:12|a"
+local COIN_C = "|A:Coin-Copper:12:12|a"
+
+-- Build the coin string for a copper amount: number immediately followed by its coin,
+-- a space between denominations (matches GetCoinTextureString's grouping). Only nonzero
+-- denominations are shown; a sub-1-silver price still shows copper.
+-- NOTE: the exact intermediate-zero rule (e.g. 1g 0s 5c) is the one piece not verified
+-- against the live "Sell Price:" line — AH prices almost never carry an intermediate
+-- zero, and this is one-line tunable if an edge case looks off in-game.
+local function CoinMarkup(copper)
+    local g, s, c = AH.Money.Breakdown(copper)
+    local parts = {}
+    if g > 0 then parts[#parts + 1] = g .. COIN_G end
+    if s > 0 then parts[#parts + 1] = s .. COIN_S end
+    if c > 0 then parts[#parts + 1] = c .. COIN_C end
+    if #parts == 0 then parts[1] = "0" .. COIN_C end
+    return table.concat(parts, " ")
+end
+AH.Tooltip.CoinMarkup = CoinMarkup
+
+-- Render the price as: a Friz "Auction:" label line + an ARIALN coin fontstring WE OWN.
+--
+-- WHY A FONTSTRING WE OWN (not AddDoubleLine's right column):
+--   AddDoubleLine's right column is POSITION-MANAGED by Blizzard's tooltip layout. We
+--   could re-font it (SetFontObject stuck → ARIALN coins rendered) but every attempt to
+--   re-POSITION it was ignored or clobbered by Blizzard's layout pass after our PostCall
+--   returned (right-justified stayed; a deferred re-anchor only held for one frame →
+--   flicker; a synchronous coordinate re-anchor threw and vanished the line). Conclusion
+--   (deduced, not client-verified): we cannot reposition the managed column. So we don't
+--   use it — we add a PLAIN left label line (Friz, matches "Sell Price:"), then draw the
+--   coins in a fontstring we CREATE and OWN, parented to the TOOLTIP. Blizzard's layout
+--   manages only its own line regions, not an extra child we add, so our anchor sticks.
+--
+--   (This is the corrected version of the earlier failed "overlay" attempt — that one
+--   was parented to UIParent and rendered invisible; parenting to the tooltip fixes it.)
+--
+-- FONT: coins use NumberFontNormalRight (ARIALN/14/OUTLINE — probe-verified, the native
+--   money font). This is NON-NEGOTIABLE and must never revert to the label font.
+-- CRASH-SAFE: pure text + inline |A| atlas coin markup, zero Blizzard money math, so the
+--   silverWidth Secret-Value trap (Delves/M+/raids) is never touched.
+
+local coinFS = {}   -- [tooltip] = our owned coin fontstring (one per tooltip frame)
+
+local function GetCoinFontString(tooltip)
+    local fs = coinFS[tooltip]
+    if fs then return fs end
+    fs = tooltip:CreateFontString(nil, "OVERLAY", "NumberFontNormalRight")
+    fs:SetTextColor(1, 1, 1)
+    coinFS[tooltip] = fs
+    return fs
 end
 
--- Shift our money frame so OUR coin block lines up under the native "Sell Price:"
--- coin block. "Auction:" is narrower than "Sell Price:", so a plain left-anchor leaves
--- our coins slightly left; we read the native coin's screen-x and offset to match
--- (self-correcting across any font/value width — no brittle trailing-space tuning).
---
--- ALIGN THE LEFT EDGE OF EACH BLOCK (each line's leftmost VISIBLE coin), NOT a shared
--- denomination. A money frame hides zero denominations, so the two lines often carry
--- different coins (Sell 57s vs. Auction 2g79s). Forcing silver-under-silver there
--- shoved the gold-bearing line's gold out past the tooltip border. Aligning leftmost-
--- to-leftmost instead makes both number sequences START at the same column and stay
--- in-bounds: same-denomination lines still align coin-for-coin (gold↔gold, silver↔
--- silver — the perfect cases); mismatched lines align block-left (best achievable —
--- there's no native gold coin for our gold to stack under). GetLeft() on a HIDDEN
--- button is garbage, so we only ever read a shown button.
-local COIN_BUTTONS = { "GoldButton", "SilverButton", "CopperButton" }
-local function FirstVisibleCoin(frame)
-    for _, denom in ipairs(COIN_BUTTONS) do
-        local b = frame[denom]
-        if b and b:IsShown() then return b end
-    end
-end
-local function AlignCoinsToNative(mf)
-    local native = _G.GameTooltipMoneyFrame1
-    if not (native and native:IsShown()) then return end
-    local nb, mb = FirstVisibleCoin(native), FirstVisibleCoin(mf)
-    if not (nb and mb) then return end
-    local nx, mx = nb:GetLeft(), mb:GetLeft()
-    if not (nx and mx) then return end
-    local p, rel, rp, x, y = mf:GetPoint(1)
-    if p then mf:SetPoint(p, rel, rp, (x or 0) + (nx - mx), y or 0) end
-end
+local function RenderCoinLine(tooltip, price)
+    if not (tooltip.AddLine and tooltip.CreateFontString) then return false end
+    -- Friz label line (matches native "Sell Price:" label font). Reserves the row.
+    tooltip:AddLine(PRICE_PREFIX, 1, 1, 1)
 
--- Render the price as a native money line. Returns true on success; false → caller
--- falls back to text coins.
-local function RenderMoneyLine(tooltip, price)
     local name = tooltip.GetName and tooltip:GetName()
-    if not name then return false end
-    return (pcall(function()
-        tooltip:AddLine(" ")                       -- blank line reserves the row
-        local idx  = tooltip:NumLines()
-        local left = _G[name .. "TextLeft" .. idx]
-        if not left then error("no line anchor") end
-        local mf = GetMoneyFrame(tooltip)
-        mf:ClearAllPoints()
-        mf:SetPoint("LEFT", left, "LEFT", 0, 0)
-        if mf.PrefixText then mf.PrefixText:SetText(PRICE_PREFIX) end
-        MoneyFrame_Update(mf, price)               -- our plain-integer price (STATIC)
-        mf:Show()
-        AlignCoinsToNative(mf)                      -- nudge coins under Sell Price coins
-    end))
+    if not name then return true end
+    local left = _G[name .. "TextLeft" .. tooltip:NumLines()]
+    if not left then return true end
+
+    -- Our owned ARIALN coin fontstring, placed at a FIXED column so its left edge lines
+    -- up with the native "Sell Price:" coin column. We anchor to OUR label's LEFT edge
+    -- (same row → correct Y) with a constant x-offset = the column position. The native
+    -- coin column is the width of "Sell Price:" + its gap, which is constant for the
+    -- tooltip font, so a fixed offset aligns them. We deliberately do NOT read GetLeft()
+    -- of the freshly-added label or the money frame (stale/nil mid-layout → the throw
+    -- that vanished the line earlier). COIN_COLUMN_X is the single tuning knob.
+    local fs = GetCoinFontString(tooltip)
+    fs:SetText(CoinMarkup(price))
+    fs:ClearAllPoints()
+    fs:SetPoint("LEFT", left, "LEFT", COIN_COLUMN_X, 0)
+    fs:Show()
+    return true
 end
 
 local function AppendPriceForKey(tooltip, key)
     local price, extras = BuildPriceData(key)
     if not price then return end
-    if not RenderMoneyLine(tooltip, price) then
-        -- Money-frame path unavailable/failed → week-stable text coins.
+    if not RenderCoinLine(tooltip, price) then
+        -- Self-render path unavailable (no tooltip name/anchor) → plain text-coin line.
         local coins = AH.Money and AH.Money.Format(price) or tostring(price)
-        tooltip:AddLine(PRICE_PREFIX .. coins, 1, 1, 1)
+        tooltip:AddLine(PRICE_PREFIX .. "  " .. coins, 1, 1, 1)
     end
     if extras then tooltip:AddLine(extras) end
 end
@@ -214,6 +227,12 @@ local function OnItemTooltip(tooltip, data)
     -- Only handle the shared GameTooltip + ItemRefTooltip family. Some internal
     -- tooltips (compare shopping, etc.) are children we don't want to touch.
     if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
+
+    -- Our owned coin fontstring persists across hovers; hide it on EVERY rebuild so a
+    -- non-priced item (where RenderCoinLine never runs) doesn't show stale coins from
+    -- a previous priced hover. RenderCoinLine re-Shows it when there IS a price.
+    local fs = coinFS[tooltip]
+    if fs then fs:Hide() end
 
     local link = data and data.hyperlink
     if not link and TooltipUtil and TooltipUtil.GetDisplayedItem then

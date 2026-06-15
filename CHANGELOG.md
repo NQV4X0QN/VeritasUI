@@ -2,6 +2,15 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.7] - 2026-06-14
+
+### Fixed
+- `VeritasUI_AuctionHouse` — **the tooltip "Auction:" price line no longer reverts to the wrong font and old coin art (and no longer leaves a stray gap), including inside Delves, on login, and after picking up new bag items.** The v1.7.6 fix rendered the price through a private `TooltipMoneyFrameTemplate` driven by `MoneyFrame_Update`, on the belief that feeding it our own plain-integer price made it crash-safe. That was wrong: `MoneyFrame_Update` does arithmetic on an **internal** coin-column width (`silverWidth`) that becomes a **Secret Value** in instanced content (Delves/M+/raids), so it threw (`MoneyFrame.lua:340`) regardless of our price — and the pcall fallback quietly swapped in `GetCoinTextureString` text coins, which is the "old coins / wrong font" you saw. The price is now rendered **without ever calling Blizzard's money code**: a plain "Auction:" label line (matching the native "Sell Price:" label font) plus the coins drawn in a fontstring **we create and own**, parented to the tooltip, using the modern `Coin-Gold/Silver/Copper` atlases as inline `|A|` markup and the native money number font (`NumberFontNormalRight`). Because it's pure text and an owned region, there is no Blizzard money math to hit a Secret Value — verified rendering correctly in a Delve. (`Tooltip.lua`)
+- `VeritasUI_AuctionHouse` — **the "Auction:" coins now line up under the native "Sell Price:" coins.** Our owned coin fontstring is placed at a fixed column (`COIN_COLUMN_X`) from the label so the first digit sits under Sell Price's first digit, instead of being right-justified to the tooltip edge. The owned fontstring is hidden on every tooltip rebuild, so non-priced items never show stale coins from a previous hover. (`Tooltip.lua`)
+
+### Internal
+- `VeritasUI_AuctionHouse` — removed the temporary `/ah probe` diagnostic (its job — capturing the native coin atlases + money font specs — is done; those values are now baked into `Tooltip.lua`). A temporary `REPLICATE_ITEM_LIST_UPDATE` debug-trace line is intentionally **retained** in `Replicate.lua` to help diagnose a separate, still-open issue (first-Auction-House-visit-of-the-day scans can hang until a `/reload`); it only prints under `VeritasUI.debug`.
+
 ## [1.7.6] - 2026-06-13
 
 ### Fixed
