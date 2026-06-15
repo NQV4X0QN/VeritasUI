@@ -311,6 +311,78 @@ local function PrintCheck(rawArg)
     end
 end
 
+----------------------------------------------------------------
+--  /ah probe  — TEMP DIAGNOSTIC (widget rebuild)
+--
+--  Dumps the live native tooltip money frame's coin textures + amount font so
+--  we can build a self-rendered coin widget that matches Blizzard exactly WITHOUT
+--  calling MoneyFrame_Update (which throws on 'silverWidth' = a Secret Value in
+--  instanced content — confirmed in-game 2026-06-xx, falsifying the v1.7.6
+--  "private MoneyFrame is crash-safe" claim). RUN IN THE OPEN WORLD (not a Delve)
+--  while hovering an item that shows a "Sell Price:" line, so the native frame
+--  exists and its measurements are plain (not Secret) values.
+----------------------------------------------------------------
+local function ProbeButton(b, denom)
+    if not b then
+        VUI.Print(AH.TAG, denom .. ": (button missing)")
+        return
+    end
+    -- Coin icon: try the normal texture, then walk regions as a fallback so we
+    -- never guess at the button's internal structure.
+    local tex   = b.GetNormalTexture and b:GetNormalTexture()
+    local atlas = tex and tex.GetAtlas and tex:GetAtlas()
+    local file  = tex and tex.GetTexture and tex:GetTexture()
+    local tw, th = nil, nil
+    if tex and tex.GetSize then tw, th = tex:GetSize() end
+    local bw, bh = b:GetSize()
+    VUI.Print(AH.TAG, format("%s: btn=%sx%s  coin=%s  coinSize=%sx%s",
+        denom, tostring(bw), tostring(bh),
+        tostring(atlas or file), tostring(tw), tostring(th)))
+
+    if not (atlas or file) then
+        -- No normal texture — enumerate texture regions so we can see the real art.
+        local regions = { b:GetRegions() }
+        for i = 1, #regions do
+            local r = regions[i]
+            if r and r.GetObjectType and r:GetObjectType() == "Texture" then
+                local ra = r.GetAtlas and r:GetAtlas()
+                local rf = r.GetTexture and r:GetTexture()
+                VUI.Print(AH.TAG, format("   region %d: %s", i, tostring(ra or rf)))
+            end
+        end
+    end
+
+    -- Amount font (path, height, flags) + font object name.
+    local fs = b.GetFontString and b:GetFontString()
+    if fs then
+        local fp, fh, flags = fs:GetFont()
+        local fo = fs:GetFontObject()
+        VUI.Print(AH.TAG, format("   font: %s  h=%s  flags=%s  obj=%s",
+            tostring(fp), tostring(fh), tostring(flags),
+            tostring(fo and fo.GetName and fo:GetName())))
+    else
+        VUI.Print(AH.TAG, "   (no fontstring on button)")
+    end
+end
+
+local function PrintProbe()
+    local m = _G.GameTooltipMoneyFrame1
+    if not m then
+        VUI.Print(AH.TAG, "No GameTooltipMoneyFrame1 — hover an item with a |cFFFFFF00Sell Price|r line first, then /ah probe.")
+        return
+    end
+    VUI.Print(AH.TAG, "── money frame probe ──")
+    VUI.Print(AH.TAG, "frame: " .. tostring(m:GetName()) .. "  shown=" .. tostring(m:IsShown()))
+    ProbeButton(m.GoldButton,   "Gold")
+    ProbeButton(m.SilverButton, "Silver")
+    ProbeButton(m.CopperButton, "Copper")
+    -- Also report what GetCoinTextureString emits (its embedded |T...|t markup
+    -- names the exact coin texture files + the inline coin size used in text mode).
+    if C_CurrencyInfo and C_CurrencyInfo.GetCoinTextureString then
+        VUI.Print(AH.TAG, "coinString(12345): " .. tostring(C_CurrencyInfo.GetCoinTextureString(12345)))
+    end
+end
+
 SlashCmdList["VERITASUI_AH"] = function(msg)
     msg = strtrim(msg or "")
     -- Split into command word + remainder. `rest` is lowercased for case-insensitive
@@ -347,6 +419,9 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
 
     elseif cmd == "diag" then
         PrintDiag()
+
+    elseif cmd == "probe" then
+        PrintProbe()
 
     elseif cmd == "check" then
         PrintCheck(rawRest)
