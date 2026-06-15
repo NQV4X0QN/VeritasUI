@@ -134,70 +134,56 @@ local function CoinMarkup(copper)
 end
 AH.Tooltip.CoinMarkup = CoinMarkup
 
--- Render the price as an INLINE coin line in the tooltip itself.
+-- Render the price as: a Friz "Auction:" label line + an ARIALN coin fontstring WE OWN.
 --
--- WHY INLINE (not a separate overlay fontstring — that approach FAILED in-game):
---   v1.7.7-dev first drew the coins in our own fontstring parented to UIParent and
---   anchored over the tooltip. The label appeared but the coins did NOT render (the
---   off-tooltip frame stayed invisible — likely strata/anchor/timing, not worth
---   chasing). The tooltip's OWN lines are always visible, so we put the coins inside
---   the line text. Still pure text (inline |A| atlas markup), so still zero Blizzard
---   money math → crash-safe in Delves/M+/raids (the silverWidth Secret-Value trap is
---   never touched).
+-- WHY A FONTSTRING WE OWN (not AddDoubleLine's right column):
+--   AddDoubleLine's right column is POSITION-MANAGED by Blizzard's tooltip layout. We
+--   could re-font it (SetFontObject stuck → ARIALN coins rendered) but every attempt to
+--   re-POSITION it was ignored or clobbered by Blizzard's layout pass after our PostCall
+--   returned (right-justified stayed; a deferred re-anchor only held for one frame →
+--   flicker; a synchronous coordinate re-anchor threw and vanished the line). Conclusion
+--   (deduced, not client-verified): we cannot reposition the managed column. So we don't
+--   use it — we add a PLAIN left label line (Friz, matches "Sell Price:"), then draw the
+--   coins in a fontstring we CREATE and OWN, parented to the TOOLTIP. Blizzard's layout
+--   manages only its own line regions, not an extra child we add, so our anchor sticks.
 --
--- TRADEOFF (disclosed): inline numbers inherit the TOOLTIP body font (Friz Quadrata),
--- not the Sell Price line's ARIALN/14 NumberFont. The COINS are the correct new
--- Coin-* atlas art at 13x13; only the digit font differs slightly from the native
--- money line. This is the same technique Blizzard's own GetCoinTextureString uses
--- (text + inline coins), just with the modern coin atlases instead of the old
--- coin textures GetCoinTextureString embeds. AddDoubleLine puts the label at the
--- left and the coins in the right column, matching the native "Sell Price:" layout.
+--   (This is the corrected version of the earlier failed "overlay" attempt — that one
+--   was parented to UIParent and rendered invisible; parenting to the tooltip fixes it.)
+--
+-- FONT: coins use NumberFontNormalRight (ARIALN/14/OUTLINE — probe-verified, the native
+--   money font). This is NON-NEGOTIABLE and must never revert to the label font.
+-- CRASH-SAFE: pure text + inline |A| atlas coin markup, zero Blizzard money math, so the
+--   silverWidth Secret-Value trap (Delves/M+/raids) is never touched.
+
+local coinFS = {}   -- [tooltip] = our owned coin fontstring (one per tooltip frame)
+
+local function GetCoinFontString(tooltip)
+    local fs = coinFS[tooltip]
+    if fs then return fs end
+    fs = tooltip:CreateFontString(nil, "OVERLAY", "NumberFontNormalRight")
+    fs:SetTextColor(1, 1, 1)
+    coinFS[tooltip] = fs
+    return fs
+end
+
 local function RenderCoinLine(tooltip, price)
-    if not tooltip.AddDoubleLine then return false end
-    -- AddDoubleLine gives us TWO separately-fontable columns on one line: keep the LEFT
-    -- "Auction:" label in the tooltip font (Friz, matching native "Sell Price:") and
-    -- make the RIGHT coin column ARIALN. Both white. (A single AddLine is one font and
-    -- could not keep the label Friz while the numbers are ARIALN.)
-    tooltip:AddDoubleLine(PRICE_PREFIX, CoinMarkup(price), 1, 1, 1, 1, 1, 1)
+    if not (tooltip.AddLine and tooltip.CreateFontString) then return false end
+    -- Friz label line (matches native "Sell Price:" label font). Reserves the row.
+    tooltip:AddLine(PRICE_PREFIX, 1, 1, 1)
 
     local name = tooltip.GetName and tooltip:GetName()
     if not name then return true end
-    local idx   = tooltip:NumLines()
-    local left  = _G[name .. "TextLeft"  .. idx]
-    local right = _G[name .. "TextRight" .. idx]
-    if not (left and right) then return true end
+    local left = _G[name .. "TextLeft" .. tooltip:NumLines()]
+    if not left then return true end
 
-    -- (1) Re-font the RIGHT column to the native money font so digits match "Sell
-    --     Price:" (probe-confirmed NumberFontNormalRight = ARIALN/14/OUTLINE).
-    --     AddDoubleLine defaults the right column to GameTooltipText (Friz Quadrata).
-    if right.SetFontObject and _G.NumberFontNormalRight then
-        right:SetFontObject(_G.NumberFontNormalRight)
-        right:SetTextColor(1, 1, 1)   -- NumberFont* objects carry their own color; force white
-    end
-
-    -- (2) ALIGNMENT — the approach that WORKS (verified in a prior session): anchor the
-    --     RIGHT column's LEFT edge to the SAME LINE's LEFT label RIGHT edge, with a
-    --     small gap. The coins then sit just after "Auction:" instead of being right-
-    --     justified to the tooltip edge.
-    --
-    --     Why this is safe where the two prior attempts were not:
-    --       * Anchored to the SAME-LINE label (TextLeft<idx> → TextRight<idx>), so it
-    --         inherits the correct row Y — no jumping onto the Sell Price row (the bug
-    --         when we anchored to GameTooltipMoneyFrame1, a different frame/row).
-    --       * Pure RELATIVE anchor (SetPoint to a sibling region) — no GetLeft()/
-    --         GetWidth() arithmetic, so nothing can be nil and throw (the bug that
-    --         vanished the line when done synchronously with coordinate math).
-    --       * No timer fighting the PostCall, so no flicker feedback loop.
-    --     Done synchronously here because it touches only sibling fontstrings on the
-    --     line we just added; both exist (guarded above).
-    --
-    --     NOTE: because the gap after the label is fixed, "Auction:" and "Sell Price:"
-    --     being different widths means the NUMBERS won't column-align with each other —
-    --     that's expected and matches the verified-good reference; the goal is coins
-    --     sitting naturally after the label, not a shared number column.
-    right:SetJustifyH("LEFT")
-    right:ClearAllPoints()
-    right:SetPoint("LEFT", left, "RIGHT", 10, 0)
+    -- Our owned ARIALN coin fontstring, anchored just after the label on the same row.
+    -- It's a child of the tooltip (so it renders + auto-hides with it) but is NOT a
+    -- managed line region (so Blizzard's layout never repositions it).
+    local fs = GetCoinFontString(tooltip)
+    fs:SetText(CoinMarkup(price))
+    fs:ClearAllPoints()
+    fs:SetPoint("LEFT", left, "RIGHT", 6, 0)   -- gap after the label; tune if needed
+    fs:Show()
     return true
 end
 
@@ -231,6 +217,12 @@ local function OnItemTooltip(tooltip, data)
     -- Only handle the shared GameTooltip + ItemRefTooltip family. Some internal
     -- tooltips (compare shopping, etc.) are children we don't want to touch.
     if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
+
+    -- Our owned coin fontstring persists across hovers; hide it on EVERY rebuild so a
+    -- non-priced item (where RenderCoinLine never runs) doesn't show stale coins from
+    -- a previous priced hover. RenderCoinLine re-Shows it when there IS a price.
+    local fs = coinFS[tooltip]
+    if fs then fs:Hide() end
 
     local link = data and data.hyperlink
     if not link and TooltipUtil and TooltipUtil.GetDisplayedItem then
