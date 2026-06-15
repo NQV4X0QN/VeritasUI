@@ -166,22 +166,43 @@ end
 
 -- Render the price as a native money line. Returns true on success; false → caller
 -- falls back to text coins.
+--
+-- ORDERING (v1.7.x bugfix diagnostic): the fallible / taint-sensitive money work runs
+-- BEFORE we mutate the tooltip. A tooltip line can never be retracted, so if the money
+-- render throws we must NOT have already added the blank reserve line — otherwise it
+-- orphans as a visible gap above the text fallback ("space between Auction and Sell
+-- Price"). Update the frame first; only reserve+overlay the row once it has succeeded.
 local function RenderMoneyLine(tooltip, price)
     local name = tooltip.GetName and tooltip:GetName()
     if not name then return false end
-    return (pcall(function()
-        tooltip:AddLine(" ")                       -- blank line reserves the row
-        local idx  = tooltip:NumLines()
-        local left = _G[name .. "TextLeft" .. idx]
-        if not left then error("no line anchor") end
-        local mf = GetMoneyFrame(tooltip)
-        mf:ClearAllPoints()
-        mf:SetPoint("LEFT", left, "LEFT", 0, 0)
+
+    local mf = GetMoneyFrame(tooltip)
+
+    -- Fallible work FIRST — no tooltip mutation yet. Re-assert STATIC each render in
+    -- case the cached frame's money type got clobbered by a PLAYER_MONEY/zone event
+    -- (the template registers for PLAYER_MONEY in its OnLoad). Capture the error so a
+    -- /run VeritasUI.debug=true repro surfaces the real cause instead of swallowing it.
+    local ok, err = pcall(function()
+        if MoneyFrame_SetType then MoneyFrame_SetType(mf, "STATIC") end
         if mf.PrefixText then mf.PrefixText:SetText(PRICE_PREFIX) end
         MoneyFrame_Update(mf, price)               -- our plain-integer price (STATIC)
-        mf:Show()
-        AlignCoinsToNative(mf)                      -- nudge coins under Sell Price coins
-    end))
+    end)
+    if not ok then
+        if VUI.debug then
+            VUI.Print(AH.TAG, "|cFFFF4444money render failed|r: " .. tostring(err))
+        end
+        return false
+    end
+
+    -- Frame is valid and updated — now reserve the row and overlay our coins onto it.
+    tooltip:AddLine(" ")                            -- blank line reserves the row
+    local left = _G[name .. "TextLeft" .. tooltip:NumLines()]
+    if not left then return false end
+    mf:ClearAllPoints()
+    mf:SetPoint("LEFT", left, "LEFT", 0, 0)
+    mf:Show()
+    AlignCoinsToNative(mf)                          -- nudge coins under Sell Price coins
+    return true
 end
 
 local function AppendPriceForKey(tooltip, key)
