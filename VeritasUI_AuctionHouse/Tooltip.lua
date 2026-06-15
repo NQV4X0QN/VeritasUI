@@ -158,49 +158,29 @@ local function RenderCoinLine(tooltip, price)
     -- also white so the digits read like the native amount.
     tooltip:AddDoubleLine(PRICE_PREFIX, CoinMarkup(price), 1, 1, 1, 1, 1, 1)
 
-    -- Re-anchor + re-font the RIGHT column.
+    -- Re-font the RIGHT column to the native money font so digits match "Sell Price:"
+    -- (probe-confirmed NumberFontNormalRight = ARIALN/14/OUTLINE). AddDoubleLine
+    -- defaults the right column to GameTooltipText (Friz Quadrata).
     --
-    -- (1) FONT: AddDoubleLine defaults the right column to GameTooltipText (Friz
-    --     Quadrata); set it to the native money font (probe-confirmed
-    --     NumberFontNormalRight = ARIALN/14/OUTLINE) so digits match "Sell Price:".
+    -- NOTE: we deliberately do NOT re-anchor the right fontstring to left-align under
+    -- the native coin column. That was tried and REVERTED — manually ClearAllPoints +
+    -- SetPoint on a tooltip's own line fontstring, plus reading tooltip:GetLeft() mid-
+    -- layout, threw inside the caller's pcall and made the ENTIRE Auction line vanish.
+    -- AddDoubleLine's right-justified placement is accepted as-is; cosmetic column
+    -- alignment under Sell Price is not worth risking the line's existence. (If we ever
+    -- revisit: do it from a deferred C_Timer.After(0) AFTER the tooltip has laid out,
+    -- with full nil-guards, never inside the synchronous PostCall.)
     --
-    -- (2) ALIGNMENT: AddDoubleLine RIGHT-justifies its right column against the
-    --     tooltip's right edge — but the native "Sell Price:" money is LEFT-anchored
-    --     at a fixed column just after the label, not right-justified. So we left-
-    --     justify our right fontstring and re-anchor its LEFT edge to sit under the
-    --     native coin column (read from GameTooltipMoneyFrame1's leftmost visible
-    --     coin, the same column "Sell Price:" uses). GetLeft() on a HIDDEN coin button
-    --     is garbage, so only read a shown one; fall back to leaving it right-justified
-    --     if the native money frame isn't present (e.g. an item with no Sell Price).
-    --
-    -- CAVEAT (watch in-game): GameTooltip reuses line fontstrings AND sizes its width
-    -- assuming the right column hugs the right edge. Moving ours left should be safe
-    -- (it's a real visible tooltip fontstring), but the tooltip may end up a touch
-    -- wider, and the font set could in theory bleed onto a reused slot. We re-assert
-    -- every rebuild and our line is always last. If a non-priced tooltip shows ARIALN,
-    -- or the layout misbehaves, this block is the cause.
+    -- CAVEAT (watch in-game): GameTooltip reuses line fontstrings across hovers; if a
+    -- reused slot isn't reset by Blizzard, this font could bleed onto a later line.
+    -- Re-asserted every rebuild and our line is always last. If a non-priced tooltip
+    -- shows ARIALN, this is the cause.
     local name = tooltip.GetName and tooltip:GetName()
     if name then
         local right = _G[name .. "TextRight" .. tooltip:NumLines()]
         if right and right.SetFontObject and _G.NumberFontNormalRight then
             right:SetFontObject(_G.NumberFontNormalRight)
             right:SetTextColor(1, 1, 1)   -- NumberFont* objects carry their own color; force white
-            right:SetJustifyH("LEFT")
-
-            -- Align our coins' LEFT edge to the native Sell Price coin column.
-            local m = _G.GameTooltipMoneyFrame1
-            local nativeX
-            if m and m:IsShown() then
-                for _, denom in ipairs({ "GoldButton", "SilverButton", "CopperButton" }) do
-                    local b = m[denom]
-                    if b and b:IsShown() then nativeX = b:GetLeft(); break end
-                end
-                nativeX = nativeX or m:GetLeft()
-            end
-            if nativeX then
-                right:ClearAllPoints()
-                right:SetPoint("LEFT", tooltip, "LEFT", nativeX - tooltip:GetLeft(), 0)
-            end
         end
     end
     return true
