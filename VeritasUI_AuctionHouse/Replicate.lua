@@ -259,6 +259,17 @@ local ef = CreateFrame("Frame")
 ef:RegisterEvent("REPLICATE_ITEM_LIST_UPDATE")
 ef:SetScript("OnEvent", function(_, event)
     if event == "REPLICATE_ITEM_LIST_UPDATE" then
+        -- DIAGNOSTIC (temp): print whenever the snapshot-ready event arrives, BEFORE
+        -- the guard, so a "first-scan-of-the-day hang" can be classified:
+        --   * line appears during a hang  → event DID fire; our guard dropped it
+        --                                    (scanning/co state bug — fix in our code)
+        --   * line NEVER appears in a hang → server never delivered the snapshot for
+        --                                    the first request (readiness/timing — fix
+        --                                    by deferring/retrying ReplicateItems)
+        if VUI.debug then
+            VUI.Print(AH.TAG, "REPLICATE_ITEM_LIST_UPDATE fired (scanning="
+                .. tostring(scanning) .. ", co=" .. tostring(co ~= nil) .. ")")
+        end
         -- The snapshot is ready to read. Only act if WE initiated a scan
         -- (scanning == true) and we're not already draining a coroutine.
         if not scanning or co then return end
