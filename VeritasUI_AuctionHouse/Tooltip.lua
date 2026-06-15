@@ -132,68 +132,29 @@ local function CoinMarkup(copper)
 end
 AH.Tooltip.CoinMarkup = CoinMarkup
 
--- Per-tooltip overlay fontstring (lazily created, parented to UIParent).
-local coinWidgets = {}   -- [tooltip] = { frame, fs }
-
-local function GetCoinWidget(tooltip)
-    local w = coinWidgets[tooltip]
-    if w then return w end
-    local f = CreateFrame("Frame", nil, UIParent)
-    f:SetFrameStrata("TOOLTIP")
-    f:SetFrameLevel(1000)
-    local fs = f:CreateFontString(nil, "OVERLAY", "NumberFontNormalRight")
-    fs:SetJustifyH("LEFT")                  -- flow coins left-to-right after the label
-    fs:SetPoint("LEFT", f, "LEFT", 0, 0)
-    w = { frame = f, fs = fs }
-    coinWidgets[tooltip] = w
-    -- Parented to UIParent, so it won't auto-hide with the tooltip — hide it explicitly.
-    tooltip:HookScript("OnHide", function() f:Hide() end)
-    return w
-end
-
--- Render the price as a self-drawn coin line. Returns true on success; false → caller
--- falls back to a plain text-coin AddLine.
+-- Render the price as an INLINE coin line in the tooltip itself.
 --
--- ORDERING: nothing here can throw on a Secret Value (pure text + fontstring), so the
--- old "do fallible work before mutating the tooltip" dance is no longer load-bearing —
--- but we still add the label line first and bail cleanly if the anchor is missing.
-local COIN_BUTTONS = { "GoldButton", "SilverButton", "CopperButton" }
-local function NativeFirstCoinLeft()
-    -- Left screen-x of the native "Sell Price:" money block's leftmost VISIBLE coin
-    -- button, so we can align our coin block to the same column. GetLeft() on a HIDDEN
-    -- button is garbage, so only read a shown one. Returns nil if no native money line.
-    local m = _G.GameTooltipMoneyFrame1
-    if not (m and m:IsShown()) then return nil end
-    for _, denom in ipairs(COIN_BUTTONS) do
-        local b = m[denom]
-        if b and b:IsShown() then return b:GetLeft() end
-    end
-    return m:GetLeft()
-end
-
+-- WHY INLINE (not a separate overlay fontstring — that approach FAILED in-game):
+--   v1.7.7-dev first drew the coins in our own fontstring parented to UIParent and
+--   anchored over the tooltip. The label appeared but the coins did NOT render (the
+--   off-tooltip frame stayed invisible — likely strata/anchor/timing, not worth
+--   chasing). The tooltip's OWN lines are always visible, so we put the coins inside
+--   the line text. Still pure text (inline |A| atlas markup), so still zero Blizzard
+--   money math → crash-safe in Delves/M+/raids (the silverWidth Secret-Value trap is
+--   never touched).
+--
+-- TRADEOFF (disclosed): inline numbers inherit the TOOLTIP body font (Friz Quadrata),
+-- not the Sell Price line's ARIALN/14 NumberFont. The COINS are the correct new
+-- Coin-* atlas art at 13x13; only the digit font differs slightly from the native
+-- money line. This is the same technique Blizzard's own GetCoinTextureString uses
+-- (text + inline coins), just with the modern coin atlases instead of the old
+-- coin textures GetCoinTextureString embeds. AddDoubleLine puts the label at the
+-- left and the coins in the right column, matching the native "Sell Price:" layout.
 local function RenderCoinLine(tooltip, price)
-    local name = tooltip.GetName and tooltip:GetName()
-    if not name then return false end
-
-    -- Label as a real tooltip line → inherits the native tooltip label font for free.
-    tooltip:AddLine(PRICE_PREFIX)
-    local left = _G[name .. "TextLeft" .. tooltip:NumLines()]
-    if not left then return false end
-
-    local w = GetCoinWidget(tooltip)
-    w.fs:SetText(CoinMarkup(price))
-    w.frame:ClearAllPoints()
-
-    -- Align our coin block's left under the native Sell Price coin column when present;
-    -- otherwise place it just after the label. Both anchor RELATIVE to the line region,
-    -- so the block stays attached if the tooltip repositions.
-    local nativeX, lineX = NativeFirstCoinLeft(), left:GetLeft()
-    if nativeX and lineX then
-        w.frame:SetPoint("LEFT", left, "LEFT", nativeX - lineX, 0)
-    else
-        w.frame:SetPoint("LEFT", left, "LEFT", (left:GetStringWidth() or 0) + 6, 0)
-    end
-    w.frame:Show()
+    if not tooltip.AddDoubleLine then return false end
+    -- Left = white label (matches native "Sell Price:" white); right = coin markup,
+    -- also white so the digits read like the native amount.
+    tooltip:AddDoubleLine(PRICE_PREFIX, CoinMarkup(price), 1, 1, 1, 1, 1, 1)
     return true
 end
 
