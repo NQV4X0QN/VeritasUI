@@ -169,6 +169,17 @@ local function GetCoinFontString(tooltip)
     fs = tooltip:CreateFontString(nil, "OVERLAY", "NumberFontNormalRight")
     fs:SetTextColor(1, 1, 1)
     coinFS[tooltip] = fs
+    -- Our fontstring is parented to the tooltip and PERSISTS across hovers. The Item
+    -- post-call (OnItemTooltip) only fires for ITEM tooltips, so when GameTooltip is
+    -- repopulated as a UNIT/spell/etc. tooltip our hide-logic never runs and the stale
+    -- coins from the last item leak onto it (the reported bug: a player unit tooltip
+    -- showing the previous item's price). OnTooltipCleared fires whenever the tooltip is
+    -- cleared BEFORE any repopulation, regardless of the next content type, so hide our
+    -- coins there. For a priced ITEM the Item post-call re-Shows them in the same
+    -- synchronous SetItem rebuild (clear → set data → post-call), so there's no flicker.
+    if tooltip.HookScript then
+        tooltip:HookScript("OnTooltipCleared", function() fs:Hide() end)
+    end
     return fs
 end
 
