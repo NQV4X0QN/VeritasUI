@@ -2,6 +2,17 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.8] - 2026-06-15
+
+### Changed
+- **Interface bumped to `120007` for the WoW 12.0.7 patch** (all seven module TOCs).
+
+### Fixed
+- `VeritasUI_AuctionHouse` — **the tooltip "Auction:" coins no longer leak onto player/NPC and other non-item tooltips.** Our coin display is a fontstring parented to the tooltip that persists between hovers; it was only hidden in the item-tooltip post-call, which never runs for unit/spell/etc. tooltips — so after hovering a priced item the stale coins appeared on the next player tooltip (e.g. a player showing the last item's price). It's now hidden whenever the tooltip is cleared (every rebuild, all content types); priced items re-show it in the same rebuild, so there's no flicker. (`Tooltip.lua`)
+
+### Fixed (candidate — pending in-game verification)
+- `VeritasUI_AuctionHouse` — **first-Auction-House-visit-of-a-session scans should no longer hang.** Confirmed cause: on the first AH open since login, the auto-scan fired its data request before Blizzard's throttle/message system was ready; the request was silently dropped, no data event arrived, and the scan sat at 0% until a `/reload` (re-opening the AH in the same session worked). The request is now deferred until the throttle system reports ready (`AUCTION_HOUSE_THROTTLED_SYSTEM_READY`) instead of firing too early. Defensive: if the readiness API is unavailable it falls back to firing immediately (prior behavior), and it uses an event wait, not a timeout. **This fix could only be tested on a fresh login, so it ships unverified for live confirmation;** the function and event were confirmed to exist in-client beforehand. (`Replicate.lua`)
+
 ## [1.7.7] - 2026-06-14
 
 ### Fixed
