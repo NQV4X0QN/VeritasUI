@@ -62,17 +62,19 @@ local VISIBLE   = floor((STRIP_W - PAD_L) / STEP)   -- how many icons fit
 AH.SellStrip = AH.SellStrip or {}
 
 local state = {
-    built   = false,
-    strip   = nil,
-    card    = nil,    -- backing inset card behind the icon row
-    buttons = {},     -- pool of reusable item buttons (size VISIBLE)
-    items   = {},     -- current sellable list
-    offset  = 0,      -- index of first visible item (0-based)
-    posted  = nil,    -- { bag, slot } currently loaded in the native sell slot, or nil
-    hooked  = false,
+    built         = false,
+    strip         = nil,
+    card          = nil,    -- backing inset card behind the icon row
+    buttons       = {},     -- pool of reusable item buttons (size VISIBLE)
+    items         = {},     -- current sellable list
+    offset        = 0,      -- index of first visible item (0-based)
+    posted        = nil,    -- { bag, slot } currently loaded in the native sell slot, or nil
+    hooked        = false,
+    pending       = {},     -- itemIDs whose GetItemInfo returned nil (cache miss); cleared each CollectItems
+    refreshTimer  = nil,    -- debounce handle for GET_ITEM_INFO_RECEIVED bursts
 }
 
-local Refresh, UpdateVisibility, Render   -- forward decls
+local Refresh, UpdateVisibility, Render, ScheduleRefresh   -- forward decls
 
 ----------------------------------------------------------------
 --  Tooltip for a strip button (shared by OnEnter and by scroll-refresh).
@@ -122,6 +124,7 @@ end
 local function CollectItems()
     local out = {}
     local block = AH.db and AH.db.sellBlocklist
+    state.pending = {}   -- clear cache-miss set for this pass
     for bag = 0, 5 do
         local n = C_Container and C_Container.GetContainerNumSlots(bag) or 0
         for slot = 1, n do
@@ -150,6 +153,15 @@ local function CollectItems()
                                 count = info.stackCount, quality = info.quality,
                                 name = info.hyperlink:match("%[(.-)%]") or "",
                             }
+                        elseif okP and sellPrice == nil then
+                            -- GetItemInfo returned nil — item data not yet in the
+                            -- client cache. Request a fill and track the itemID so
+                            -- GET_ITEM_INFO_RECEIVED can schedule a Refresh once it
+                            -- lands. The item will appear on the next Refresh pass.
+                            state.pending[itemID] = true
+                            if C_Item.RequestLoadItemDataByID then
+                                pcall(C_Item.RequestLoadItemDataByID, itemID)
+                            end
                         end
                     end
                 end
@@ -465,14 +477,35 @@ end
 ----------------------------------------------------------------
 local IsAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
 
+-- Debounced Refresh: GET_ITEM_INFO_RECEIVED can fire in rapid bursts (one event
+-- per item as the cache fills). Collapse the burst into a single Refresh 0.1s
+-- after the last event rather than re-running CollectItems on every individual fire.
+function ScheduleRefresh()
+    if state.refreshTimer then
+        state.refreshTimer:Cancel()
+    end
+    state.refreshTimer = C_Timer.NewTimer(0.1, function()
+        state.refreshTimer = nil
+        Refresh()
+    end)
+end
+
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("ADDON_LOADED")
 loader:RegisterEvent("BAG_UPDATE_DELAYED")
-loader:SetScript("OnEvent", function(_, event, name)
+loader:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+loader:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
-        if name == "Blizzard_AuctionHouseUI" then Build() end
+        if arg1 == "Blizzard_AuctionHouseUI" then Build() end
     elseif event == "BAG_UPDATE_DELAYED" then
         Refresh()
+    elseif event == "GET_ITEM_INFO_RECEIVED" then
+        -- arg1 is the itemID whose data just landed. Only act if it was one of
+        -- the items we flagged as a cache miss in the last CollectItems pass.
+        local itemID = arg1
+        if itemID and state.pending[itemID] then
+            ScheduleRefresh()
+        end
     end
 end)
 

@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.10] - 2026-06-16
+
+### Fixed
+- `VeritasUI_AuctionHouse` — **sell strip now populates all sellable items on first open of the Sell tab, not just the one or two already in the item cache.** `CollectItems` calls `C_Item.GetItemInfo` to read each item's vendor sell price; on the first Sell-tab open of a session most items aren't in the client cache yet, so `GetItemInfo` returns `nil` and those items were silently excluded — only previously-hovered or recently-used items (already cached) passed through. Clicking one item loaded it into the Sell form, which triggered cache population, and a subsequent `BAG_UPDATE_DELAYED` then revealed the rest — the visible symptom. Fix: when `GetItemInfo` returns `nil` (clean cache miss, distinct from a pcall error), the itemID is added to a `state.pending` set and `C_Item.RequestLoadItemDataByID` is called to actively request the data. The loader frame now also handles `GET_ITEM_INFO_RECEIVED`; when a pending itemID's data arrives, a 0.1s debounce timer (`ScheduleRefresh`) collapses any burst of incoming cache fills into a single `Refresh()` call. The strip populates fully within a fraction of a second of first open. (`UI/SellStrip.lua`)
+
 ## [1.7.9] - 2026-06-16
 
 ### Fixed
