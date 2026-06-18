@@ -38,11 +38,13 @@ AH.Replicate = {}
 local SCAN_FLOOR_SECONDS    = 15 * 60   -- minimum gap between full scans
 local ROWS_PER_SLICE        = 2000      -- safety cap on rows per frame
 local FRAME_BUDGET_MS       = 8         -- ~8ms/frame work budget (debugprofilestop)
+local REPLICATE_RETRY_DELAY = 10        -- seconds to wait for REPLICATE_ITEM_LIST_UPDATE before retrying
 
 local scanning   = false   -- a scan coroutine is in progress
 local co                    -- the active coroutine
 local driver               -- OnUpdate ticker frame
 local progress   = 0        -- 0..1
+local retryTimer            -- C_Timer handle watching for a dropped ReplicateItems()
 
 ----------------------------------------------------------------
 --  Scan lifecycle — why there is NO timeout (do not re-add one)
@@ -242,12 +244,38 @@ end
 local readyWaiter            -- frame waiting on AUCTION_HOUSE_THROTTLED_SYSTEM_READY
 local pendingAuto            -- remembers the `auto` flag across the deferred wait
 
+local function CancelRetry()
+    if retryTimer then
+        retryTimer:Cancel()
+        retryTimer = nil
+    end
+end
+
 local function DoFire(auto)
     scanning = true          -- set ONLY here, at the real fire moment
     C_AuctionHouse.ReplicateItems()
     if VUI.debug then
         VUI.Print(AH.TAG, "ReplicateItems() fired (auto=" .. tostring(auto and true or false) .. ")")
     end
+    -- Arm a retry: if REPLICATE_ITEM_LIST_UPDATE doesn't arrive within
+    -- REPLICATE_RETRY_DELAY seconds the request was silently dropped by the server.
+    -- A dropped request produces NO event at all — so after this delay we know with
+    -- certainty the call was dropped (not slow), and it's safe to retry.
+    -- This is NOT a watchdog: it only fires when co is still nil (coroutine never
+    -- started), meaning the event genuinely never arrived. If the event arrives
+    -- first (normal path), CancelRetry() below defuses this timer immediately.
+    CancelRetry()
+    retryTimer = C_Timer.NewTimer(REPLICATE_RETRY_DELAY, function()
+        retryTimer = nil
+        -- Only retry if: AH still open, scan flag still set, but coroutine never started.
+        -- co ~= nil means the event arrived and we're processing — don't retry.
+        if not AH.isOpen or not scanning or co then return end
+        if VUI.debug then
+            VUI.Print(AH.TAG, "REPLICATE_ITEM_LIST_UPDATE not received after "
+                .. REPLICATE_RETRY_DELAY .. "s — request was dropped; retrying ReplicateItems()")
+        end
+        C_AuctionHouse.ReplicateItems()
+    end)
 end
 
 local function FireWhenReady(auto)
@@ -352,6 +380,8 @@ ef:SetScript("OnEvent", function(_, event)
             VUI.Print(AH.TAG, "REPLICATE_ITEM_LIST_UPDATE fired (scanning="
                 .. tostring(scanning) .. ", co=" .. tostring(co ~= nil) .. ")")
         end
+        -- Event arrived — the request was NOT dropped. Cancel the retry timer.
+        CancelRetry()
         -- The snapshot is ready to read. Only act if WE initiated a scan
         -- (scanning == true) and we're not already draining a coroutine.
         if not scanning or co then return end
@@ -367,6 +397,7 @@ AH.Events.On("AH_CLOSED", function()
         co = nil
         if driver then driver:Hide() end
         progress = 0
+        CancelRetry()
         if VUI.debug then VUI.Print(AH.TAG, "Scan aborted (AH closed).") end
     end
 end)

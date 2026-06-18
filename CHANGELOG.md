@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.9] - 2026-06-16
+
+### Fixed
+- `VeritasUI_AuctionHouse` — **first-Auction-House-visit-of-a-session scans no longer hang.** The v1.7.8 `FireWhenReady` fix correctly deferred until `AUCTION_HOUSE_THROTTLED_SYSTEM_READY`, but the server could still silently drop the `ReplicateItems()` call even after that event — confirmed in-game on day 2 of testing: the throttle system reported ready, `ReplicateItems()` fired, but `REPLICATE_ITEM_LIST_UPDATE` never arrived and the scan sat at `0%` indefinitely. Root cause: the server needs a moment beyond throttle-system readiness to accept replicate requests on the very first AH open of a session. Fix: after each `ReplicateItems()` call, a `REPLICATE_RETRY_DELAY = 10` second timer arms. If `REPLICATE_ITEM_LIST_UPDATE` arrives within that window (the normal path), the timer is cancelled immediately — no effect. If the event has not arrived after 10 seconds, the request is confirmed dropped (a genuine arrival would appear within 2–5 seconds) and `ReplicateItems()` is called again. The retry guard checks `AH.isOpen`, `scanning`, and `co == nil` before firing, so it can only trigger when the coroutine genuinely hasn't started. Timer is also cancelled on `AH_CLOSED`. (`Replicate.lua`)
+
 ## [1.7.8] - 2026-06-15
 
 ### Changed
