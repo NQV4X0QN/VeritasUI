@@ -125,7 +125,7 @@ local function CollectItems()
     local out = {}
     local block = AH.db and AH.db.sellBlocklist
     state.pending = {}   -- clear cache-miss set for this pass
-    for bag = 0, 5 do
+    for bag = 0, 4 do  -- bags 0-4 only; bag 5 is the reagent bag — items there are not AH-postable
         local n = C_Container and C_Container.GetContainerNumSlots(bag) or 0
         for slot = 1, n do
             local info = C_Container.GetContainerItemInfo(bag, slot)

@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.11] - 2026-06-17
+
+### Fixed
+- `VeritasUI_AuctionHouse` — **clicking a sell-strip item no longer throws a Lua error ("attempt to compare nil with number" in `CanPostItem`).** The bag scan in `CollectItems` looped over bags 0–5; bag 5 is the reagent bag, and Blizzard's AH `CanPostItem` → `StartPost` path crashes on reagent-bag items (nil deposit cost / missing category data). This bug was latent in prior versions because reagent-bag items were silently dropped as cache misses on first Sell-tab open and never appeared in the strip. The v1.7.10 cache-fill fix correctly populated them for the first time, making them clickable and surfacing the crash. Fix: `CollectItems` now iterates bags 0–4 only; the reagent bag (5) is excluded entirely. (`UI/SellStrip.lua`)
+
 ## [1.7.10] - 2026-06-16
 
 ### Fixed
