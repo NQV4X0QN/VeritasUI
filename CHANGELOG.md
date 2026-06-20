@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.12] - 2026-06-20
+
+### Fixed
+- `VeritasUI_AuctionHouse` — **the sell strip now shows reagent-bag items again (the module's primary purpose), reversing the v1.7.11 exclusion.** v1.7.11 stopped scanning bag 5 (the reagent bag) in response to a `CanPostItem` crash ("attempt to compare nil with number"). New evidence reframes that fix: the captured stack trace (`Blizzard_AuctionHouseSellFrame.lua:477` → `CanPostItem` → `CommoditiesSellFrame` `StartPost`/`PostItem`) shows the crash occurred **entirely inside Blizzard's own commodity-post code, with no VeritasUI frame on the stack**, and fired on the native "Create Auction" click — not on our `SetPostItem` load as the v1.7.11 commit message stated. The crash was reachable from Blizzard's native Sell flow too (loading a reagent natively and posting), so excluding bag 5 only removed our shortcut to a Blizzard-side bug, at the cost of the feature the module exists for. The crash **no longer reproduces on the current client by any path** (native sell from reagent bag, or sell-strip post) — most likely a 12.0.7 launch-week issue (the patch landed ~2026-06-15, the crash was hit 2026-06-17) since resolved server-side, though that attribution is probable, not confirmed. `CollectItems` now scans bags 0–5 again. (`UI/SellStrip.lua`)
+
+### Added
+- `VeritasUI_AuctionHouse` — **the sell strip now hides Warband-bound-until-equipped equipment, which cannot be auctioned.** Such items read `isBound = false` (they bind on equip) and carry a vendor sell price, so the existing "unbound + sellable" predicate wrongly admitted them — the strip could show a Warband weapon that can't be posted while hiding genuinely sellable items. Items are now rejected when `C_Item.IsBoundToAccountUntilEquip` returns true. This was verified by in-game probe (item 249677 Twinthorn Wildglaive) as the only clean discriminator: Warband-until-equip gear reports `bindType = 2`, identical to ordinary sellable BoE, so `bindType` cannot distinguish them. The check is conservative — it only rejects on a definitive `true`; on any error or unresolved result the item is shown, so a legitimate sellable is never hidden on doubt. Commodities (reagents, potions, dyes), ordinary BoE gear, and transmog "junk" armor all continue to appear. (`UI/SellStrip.lua`)
+
 ## [1.7.11] - 2026-06-17
 
 ### Fixed

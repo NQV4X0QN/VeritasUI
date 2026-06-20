@@ -28,7 +28,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.7.11"
+VUI.VERSION = "1.7.12"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: CombatQueue pcall failures, see
 -- Lib.lua:348).  Off by default to avoid clutter; flip at runtime via

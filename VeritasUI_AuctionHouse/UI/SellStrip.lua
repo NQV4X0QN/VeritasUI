@@ -125,7 +125,9 @@ local function CollectItems()
     local out = {}
     local block = AH.db and AH.db.sellBlocklist
     state.pending = {}   -- clear cache-miss set for this pass
-    for bag = 0, 4 do  -- bags 0-4 only; bag 5 is the reagent bag — items there are not AH-postable
+    for bag = 0, 5 do  -- bags 0-5 incl. reagent bag (5): reagents ARE postable commodities.
+                       -- The old "bag 5 not AH-postable" claim was an unverified guess —
+                       -- probe-disproven 2026-06-20 (3 reagents in bag 5 all postable, commodity=2).
         local n = C_Container and C_Container.GetContainerNumSlots(bag) or 0
         for slot = 1, n do
             local info = C_Container.GetContainerItemInfo(bag, slot)
@@ -147,12 +149,32 @@ local function CollectItems()
                             return sellPrice and sellPrice > 0
                         end)
                         if okC and sellable then
-                            out[#out + 1] = {
-                                bag = bag, slot = slot, link = info.hyperlink,
-                                itemID = itemID, texture = info.iconFileID,
-                                count = info.stackCount, quality = info.quality,
-                                name = info.hyperlink:match("%[(.-)%]") or "",
-                            }
+                            -- Reject warband-bound-until-equipped equipment: effectively
+                            -- account-soulbound, cannot be auctioned, yet reads
+                            -- isBound=false (binds on equip) WITH a sell price, so the
+                            -- unbound+price predicate alone lets it through. VERIFIED
+                            -- (probe, 12.0.5, item 249677 Twinthorn Wildglaive):
+                            -- IsBoundToAccountUntilEquip is the ONLY clean discriminator —
+                            -- warband-until-equip gear reports bindType=2, IDENTICAL to
+                            -- ordinary sellable BoE, so bindType cannot tell them apart.
+                            -- Conservative: only reject on a definitive true; on pcall
+                            -- error or a cold/absent result we SHOW the item (never hide a
+                            -- legit sellable on doubt — at worst a warband item flashes for
+                            -- one refresh, then self-corrects when its cache warms).
+                            local loc = ItemLocation:CreateFromBagAndSlot(bag, slot)
+                            local okW, warband = pcall(function()
+                                return loc and loc:IsValid()
+                                    and C_Item.IsBoundToAccountUntilEquip
+                                    and C_Item.IsBoundToAccountUntilEquip(loc) or false
+                            end)
+                            if not (okW and warband) then
+                                out[#out + 1] = {
+                                    bag = bag, slot = slot, link = info.hyperlink,
+                                    itemID = itemID, texture = info.iconFileID,
+                                    count = info.stackCount, quality = info.quality,
+                                    name = info.hyperlink:match("%[(.-)%]") or "",
+                                }
+                            end
                         elseif okP and sellPrice == nil then
                             -- GetItemInfo returned nil — item data not yet in the
                             -- client cache. Request a fill and track the itemID so
