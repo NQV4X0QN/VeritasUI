@@ -5,14 +5,13 @@
 -- All controls read their initial value from C_CVar on creation and
 -- write back via AO:SetCVar on user interaction.
 
-local ADDON_NAME, AO = ...
+local _, AO = ...
 local VUI = _G.VeritasUI
 if not VUI then return end
 
 ----------------------------------------------------------------
 --  Localize hot globals
 ----------------------------------------------------------------
-local _G             = _G
 local pcall          = pcall
 local tonumber       = tonumber
 local format         = string.format
@@ -20,7 +19,6 @@ local math_floor     = math.floor
 local math_max       = math.max
 local math_min       = math.min
 local CreateFrame    = CreateFrame
-local C_CVar         = C_CVar
 local C_Timer        = C_Timer
 local GameTooltip    = GameTooltip
 

@@ -11,7 +11,7 @@
 --
 -- Adding a new CVar is just one table entry in FEATURED_CATEGORIES.
 
-local ADDON_NAME, AO = ...
+local _, AO = ...
 local VUI = _G.VeritasUI
 if not VUI then return end
 

@@ -20,6 +20,13 @@ local C_Map            = C_Map
 local GetCoinTextureString = GetCoinTextureString
 local C_Navigation  = C_Navigation
 local C_SuperTrack  = C_SuperTrack
+-- Midnight moved IsAddOnLoaded under C_AddOns; shim to the modern path with a
+-- legacy-global fallback (mirrors VeritasUI_AuctionHouse/UI/SellStrip.lua). Used
+-- by the /way TomTom-conflict check at PLAYER_LOGIN. Without the shim, a future
+-- build that drops the global would make the check silently conclude "TomTom
+-- absent" and re-register /way, re-creating the slash-command clash the v1.6.28
+-- TomTom detection exists to prevent.
+local IsAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
 
 local VUI = _G.VeritasUI
 if not VUI then
@@ -91,7 +98,12 @@ end
 -- Delves, Blizzard disables item sales entirely while still
 -- allowing repair.  If AutoRepair were chained off AutoSellJunk,
 -- the inability to sell would also kill repair.
-local SELL_BATCH         = 11
+local SELL_BATCH         = 11    -- items per cycle. Verified working in-game on
+                                 -- 12.0.7 (junk sells reliably, nothing stranded).
+                                 -- Supersedes the conservative 9 from changelog
+                                 -- v1.3.14 (12→9 era); the BAG_UPDATE_DELAYED +
+                                 -- SELL_RETRY_SEC loop below paces successive batches,
+                                 -- so the exact per-cycle count is not a hard ceiling.
 local SELL_RETRY_SEC     = 0.5
 local MAX_NO_PROGRESS    = 5     -- bail if no item is removed for this many seconds
 local saleTotal              -- nil when idle; total value of junk at sell start
@@ -929,7 +941,7 @@ local function AFK_RefreshInfo()
     -- Level · ilvl · zone
     local level = UnitLevel("player") or "?"
     local ilvlStr = "—"
-    local ok, overall, equipped = pcall(GetAverageItemLevel)
+    local ok, _, equipped = pcall(GetAverageItemLevel)
     if ok and equipped then
         -- equipped may be a secret value; guard the format call
         local fmtOk, s = pcall(format, "%.0f", equipped)

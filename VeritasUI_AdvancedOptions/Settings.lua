@@ -1,7 +1,7 @@
 -- VeritasUI_AdvancedOptions / Settings.lua
 -- Main window (PortraitFrameTemplate + tabs) + native Blizzard Settings entry.
 
-local ADDON_NAME, AO = ...
+local _, AO = ...
 local VUI = _G.VeritasUI
 if not VUI then return end
 

@@ -23,7 +23,6 @@ local format      = string.format
 local floor       = math.floor
 local strtrim     = strtrim
 local CreateFrame = CreateFrame
-local C_AuctionHouse = C_AuctionHouse
 
 ----------------------------------------------------------------
 --  Constants

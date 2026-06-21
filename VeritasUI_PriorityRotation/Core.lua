@@ -35,7 +35,6 @@ end
 ----------------------------------------------------------------
 --  Localize hot globals
 ----------------------------------------------------------------
-local _G              = _G
 local ipairs          = ipairs
 local pcall, tonumber = pcall, tonumber
 local type, format    = type, string.format
@@ -622,24 +621,25 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
     elseif cmd == "test" then
         VUI.Print("Priority Rotation", "Diagnostic:")
         local p = PR:CurrentProfile()
-        if not p then print("  |cFFFF4444No profile!|r"); return end
-        print("  Spec: |cFFFFFF00" .. PR:GetCurrentSpecLabel() .. "|r")
-        print("  Compiled: |cFFFFFF00" .. #PR.compiledSequence .. " steps|r")
+        if not p then VUI.Print("Priority Rotation", "  |cFFFF4444No profile!|r"); return end
+        VUI.Print("Priority Rotation", "  Spec: |cFFFFFF00" .. PR:GetCurrentSpecLabel() .. "|r")
+        VUI.Print("Priority Rotation", "  Compiled: |cFFFFFF00" .. #PR.compiledSequence .. " steps|r")
         for i, s in ipairs(PR.compiledSequence) do
             local label = PR.compiledNames and PR.compiledNames[i] or s
-            print("    " .. i .. ". " .. label)
+            VUI.Print("Priority Rotation", "    " .. i .. ". " .. label)
         end
         local override = PR.overrides[PR.MACRO_NAME]
         if override and override.keys then
-            print("  Keybind: |cFF00FF00" .. tconcat(override.keys, ", ") .. "|r")
+            VUI.Print("Priority Rotation", "  Keybind: |cFF00FF00" .. tconcat(override.keys, ", ") .. "|r")
         elseif override then
-            print("  Macro slot: |cFFFF8800" .. override.slot .. "|r (no keybind)")
+            VUI.Print("Priority Rotation", "  Macro slot: |cFFFF8800" .. override.slot .. "|r (no keybind)")
         else
-            print("  Override: |cFFFF8800not active|r")
+            VUI.Print("Priority Rotation", "  Override: |cFFFF8800not active|r")
         end
 
     elseif cmd == "diag" then
-        VUI.Print("Priority Rotation", "|cFFFFFF0012.0.5 API Diagnostic|r")
+        local patch = (GetBuildInfo and select(1, GetBuildInfo())) or "?"
+        VUI.Print("Priority Rotation", "|cFFFFFF00" .. patch .. " API Diagnostic|r")
         VUI.Print("Priority Rotation", "─────────────────────────────────────────")
 
         local G = "|cFF00FF00"
@@ -650,8 +650,9 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         local hasIssecret = type(issecretvalue) == "function"
         VUI.Print("Priority Rotation", "  issecretvalue():          " .. (hasIssecret and G.."available"..E or R.."NOT FOUND"..E))
 
+        -- luacheck: ignore 143 (table.freeze is a deliberate feature-probe)
         local hasFreeze = type(table.freeze) == "function"
-        VUI.Print("Priority Rotation", "  table.freeze():           " .. (hasFreeze and G.."available (12.0.5 confirmed)"..E or Y.."not found (pre-12.0.5?)"..E))
+        VUI.Print("Priority Rotation", "  table.freeze():           " .. (hasFreeze and G.."available"..E or Y.."not found"..E))
 
         local hasRegBtn = C_ActionBar and type(C_ActionBar.RegisterActionUIButton) == "function"
         VUI.Print("Priority Rotation", "  C_ActionBar.RegisterActionUIButton: " .. (hasRegBtn and G.."available"..E or R.."NOT FOUND"..E))
@@ -799,7 +800,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         print("  |cFFFFFF00/pr reset|r     — reset to spec defaults")
         print("  |cFFFFFF00/pr clear|r     — clear spell list")
         print("  |cFFFFFF00/pr test|r      — show compiled sequence")
-        print("  |cFFFFFF00/pr diag|r      — 12.0.5 API diagnostic")
+        print("  |cFFFFFF00/pr diag|r      — live-patch API diagnostic")
         print("  |cFFFFFF00/pr debug|r     — toggle debug output")
 
     else

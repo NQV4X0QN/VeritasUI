@@ -4,25 +4,20 @@
 -- Uses Blizzard's ScrollBox + MinimalScrollBar for native virtual
 -- scrolling — same system as Talents, Professions, Housing.
 
-local ADDON_NAME, AO = ...
+local _, AO = ...
 local VUI = _G.VeritasUI
 if not VUI then return end
 
 ----------------------------------------------------------------
 --  Localize hot globals
 ----------------------------------------------------------------
-local _G             = _G
-local pairs, ipairs  = pairs, ipairs
+local ipairs         = ipairs
 local pcall          = pcall
-local type, tostring = type, tostring
 local strlower       = string.lower
 local strfind        = string.find
 local format         = string.format
-local math_max       = math.max
-local math_min       = math.min
 local CreateFrame    = CreateFrame
 local C_Timer        = C_Timer
-local C_CVar         = C_CVar
 local GameTooltip    = GameTooltip
 
 ----------------------------------------------------------------
@@ -53,7 +48,7 @@ local filteredList   = {}    -- current search-filtered view
 -- intentionally broad.  Dead names — CVars that existed in earlier
 -- builds but have been removed in Midnight or any subsequent patch
 -- cycle — are silently skipped at runtime via C_CVar.GetCVarInfo
--- returning nil (see Strategy 3 loop at line 225).  Entries are NOT
+-- returning nil (see Strategy 3 loop at line 223).  Entries are NOT
 -- pruned on Midnight removals.
 --
 -- Rationale: removing a name from this list risks accidentally

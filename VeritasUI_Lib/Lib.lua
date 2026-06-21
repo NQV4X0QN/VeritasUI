@@ -8,7 +8,7 @@ if _G.VeritasUI then return end   -- guard against double-load
 --  Localize hot globals
 ----------------------------------------------------------------
 local _G             = _G
-local pairs, ipairs  = pairs, ipairs
+local ipairs         = ipairs
 local pcall, type    = pcall, type
 local next           = next
 local math_abs       = math.abs
@@ -16,7 +16,6 @@ local format         = string.format
 local CreateFrame    = CreateFrame
 local C_Timer        = C_Timer
 local InCombatLockdown = InCombatLockdown
-local MouseIsOver    = MouseIsOver
 
 local GetMouseFocus  = GetMouseFocus or function()
     local frames = GetMouseFoci()

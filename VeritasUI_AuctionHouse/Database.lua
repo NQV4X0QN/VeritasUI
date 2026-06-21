@@ -26,8 +26,6 @@ local VUI = _G.VeritasUI
 if not VUI then return end
 
 local floor   = math.floor
-local min     = math.min
-local max     = math.max
 local time    = time
 local tonumber = tonumber
 local pairs   = pairs

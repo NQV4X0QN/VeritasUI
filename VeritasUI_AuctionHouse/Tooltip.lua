@@ -52,9 +52,10 @@ local AGE_COLOR = "|cFF808080"   -- grey, for the secondary "N seen · X days" l
 
 -- Compute the raw price + optional extras line for a DB key. Returns
 --   price (int copper), extrasLine (string|nil)   — or nil if no price/disabled.
--- The CALLER renders the price: the GameTooltip path uses the native
--- SetTooltipMoney money frame (pixel-identical to the "Sell Price:" line); the
--- battle-pet path falls back to a text coin string (its custom frame has no
+-- The CALLER renders the price: the GameTooltip path draws an OWNED coin
+-- fontstring (inline |A| atlas coins + NumberFontNormalRight) — it NEVER calls
+-- Blizzard money code (see the "WHY NOT MoneyFrame_Update" block below / LM-7).
+-- The battle-pet path uses a text coin string (its custom frame has no
 -- money-frame support).
 local function BuildPriceData(key)
     if not S("ttShowPrice") then return nil end
@@ -270,7 +271,8 @@ end
 
 -- Append our price line(s) to a custom battle-pet tooltip FRAME (BattlePetTooltip
 -- / FloatingBattlePetTooltip). These are NOT GameTooltips — no money-frame support,
--- so this path renders a text coin string (the GameTooltip path uses SetTooltipMoney).
+-- so this path renders a text coin string (the GameTooltip path draws an owned
+-- coin fontstring — never Blizzard money code).
 local function AppendPetPrice(petTooltip, speciesID)
     if not (petTooltip and speciesID) then return end
     local price, extras = BuildPriceData("p:" .. speciesID)

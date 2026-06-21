@@ -11,7 +11,6 @@ end
 ----------------------------------------------------------------
 --  Localize hot globals
 ----------------------------------------------------------------
-local _G             = _G
 local pairs          = pairs
 local pcall          = pcall
 local type           = type

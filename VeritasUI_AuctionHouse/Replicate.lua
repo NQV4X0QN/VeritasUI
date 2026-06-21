@@ -369,13 +369,17 @@ local ef = CreateFrame("Frame")
 ef:RegisterEvent("REPLICATE_ITEM_LIST_UPDATE")
 ef:SetScript("OnEvent", function(_, event)
     if event == "REPLICATE_ITEM_LIST_UPDATE" then
-        -- DIAGNOSTIC (temp): print whenever the snapshot-ready event arrives, BEFORE
-        -- the guard, so a "first-scan-of-the-day hang" can be classified:
+        -- DEBUG TRACE (permanent, debug-gated): prints whenever the snapshot-ready
+        -- event arrives, BEFORE the guard. Retained as a diagnostic aid for the
+        -- "first-scan-of-the-day hang" class of bug (root-caused + fixed in v1.7.9 via
+        -- FireWhenReady + the 10s retry below). If that hang ever regresses, this line
+        -- classifies it instantly:
         --   * line appears during a hang  → event DID fire; our guard dropped it
-        --                                    (scanning/co state bug — fix in our code)
-        --   * line NEVER appears in a hang → server never delivered the snapshot for
-        --                                    the first request (readiness/timing — fix
-        --                                    by deferring/retrying ReplicateItems)
+        --                                   (scanning/co state bug — fix in our code)
+        --   * line NEVER appears in a hang → server never delivered the snapshot for the
+        --                                   first request (readiness/timing — already
+        --                                   handled by FireWhenReady, but re-check it)
+        -- Costs nothing in normal play (only emits under VeritasUI.debug).
         if VUI.debug then
             VUI.Print(AH.TAG, "REPLICATE_ITEM_LIST_UPDATE fired (scanning="
                 .. tostring(scanning) .. ", co=" .. tostring(co ~= nil) .. ")")

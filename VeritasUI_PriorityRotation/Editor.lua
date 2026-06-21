@@ -195,24 +195,6 @@ local function HandleDrop(slotIndex)
     if PR.Editor then PR.Editor:Refresh() end
 end
 
-local function AppendSpell()
-    local spells = PR:CurrentProfile().spells
-    if #spells >= PR.MAX_SLOTS then
-        VUI.Print("Priority Rotation", "List full (max " .. PR.MAX_SLOTS .. ").")
-        return
-    end
-    local entry, errMsg = BuildEntryFromCursor()
-    if not entry then
-        if errMsg then VUI.Print("Priority Rotation", errMsg) end
-        return
-    end
-
-    spells[#spells + 1] = entry
-    ClearCursor()
-    PR:SaveCurrentProfile()
-    if PR.Editor then PR.Editor:Refresh() end
-end
-
 -- ── Build the editor ─────────────────────────────────────────
 function PR:BuildEditor(parent, contentWidth)
     local W = contentWidth or parent:GetWidth()
