@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.14] - 2026-06-21
+
+### Fixed
+- `VeritasUI_ZoneQuests` — **quests are now filtered by their actual objective location instead of the quest-log section header, fixing both missing in-zone quests and bleed-in from neighbouring zones.** The previous logic matched a quest's quest-log **header** string against the current zone name. Midnight's quest log groups many quests under non-geographic activity headers (Void Assaults, Dungeon, Meta, Abundance), so quests physically in the current zone but filed under such a header were wrongly hidden — e.g. standing in Silvermoon City, "Stalkers of the Stars" (in Murder Row, filed under "Void Assaults") never appeared. The module now derives the current-zone quest set from `C_QuestLog.GetQuestsOnMap` on the player's best map (walking up to the closest map level that has quests), and keeps a quest only when its **per-POI `mapID`** belongs to the current zone or a descendant sub-area. This correctly surfaces activity-headered quests that are genuinely local while rejecting sibling-zone bleed-in (e.g. Zul'Aman quests whose POIs draw inside the Eversong Woods map carry `mapID` 2536, a sibling, and are excluded; Silvermoon City quests carry `mapID` 2393, a child of Eversong, and are kept). Verified in-game across Eversong Woods, Zul'Aman, Voidstorm, and Harandar, including correct re-filtering on every zone transition. The "Always Show" pin toggles (Campaign / Important / Legendary / Meta / Daily & Weekly) and super-track preservation are unchanged and continue to override the zone filter, so a pinned quest type still shows everywhere regardless of zone. (`ZoneQuests.lua`)
+
+### Internal
+- `VeritasUI_ZoneQuests` — removed the legacy header-string matching machinery (`BuildZoneNameSet`, `HeaderMatches`, the directional-prefix stripper, and the zone-name cache) now that location is determined purely from map IDs. `/zq debug` rewritten to report the current best map, the resulting zone quest set, and a per-quest `zone` / `pin` / `dropped` verdict. Two map-based approaches were tried and rejected before landing on the per-POI `mapID` filter: walking map descendants/ancestors of the current zone (over- or under-showed depending on direction), and `C_QuestLog.GetQuestUiMapID` / global `GetQuestUiMapID` (returns a quest's anchor/hub map, not its objective zone — observed returning Silvermoon City for Voidstorm and Eversong quests alike, so it cannot distinguish a quest's real location). (`ZoneQuests.lua`)
+
 ## [1.7.13] - 2026-06-20
 
 ### Internal

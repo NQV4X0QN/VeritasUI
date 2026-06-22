@@ -25,75 +25,75 @@ local DEFAULTS = {
 
 local db = nil  -- assigned only after ADDON_LOADED
 
--- ── Directional prefix stripper ───────────────────────────────────
-local DIRECTIONAL = {
-    "northern ", "southern ", "eastern ", "western ",
-    "upper ", "lower ", "inner ", "outer ", "the ",
-}
-local function StripDir(s)
-    local changed = true
-    while changed do
-        changed = false
-        for _, p in ipairs(DIRECTIONAL) do
-            if s:sub(1, #p) == p then
-                s = s:sub(#p + 1)
-                changed = true
-                break
-            end
-        end
-    end
-    return s
-end
-
--- ── Zone name set ─────────────────────────────────────────────────
+-- ── Map-type constants (used by the location-based quest scan) ────
 local MAP_TYPE_WORLD  = (Enum and Enum.UIMapType and Enum.UIMapType.World)  or 1
 local MAP_TYPE_COSMIC = (Enum and Enum.UIMapType and Enum.UIMapType.Cosmic) or 0
 
-local function BuildZoneNameSet()
-    local t = {}
-    local function add(s)
-        if not s or s == "" then return end
-        local lo = s:lower()
-        t[lo] = true
-        local st = StripDir(lo)
-        if st ~= lo then t[st] = true end
-    end
-    add(GetRealZoneText())
-    add(GetZoneText())
-    add(GetSubZoneText())
+-- ── Valid map set: current best map + descendant sub-areas ────────
+-- The maps that count as "this zone" for the purpose of accepting a
+-- POI. A city inside the current zone (Silvermoon City 2393 under
+-- Eversong Woods 2395) is a descendant and counts; a SIBLING zone whose
+-- art merely abuts the current map (Zul'Aman 2536) is NOT a descendant
+-- and is rejected. Returns (set, bestMapID); bestMapID 0 if unresolved.
+local function BuildValidMapSet()
+    local set = {}
     local ok, mapID = pcall(C_Map.GetBestMapForUnit, "player")
-    if ok and mapID and mapID > 0 then
-        local seen, safety = {}, 0
-        while mapID and mapID > 0 and safety < 20 do
-            if seen[mapID] then break end
-            seen[mapID] = true
-            safety = safety + 1
-            local info = C_Map.GetMapInfo(mapID)
-            if not info then break end
-            local mt = info.mapType or -1
-            if mt == MAP_TYPE_WORLD or mt == MAP_TYPE_COSMIC then break end
-            add(info.name)
-            local par = info.parentMapID
-            if not par or par <= 0 then break end
-            mapID = par
+    if not ok or not mapID or mapID <= 0 then return set, 0 end
+    set[mapID] = true
+    local cok, children = pcall(C_Map.GetMapChildrenInfo, mapID, nil, true)
+    if cok and children then
+        for _, c in ipairs(children) do
+            if c.mapID then set[c.mapID] = true end
         end
     end
-    return t
+    return set, mapID
 end
 
-local function HeaderMatches(header, nameSet)
-    if not header or header == "" then return false end
-    local h = header:lower()
-    if nameSet[h] then return true end
-    local hs = StripDir(h)
-    if nameSet[hs] then return true end
-    for name in pairs(nameSet) do
-        if #name > 2 then
-            if h:find(name, 1, true) then return true end
-            if #hs > 2 and name:find(hs, 1, true) then return true end
+-- ── Zone quest-ID set (location-based, per-POI mapID filtered) ────
+-- Quest IDs whose POIs are on the current zone map (C_QuestLog.GetQuestsOnMap)
+-- AND whose POI entry's own mapID belongs to the current zone or a
+-- descendant sub-area. The per-POI mapID is the authoritative fix for the
+-- sibling-bleed problem: when Zul'Aman (2536) terrain draws inside the
+-- Eversong (2395) map, GetQuestsOnMap returns the Zul'Aman quests too, but
+-- each carries mapID=2536, so the valid-map test rejects them. Verified
+-- in-game (Eversong, best map 2395; via a temporary POI-struct probe):
+--   Swords / Shrine (Zul'Aman)  → entry mapID 2536 → REJECTED
+--   Windrunner (Eversong)        → entry mapID 2395 → kept
+--   Stalkers / Veterans          → entry mapID 2393 (Silvermoon, a child) → kept
+-- (GetQuestUiMapID was tried and REJECTED — it returns a quest's anchor/hub
+-- map, not its objective zone; the per-POI mapID here is the objective's.)
+-- Walks up to the closest non-empty map level, then filters that level.
+-- Returns a set keyed by questID.
+local function BuildZoneQuestSet()
+    local set = {}
+    local validMaps, bestMap = BuildValidMapSet()
+    if not bestMap or bestMap == 0 then return set end
+    local mapID, seen, safety = bestMap, {}, 0
+    while mapID and mapID > 0 and safety < 20 do
+        if seen[mapID] then break end
+        seen[mapID] = true
+        safety = safety + 1
+        local info = C_Map.GetMapInfo(mapID)
+        if not info then break end
+        local mt = info.mapType or -1
+        if mt == MAP_TYPE_WORLD or mt == MAP_TYPE_COSMIC then break end
+        local quests = C_QuestLog.GetQuestsOnMap(mapID)
+        if quests and #quests > 0 then
+            for _, e in ipairs(quests) do
+                -- Accept only POIs whose own map is this zone or a sub-area;
+                -- reject sibling-zone bleed-ins. If the entry has no mapID,
+                -- fall back to accepting (the POI is on our map at all).
+                if e.questID and (not e.mapID or e.mapID == 0 or validMaps[e.mapID]) then
+                    set[e.questID] = true
+                end
+            end
+            return set   -- stop at the closest level that actually has quests
         end
+        local par = info.parentMapID
+        if not par or par <= 0 then break end
+        mapID = par
     end
-    return false
+    return set
 end
 
 -- ── Watch type ────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ end
 -- immediately after a zone-change-triggered sync.
 local lastDirectSync = 0
 local SYNC_COOLDOWN  = 0.5
-local cachedNameSet  = nil   -- rebuilt on ZONE_CHANGED*, reused for QUEST_LOG_UPDATE
+local cachedQuestSet = nil   -- rebuilt on ZONE_CHANGED*, reused for QUEST_LOG_UPDATE
 
 local function SyncTracking(verbose)
     if not db or not db.enabled then
@@ -173,16 +173,15 @@ local function SyncTracking(verbose)
         return
     end
 
-    local nameSet = cachedNameSet
-    if not nameSet then
-        nameSet = BuildZoneNameSet()
-        cachedNameSet = nameSet   -- cache first build so QUEST_LOG_UPDATE
-                                  -- doesn't rebuild on every fire until the
-                                  -- first ZONE_CHANGED event invalidates it
+    local questSet = cachedQuestSet
+    if not questSet then
+        questSet = BuildZoneQuestSet()
+        cachedQuestSet = questSet  -- cache first build so QUEST_LOG_UPDATE
+                                   -- doesn't rebuild on every fire until the
+                                   -- first ZONE_CHANGED event invalidates it
     end
     local watchType = GetWatchType()
     local removed, added = 0, 0
-    local currentHeader = nil
 
     -- Preserve the quest the player is actively navigating to (minimap arrow).
     -- Checking at sync time avoids event-ordering and arg-capture issues.
@@ -194,17 +193,17 @@ local function SyncTracking(verbose)
         local ok, info = pcall(C_QuestLog.GetInfo, i)
         if not ok or not info then
             if verbose then print("[ZQ sync] GetInfo(" .. i .. ") failed") end
-        elseif info.isHeader then
-            currentHeader = info.title
-        elseif not info.isHidden and info.questID then
+        elseif not info.isHeader and not info.isHidden and info.questID then
             local pinned, tag = IsAlwaysTracked(info)
-            local inZone = HeaderMatches(currentHeader, nameSet)
+            local inZone = questSet[info.questID] or false
             local superTracked = superQuestID ~= 0 and info.questID == superQuestID
 
             if pinned or inZone or superTracked then
                 local ok2 = pcall(C_QuestLog.AddQuestWatch, info.questID, watchType)
                 if verbose then
-                    local lbl = tag and (" (" .. tag .. ")") or (superTracked and " (super-tracked)") or ""
+                    local lbl = tag and (" (" .. tag .. ")")
+                        or (inZone and " (zone)")
+                        or (superTracked and " (super-tracked)") or ""
                     print("[ZQ sync] ADD" .. lbl .. " '" .. tostring(info.title) .. "' ok=" .. tostring(ok2))
                 end
                 if ok2 then added = added + 1 end
@@ -395,10 +394,10 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         or event == "ZONE_CHANGED_NEW_AREA"
         or event == "ZONE_CHANGED_INDOORS" then
         -- Always invalidate the cache so the next sync uses fresh zone data.
-        cachedNameSet = nil
+        cachedQuestSet = nil
         if not db or not db.enabled then return end
         if debounceTimer then debounceTimer:Cancel(); debounceTimer = nil end
-        cachedNameSet = BuildZoneNameSet()
+        cachedQuestSet = BuildZoneQuestSet()
         lastDirectSync = GetTime()
         SyncTracking(false)
 
@@ -492,16 +491,25 @@ SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
         print("  RealZone: " .. (GetRealZoneText() or "nil"))
         print("  Zone:     " .. (GetZoneText()     or "nil"))
         print("  SubZone:  " .. (GetSubZoneText()  or "nil"))
-        local ns = BuildZoneNameSet()
-        local nl = {}
-        for n in pairs(ns) do table.insert(nl, n) end
-        table.sort(nl)
-        print("  Name set: " .. table.concat(nl, ", "))
+        local ok0, bestMap = pcall(C_Map.GetBestMapForUnit, "player")
+        if ok0 and bestMap then
+            local mi = C_Map.GetMapInfo(bestMap)
+            print("  Best map: " .. bestMap .. " (" .. (mi and mi.name or "?") .. ")")
+        end
+        local qs = BuildZoneQuestSet()
+        local qn = 0
+        for _ in pairs(qs) do qn = qn + 1 end
+        print("  Zone quest set: " .. qn .. " quest(s)")
         for i = 1, C_QuestLog.GetNumQuestLogEntries() do
             local ok, info = pcall(C_QuestLog.GetInfo, i)
-            if ok and info and info.isHeader then
-                local m = HeaderMatches(info.title, ns)
-                print("    [" .. (m and "|cFF44FF44MATCH|r" or "|cFFFF6666miss|r") .. "] " .. tostring(info.title))
+            if ok and info and not info.isHeader and not info.isHidden and info.questID then
+                local pinned, tag = IsAlwaysTracked(info)
+                local inZone = qs[info.questID] or false
+                local reason
+                if inZone then reason = "|cFF44FF44zone|r"
+                elseif pinned then reason = "|cFF44AAFFpin:" .. tostring(tag) .. "|r"
+                else reason = "|cFFFF6666dropped|r" end
+                print("    [" .. reason .. "] " .. tostring(info.title))
             end
         end
         print("  WatchType: " .. tostring(GetWatchType()))
