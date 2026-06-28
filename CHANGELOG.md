@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.17] - 2026-06-27
+
+### Fixed
+- `VeritasUI_AuctionHouse` — **auction-price tooltip coin column now aligns pixel-perfectly across operating systems.** The first coin digit of the `Auction:` line sits directly under the first digit of the native `Sell Price:` line on both macOS and Windows. Previously the column position was a hardcoded constant (`COIN_COLUMN_X = 59`) — the rendered px width of the native `"Sell Price: "` prefix, measured once on macOS. macOS and Windows rasterize the same FRIZQT__/12 glyphs to slightly different pixel widths, so the baked constant drifted: sub-pixel on macOS (where it was measured), ~1px on Windows. The column is now **measured live at render time** via `GetStringWidth()` of the native prefix string in the actual tooltip line font, so each OS self-corrects — the same principle already used to copy the live label font (rather than trusting a stored value). `COIN_COLUMN_FALLBACK = 59` is retained for the measure-failed path; `COIN_COLUMN_NUDGE = 0` added as an optional manual fine-tune. Confirmed pixel-perfect on Mac and PC. (`Tooltip.lua`)
+
+### Internal
+- Verified during this session that **healthy first-event scan latency is ~28–40s+**, not the ~2–5s the v1.7.16 changelog note speculated. Captured trace from a live scan: `time-to-first-event=27.8s`, `total=32.1s` for 268,154 auctions → 8,163 items, with the first request dropped and rescued by the v1.7.9 10s retry. This means the **10s retry threshold fires inside the normal response window** — it is not detecting a drop, it re-fires while the first request is still legitimately in flight. The planned bounded-retry fix must therefore also **raise the threshold well above ~40s**, gated on `co == nil`, before it is correct. Still deferred pending a captured day-boundary *hang* trace (the healthy baseline is now in hand).
+
 ## [1.7.16] - 2026-06-27
 
 ### Internal
