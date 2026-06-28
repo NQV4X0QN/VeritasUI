@@ -101,9 +101,12 @@ end
 --   * Coins  = the Coin-Gold / Coin-Silver / Coin-Copper atlases at 13x13, emitted as
 --              inline |A:atlas:h:w|a markup in a fontstring. Pure text → zero Blizzard
 --              arithmetic → cannot throw on a Secret Value, in any content.
---   * Numbers= the NumberFontNormalRight FONT OBJECT (probe-confirmed = ARIALN.TTF / 14 /
---              OUTLINE — Blizzard's own money font), so digits are pixel-identical to the
---              "Sell Price:" line and track any future Blizzard font change automatically.
+--   * Numbers= the tooltip BODY font, copied at render time from our own label line
+--              (probe-verified 12.0.7 = FRIZQT__ / 12 / no-outline, identical to the
+--              native "Sell Price:" line). Was NumberFontNormalRight (ARIALN/14/OUTLINE)
+--              until 12.0.7, when Blizzard moved the price off the MoneyFrame to an inline
+--              body-font text line; the old pin no longer matched, so we now copy the live
+--              label font and genuinely track any future Blizzard restyle.
 --   * Label  = a real tooltip AddLine ("Auction:"), so the label inherits the exact
 --              tooltip body font the native "Sell Price:" label uses — no font guessing.
 --   * The coin fontstring is parented to UIParent (never the tooltip — touching the
@@ -113,16 +116,19 @@ local PRICE_PREFIX = "Auction:"
 
 -- Fixed x-offset (px, from the "Auction:" label's LEFT edge) at which the coin block
 -- starts, chosen so our coins line up under the native "Sell Price:" coin column.
--- TUNING KNOB: increase to nudge the coins RIGHT, decrease to nudge LEFT. Starting at
--- 78 ≈ the pixel width of "Sell Price:" + its gap in the tooltip font; dial to taste.
-local COIN_COLUMN_X = 70
+-- TUNING KNOB: increase to nudge the coins RIGHT, decrease to nudge LEFT. Set to 59 =
+-- probe-measured rendered px width of the native "Sell Price: " prefix in the tooltip
+-- body font (FRIZQT__/12), so our first coin sits directly under the native first digit.
+local COIN_COLUMN_X = 59
 
--- Inline atlas coin markup. Native money-frame coins probe at 13x13, but inline |A|
--- markup renders a hair larger at the same number, so 12 matches the eye better.
--- (One-line tunable if it still looks off.)
-local COIN_G = "|A:Coin-Gold:12:12|a"
-local COIN_S = "|A:Coin-Silver:12:12|a"
-local COIN_C = "|A:Coin-Copper:12:12|a"
+-- Inline atlas coin markup, matched EXACTLY to the native "Sell Price:" line via raw-
+-- markup probe (12.0.7): |A:coin-gold:14:14:2:0|a. The :14:14 is the icon size (the
+-- old "13x13" code comment was wrong — native is 14); the trailing :2:0 are the atlas
+-- x/y pixel offsets native uses to vertically center the coin on the text baseline.
+-- Omitting either made ours read small and sit slightly off. (Sizes are tunable here.)
+local COIN_G = "|A:coin-gold:14:14:2:0|a"
+local COIN_S = "|A:coin-silver:14:14:2:0|a"
+local COIN_C = "|A:coin-copper:14:14:2:0|a"
 
 -- Build the coin string for a copper amount: number immediately followed by its coin,
 -- a space between denominations (matches GetCoinTextureString's grouping). Only nonzero
@@ -157,8 +163,10 @@ AH.Tooltip.CoinMarkup = CoinMarkup
 --   (This is the corrected version of the earlier failed "overlay" attempt — that one
 --   was parented to UIParent and rendered invisible; parenting to the tooltip fixes it.)
 --
--- FONT: coins use NumberFontNormalRight (ARIALN/14/OUTLINE — probe-verified, the native
---   money font). This is NON-NEGOTIABLE and must never revert to the label font.
+-- FONT: coins copy the tooltip BODY font from our label line at render time (probe-
+--   verified 12.0.7 = FRIZQT__/12/no-outline, the native "Sell Price:" font). Do NOT
+--   re-pin to NumberFontNormalRight — that was ARIALN/14/OUTLINE and stopped matching
+--   when Blizzard moved the price to an inline body-font line in 12.0.7.
 -- CRASH-SAFE: pure text + inline |A| atlas coin markup, zero Blizzard money math, so the
 --   silverWidth Secret-Value trap (Delves/M+/raids) is never touched.
 
@@ -167,7 +175,7 @@ local coinFS = {}   -- [tooltip] = our owned coin fontstring (one per tooltip fr
 local function GetCoinFontString(tooltip)
     local fs = coinFS[tooltip]
     if fs then return fs end
-    fs = tooltip:CreateFontString(nil, "OVERLAY", "NumberFontNormalRight")
+    fs = tooltip:CreateFontString(nil, "OVERLAY", "GameTooltipText")
     fs:SetTextColor(1, 1, 1)
     coinFS[tooltip] = fs
     -- Our fontstring is parented to the tooltip and PERSISTS across hovers. The Item
@@ -186,6 +194,7 @@ end
 
 local function RenderCoinLine(tooltip, price)
     if not (tooltip.AddLine and tooltip.CreateFontString) then return false end
+
     -- Friz label line (matches native "Sell Price:" label font). Reserves the row.
     tooltip:AddLine(PRICE_PREFIX, 1, 1, 1)
 
@@ -202,6 +211,13 @@ local function RenderCoinLine(tooltip, price)
     -- of the freshly-added label or the money frame (stale/nil mid-layout → the throw
     -- that vanished the line earlier). COIN_COLUMN_X is the single tuning knob.
     local fs = GetCoinFontString(tooltip)
+    -- Match the native "Sell Price:" coins exactly: probe-verified 12.0.7 they are the
+    -- tooltip BODY font (FRIZQT__ / 12 / no-outline), identical to our label line. Copy
+    -- the font straight off our just-added label fontstring so we track Blizzard's font
+    -- per-tooltip and across future restyles — what the old NumberFontNormalRight pin
+    -- only claimed to do but didn't (it stayed ARIALN/14/OUTLINE after the 12.0.7 change).
+    local lf, ls, lflags = left:GetFont()
+    if lf then fs:SetFont(lf, ls, lflags or "") end
     fs:SetText(CoinMarkup(price))
     fs:ClearAllPoints()
     fs:SetPoint("LEFT", left, "LEFT", COIN_COLUMN_X, 0)

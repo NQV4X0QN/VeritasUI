@@ -254,6 +254,10 @@ end
 local function DoFire(auto)
     scanning = true          -- set ONLY here, at the real fire moment
     C_AuctionHouse.ReplicateItems()
+    -- Additive signal for the progress UI: the request has now gone out, so we've
+    -- left the throttle/connect wait and entered the snapshot wait. No behavior
+    -- change — purely a phase marker for any listener (ScanProgress).
+    AH.Events.Fire("AH_SCAN_REQUESTED", auto and true or false)
     if VUI.debug then
         VUI.Print(AH.TAG, "ReplicateItems() fired (auto=" .. tostring(auto and true or false) .. ")")
     end

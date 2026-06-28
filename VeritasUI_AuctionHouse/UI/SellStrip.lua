@@ -368,7 +368,13 @@ function Render()
 end
 
 function Refresh()
-    if not (state.built and state.strip:IsShown()) then return end
+    -- Gate on the AH SESSION, not visibility, so the bag warms while the strip
+    -- is still hidden on the Buy tab. Render() is safe on a hidden strip: it only
+    -- sets button .data and Show/Hide on children of a hidden parent (nothing
+    -- draws), and the tooltip branch is false because IsMouseOver() is false on a
+    -- hidden frame. This kills the on-screen reshuffle as GET_ITEM_INFO_RECEIVED
+    -- resolves a cold item cache.
+    if not (state.built and AH.isOpen) then return end
     state.items = CollectItems()
     Render()
 end
@@ -538,6 +544,8 @@ end
 if AH.Events and AH.Events.On then
     AH.Events.On("AH_OPEN", function()
         Build()
-        UpdateVisibility()
+        UpdateVisibility()  -- shows + refreshes if you opened straight into Sell
+        Refresh()           -- warm the bag on the Buy tab; strip stays hidden,
+                            -- so the GET_ITEM_INFO_RECEIVED burst settles off-screen
     end)
 end
