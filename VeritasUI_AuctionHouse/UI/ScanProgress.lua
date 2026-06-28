@@ -318,7 +318,7 @@ AH.Events.On("AH_SCAN_COMPLETE", function(committed, rows)
 end)
 
 AH.Events.On("AH_SCAN_FAILED", function()
-    ShowTerminal("Scan failed.", COLOR_FAIL, 1)
+    ShowTerminal("Scan failed — reopen the AH or /reload.", COLOR_FAIL, 1)
 end)
 
 -- AH closing aborts any in-flight scan (Replicate's AH_CLOSED handler tears down);

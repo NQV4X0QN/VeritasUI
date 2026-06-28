@@ -40,13 +40,18 @@ AH.Replicate = {}
 local SCAN_FLOOR_SECONDS    = 15 * 60   -- minimum gap between full scans
 local ROWS_PER_SLICE        = 2000      -- safety cap on rows per frame
 local FRAME_BUDGET_MS       = 8         -- ~8ms/frame work budget (debugprofilestop)
-local REPLICATE_RETRY_DELAY = 10        -- seconds to wait for REPLICATE_ITEM_LIST_UPDATE before retrying
+local REPLICATE_RETRY_DELAY = 45        -- seconds to wait for REPLICATE_ITEM_LIST_UPDATE before retrying.
+                                        -- Set ABOVE measured healthy first-event latency (~28-40s+) so a
+                                        -- normal scan's event arrives and cancels the tick before it re-fires.
+local REPLICATE_MAX_ATTEMPTS = 4        -- total ReplicateItems() calls before declaring failure
+                                        -- (1 initial + 3 retries). At 45s each, failure surfaces ~180s.
 
 local scanning   = false   -- a scan coroutine is in progress
 local co                    -- the active coroutine
 local driver               -- OnUpdate ticker frame
 local progress   = 0        -- 0..1
 local retryTimer            -- C_Timer handle watching for a dropped ReplicateItems()
+local attempts   = 0        -- count of ReplicateItems() calls in the current scan (cap: REPLICATE_MAX_ATTEMPTS)
 local fireTime              -- GetTime() at the moment ReplicateItems() was issued
 local firstEventLogged      -- per-scan guard: trace only the FIRST event pulse, not every chunk
 
@@ -263,37 +268,63 @@ local function CancelRetry()
     end
 end
 
-local function DoFire(auto)
-    scanning = true          -- set ONLY here, at the real fire moment
-    fireTime = GetTime()     -- stamp for first-event / total-scan latency measurement
+-- Issue one ReplicateItems() request and arm a re-arming retry tick. Called for the
+-- INITIAL request (attempt 1, from DoFire) and for each retry (from the timer below).
+-- The server can silently DROP a request, producing no REPLICATE_ITEM_LIST_UPDATE at
+-- all; a dropped request is therefore detectable only by the ABSENCE of the event after
+-- REPLICATE_RETRY_DELAY. Because healthy first-event latency is ~28-40s+, the delay is
+-- set to 45s — above the normal window — so a healthy scan's event arrives and cancels
+-- the tick before it ever re-fires (no redundant requests on the happy path).
+--
+-- This is NOT a watchdog and never interrupts a live scan: the tick acts ONLY when
+-- co == nil (coroutine never started → event genuinely never arrived). Once the event
+-- fires and the coroutine begins, the guard short-circuits and the chain ends.
+local function IssueRequest(auto)
+    attempts = attempts + 1
+    fireTime = GetTime()     -- stamp for first-event / total-scan latency (per attempt)
     firstEventLogged = false -- re-arm the one-line-per-scan trace for this attempt
     C_AuctionHouse.ReplicateItems()
-    -- Additive signal for the progress UI: the request has now gone out, so we've
-    -- left the throttle/connect wait and entered the snapshot wait. No behavior
-    -- change — purely a phase marker for any listener (ScanProgress).
+    -- Additive signal for the progress UI: the request has gone out, so we've left the
+    -- throttle/connect wait and entered the snapshot wait. Purely a phase marker.
     AH.Events.Fire("AH_SCAN_REQUESTED", auto and true or false)
     if VUI.debug then
-        VUI.Print(AH.TAG, "ReplicateItems() fired (auto=" .. tostring(auto and true or false) .. ")")
+        VUI.Print(AH.TAG, format("ReplicateItems() fired (auto=%s, attempt %d/%d)",
+            tostring(auto and true or false), attempts, REPLICATE_MAX_ATTEMPTS))
     end
-    -- Arm a retry: if REPLICATE_ITEM_LIST_UPDATE doesn't arrive within
-    -- REPLICATE_RETRY_DELAY seconds the request was silently dropped by the server.
-    -- A dropped request produces NO event at all — so after this delay we know with
-    -- certainty the call was dropped (not slow), and it's safe to retry.
-    -- This is NOT a watchdog: it only fires when co is still nil (coroutine never
-    -- started), meaning the event genuinely never arrived. If the event arrives
-    -- first (normal path), CancelRetry() below defuses this timer immediately.
     CancelRetry()
     retryTimer = C_Timer.NewTimer(REPLICATE_RETRY_DELAY, function()
         retryTimer = nil
-        -- Only retry if: AH still open, scan flag still set, but coroutine never started.
-        -- co ~= nil means the event arrived and we're processing — don't retry.
+        -- Event arrived / scan ended / AH closed → nothing to do.
         if not AH.isOpen or not scanning or co then return end
-        if VUI.debug then
-            VUI.Print(AH.TAG, "REPLICATE_ITEM_LIST_UPDATE not received after "
-                .. REPLICATE_RETRY_DELAY .. "s — request was dropped; retrying ReplicateItems()")
+        if attempts < REPLICATE_MAX_ATTEMPTS then
+            -- Request was dropped (no event after the delay) and we have attempts left:
+            -- re-issue, which RE-ARMS this same tick (the bug in the old one-shot retry
+            -- was firing ReplicateItems() directly here, never re-arming the timer).
+            if VUI.debug then
+                VUI.Print(AH.TAG, format("REPLICATE_ITEM_LIST_UPDATE not received after %ds "
+                    .. "— request dropped; retrying (attempt %d/%d)",
+                    REPLICATE_RETRY_DELAY, attempts + 1, REPLICATE_MAX_ATTEMPTS))
+            end
+            IssueRequest(auto)
+        else
+            -- Cap reached: every attempt was dropped. Give up cleanly so the UI can show a
+            -- failed state instead of sweeping forever. (Still safe: co == nil here, so no
+            -- live scan is being killed — nothing ever started.)
+            scanning = false
+            if VUI.debug then
+                VUI.Print(AH.TAG, format("scan FAILED — no REPLICATE_ITEM_LIST_UPDATE after %d attempts "
+                    .. "(%ds each); reopen the AH or /reload to retry", REPLICATE_MAX_ATTEMPTS,
+                    REPLICATE_RETRY_DELAY))
+            end
+            AH.Events.Fire("AH_SCAN_FAILED", "replicate request dropped")
         end
-        C_AuctionHouse.ReplicateItems()
     end)
+end
+
+local function DoFire(auto)
+    scanning = true          -- set ONLY here, at the real fire moment
+    attempts = 0             -- reset the per-scan retry counter
+    IssueRequest(auto)
 end
 
 local function FireWhenReady(auto)
