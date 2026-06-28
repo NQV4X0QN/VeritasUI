@@ -2,7 +2,7 @@
 
 **Status:** LIVING DOCUMENT — append-only reference, never "done."
 **Target:** WoW Midnight retail, Interface `120005` (12.0.7).
-**Last updated:** 2026-06-27, suite at **v1.7.15**, `main` @ `64a7ede`.
+**Last updated:** 2026-06-27, suite at **v1.7.17**, `main` @ `3993ad0`.
 
 > **Why this file exists.** Over many sessions we have repeatedly burned hours
 > rediscovering the same in-game facts by trial and error — exact atlas names, coin
@@ -139,6 +139,11 @@ why it feels permanent (architecture, not a skin tweak).
 ## 3. Revert recipes
 
 ### 3.1 Tooltip pricing: revert v1.7.15 → v1.7.14 styling
+> **v1.7.17 note:** the coin column is no longer a hardcoded `COIN_COLUMN_X`. It is measured live
+> (`MeasureNativePrefix` → `GetStringWidth()` of `"Sell Price: "`), with `COIN_COLUMN_FALLBACK = 59` and
+> `COIN_COLUMN_NUDGE = 0` as the only constants. A full revert to v1.7.14 styling still works via the
+> whole-file checkout below (it predates the live-measure layer); the column table row applies only if you
+> hand-revert and want the old fixed offset.
 **When:** if Blizzard reverts the 12.0.7 tooltip restyle (e.g. they "discover the bug"
 and the native "Sell Price:" goes back to ArialN/14/outline money-frame coins). Our
 v1.7.15 match would then look wrong and we'd want the old styling back.
@@ -192,6 +197,16 @@ CHANGELOG/README/git); a file at repo root or in this skill dir never ships to u
 
 ## 5. Log of facts added (newest first)
 
+- **2026-06-27 (v1.7.17):** **Tooltip coin column is now MEASURED LIVE per render, not a constant.** Confirmed
+  via cross-machine testing that a hardcoded `COIN_COLUMN_X` drifts per-OS: macOS and Windows rasterize the
+  same FRIZQT__/12 glyphs to slightly different pixel widths, so the same number lands sub-pixel off on Mac and
+  ~1px off on PC. Fix uses `GetStringWidth()` of the native `"Sell Price: "` prefix (probe 1.5) in the live line
+  font at render time → self-corrects per machine. **New verified fact: `GetStringWidth()` of `"Sell Price: "`
+  is NOT a portable constant across OSes — always measure live.** (Confirmed pixel-perfect on Mac AND PC.)
+- **2026-06-27 (v1.7.16):** Established the **healthy AH scan latency** baseline via the improved one-line trace:
+  `time-to-first-event = 27.8s`, `total = 32.1s` (268,154 auctions → 8,163 items), first request dropped and
+  rescued by the v1.7.9 retry. User reports 40s+ is typical. **Verified fact: healthy replicate first-event
+  latency is ~28–40s+, NOT the 2–5s previously assumed** — any scan retry threshold must sit well above this.
 - **2026-06-27 (v1.7.15):** Initial file. Captured the 12.0.7 tooltip restyle facts
   (§2), the probe library (§1), and the tooltip-pricing revert recipe (§3.1).
   Triggered by the AH session that added the scan-progress bar, fixed the sell-strip
