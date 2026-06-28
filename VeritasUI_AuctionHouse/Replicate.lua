@@ -29,7 +29,9 @@ if not VUI then return end
 
 local C_AuctionHouse = C_AuctionHouse
 local floor      = math.floor
+local format     = string.format
 local time       = time
+local GetTime    = GetTime
 local coroutine  = coroutine
 local CreateFrame = CreateFrame
 
@@ -45,6 +47,8 @@ local co                    -- the active coroutine
 local driver               -- OnUpdate ticker frame
 local progress   = 0        -- 0..1
 local retryTimer            -- C_Timer handle watching for a dropped ReplicateItems()
+local fireTime              -- GetTime() at the moment ReplicateItems() was issued
+local firstEventLogged      -- per-scan guard: trace only the FIRST event pulse, not every chunk
 
 ----------------------------------------------------------------
 --  Scan lifecycle — why there is NO timeout (do not re-add one)
@@ -209,6 +213,14 @@ local function EnsureDriver()
             progress = 1
             SetLastScanTime(time())
             AH.Events.Fire("AH_SCAN_COMPLETE", a or 0, b or 0)
+            -- DEBUG (debug-gated): total scan time = fire -> drain complete. Pairs with
+            -- the time-to-first-event trace in the event handler. Together they separate
+            -- "slow to start" (server/readiness) from "slow to drain" (dataset size), so
+            -- the retry threshold is set off first-event latency, never total time.
+            if VUI.debug and fireTime then
+                VUI.Print(AH.TAG, format("scan complete: %d committed / %d rows, total=%.1fs",
+                    a or 0, b or 0, GetTime() - fireTime))
+            end
         end
     end)
     return driver
@@ -253,6 +265,8 @@ end
 
 local function DoFire(auto)
     scanning = true          -- set ONLY here, at the real fire moment
+    fireTime = GetTime()     -- stamp for first-event / total-scan latency measurement
+    firstEventLogged = false -- re-arm the one-line-per-scan trace for this attempt
     C_AuctionHouse.ReplicateItems()
     -- Additive signal for the progress UI: the request has now gone out, so we've
     -- left the throttle/connect wait and entered the snapshot wait. No behavior
@@ -373,20 +387,27 @@ local ef = CreateFrame("Frame")
 ef:RegisterEvent("REPLICATE_ITEM_LIST_UPDATE")
 ef:SetScript("OnEvent", function(_, event)
     if event == "REPLICATE_ITEM_LIST_UPDATE" then
-        -- DEBUG TRACE (permanent, debug-gated): prints whenever the snapshot-ready
-        -- event arrives, BEFORE the guard. Retained as a diagnostic aid for the
-        -- "first-scan-of-the-day hang" class of bug (root-caused + fixed in v1.7.9 via
-        -- FireWhenReady + the 10s retry below). If that hang ever regresses, this line
-        -- classifies it instantly:
+        -- DEBUG TRACE (permanent, debug-gated): logs the FIRST snapshot-ready pulse of
+        -- each scan only, BEFORE the guard. Blizzard streams the snapshot in chunks and
+        -- fires this event once PER chunk, so an unguarded print floods chat (and buries
+        -- the one line that matters). The firstEventLogged guard collapses it to a single
+        -- line per scan and reports time-to-first-event = GetTime() - fireTime.
+        --
+        -- Retained as the diagnostic for the "first-scan-of-the-day hang" class (root-
+        -- caused + mitigated in v1.7.9 via FireWhenReady + the 10s retry above). If that
+        -- hang recurs, this line classifies it instantly:
         --   * line appears during a hang  → event DID fire; our guard dropped it
         --                                   (scanning/co state bug — fix in our code)
         --   * line NEVER appears in a hang → server never delivered the snapshot for the
-        --                                   first request (readiness/timing — already
-        --                                   handled by FireWhenReady, but re-check it)
+        --                                   first request (readiness/timing path)
+        -- The reported latency also sets the retry threshold: a HEALTHY first arrival is
+        -- ~2-5s, so any retry timer must sit above that and stay gated on co==nil.
         -- Costs nothing in normal play (only emits under VeritasUI.debug).
-        if VUI.debug then
-            VUI.Print(AH.TAG, "REPLICATE_ITEM_LIST_UPDATE fired (scanning="
-                .. tostring(scanning) .. ", co=" .. tostring(co ~= nil) .. ")")
+        if VUI.debug and not firstEventLogged then
+            firstEventLogged = true
+            local latency = fireTime and (GetTime() - fireTime) or -1
+            VUI.Print(AH.TAG, format("REPLICATE_ITEM_LIST_UPDATE first pulse (scanning=%s, co=%s) "
+                .. "time-to-first-event=%.1fs", tostring(scanning), tostring(co ~= nil), latency))
         end
         -- Event arrived — the request was NOT dropped. Cancel the retry timer.
         CancelRetry()

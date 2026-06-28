@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.7.16] - 2026-06-27
+
+### Internal
+- `VeritasUI_AuctionHouse` — **the debug-gated replicate trace now logs one line per scan instead of one per event pulse, and reports scan timing.** Blizzard streams the auction snapshot in chunks and fires `REPLICATE_ITEM_LIST_UPDATE` once per chunk; the existing trace printed on every pulse (it sits before the `co`-guard), so a real scan flooded chat with `(scanning=true, co=true)` lines and buried the first arrival — the one line that matters for diagnosing the first-scan-of-session hang. A per-scan `firstEventLogged` guard now collapses the trace to a single line on the first pulse, reporting `time-to-first-event = GetTime() - fireTime` (the request→first-pulse latency; a healthy arrival is ~2–5s, which is the figure that should set any retry threshold). A companion line at scan completion reports `total=<fire→drain-complete>s` plus committed/row counts, so a slow *start* (server/readiness) is distinguishable from a slow *drain* (dataset size). `fireTime` is stamped in `DoFire()` at the actual `ReplicateItems()` moment and `firstEventLogged` is re-armed there per attempt. Logging only — no change to scan, retry, or guard behavior. Enable with `/run VeritasUI.debug = true`. (`Replicate.lua`)
+
+### Known issues
+- The **first-scan-of-session hang** (request issued, no `REPLICATE_ITEM_LIST_UPDATE` ever arrives; a `/reload` clears it) is **not fixed in this release** — only made cleanly measurable. The v1.7.9 mitigation (FireWhenReady + a single 10s retry) arms exactly **one** retry, fired directly rather than through `DoFire()`, so it never re-arms; a double-dropped request defeats it and the scan waits indefinitely with no failure path (the v1.7.6 watchdog removal left nothing to escalate to). The planned fix — a bounded-repeating retry gated on `co == nil`, capped at N attempts, then `AH_SCAN_FAILED` — is deferred pending a captured `time-to-first-event` measurement from this build, so the threshold is set from data rather than a guess.
+
 ## [1.7.15] - 2026-06-27
 
 ### Added
