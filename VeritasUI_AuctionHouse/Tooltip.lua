@@ -114,12 +114,19 @@ end
 --     to the line, and hidden on the tooltip's OnHide so it never orphans.
 local PRICE_PREFIX = "Auction:"
 
--- Fixed x-offset (px, from the "Auction:" label's LEFT edge) at which the coin block
--- starts, chosen so our coins line up under the native "Sell Price:" coin column.
--- TUNING KNOB: increase to nudge the coins RIGHT, decrease to nudge LEFT. Set to 59 =
--- probe-measured rendered px width of the native "Sell Price: " prefix in the tooltip
--- body font (FRIZQT__/12), so our first coin sits directly under the native first digit.
-local COIN_COLUMN_X = 59
+-- Where the coin block starts: the x-offset (px, from the line's LEFT edge) at which our
+-- first coin digit sits, chosen to land directly under the native "Sell Price:" coin
+-- column. That position is the rendered width of the native "Sell Price: " prefix in the
+-- tooltip body font — but that width is RASTERIZED PER-OS: macOS and Windows render the
+-- same FRIZQT__/12 glyphs to slightly different pixel widths, so a hardcoded constant
+-- drifts a fraction of a pixel between machines (the first digit sits just left/right of
+-- the native one — sub-pixel on the OS it was measured on, ~1px on the other). We
+-- therefore MEASURE it live at render time (MeasureNativePrefix) so each OS self-corrects,
+-- the same principle as copying the live label font. The constants below are only the
+-- fallback (if the live measure fails) and an optional manual fine-tune.
+local SELL_PREFIX          = (SELL_PRICE or "Sell Price") .. ": " -- string we measure live
+local COIN_COLUMN_FALLBACK = 59  -- used ONLY if the live measure returns nil (px)
+local COIN_COLUMN_NUDGE    = 0   -- manual fine-tune added after auto-measure (px; + = right)
 
 -- Inline atlas coin markup, matched EXACTLY to the native "Sell Price:" line via raw-
 -- markup probe (12.0.7): |A:coin-gold:14:14:2:0|a. The :14:14 is the icon size (the
@@ -192,6 +199,24 @@ local function GetCoinFontString(tooltip)
     return fs
 end
 
+-- Measure the rendered px width of the native "Sell Price: " prefix in the SAME font the
+-- tooltip line uses, so the coin column self-corrects per-OS (macOS/Windows rasterize the
+-- glyphs to slightly different widths). Uses a reusable hidden UIParent fontstring set to
+-- the live line font. Returns nil if it can't measure (caller falls back to the constant).
+local measureFS
+local function MeasureNativePrefix(fontPath, fontSize, fontFlags)
+    if not fontPath then return nil end
+    if not measureFS then
+        measureFS = UIParent:CreateFontString(nil, "BACKGROUND")
+        measureFS:Hide()
+    end
+    measureFS:SetFont(fontPath, fontSize, fontFlags or "")
+    measureFS:SetText(SELL_PREFIX)
+    local w = measureFS:GetStringWidth()
+    if not w or w <= 0 then return nil end
+    return w
+end
+
 local function RenderCoinLine(tooltip, price)
     if not (tooltip.AddLine and tooltip.CreateFontString) then return false end
 
@@ -203,13 +228,14 @@ local function RenderCoinLine(tooltip, price)
     local left = _G[name .. "TextLeft" .. tooltip:NumLines()]
     if not left then return true end
 
-    -- Our owned ARIALN coin fontstring, placed at a FIXED column so its left edge lines
-    -- up with the native "Sell Price:" coin column. We anchor to OUR label's LEFT edge
-    -- (same row → correct Y) with a constant x-offset = the column position. The native
-    -- coin column is the width of "Sell Price:" + its gap, which is constant for the
-    -- tooltip font, so a fixed offset aligns them. We deliberately do NOT read GetLeft()
-    -- of the freshly-added label or the money frame (stale/nil mid-layout → the throw
-    -- that vanished the line earlier). COIN_COLUMN_X is the single tuning knob.
+    -- Place our coin block so its first digit lands under the native "Sell Price:" coin
+    -- column. We anchor to OUR label's LEFT edge (same row → correct Y) and offset by the
+    -- native prefix's rendered width, MEASURED LIVE in the actual line font (see
+    -- MeasureNativePrefix) so it self-corrects across macOS/Windows rasterization instead
+    -- of trusting a baked constant. We deliberately do NOT read GetLeft() of the freshly-
+    -- added label or the money frame (stale/nil mid-layout → the throw that vanished the
+    -- line earlier). COIN_COLUMN_NUDGE is the optional manual fine-tune; COIN_COLUMN_FALLBACK
+    -- is used only if the live measure fails.
     local fs = GetCoinFontString(tooltip)
     -- Match the native "Sell Price:" coins exactly: probe-verified 12.0.7 they are the
     -- tooltip BODY font (FRIZQT__ / 12 / no-outline), identical to our label line. Copy
@@ -220,7 +246,8 @@ local function RenderCoinLine(tooltip, price)
     if lf then fs:SetFont(lf, ls, lflags or "") end
     fs:SetText(CoinMarkup(price))
     fs:ClearAllPoints()
-    fs:SetPoint("LEFT", left, "LEFT", COIN_COLUMN_X, 0)
+    local column = MeasureNativePrefix(lf, ls, lflags) or COIN_COLUMN_FALLBACK
+    fs:SetPoint("LEFT", left, "LEFT", column + COIN_COLUMN_NUDGE, 0)
     fs:Show()
     return true
 end
