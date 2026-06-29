@@ -56,6 +56,63 @@ local fireTime              -- GetTime() at the moment ReplicateItems() was issu
 local firstEventLogged      -- per-scan guard: trace only the FIRST event pulse, not every chunk
 
 ----------------------------------------------------------------
+--  >>> SCAN DIAGNOSTIC PROBE (temporary — REMOVE BEFORE SHIPPING) <<<
+--  Goal: make the "Requesting auctions…" black box visible. We currently only listen
+--  for the SUCCESS event (REPLICATE_ITEM_LIST_UPDATE) and infer "dropped" from silence.
+--  This probe (a) registers every plausible throttle/auction FAILURE + lifecycle event
+--  so we can SEE if the game tells us a request was discarded, and (b) snapshots the
+--  throttle/replicate state at each fire, each retry, and each diagnostic event.
+--  All event registration is pcall-guarded: WoW errors on RegisterEvent of an unknown
+--  event name, so the probe REPORTS which of these events actually exist in 12.0.7.
+--  Only emits under VeritasUI.debug. Everything here is grep-tagged "PROBE" for removal.
+----------------------------------------------------------------
+local PROBE_EVENTS = {
+    "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED",      -- throttle layer discarded a request
+    "AUCTION_HOUSE_THROTTLED_MESSAGE_RESPONSE_RECEIVED",
+    "AUCTION_HOUSE_THROTTLED_MESSAGE_QUEUED",
+    "AUCTION_HOUSE_THROTTLED_SYSTEM_READY",         -- already used elsewhere; log it here too
+    "AUCTION_HOUSE_NEW_RESULTS_RECEIVED",
+    "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED",
+    "AUCTION_HOUSE_BROWSE_RESULTS_ADDED",
+    "AUCTION_HOUSE_BROWSE_FAILURE",
+    "AUCTION_HOUSE_SHOW_ERROR",
+    "AUCTION_HOUSE_SHOW_COMMODITY_WON_NOTIFICATION", -- harmless; presence-test only
+    "REPLICATE_ITEM_LIST_UPDATE",                    -- the success event (already handled)
+}
+
+-- Snapshot the throttle/replicate state. Each C_AuctionHouse call is existence-guarded so
+-- a missing API in 12.0.7 logs "absent" instead of erroring.
+local function ProbeSnapshot(tag)
+    if not VUI.debug then return end
+    local C = C_AuctionHouse or {}
+    local function safe(fnName)
+        local fn = C[fnName]
+        if type(fn) ~= "function" then return "absent" end
+        local ok, v = pcall(fn)
+        if not ok then return "err" end
+        return tostring(v)
+    end
+    VUI.Print(AH.TAG, format("[PROBE %s] ready=%s numReplicate=%s hasFullBrowse=%s t=%.1f",
+        tag,
+        safe("IsThrottledMessageSystemReady"),
+        safe("GetNumReplicateItems"),
+        safe("HasFullBrowseResults"),
+        GetTime()))
+end
+
+-- pcall-guarded registration so unknown event names don't throw; reports which exist.
+local function ProbeRegister(frame)
+    for _, ev in ipairs(PROBE_EVENTS) do
+        local ok = pcall(frame.RegisterEvent, frame, ev)
+        if VUI.debug then
+            VUI.Print(AH.TAG, format("[PROBE reg] %s : %s", ev, ok and "OK" or "INVALID/absent"))
+        end
+    end
+end
+--  >>> END SCAN DIAGNOSTIC PROBE <<<
+
+
+----------------------------------------------------------------
 --  Scan lifecycle — why there is NO timeout (do not re-add one)
 --
 --  ReplicateItems() -> REPLICATE_ITEM_LIST_UPDATE can take a long, UNBOUNDED
@@ -284,6 +341,7 @@ local function IssueRequest(auto)
     fireTime = GetTime()     -- stamp for first-event / total-scan latency (per attempt)
     firstEventLogged = false -- re-arm the one-line-per-scan trace for this attempt
     C_AuctionHouse.ReplicateItems()
+    ProbeSnapshot(format("fire #%d", attempts))   -- PROBE: state at the moment of request
     -- Additive signal for the progress UI: the request has gone out, so we've left the
     -- throttle/connect wait and entered the snapshot wait. Purely a phase marker.
     AH.Events.Fire("AH_SCAN_REQUESTED", auto and true or false)
@@ -294,6 +352,7 @@ local function IssueRequest(auto)
     CancelRetry()
     retryTimer = C_Timer.NewTimer(REPLICATE_RETRY_DELAY, function()
         retryTimer = nil
+        ProbeSnapshot(format("retry-tick after #%d", attempts))  -- PROBE: state during dead window
         -- Event arrived / scan ended / AH closed → nothing to do.
         if not AH.isOpen or not scanning or co then return end
         if attempts < REPLICATE_MAX_ATTEMPTS then
@@ -416,7 +475,18 @@ end
 ----------------------------------------------------------------
 local ef = CreateFrame("Frame")
 ef:RegisterEvent("REPLICATE_ITEM_LIST_UPDATE")
-ef:SetScript("OnEvent", function(_, event)
+ProbeRegister(ef)   -- PROBE: also register every candidate throttle/auction diagnostic event
+ef:SetScript("OnEvent", function(_, event, ...)
+    -- PROBE: log ANY non-success diagnostic event the moment it fires, with a state snapshot.
+    -- This is how we SEE whether the game tells us a request was dropped during the dead window.
+    if event ~= "REPLICATE_ITEM_LIST_UPDATE" then
+        if VUI.debug then
+            local a1 = ...
+            VUI.Print(AH.TAG, format("[PROBE evt] %s arg1=%s", event, tostring(a1)))
+            ProbeSnapshot("on " .. event)
+        end
+        return
+    end
     if event == "REPLICATE_ITEM_LIST_UPDATE" then
         -- DEBUG TRACE (permanent, debug-gated): logs the FIRST snapshot-ready pulse of
         -- each scan only, BEFORE the guard. Blizzard streams the snapshot in chunks and
