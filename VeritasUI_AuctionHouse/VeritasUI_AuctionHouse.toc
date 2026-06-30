@@ -12,5 +12,5 @@ Database.lua
 Replicate.lua
 Tooltip.lua
 UI\SellStrip.lua
-UI\ScanProgress.lua
+# BISECT: ScanProgress disabled to test if it is the v1.7.15 scan-hang regression. UI\ScanProgress.lua
 Settings.lua
