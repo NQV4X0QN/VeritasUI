@@ -338,6 +338,20 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             VUI.Print(AH.TAG, reason or "Scan could not start.")
         end
 
+    elseif cmd == "probefire" then
+        -- PROBE (temporary): fire ReplicateItems() ONCE and poll without re-firing, to
+        -- resolve H1 (fixed cooldown) vs H2 (retries reset it). Run right after a good scan,
+        -- with the AH open. REMOVE BEFORE SHIPPING.
+        if not (AH.Replicate and AH.Replicate.ProbeFireOnce) then
+            VUI.Print(AH.TAG, "Probe not loaded.")
+            return
+        end
+        if not AH.isOpen then
+            VUI.Print(AH.TAG, "Open the Auction House first, then run /ah probefire.")
+            return
+        end
+        AH.Replicate.ProbeFireOnce()
+
     elseif cmd == "wipe" then
         if AH.DB then
             AH.DB.Wipe()

@@ -109,6 +109,56 @@ local function ProbeRegister(frame)
         end
     end
 end
+
+-- FIRE-ONCE-AND-POLL discriminator. Calls ReplicateItems() EXACTLY ONCE (bypassing the
+-- 15-min floor and the normal retry path entirely), then polls the replicate state every
+-- PROBE_POLL_INTERVAL for PROBE_POLL_MAX without EVER re-firing. Purpose: resolve H1 vs H2.
+--   * If numReplicate goes non-zero / REPLICATE_ITEM_LIST_UPDATE fires while we sit quiet →
+--     H1: fixed server cooldown, retries are harmless no-ops. The elapsed t tells us the
+--     real cooldown length → sets a correct single long-delayed retry.
+--   * If it stays 0 the whole time we never re-fire, yet a manual reopen then works →
+--     points to H2 (re-firing RESETS the cooldown, i.e. OUR retry makes it worse) or a
+--     reopen-specific trigger. Either way: stop hammering.
+-- Run it right after a SUCCESSFUL scan (which starts the server cooldown) to hit the dead
+-- window on demand — no waiting for the bug to recur. Invoke via /ah probefire.
+local PROBE_POLL_INTERVAL = 15      -- seconds between polls
+local PROBE_POLL_MAX      = 300     -- stop after 5 minutes
+local probeFireT0
+local probeFireGotIt
+function AH.Replicate.ProbeFireOnce()
+    if not (C_AuctionHouse and C_AuctionHouse.ReplicateItems) then
+        VUI.Print(AH.TAG, "[PROBE fire-once] ReplicateItems unavailable")
+        return
+    end
+    probeFireT0 = GetTime()
+    probeFireGotIt = false
+    VUI.Print(AH.TAG, "[PROBE fire-once] firing ReplicateItems() ONCE, then polling "
+        .. PROBE_POLL_INTERVAL .. "s for " .. PROBE_POLL_MAX .. "s — will NOT re-fire")
+    ProbeSnapshot("fire-once t0")
+    C_AuctionHouse.ReplicateItems()
+    local function poll()
+        if probeFireGotIt then return end
+        local elapsed = GetTime() - (probeFireT0 or GetTime())
+        local C = C_AuctionHouse or {}
+        local n = (type(C.GetNumReplicateItems) == "function") and C.GetNumReplicateItems() or -1
+        VUI.Print(AH.TAG, format("[PROBE fire-once poll] +%.0fs numReplicate=%s", elapsed, tostring(n)))
+        if n and n > 0 then
+            VUI.Print(AH.TAG, format("[PROBE fire-once] *** numReplicate>0 at +%.0fs WITHOUT re-firing "
+                .. "→ H1 (fixed cooldown ~%.0fs); retries are no-ops", elapsed, elapsed))
+            probeFireGotIt = true
+            return
+        end
+        if elapsed < PROBE_POLL_MAX then
+            C_Timer.After(PROBE_POLL_INTERVAL, poll)
+        else
+            VUI.Print(AH.TAG, format("[PROBE fire-once] gave up at +%.0fs, numReplicate still 0 "
+                .. "(never re-fired). Now reopen the AH manually and report whether THAT works.",
+                elapsed))
+        end
+    end
+    -- Also catch the success event directly (faster/cleaner than polling alone).
+    C_Timer.After(PROBE_POLL_INTERVAL, poll)
+end
 --  >>> END SCAN DIAGNOSTIC PROBE <<<
 
 
