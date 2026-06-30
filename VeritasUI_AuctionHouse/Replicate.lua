@@ -125,38 +125,52 @@ local PROBE_POLL_INTERVAL = 15      -- seconds between polls
 local PROBE_POLL_MAX      = 300     -- stop after 5 minutes
 local probeFireT0
 local probeFireGotIt
+local probeLastReplicateEvent   -- GetTime() of the last REPLICATE_ITEM_LIST_UPDATE (set in OnEvent)
 function AH.Replicate.ProbeFireOnce()
     if not (C_AuctionHouse and C_AuctionHouse.ReplicateItems) then
         VUI.Print(AH.TAG, "[PROBE fire-once] ReplicateItems unavailable")
         return
     end
+    -- Capture the PRE-FIRE event timestamp. A FRESH snapshot is proven only when a new
+    -- REPLICATE_ITEM_LIST_UPDATE fires AFTER this moment — i.e. probeLastReplicateEvent
+    -- advances past t0. We deliberately do NOT use GetNumReplicateItems(): it retains the
+    -- previous successful scan's buffer (the contamination that caused a false "H1, ~15s"
+    -- last run — numReplicate was already 266045 at t0 from the prior scan).
+    local preFireEventStamp = probeLastReplicateEvent
     probeFireT0 = GetTime()
     probeFireGotIt = false
-    VUI.Print(AH.TAG, "[PROBE fire-once] firing ReplicateItems() ONCE, then polling "
-        .. PROBE_POLL_INTERVAL .. "s for " .. PROBE_POLL_MAX .. "s — will NOT re-fire")
+    VUI.Print(AH.TAG, "[PROBE fire-once] firing ReplicateItems() ONCE, then watching for a "
+        .. "FRESH REPLICATE_ITEM_LIST_UPDATE for " .. PROBE_POLL_MAX .. "s — will NOT re-fire "
+        .. "(ignoring numReplicate; event is the only reliable signal)")
     ProbeSnapshot("fire-once t0")
     C_AuctionHouse.ReplicateItems()
     local function poll()
         if probeFireGotIt then return end
         local elapsed = GetTime() - (probeFireT0 or GetTime())
-        local C = C_AuctionHouse or {}
-        local n = (type(C.GetNumReplicateItems) == "function") and C.GetNumReplicateItems() or -1
-        VUI.Print(AH.TAG, format("[PROBE fire-once poll] +%.0fs numReplicate=%s", elapsed, tostring(n)))
-        if n and n > 0 then
-            VUI.Print(AH.TAG, format("[PROBE fire-once] *** numReplicate>0 at +%.0fs WITHOUT re-firing "
-                .. "→ H1 (fixed cooldown ~%.0fs); retries are no-ops", elapsed, elapsed))
+        -- FRESH event? = the last-event stamp changed AND is at/after our fire moment.
+        local freshEvent = probeLastReplicateEvent
+            and probeLastReplicateEvent ~= preFireEventStamp
+            and probeLastReplicateEvent >= probeFireT0
+        local n = (C_AuctionHouse and type(C_AuctionHouse.GetNumReplicateItems) == "function")
+            and C_AuctionHouse.GetNumReplicateItems() or -1
+        VUI.Print(AH.TAG, format("[PROBE fire-once poll] +%.0fs freshEvent=%s (numReplicate=%s, ignored)",
+            elapsed, tostring(freshEvent and true or false), tostring(n)))
+        if freshEvent then
+            VUI.Print(AH.TAG, format("[PROBE fire-once] *** FRESH REPLICATE_ITEM_LIST_UPDATE at +%.0fs "
+                .. "WITHOUT re-firing → H1: fixed server cooldown ~%.0fs; in-place retries are harmless "
+                .. "no-ops and a single retry at ~%.0fs would succeed", elapsed, elapsed, elapsed))
             probeFireGotIt = true
             return
         end
         if elapsed < PROBE_POLL_MAX then
             C_Timer.After(PROBE_POLL_INTERVAL, poll)
         else
-            VUI.Print(AH.TAG, format("[PROBE fire-once] gave up at +%.0fs, numReplicate still 0 "
-                .. "(never re-fired). Now reopen the AH manually and report whether THAT works.",
+            VUI.Print(AH.TAG, format("[PROBE fire-once] no fresh event in %.0fs while NEVER re-firing. "
+                .. "Now reopen the AH manually: if THAT delivers a pulse → H2 (re-firing/reopen resets the "
+                .. "cooldown, our retry can't help); if reopen also stays silent → longer server cooldown.",
                 elapsed))
         end
     end
-    -- Also catch the success event directly (faster/cleaner than polling alone).
     C_Timer.After(PROBE_POLL_INTERVAL, poll)
 end
 --  >>> END SCAN DIAGNOSTIC PROBE <<<
@@ -554,6 +568,10 @@ ef:SetScript("OnEvent", function(_, event, ...)
         -- The reported latency also sets the retry threshold: a HEALTHY first arrival is
         -- ~2-5s, so any retry timer must sit above that and stay gated on co==nil.
         -- Costs nothing in normal play (only emits under VeritasUI.debug).
+        -- PROBE: stamp every REPLICATE_ITEM_LIST_UPDATE arrival so the fire-once
+        -- discriminator can detect a FRESH snapshot by EVENT (the only reliable signal),
+        -- not by GetNumReplicateItems() which retains the prior scan's stale buffer.
+        probeLastReplicateEvent = GetTime()
         if VUI.debug and not firstEventLogged then
             firstEventLogged = true
             local latency = fireTime and (GetTime() - fireTime) or -1
