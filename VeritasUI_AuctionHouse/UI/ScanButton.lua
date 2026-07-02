@@ -62,14 +62,17 @@ local BTN_W       = 80
 local BTN_H       = 19     -- match the money-frame band height (19)
 local LEVEL_BUMP  = 10
 
--- Offset from MoneyFrameBorder's RIGHT edge: clear the scan-progress bar first.
--- ScanProgress: GAP_X 8 + W 170 (+3 outset art) -> start the button 190 out.
-local BAND_X      = 190
-local NUDGE_Y     = -2    -- same vertical nudge ScanProgress uses in this band
+-- v3 SWAP (user request): the button is the PERSISTENT element in this band (the
+-- progress bar only shows mid-scan), so the button now sits FIRST, directly right
+-- of the money frame; ScanProgress moved right of it (its GAP_X = 100 accounts for
+-- this button's span: 8 gap + 80 width + 12 clearance).
+local BAND_X      = 8
+local NUDGE_Y     = 2     -- raised (was -2): align with the Cancel Auction button row,
+                          -- which sits a few px higher than the bar's atlas-centering nudge
 
 -- Fallback from AuctionHouseFrame BOTTOMLEFT if MoneyFrameBorder is absent, from
 -- the verified rect (probe ref §2): money left +5, width 158 -> right edge +163.
-local FB_X = (41 - 36) + 158 + BAND_X   -- = 353
+local FB_X = (41 - 36) + 158 + BAND_X   -- = 171
 local FB_Y = (534 - 528)                -- = 6
 
 local state = { built = false, btn = nil }
