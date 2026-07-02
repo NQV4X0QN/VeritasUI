@@ -40,7 +40,12 @@ AH.Replicate = {}
 local SCAN_FLOOR_SECONDS    = 15 * 60   -- minimum gap between full scans
 local ROWS_PER_SLICE        = 2000      -- safety cap on rows per frame
 local FRAME_BUDGET_MS       = 8         -- ~8ms/frame work budget (debugprofilestop)
-local REPLICATE_RETRY_DELAY = 10        -- seconds to wait for REPLICATE_ITEM_LIST_UPDATE before retrying
+local REPLICATE_RETRY_DELAY = 60        -- seconds to wait for REPLICATE_ITEM_LIST_UPDATE before retrying.
+                                        -- MUST sit above the measured healthy first-event latency (~28-40s,
+                                        -- probe ref §5 2026-06-27 + confirmed 26.5s on 2026-07-02): at the old
+                                        -- 10s this fired a mislabeled "request was dropped" duplicate on EVERY
+                                        -- healthy scan, muddying each trace. At 60s, one request producing zero
+                                        -- events within the window is an unambiguous drop.
 -- Cold-edge settle: FALSIFIED and DISABLED (set to 0). Firing 5s after throttle-ready
 -- still dropped on a cold first open (verified in-game), so "fire later" is not the fix.
 -- Kept as a 0-cost passthrough constant only; the real gate is now browse-readiness (see
