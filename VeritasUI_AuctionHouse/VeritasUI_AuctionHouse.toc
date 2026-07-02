@@ -13,4 +13,5 @@ Replicate.lua
 Tooltip.lua
 UI\SellStrip.lua
 UI\ScanProgress.lua
+UI\ScanButton.lua
 Settings.lua

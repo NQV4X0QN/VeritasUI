@@ -429,6 +429,65 @@ function AH.Replicate.Start(auto)
 end
 
 ----------------------------------------------------------------
+--  StartManual():  hardware-event scan entry point (test / manual button)
+--
+--  WHY THIS EXISTS, SEPARATE FROM Start():
+--    Start() defers the fire through FireWhenReady -> C_Timer, i.e. the request is
+--    ultimately issued from a DETACHED callback (timer / event handler), NOT from the
+--    stack of the action that triggered it. The confirmed-failing auto-scan runs that
+--    way. Auctionator's scan button — which scans 100% reliably where our auto-scan
+--    hangs — instead calls C_AuctionHouse.ReplicateItems() DIRECTLY inside its OnClick,
+--    i.e. within the hardware-event execution context. HYPOTHESIS UNDER TEST: replicate
+--    is honored from a hardware-event stack (a real click) and silently dropped from a
+--    detached timer/event callback. StartManual keeps the fire SYNCHRONOUS so, when
+--    called from a button OnClick, the hardware-event context is preserved intact
+--    (it propagates through synchronous calls; it is lost only across C_Timer /
+--    coroutine / OnEvent boundaries — which is exactly why Start() is suspect).
+--
+--  Differences from Start(): NO FireWhenReady, NO settle timer, NO throttle-ready gate.
+--  It fires immediately via DoFire(). Everything else matches Start(): the 15-min floor
+--  is still honored (design landmine: bypassing it fires into the server's own cooldown,
+--  a silent no-op), AH_SCAN_START is still broadcast, and the normal
+--  REPLICATE_ITEM_LIST_UPDATE -> coroutine drain path handles the result.
+--
+--  Recovers a hung auto-scan: if a prior fire this session left `scanning` true with no
+--  coroutine (co == nil) — the exact stuck state — clear it and fire fresh. A scan that
+--  is actively draining rows (co ~= nil) is NOT interrupted.
+--  Returns true if a scan was fired, false + reason otherwise.
+----------------------------------------------------------------
+function AH.Replicate.StartManual()
+    if not AH.isOpen then
+        return false, "Open the Auction House first."
+    end
+    if not (C_AuctionHouse and C_AuctionHouse.ReplicateItems) then
+        return false, "C_AuctionHouse.ReplicateItems unavailable."
+    end
+    if scanning then
+        if co then
+            return false, "A scan is already processing."
+        end
+        -- scanning == true, co == nil  ->  a fired-but-never-arrived (hung) request.
+        -- This is what the button exists to recover from: clear it and re-fire.
+        scanning = false
+        CancelRetry()
+        CancelFireDelay()
+    end
+
+    local wait = AH.Replicate.SecondsUntilReady()
+    if wait > 0 then
+        return false, string.format("Next scan available in %d:%02d.",
+            floor(wait / 60), wait % 60)
+    end
+
+    progress = 0
+    AH.Events.Fire("AH_SCAN_START", false)
+    -- Fire DIRECTLY and SYNCHRONOUSLY — no FireWhenReady, no settle, no throttle gate.
+    -- Called from a button OnClick this runs inside the hardware-event stack.
+    DoFire(false)
+    return true
+end
+
+----------------------------------------------------------------
 --  Event wiring
 ----------------------------------------------------------------
 local ef = CreateFrame("Frame")
