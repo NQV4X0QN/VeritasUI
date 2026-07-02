@@ -62,10 +62,10 @@ local format      = string.format
 ----------------------------------------------------------------
 local W         = 170    -- container width (fits "Scanning… 100%" at small font)
 local H         = 18     -- ~ money frame height (19), aligned to it
-local GAP_X     = 100    -- gap between money frame right edge and our left edge.
+local GAP_X     = 108    -- gap between money frame right edge and our left edge.
                         -- v2: the manual Scan button (ScanButton.lua) now sits FIRST in
                         -- this band (it's persistent; this bar is scan-only), so the gap
-                        -- clears it: 8 button gap + 80 button width + 12 clearance.
+                        -- clears it: 16 button gap + 80 button width + 12 clearance.
 local INSET     = 2      -- gap between container edge and the fill bar
 local BAR_RAISE = 1      -- shift inner bar+backing UP this many px so it sits at the
                         -- atlas's visual center (the art's center reads higher than
@@ -86,7 +86,7 @@ local NUDGE_Y   = -2     -- drop the whole panel down a couple px so the atlas t
 -- Fallback offset from AuctionHouseFrame BOTTOMLEFT, from the verified rect:
 --   money left = x41 vs AHF x36 -> +5; width 158 -> right edge +163; +GAP_X.
 --   money y534 vs AHF y528 -> +6.
-local FB_X = (41 - 36) + 158 + GAP_X   -- = 263
+local FB_X = (41 - 36) + 158 + GAP_X   -- = 271
 local FB_Y = (534 - 528)               -- = 6
 
 -- Phase colours (explicit RGB — no dependency on unverified VUI palette helpers).
