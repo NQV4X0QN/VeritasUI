@@ -30,8 +30,24 @@
 -- ANCHOR / FRAME LEVEL — reuse the verified ScanProgress/SellStrip pattern
 --   Parent to AuctionHouseFrame (must exist; same lazy-build gate as SellStrip/
 --   ScanProgress). RELATIVE frame-level bump off the parent (absolute SetFrameLevel
---   does not stick on an AuctionHouseFrame child — SKILL.md:41 landmine). Anchored
---   TOPRIGHT inset from the AH frame's top-right, clear of the search/tab controls.
+--   does not stick on an AuctionHouseFrame child — SKILL.md:41 landmine).
+--
+--   v2 REPOSITION (in-game finding): the original TOPRIGHT(-14,-30) anchor sat ON TOP
+--   of Blizzard's own controls and made them unclickable. The button now lives in the
+--   SAME verified-empty bottom band as the scan-progress bar (probe ref §2: the strip
+--   right of MoneyFrameBorder x41 y534 w158 h19 is empty on ALL AH tabs and below the
+--   sell-form overlay's y-range). Anchored to MoneyFrameBorder's RIGHT, offset past
+--   the progress bar's span (GAP 8 + bar W 170 + 12), with the same BOTTOMLEFT
+--   fallback scheme ScanProgress uses if the global is absent.
+--
+-- ENABLED-DURING-HANG (v2, in-game finding): the original label logic disabled the
+--   button whenever IsScanning() was true — which INCLUDED the hung state
+--   (scanning=true, Progress()==0 forever), the exact state StartManual() exists to
+--   recover. The hang was therefore untestable. Now the button stays ENABLED through
+--   the pre-data wait ("Retry Scan") and disables only during the actual row drain
+--   (Progress() > 0). Misclicks during a HEALTHY wait are safe: StartManual() refuses
+--   while a coroutine is draining, and a duplicate ReplicateItems() during the wait is
+--   the same no-op the v1.7.9 10s retry already fired on every healthy scan.
 
 local _, AH = ...
 local VUI = _G.VeritasUI
@@ -40,13 +56,21 @@ if not VUI then return end
 local CreateFrame = CreateFrame
 
 ----------------------------------------------------------------
---  Geometry (all tunable; anchor parent is the verified AuctionHouseFrame)
+--  Geometry (all tunable; bottom-band placement mirrors ScanProgress.lua)
 ----------------------------------------------------------------
-local BTN_W       = 90
-local BTN_H       = 22
-local INSET_X     = -14   -- from AuctionHouseFrame TOPRIGHT (negative = leftward)
-local INSET_Y     = -30   -- below the top edge, clear of the close button / title
+local BTN_W       = 80
+local BTN_H       = 19     -- match the money-frame band height (19)
 local LEVEL_BUMP  = 10
+
+-- Offset from MoneyFrameBorder's RIGHT edge: clear the scan-progress bar first.
+-- ScanProgress: GAP_X 8 + W 170 (+3 outset art) -> start the button 190 out.
+local BAND_X      = 190
+local NUDGE_Y     = -2    -- same vertical nudge ScanProgress uses in this band
+
+-- Fallback from AuctionHouseFrame BOTTOMLEFT if MoneyFrameBorder is absent, from
+-- the verified rect (probe ref §2): money left +5, width 158 -> right edge +163.
+local FB_X = (41 - 36) + 158 + BAND_X   -- = 353
+local FB_Y = (534 - 528)                -- = 6
 
 local state = { built = false, btn = nil }
 
@@ -57,8 +81,19 @@ local function RefreshLabel()
     local btn = state.btn
     if not btn then return end
     if AH.Replicate and AH.Replicate.IsScanning and AH.Replicate.IsScanning() then
-        btn:SetText("Scanning…")
-        btn:Disable()
+        local p = (AH.Replicate.Progress and AH.Replicate.Progress()) or 0
+        if p > 0 then
+            -- Rows are actually draining — a real scan is in flight; hands off.
+            btn:SetText("Scanning…")
+            btn:Disable()
+        else
+            -- Pre-data wait: EITHER a healthy 28-40s snapshot wait OR the hang.
+            -- Must stay clickable — this is the state the whole test exists for.
+            -- StartManual() internally refuses if a coroutine is live, so a click
+            -- during a healthy wait is safe (duplicate request = known no-op).
+            btn:SetText("Retry Scan")
+            btn:Enable()
+        end
         return
     end
     local wait = (AH.Replicate and AH.Replicate.SecondsUntilReady
@@ -99,7 +134,14 @@ local function Build()
 
     local btn = CreateFrame("Button", "VUIAHScanButton", parent, "UIPanelButtonTemplate")
     btn:SetSize(BTN_W, BTN_H)
-    btn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", INSET_X, INSET_Y)
+    -- Bottom-band anchor (ScanProgress pattern): money frame's RIGHT edge if the
+    -- global exists, else the verified BOTTOMLEFT fallback offsets.
+    local money = _G.MoneyFrameBorder
+    if money then
+        btn:SetPoint("LEFT", money, "RIGHT", BAND_X, NUDGE_Y)
+    else
+        btn:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", FB_X, FB_Y + NUDGE_Y)
+    end
     -- Relative level bump (absolute does not stick on an AH child — SKILL.md:41).
     btn:SetFrameLevel((parent:GetFrameLevel() or 0) + LEVEL_BUMP)
     btn:SetText("Scan")
@@ -108,7 +150,8 @@ local function Build()
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:AddLine("VeritasUI: Manual price scan")
         GameTooltip:AddLine("Fires a full auction scan now.", 0.8, 0.8, 0.8, true)
-        GameTooltip:AddLine("Also recovers a stuck auto-scan.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("\"Retry Scan\" = a request is out but no data has arrived; "
+            .. "click to re-fire (recovers a stuck auto-scan).", 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
