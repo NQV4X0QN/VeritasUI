@@ -41,12 +41,21 @@ local SCAN_FLOOR_SECONDS    = 15 * 60   -- minimum gap between full scans
 local ROWS_PER_SLICE        = 2000      -- safety cap on rows per frame
 local FRAME_BUDGET_MS       = 8         -- ~8ms/frame work budget (debugprofilestop)
 local REPLICATE_RETRY_DELAY = 10        -- seconds to wait for REPLICATE_ITEM_LIST_UPDATE before retrying
+-- Cold-edge settle: after Blizzard's throttle system reports READY, wait this many
+-- seconds before actually calling ReplicateItems(). Firing in the SAME frame that
+-- AUCTION_HOUSE_THROTTLED_SYSTEM_READY fires (the pre-fix behavior) races the server on
+-- the first AH open of a session, and the request is silently dropped — the confirmed
+-- "first-scan-of-session hangs at 0%" bug. Auctionator never hits this: its scan fires on
+-- a user click, always well after open. This delay mimics that proven-good timing.
+-- 0 disables the settle (legacy immediate fire).
+local SCAN_FIRE_DELAY       = 5
 
 local scanning   = false   -- a scan coroutine is in progress
 local co                    -- the active coroutine
 local driver               -- OnUpdate ticker frame
 local progress   = 0        -- 0..1
 local retryTimer            -- C_Timer handle watching for a dropped ReplicateItems()
+local fireDelayTimer        -- C_Timer handle for the post-ready cold-edge settle (SCAN_FIRE_DELAY)
 local fireTime              -- GetTime() at the moment ReplicateItems() was issued
 local firstEventLogged      -- per-scan guard: trace only the FIRST event pulse, not every chunk
 
@@ -263,6 +272,13 @@ local function CancelRetry()
     end
 end
 
+local function CancelFireDelay()
+    if fireDelayTimer then
+        fireDelayTimer:Cancel()
+        fireDelayTimer = nil
+    end
+end
+
 local function DoFire(auto)
     scanning = true          -- set ONLY here, at the real fire moment
     fireTime = GetTime()     -- stamp for first-event / total-scan latency measurement
@@ -296,6 +312,38 @@ local function DoFire(auto)
     end)
 end
 
+-- Interpose the cold-edge settle between "throttle READY" and the real fire. Blizzard
+-- reporting ready does NOT mean the replicate channel will honor an instant request on
+-- the first open of a session — firing in that same frame races the server and gets
+-- silently dropped. Waiting SCAN_FIRE_DELAY seconds mimics Auctionator's proven timing
+-- (its scan fires on a user click, always well after open). `scanning` is still set only
+-- inside DoFire, so a settle that never completes (AH closed during the wait) can't
+-- strand the flag. NOT a watchdog: this delays a fire, it never fails a scan.
+local function FireAfterSettle(auto)
+    if not (SCAN_FIRE_DELAY and SCAN_FIRE_DELAY > 0) then
+        DoFire(auto)
+        return
+    end
+    if VUI.debug then
+        VUI.Print(AH.TAG, "throttle READY — settling " .. SCAN_FIRE_DELAY
+            .. "s before ReplicateItems() (cold-edge dodge)")
+    end
+    CancelFireDelay()
+    fireDelayTimer = C_Timer.NewTimer(SCAN_FIRE_DELAY, function()
+        fireDelayTimer = nil
+        -- Re-check guards: AH may have closed, or another scan may have started
+        -- during the settle window.
+        if not AH.isOpen or scanning then
+            if VUI.debug then
+                VUI.Print(AH.TAG, "settle elapsed but skipping (isOpen="
+                    .. tostring(AH.isOpen) .. ", scanning=" .. tostring(scanning) .. ")")
+            end
+            return
+        end
+        DoFire(auto)
+    end)
+end
+
 local function FireWhenReady(auto)
     local probe = C_AuctionHouse and C_AuctionHouse.IsThrottledMessageSystemReady
     -- API absent → preserve today's behavior exactly (fire immediately).
@@ -309,8 +357,8 @@ local function FireWhenReady(auto)
 
     local ok, ready = pcall(probe)
     if ok and ready then
-        if VUI.debug then VUI.Print(AH.TAG, "throttle system READY — firing now") end
-        DoFire(auto)
+        if VUI.debug then VUI.Print(AH.TAG, "throttle system READY — settling before fire") end
+        FireAfterSettle(auto)
         return
     end
 
@@ -331,8 +379,8 @@ local function FireWhenReady(auto)
                 end
                 return
             end
-            if VUI.debug then VUI.Print(AH.TAG, "AUCTION_HOUSE_THROTTLED_SYSTEM_READY — firing deferred scan") end
-            DoFire(pendingAuto)
+            if VUI.debug then VUI.Print(AH.TAG, "AUCTION_HOUSE_THROTTLED_SYSTEM_READY — settling before fire") end
+            FireAfterSettle(pendingAuto)
         end)
     end
     readyWaiter:RegisterEvent("AUCTION_HOUSE_THROTTLED_SYSTEM_READY")
@@ -421,6 +469,11 @@ end)
 
 -- Abort any in-flight scan if the AH closes mid-scan.
 AH.Events.On("AH_CLOSED", function()
+    -- Cancel a pending cold-edge settle unconditionally: during the settle window
+    -- `scanning` is still false (DoFire hasn't run yet), so it wouldn't be caught by
+    -- the scanning branch below. The settle callback also re-checks AH.isOpen, so a
+    -- stale fire is already prevented — this just avoids a needless deferred callback.
+    CancelFireDelay()
     if scanning then
         scanning = false
         co = nil
