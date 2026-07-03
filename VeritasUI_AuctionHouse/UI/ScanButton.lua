@@ -1,26 +1,17 @@
 -- VeritasUI_AuctionHouse / UI/ScanButton.lua
--- A manual "Scan" button mounted on the AH frame. Purpose is TWO-fold:
---   1. Feature: THE way to run a price scan (auto-scan-on-open removed 2026-07-02).
---   2. Diagnostic: it is the control in the hardware-event hypothesis test.
+-- The "Scan" button — since v1.8.0 THE way to run a price scan (auto-scan-on-open
+-- removed; it was the locus of the first-open-of-session replicate hang).
 --
--- THE HYPOTHESIS THIS TESTS
---   Our auto-scan fires C_AuctionHouse.ReplicateItems() from a DETACHED callback
---   (AH_OPEN event -> FireWhenReady -> C_Timer), and on the first AH open of a session
---   the request is silently dropped (hangs at 0% until close/reopen). Auctionator's scan
---   button fires ReplicateItems() DIRECTLY inside its OnClick and works 100%. The
---   difference we are testing is the EXECUTION CONTEXT: a hardware-event stack (real
---   click) vs a detached timer/event callback.
+-- FIRE PATH (deliberate, do not defer): OnClick calls AH.Replicate.StartManual()
+-- (alias of Start()) SYNCHRONOUSLY — no timer, no event defer, no gate — so the
+-- hardware-event execution context (which propagates through synchronous calls
+-- but is lost across C_Timer/coroutine/OnEvent boundaries) is preserved all the
+-- way to ReplicateItems(). Auctionator's model: its click-fired scan never
+-- exhibited the hang that the AH_OPEN-fired auto-scan did.
 --
---   This button calls AH.Replicate.StartManual() SYNCHRONOUSLY from OnClick — no timer,
---   no event defer, no throttle gate — so the hardware-event context (which propagates
---   through synchronous calls but is lost across C_Timer/coroutine/OnEvent boundaries) is
---   preserved all the way to ReplicateItems(). Auctionator's exact model.
---
---   EXPECTED OUTCOMES:
---     * Button scans 100% where auto-scan hangs -> hardware-event hypothesis CONFIRMED;
---       the fix for auto-scan must find a hardware-event path, and meanwhile the user has
---       a reliable manual scan + hung-scan recovery.
---     * Button ALSO hangs -> hypothesis DISPROVEN; execution context is not the factor.
+-- The button doubles as hung-scan recovery: during the pre-data wait it stays
+-- ENABLED as "Retry Scan" (Start() clears a fired-but-never-arrived request and
+-- re-fires); it disables only while rows actually drain (Progress() > 0).
 --
 -- ISOLATION (suite rule #4: one module never edits another)
 --   Pure VIEW + controller over Replicate's PUBLIC api: AH.Replicate.StartManual(),
