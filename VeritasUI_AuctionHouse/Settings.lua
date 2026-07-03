@@ -1,10 +1,10 @@
 -- VeritasUI_AuctionHouse / Settings.lua
 -- Native Blizzard Settings entry (Options → AddOns → Auction House).
 --
--- Real toggles for the tooltip price display + auto-scan, bound to AH.db.settings.
+-- Real toggles for the tooltip price display, bound to AH.db.settings.
 -- NOTE: this module has no managed UIPanel window — its in-AH UI is the sell
 -- strip mounted on Blizzard's native Sell tab (see UI/SellStrip.lua). This
--- Settings category holds the global tooltip toggles + the auto-scan-on-open toggle.
+-- Settings category holds the global tooltip toggles.
 
 local ADDON_NAME, AH = ...
 local VUI = _G.VeritasUI
@@ -48,15 +48,10 @@ local function BuildNativeSettingsPanel()
         AddCheckbox("ttShowAge", true, "Show Price Age",
             "Annotates how many days old the stored price is when it isn't from today's scan.")
 
-        -- Auto-scan toggle. Default ON. The auto-trigger in Replicate.lua reads
-        -- db.settings.autoScan directly and treats nil as ON, and this checkbox's
-        -- own `default` shows ON before the key is ever written — so no separate
-        -- seeding is required; toggling persists the explicit value.
-        AddCheckbox("autoScan", true, "Auto-scan on Auction House open",
-            "Automatically runs a price scan when you open the Auction House, so tooltip "
-            .. "prices stay fresh without typing |cFFFFFF00/ah scan|r. Honors the same 15-minute "
-            .. "cooldown as a manual scan (it quietly skips if you scanned recently). "
-            .. "You'll see a start message and a success/failure message in chat.")
+        -- Auto-scan on AH open: REMOVED (2026-07-02). Scans are user-initiated via
+        -- the Scan button (UI/ScanButton.lua) or /ah scan. The auto-fire-on-open
+        -- path was the locus of the first-open-of-session replicate hang; Core's
+        -- InitDB drops the orphaned db.settings.autoScan key.
     end
 
     Settings.RegisterAddOnCategory(category)

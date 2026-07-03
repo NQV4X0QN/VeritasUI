@@ -112,6 +112,8 @@ function AH:InitDB()
     end
     -- Shopping tab removed: drop its now-orphaned persistence container if present.
     db.shopping = nil
+    -- Auto-scan removed (2026-07-02): drop the orphaned settings toggle if present.
+    if db.settings then db.settings.autoScan = nil end
     AH.db = db
 end
 
@@ -184,12 +186,9 @@ end)
 --  Replicate.lua fires these on the AH.Events bus; Core owns the user-facing
 --  chat output so the scanner stays UI-agnostic.
 ----------------------------------------------------------------
-AH.Events.On("AH_SCAN_START", function(auto)
-    if auto then
-        VUI.Print(AH.TAG, "Auto-scanning prices…")
-    else
-        VUI.Print(AH.TAG, "Full scan started…")
-    end
+AH.Events.On("AH_SCAN_START", function()
+    -- Auto-scan removed (2026-07-02): all scans are user-initiated, one wording.
+    VUI.Print(AH.TAG, "Full scan started…")
 end)
 
 AH.Events.On("AH_SCAN_COMPLETE", function(committed, rows)

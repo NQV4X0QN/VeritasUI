@@ -40,8 +40,12 @@ AH.Replicate = {}
 local SCAN_FLOOR_SECONDS    = 15 * 60   -- minimum gap between full scans
 local ROWS_PER_SLICE        = 2000      -- safety cap on rows per frame
 local FRAME_BUDGET_MS       = 8         -- ~8ms/frame work budget (debugprofilestop)
-local REPLICATE_RETRY_DELAY = 10        -- seconds to wait for REPLICATE_ITEM_LIST_UPDATE before retrying
-
+local REPLICATE_RETRY_DELAY = 60        -- seconds to wait for REPLICATE_ITEM_LIST_UPDATE before retrying.
+                                        -- MUST sit above the measured healthy first-event latency (~28-40s,
+                                        -- probe ref §5 2026-06-27 + confirmed 26.5s on 2026-07-02): at the old
+                                        -- 10s this fired a mislabeled "request was dropped" duplicate on EVERY
+                                        -- healthy scan, muddying each trace. At 60s, one request producing zero
+                                        -- events within the window is an unambiguous drop.
 local scanning   = false   -- a scan coroutine is in progress
 local co                    -- the active coroutine
 local driver               -- OnUpdate ticker frame
@@ -227,35 +231,20 @@ local function EnsureDriver()
 end
 
 ----------------------------------------------------------------
---  FireWhenReady — issue ReplicateItems() only once Blizzard's throttle/
---  message system reports ready, deferring on the FIRST AH open of a session.
+--  DoFire — the ONE fire path (v1.8.0)
 --
---  ROOT CAUSE (confirmed in-game 2026-06-15, hypothesis on the WHY):
---    On the first AH open since login, ReplicateItems() fired immediately on
---    AUCTION_HOUSE_SHOW is SILENTLY DROPPED — REPLICATE_ITEM_LIST_UPDATE never
---    fires, the scan sits at 0% forever, and the stuck `scanning` flag makes the
---    next attempt say "A scan is already running" until /reload. Re-opening the AH
---    in the SAME session works (verified: 265k auctions). The throttle-readiness
---    gate that would have prevented this lived in the old Throttle.lua, which was
---    CUT at v1.7.0 with the Shopping tab; auto-scan-on-open (v1.7.2) was added
---    afterward and fires with no readiness check.
---
---  DEFENSIVE DESIGN (this is a candidate fix shipped to test against a once-per-
---  24h repro — it must never be WORSE than today):
---    * If IsThrottledMessageSystemReady is ABSENT in 12.0.5 (unverified from the
---      platform side) → treat as ready and fire immediately = today's exact path.
---    * If present and READY → fire immediately (the same-session re-open path that
---      already works).
---    * If present and NOT ready → register for AUCTION_HOUSE_THROTTLED_SYSTEM_READY
---      and fire when it arrives. NOT a timeout/watchdog (that's the removed-v1.7.5
---      landmine) — a one-shot event wait that either fires or stays quiet.
---    * `scanning` is set TRUE only at the ACTUAL fire moment, so a deferred request
---      that never fires cannot strand the flag.
---  Debug output on every branch so tomorrow's single attempt is self-explaining.
+--  History (see git: v1.7.9 FireWhenReady, f484993 browse gate, 7965944 settle):
+--  the first-open-of-session hang drove three generations of pre-fire gates —
+--  throttle-readiness, a cold-edge settle delay, and a browse-readiness wait.
+--  All were falsified or superseded in-game: [FIRE STATE] captured
+--  throttleReady=true AND hasFullBrowse=true on a fresh login's first open
+--  (2026-07-02), and the AH is fully usable during a hang, so no client-side
+--  readiness signal distinguishes a doomed request from a good one. v1.8.0
+--  removed auto-scan-on-open (the failing context) entirely; every scan is now
+--  user-initiated and fires DIRECTLY and SYNCHRONOUSLY from its trigger —
+--  the Scan button's OnClick (hardware-event stack, Auctionator's model) or
+--  /ah scan. Do not reintroduce a deferred/gated fire path.
 ----------------------------------------------------------------
-local readyWaiter            -- frame waiting on AUCTION_HOUSE_THROTTLED_SYSTEM_READY
-local pendingAuto            -- remembers the `auto` flag across the deferred wait
-
 local function CancelRetry()
     if retryTimer then
         retryTimer:Cancel()
@@ -263,17 +252,31 @@ local function CancelRetry()
     end
 end
 
-local function DoFire(auto)
+local function DoFire()
     scanning = true          -- set ONLY here, at the real fire moment
     fireTime = GetTime()     -- stamp for first-event / total-scan latency measurement
     firstEventLogged = false -- re-arm the one-line-per-scan trace for this attempt
-    C_AuctionHouse.ReplicateItems()
-    -- Additive signal for the progress UI: the request has now gone out, so we've
-    -- left the throttle/connect wait and entered the snapshot wait. No behavior
-    -- change — purely a phase marker for any listener (ScanProgress).
-    AH.Events.Fire("AH_SCAN_REQUESTED", auto and true or false)
+    -- FIRE-MOMENT STATE SNAPSHOT: capture the observable AH API state at the exact instant
+    -- we issue ReplicateItems(). Compare a FAILING cold open vs the WORKING reopen right
+    -- after — whatever field differs is the "something different on first open". This is
+    -- the measurement, not a fix. All calls are guarded (APIs may be absent/erroring).
     if VUI.debug then
-        VUI.Print(AH.TAG, "ReplicateItems() fired (auto=" .. tostring(auto and true or false) .. ")")
+        local C = C_AuctionHouse or {}
+        local function safe(fn) local ok, v = pcall(fn); return ok and v or "?" end
+        VUI.Print(AH.TAG, format(
+            "[FIRE STATE] throttleReady=%s hasFullBrowse=%s numReplicate=%s numOwned=%s",
+            tostring(safe(function() return C.IsThrottledMessageSystemReady and C.IsThrottledMessageSystemReady() end)),
+            tostring(safe(function() return C.HasFullBrowseResults and C.HasFullBrowseResults() end)),
+            tostring(safe(function() return C.GetNumReplicateItems and C.GetNumReplicateItems() end)),
+            tostring(safe(function() return C.GetNumOwnedAuctions and C.GetNumOwnedAuctions() end))
+        ))
+    end
+    C_AuctionHouse.ReplicateItems()
+    -- Phase marker for the progress UI: the request has gone out, so the bar can
+    -- leave "Connecting…" and enter the snapshot wait (ScanProgress listens).
+    AH.Events.Fire("AH_SCAN_REQUESTED")
+    if VUI.debug then
+        VUI.Print(AH.TAG, "ReplicateItems() fired")
     end
     -- Arm a retry: if REPLICATE_ITEM_LIST_UPDATE doesn't arrive within
     -- REPLICATE_RETRY_DELAY seconds the request was silently dropped by the server.
@@ -296,67 +299,38 @@ local function DoFire(auto)
     end)
 end
 
-local function FireWhenReady(auto)
-    local probe = C_AuctionHouse and C_AuctionHouse.IsThrottledMessageSystemReady
-    -- API absent → preserve today's behavior exactly (fire immediately).
-    if type(probe) ~= "function" then
-        if VUI.debug then
-            VUI.Print(AH.TAG, "IsThrottledMessageSystemReady absent — firing immediately (legacy path)")
-        end
-        DoFire(auto)
-        return
-    end
-
-    local ok, ready = pcall(probe)
-    if ok and ready then
-        if VUI.debug then VUI.Print(AH.TAG, "throttle system READY — firing now") end
-        DoFire(auto)
-        return
-    end
-
-    -- Not ready (or the probe errored) → defer until the ready event. One-shot.
-    if VUI.debug then
-        VUI.Print(AH.TAG, "throttle system NOT ready — deferring scan until AUCTION_HOUSE_THROTTLED_SYSTEM_READY")
-    end
-    pendingAuto = auto
-    if not readyWaiter then
-        readyWaiter = CreateFrame("Frame")
-        readyWaiter:SetScript("OnEvent", function(self)
-            self:UnregisterAllEvents()
-            -- Guards: AH may have closed during the wait, or another scan started.
-            if not AH.isOpen or scanning then
-                if VUI.debug then
-                    VUI.Print(AH.TAG, "ready fired but skipping (isOpen="
-                        .. tostring(AH.isOpen) .. ", scanning=" .. tostring(scanning) .. ")")
-                end
-                return
-            end
-            if VUI.debug then VUI.Print(AH.TAG, "AUCTION_HOUSE_THROTTLED_SYSTEM_READY — firing deferred scan") end
-            DoFire(pendingAuto)
-        end)
-    end
-    readyWaiter:RegisterEvent("AUCTION_HOUSE_THROTTLED_SYSTEM_READY")
-end
-
-
---
---  Start(auto):
---    auto = true → this is the auto-on-open scan; threaded into AH_SCAN_START
---                  so Core can word the start message differently.
---  The 15-min floor is ALWAYS honored (no force override — Auctionator proves
---  bypassing it just fires ReplicateItems into the server's own cooldown, which
---  is a silent no-op that looks like a failure).
---  Returns true if a scan was started, false + reason otherwise.
 ----------------------------------------------------------------
-function AH.Replicate.Start(auto)
-    if scanning then
-        return false, "A scan is already running."
-    end
+--  Start():  the ONE scan entry point (v1.8.0 — gates stripped)
+--
+--  Fires DIRECTLY and SYNCHRONOUSLY from whatever called it. From the Scan
+--  button's OnClick that preserves the hardware-event execution context all the
+--  way to ReplicateItems() (Auctionator's model — its click-fired scan never
+--  exhibited the first-open hang). /ah scan takes the identical path.
+--
+--  The 15-min floor is ALWAYS honored (no force override — bypassing it fires
+--  ReplicateItems into the server's own cooldown, a silent no-op that looks
+--  like a failure).
+--
+--  Recovers a hung scan: if a prior fire this session left `scanning` true with
+--  no coroutine (co == nil) — the fired-but-never-arrived state — clear it and
+--  fire fresh. A scan actively draining rows (co ~= nil) is NOT interrupted.
+--  Returns true if a scan was fired, false + reason otherwise.
+----------------------------------------------------------------
+function AH.Replicate.Start()
     if not AH.isOpen then
         return false, "Open the Auction House first."
     end
     if not (C_AuctionHouse and C_AuctionHouse.ReplicateItems) then
         return false, "C_AuctionHouse.ReplicateItems unavailable."
+    end
+    if scanning then
+        if co then
+            return false, "A scan is already processing."
+        end
+        -- scanning == true, co == nil  ->  a fired-but-never-arrived (hung) request:
+        -- clear it and re-fire.
+        scanning = false
+        CancelRetry()
     end
 
     local wait = AH.Replicate.SecondsUntilReady()
@@ -366,19 +340,14 @@ function AH.Replicate.Start(auto)
     end
 
     progress = 0
-    AH.Events.Fire("AH_SCAN_START", auto and true or false)
-
-    -- Fire the replicate request — but only once Blizzard's throttle/message system
-    -- is READY. See FireWhenReady: on the FIRST AH open of a session the system isn't
-    -- ready yet, and a ReplicateItems() fired too early is SILENTLY DROPPED (no
-    -- REPLICATE_ITEM_LIST_UPDATE ever comes) — the confirmed "first-scan-of-session
-    -- hangs at 0% until /reload" bug. We defer until AUCTION_HOUSE_THROTTLED_SYSTEM_READY
-    -- instead. `scanning` is set TRUE only at the actual fire moment (inside
-    -- FireWhenReady), never before — so a deferred-but-never-fired request can't strand
-    -- the flag (which is exactly the stuck state we're fixing).
-    FireWhenReady(auto)
+    AH.Events.Fire("AH_SCAN_START")
+    DoFire()
     return true
 end
+
+-- Back-compat alias: the Scan button (UI/ScanButton.lua) calls StartManual().
+-- Since v1.8.0 there is only one fire path, so they are the same function.
+AH.Replicate.StartManual = AH.Replicate.Start
 
 ----------------------------------------------------------------
 --  Event wiring
@@ -393,15 +362,15 @@ ef:SetScript("OnEvent", function(_, event)
         -- the one line that matters). The firstEventLogged guard collapses it to a single
         -- line per scan and reports time-to-first-event = GetTime() - fireTime.
         --
-        -- Retained as the diagnostic for the "first-scan-of-the-day hang" class (root-
-        -- caused + mitigated in v1.7.9 via FireWhenReady + the 10s retry above). If that
+        -- Retained as the diagnostic for the "first-scan-of-the-day hang" class. If a
         -- hang recurs, this line classifies it instantly:
         --   * line appears during a hang  → event DID fire; our guard dropped it
         --                                   (scanning/co state bug — fix in our code)
         --   * line NEVER appears in a hang → server never delivered the snapshot for the
         --                                   first request (readiness/timing path)
         -- The reported latency also sets the retry threshold: a HEALTHY first arrival is
-        -- ~2-5s, so any retry timer must sit above that and stay gated on co==nil.
+        -- ~28-40s (probe ref §5; confirmed 26.5s on 2026-07-02), so the retry timer must
+        -- sit above that (REPLICATE_RETRY_DELAY=60) and stay gated on co==nil.
         -- Costs nothing in normal play (only emits under VeritasUI.debug).
         if VUI.debug and not firstEventLogged then
             firstEventLogged = true
@@ -432,23 +401,14 @@ AH.Events.On("AH_CLOSED", function()
 end)
 
 ----------------------------------------------------------------
---  Auto-scan on AH open
+--  AH-open housekeeping
 --
---  When the AH opens, kick off a scan to keep tooltip prices fresh so the user
---  never has to type /ah scan. Gated by the SAME 15-min floor as a manual scan,
---  so it silently no-ops if a scan ran recently — no spam on every AH visit.
---  Honors the db.settings.autoScan toggle (default ON when unset). Passes
---  auto=true so Core words the start message distinctly. The decline return
---  (too-recent / not-ready) is intentionally ignored: only a real start prints,
---  via the AH_SCAN_START event.
+--  Auto-scan on open: REMOVED (2026-07-02). It fired ReplicateItems() from the
+--  AH_OPEN event path, which is where the first-open-of-session replicate hang
+--  lived (three weeks of falsified candidate fixes: throttle-ready gate, settle
+--  delay, one-shot + bounded retries). Scans are now user-initiated only — the
+--  Scan button (UI/ScanButton.lua, hardware-event fire path) or /ah scan.
 ----------------------------------------------------------------
-local function AutoScanEnabled()
-    local s = AH.db and AH.db.settings
-    if not s then return true end          -- default on before settings exist
-    if s.autoScan == nil then return true end
-    return s.autoScan
-end
-
 AH.Events.On("AH_OPEN", function()
     -- F-2 stuck-flag guard (the correct fix that replaces the old watchdog): a
     -- scan only lives within one AH session. If a prior session ended with
@@ -458,9 +418,5 @@ AH.Events.On("AH_OPEN", function()
     if scanning and not co then
         scanning = false
         progress = 0
-    end
-
-    if AutoScanEnabled() then
-        AH.Replicate.Start(true)    -- auto=true (15-min floor always honored)
     end
 end)
