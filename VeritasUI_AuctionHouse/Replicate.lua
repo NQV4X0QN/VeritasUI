@@ -617,23 +617,14 @@ AH.Events.On("AH_CLOSED", function()
 end)
 
 ----------------------------------------------------------------
---  Auto-scan on AH open
+--  AH-open housekeeping
 --
---  When the AH opens, kick off a scan to keep tooltip prices fresh so the user
---  never has to type /ah scan. Gated by the SAME 15-min floor as a manual scan,
---  so it silently no-ops if a scan ran recently — no spam on every AH visit.
---  Honors the db.settings.autoScan toggle (default ON when unset). Passes
---  auto=true so Core words the start message distinctly. The decline return
---  (too-recent / not-ready) is intentionally ignored: only a real start prints,
---  via the AH_SCAN_START event.
+--  Auto-scan on open: REMOVED (2026-07-02). It fired ReplicateItems() from the
+--  AH_OPEN event path, which is where the first-open-of-session replicate hang
+--  lived (three weeks of falsified candidate fixes: throttle-ready gate, settle
+--  delay, one-shot + bounded retries). Scans are now user-initiated only — the
+--  Scan button (UI/ScanButton.lua, hardware-event fire path) or /ah scan.
 ----------------------------------------------------------------
-local function AutoScanEnabled()
-    local s = AH.db and AH.db.settings
-    if not s then return true end          -- default on before settings exist
-    if s.autoScan == nil then return true end
-    return s.autoScan
-end
-
 AH.Events.On("AH_OPEN", function()
     -- F-2 stuck-flag guard (the correct fix that replaces the old watchdog): a
     -- scan only lives within one AH session. If a prior session ended with
@@ -643,9 +634,5 @@ AH.Events.On("AH_OPEN", function()
     if scanning and not co then
         scanning = false
         progress = 0
-    end
-
-    if AutoScanEnabled() then
-        AH.Replicate.Start(true)    -- auto=true (15-min floor always honored)
     end
 end)

@@ -1,6 +1,6 @@
 -- VeritasUI_AuctionHouse / UI/ScanButton.lua
 -- A manual "Scan" button mounted on the AH frame. Purpose is TWO-fold:
---   1. Feature: a user-triggered price scan (bypasses waiting for the auto-scan).
+--   1. Feature: THE way to run a price scan (auto-scan-on-open removed 2026-07-02).
 --   2. Diagnostic: it is the control in the hardware-event hypothesis test.
 --
 -- THE HYPOTHESIS THIS TESTS
@@ -154,7 +154,7 @@ local function Build()
         GameTooltip:AddLine("VeritasUI: Manual price scan")
         GameTooltip:AddLine("Fires a full auction scan now.", 0.8, 0.8, 0.8, true)
         GameTooltip:AddLine("\"Retry Scan\" = a request is out but no data has arrived; "
-            .. "click to re-fire (recovers a stuck auto-scan).", 0.8, 0.8, 0.8, true)
+            .. "click to re-fire (recovers a stuck scan).", 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
