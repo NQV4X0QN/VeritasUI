@@ -73,10 +73,10 @@ Settings: **Options → AddOns → Advanced Options** | `/ao`
 ### VeritasUI_AuctionHouse
 Auction House price tracking and selling convenience, built entirely on the native Auction House frame.
 
-- **Price database** — a full-AH price scan via `C_AuctionHouse.ReplicateItems`, stored account-wide. The scan covers the **entire** auction house: rows whose item links haven't streamed to the client yet (roughly half of a large AH) are recovered rather than skipped, so no items are silently dropped — a recent live realm scan priced 21,612 distinct items from 272,220 rows
-- **Manual Scan button** — a **Scan** button on the Auction House frame (bottom band, right of the money frame, on the Buy / Sell / Auctions tabs) is the way to run a scan; you can also use `/ah scan`. Scanning is **user-initiated** — the addon no longer scans automatically on open. The button shows its live state: **Scan** when ready, an **mm:ss countdown** during the 15-minute cooldown, **Retry Scan** if a request needs to be re-sent, and **Scanning…** while results are processing. A **"Finalizing gear… N/M"** progress readout appears while the last item-level-dependent rows resolve
-- **Tooltip prices** — appends the last-scanned market price to item and battle-pet tooltips, rendered with Blizzard's own money frame so it's visually identical to the native "Sell Price:" line; works offline (away from the AH), and prices persist between scans so day-to-day tooltip use never depends on having just scanned
-- **Sell strip** — a horizontal strip of your sellable bag items on the native Sell tab; click an item to load it into Blizzard's own Create-Auction form (you confirm and post — the addon never makes the protected call); right-click to hide an item from the strip
+- **Price database** — a **Scan** button on the Auction House frame does a complete sweep of the auction house and stores current market prices account-wide. Every item on the AH is captured in a single scan; you can also run one with `/ah scan`
+- **Scan button states** — the button tells you where a scan stands at a glance: ready to scan, counting down the cooldown between scans, or working through results
+- **Tooltip prices** — shows the latest market price on item and battle-pet tooltips, styled to match Blizzard's own "Sell Price:" line. Prices stay available everywhere, including away from the Auction House
+- **Sell strip** — a strip of your sellable bag items on the Sell tab; click one to load it into Blizzard's Create-Auction form (you confirm and post), or right-click to hide it from the strip
 - Settings hold the tooltip-display toggles
 
 Settings: **Options → AddOns → Auction House** | `/ah`
