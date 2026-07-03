@@ -67,8 +67,8 @@ local LEVEL_BUMP  = 10
 -- of the money frame; ScanProgress moved right of it (its GAP_X = 100 accounts for
 -- this button's span: 8 gap + 80 width + 12 clearance).
 local BAND_X      = 16    -- breathing room off the money frame's right edge
-local NUDGE_Y     = 2     -- raised (was -2): align with the Cancel Auction button row,
-                          -- which sits a few px higher than the bar's atlas-centering nudge
+local NUDGE_Y     = -1    -- vertical trim to sit level with the Cancel Auction button
+                          -- (in-game tuned: -2 low, +2 high with the 22px button)
 
 -- Fallback from AuctionHouseFrame BOTTOMLEFT if MoneyFrameBorder is absent, from
 -- the verified rect (probe ref §2): money left +5, width 158 -> right edge +163.
