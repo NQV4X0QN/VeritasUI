@@ -103,6 +103,77 @@ function AH.Replicate.Progress()
 end
 
 ----------------------------------------------------------------
+--  Snapshot search — DIAGNOSTIC (/ah find <shift-clicked item link>)
+--
+--  Sweeps the LAST replicate snapshot still in client memory for rows matching
+--  a target itemID (by link, falling back to exact name for rows whose link is
+--  nil), and prints what the scan actually saw for that item: row index, count,
+--  buyoutPrice, link-resolved?, derived key. Purpose: discriminate the stale-
+--  tooltip classes — "item absent from snapshot" (server-side omission) vs
+--  "present but skipped" (nil link / bid-only / zero unit) — instead of
+--  inferring from silence. Chunked on its own throwaway driver so a 270k-row
+--  sweep never hitches the client. Run it right after a scan completes.
+----------------------------------------------------------------
+local MAX_FIND_PRINTS = 10   -- per-row print cap; the summary still counts all
+function AH.Replicate.FindInSnapshot(targetItemID, targetName)
+    if scanning then
+        return false, "A scan is running — try again after it completes."
+    end
+    local num = C_AuctionHouse.GetNumReplicateItems() or 0
+    if num == 0 then
+        return false, "No replicate snapshot in memory — run a scan first, then /ah find again."
+    end
+
+    local i, found, nilLinks, printed = 0, 0, 0, 0
+    local totalQty = 0
+    local sweeper = CreateFrame("Frame")
+    sweeper:SetScript("OnUpdate", function(self)
+        local sliceStart = debugprofilestop()
+        while i < num and (debugprofilestop() - sliceStart) < FRAME_BUDGET_MS do
+            pcall(function()
+                local name, _, count, _, _, _, _, _, _, buyoutPrice =
+                    C_AuctionHouse.GetReplicateItemInfo(i)
+                local link = C_AuctionHouse.GetReplicateItemLink(i)
+                local isMatch = false
+                if link then
+                    local id = tonumber(link:match("|Hitem:(%d+)"))
+                    isMatch = (id == targetItemID)
+                else
+                    nilLinks = nilLinks + 1
+                    -- Fallback: name may resolve even when the link doesn't.
+                    isMatch = (targetName ~= nil and name == targetName)
+                end
+                if isMatch then
+                    found = found + 1
+                    totalQty = totalQty + (count or 0)
+                    if printed < MAX_FIND_PRINTS then
+                        printed = printed + 1
+                        VUI.Print(AH.TAG, format(
+                            "  row %d: count=%s buyout=%s link=%s key=%s",
+                            i, tostring(count), tostring(buyoutPrice),
+                            link and "ok" or "|cFFFF4444NIL|r",
+                            tostring(link and AH.DB.MakeKey(link))))
+                    end
+                end
+            end)
+            i = i + 1
+        end
+        if i >= num then
+            self:SetScript("OnUpdate", nil)
+            VUI.Print(AH.TAG, format(
+                "/ah find: swept %d rows — |cFFFFFF00%d|r matching rows (total qty %d) "
+                .. "for itemID %s; snapshot-wide nil links: |cFFFFFF00%d|r",
+                num, found, totalQty, tostring(targetItemID), nilLinks))
+            if found == 0 then
+                VUI.Print(AH.TAG, "  → item is |cFFFF4444ABSENT from the snapshot|r "
+                    .. "(server-side omission, not a row-skip in our scan).")
+            end
+        end
+    end)
+    return true
+end
+
+----------------------------------------------------------------
 --  The chunked row processor (coroutine body)
 ----------------------------------------------------------------
 local function ProcessAllRows()

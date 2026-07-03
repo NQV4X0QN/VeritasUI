@@ -221,6 +221,7 @@ local function PrintHelp()
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah scan|r         — full price scan (AH open; 15-min cooldown)")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah diag|r         — diagnostic / state dump")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah check|r        — show stored price for a shift-clicked item")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah find|r         — search the last scan's raw data for a shift-clicked item")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah wipe|r         — clear the price database")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah blocked|r      — manage sell-strip hidden items")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah settings|r     — open settings panel")
@@ -348,6 +349,25 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
 
     elseif cmd == "check" then
         PrintCheck(rawRest)
+
+    elseif cmd == "find" then
+        -- DIAGNOSTIC: sweep the last replicate snapshot for a shift-clicked item.
+        if not (AH.Replicate and AH.Replicate.FindInSnapshot) then
+            VUI.Print(AH.TAG, "Scanner not loaded.")
+            return
+        end
+        local link = rawRest:match("|H.-|h.-|h")
+        local itemID = link and tonumber(link:match("|Hitem:(%d+)"))
+        local name   = link and link:match("|h%[(.-)%]|h")
+        if not itemID then
+            VUI.Print(AH.TAG, "Usage: |cFFFFFF00/ah find|r then shift-click an item link.")
+            return
+        end
+        VUI.Print(AH.TAG, format("Searching last snapshot for %s (itemID %d)…", link, itemID))
+        local ok, reason = AH.Replicate.FindInSnapshot(itemID, name)
+        if not ok then
+            VUI.Print(AH.TAG, reason or "Sweep could not start.")
+        end
 
     elseif cmd == "blocked" then
         if AH.SellStrip then
