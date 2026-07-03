@@ -108,6 +108,7 @@ local state = {
     hideTimer = nil,
     phase     = nil,   -- "connect" | "requested" (which pre-% wait we're in)
     waitStart = nil,   -- GetTime() when the current wait began (for elapsed "(Ns)")
+    finalizing = false, -- post-100% gear-residue retry phase (AH_SCAN_FINALIZING)
 }
 
 local function CancelHide()
@@ -224,7 +225,15 @@ ticker:SetScript("OnUpdate", function(_, elapsed)
         if state.sweep:IsShown() then state.sweep:Hide() end
         state.bar:SetStatusBarColor(COLOR_RUN[1], COLOR_RUN[2], COLOR_RUN[3])
         state.bar:SetValue(p)
-        state.label:SetText(format("Scanning… %d%%", floor(p * 100)))
+        if state.finalizing then
+            -- Phase 3 — gear-residue retries (AH_SCAN_FINALIZING): main results
+            -- are already committed; the scan is waiting out item-record
+            -- streaming for cold gear rows. An honest label beats a frozen
+            -- "Scanning… 100%" for up to the retry budget (~45s).
+            state.label:SetText("Finalizing gear prices…")
+        else
+            state.label:SetText(format("Scanning… %d%%", floor(p * 100)))
+        end
     else
         -- Phase 1 — indeterminate: empty fill, sweeping highlight.
         if not state.sweep:IsShown() then
@@ -257,8 +266,9 @@ local function ShowScanning()
     Build()
     if not state.built then return end
     CancelHide()
-    state.phase     = "connect"      -- first wait: throttle/connect (pre-ReplicateItems)
-    state.waitStart = GetTime()      -- start the elapsed "(Ns)" clock
+    state.phase      = "connect"     -- first wait: throttle/connect (pre-ReplicateItems)
+    state.waitStart  = GetTime()     -- start the elapsed "(Ns)" clock
+    state.finalizing = false
     state.bar:SetValue(0)
     state.bar:SetStatusBarColor(COLOR_WAIT[1], COLOR_WAIT[2], COLOR_WAIT[3])
     state.sweep:Hide()         -- the ticker re-shows it on the first Phase-1 frame
@@ -271,8 +281,9 @@ end
 local function ShowTerminal(text, color, fill)
     if not state.built then return end
     StopTicking()
-    state.phase     = nil
-    state.waitStart = nil
+    state.phase      = nil
+    state.waitStart  = nil
+    state.finalizing = false
     state.sweep:Hide()
     state.bar:SetStatusBarColor(color[1], color[2], color[3])
     state.bar:SetValue(fill)
@@ -288,8 +299,9 @@ end
 local function HideNow()
     StopTicking()
     CancelHide()
-    state.phase     = nil
-    state.waitStart = nil
+    state.phase      = nil
+    state.waitStart  = nil
+    state.finalizing = false
     if state.frame then state.frame:Hide() end
 end
 
@@ -312,6 +324,12 @@ AH.Events.On("AH_SCAN_REQUESTED", function()
     state.phase     = "requested"
     state.waitStart = GetTime()
     state.label:SetText(WaitLabel())
+end)
+
+-- Main drain finished and committed; gear-residue retries running (Phase 3).
+AH.Events.On("AH_SCAN_FINALIZING", function()
+    if not (state.built and AH.Replicate and AH.Replicate.IsScanning()) then return end
+    state.finalizing = true
 end)
 
 AH.Events.On("AH_SCAN_COMPLETE", function(committed, rows)

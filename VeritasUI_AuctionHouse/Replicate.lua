@@ -48,7 +48,11 @@ local REPLICATE_RETRY_DELAY = 60        -- seconds to wait for REPLICATE_ITEM_LI
                                         -- events within the window is an unambiguous drop.
 local LINK_RETRY_WAIT       = 3         -- seconds between link retry passes (lets queued
                                         -- item-record loads stream in; cold-cache coverage fix)
-local LINK_RETRY_PASSES     = 3         -- max retry passes over still-nil-link rows
+local LINK_RETRY_BUDGET     = 45        -- hard cap (seconds) on the whole retry phase. Records
+                                        -- stream at ~1k/3s (measured 2026-07-02), so ~15k gear
+                                        -- rows need ~45s worst case. The phase also self-stops
+                                        -- on the first pass that resolves nothing (quiescence),
+                                        -- so the cap only binds while progress is still being made.
 local scanning   = false   -- a scan coroutine is in progress
 local co                    -- the active coroutine
 local driver               -- OnUpdate ticker frame
@@ -223,7 +227,9 @@ local function ProcessAllRows()
     local CALIB_ROWS_NEEDED = 20
 
     local nilLinkKeyed = 0   -- non-gear rows priced via calibrated itemID
-    local deferred     = {}  -- row indices awaiting a link (gear / uncalibrated)
+    local deferred     = {}  -- { row = i, id = itemID|nil } awaiting a link (gear / uncalibrated)
+    local requestedIDs = {}  -- itemIDs already sent to RequestLoadItemDataByID (dedupe:
+                             -- many rows share an itemID; one load request serves them all)
 
     local sliceStart = debugprofilestop()
     local sliceCount = 0
@@ -312,10 +318,12 @@ local function ProcessAllRows()
                             nilLinkKeyed = nilLinkKeyed + 1
                             Fold(key, unit, count)
                         else
-                            deferred[#deferred + 1] = i
-                            if type(rowItemID) == "number"
+                            local id = (type(rowItemID) == "number") and rowItemID or nil
+                            deferred[#deferred + 1] = { row = i, id = id }
+                            if id and not requestedIDs[id]
                                and C_Item and C_Item.RequestLoadItemDataByID then
-                                pcall(C_Item.RequestLoadItemDataByID, rowItemID)
+                                requestedIDs[id] = true
+                                pcall(C_Item.RequestLoadItemDataByID, id)
                             end
                         end
                     end
@@ -352,45 +360,27 @@ local function ProcessAllRows()
             initialNum, num, num - initialNum))
     end
 
-    -- Retry passes: rows whose link was uncached on the main sweep. The link
-    -- calls made above queue background record loads that land over the next
-    -- seconds (verified 2026-07-02: a row nil during the scan resolved within
-    -- ~a minute). Wait, re-read the still-nil rows, repeat — each pass shrinks
-    -- the pile. Whatever survives all passes is dropped (counted under debug).
-    local deferredTotal = #deferred
-    local retryResolved = 0
-    for _ = 1, LINK_RETRY_PASSES do
-        if #deferred == 0 then break end
-        local deadline = GetTime() + LINK_RETRY_WAIT
-        while GetTime() < deadline do
-            coroutine.yield()
-        end
-        local remaining = {}
+    ----------------------------------------------------------------
+    --  COMMIT PHASE 1 — main results, BEFORE the gear retry phase.
+    --
+    --  Committing early makes the 270k-row result durable the moment the drain
+    --  finishes: if the AH closes during the (possibly 45s) retry phase below,
+    --  the whole scan is no longer discarded with it — only the late gear
+    --  residue is lost. Chunked like everything else.
+    ----------------------------------------------------------------
+    local day = AH.DB.Today()
+    local function CommitKeys(keySet)
+        -- keySet=nil commits ALL of agg; otherwise just the listed keys.
+        -- AH.DB.Record is an upsert (per-day min/max fold), so re-committing a
+        -- key later with its improved (lower-min) aggregate is safe and correct.
         sliceStart = debugprofilestop()
         sliceCount = 0
-        for d = 1, #deferred do
-            local row = deferred[d]
-            local resolved = false
-            pcall(function()
-                local link = C_AuctionHouse.GetReplicateItemLink(row)
-                if link then
-                    resolved = true   -- link is back; drop the row from the pile
-                    local _, _, count, _, _, _, _, _, _, buyoutPrice =
-                        C_AuctionHouse.GetReplicateItemInfo(row)
-                    count = count or 1
-                    buyoutPrice = buyoutPrice or 0
-                    if buyoutPrice > 0 and count > 0 then
-                        local key = AH.DB.MakeKey(link)
-                        local unit = floor(buyoutPrice / count)
-                        if key and unit > 0 then
-                            Fold(key, unit, count)
-                            retryResolved = retryResolved + 1
-                        end
-                    end
-                end
-            end)
-            if not resolved then
-                remaining[#remaining + 1] = row
+        local n = 0
+        for key in pairs(keySet or agg) do
+            local a = agg[key]
+            if a then
+                AH.DB.Record(key, a.unit, a.qty, day)
+                n = n + 1
             end
             sliceCount = sliceCount + 1
             if sliceCount >= ROWS_PER_SLICE
@@ -400,35 +390,102 @@ local function ProcessAllRows()
                 sliceCount = 0
             end
         end
-        deferred = remaining
+        return n
+    end
+    CommitKeys(nil)
+    -- Main results are durable — start the scan floor NOW, not at coroutine end.
+    -- If the AH closes during the retry phase below, the scan still "happened":
+    -- without this, an abort mid-finalize would leave no cooldown and invite an
+    -- immediate re-scan straight into the server's own replicate throttle.
+    SetLastScanTime(time())
+
+    ----------------------------------------------------------------
+    --  RETRY PHASE — gear rows whose link was uncached on the main sweep.
+    --
+    --  The main drain's link calls + RequestLoadItemDataByID queued background
+    --  record loads, which stream in at roughly ~1k records / 3s (measured
+    --  2026-07-02: 2,980 of 14,682 resolved across three 3s passes — fixed pass
+    --  counts are the wrong shape for a rate-limited stream). So: keep passing
+    --  WHILE passes make progress, re-requesting stragglers each pass, and stop
+    --  on quiescence (a pass that resolves nothing — the stream is dry) or on
+    --  the hard budget (scan must terminate). Resolved keys are committed
+    --  incrementally after each pass, so even an abort mid-phase keeps them.
+    ----------------------------------------------------------------
+    local deferredTotal = #deferred
+    local retryResolved = 0
+    local retryPasses   = 0
+    if deferredTotal > 0 then
+        -- Tell the progress UI we've entered the finalize phase (main results
+        -- are already committed and usable; this is gear residue resolution).
+        AH.Events.Fire("AH_SCAN_FINALIZING", deferredTotal)
+        local retryStart = GetTime()
+        while #deferred > 0
+              and (GetTime() - retryStart) < LINK_RETRY_BUDGET do
+            retryPasses = retryPasses + 1
+            local deadline = GetTime() + LINK_RETRY_WAIT
+            while GetTime() < deadline do
+                coroutine.yield()
+            end
+            local remaining   = {}
+            local lateTouched = {}   -- keys folded this pass -> recommit below
+            local passResolved = 0
+            sliceStart = debugprofilestop()
+            sliceCount = 0
+            for d = 1, #deferred do
+                local ent = deferred[d]
+                local resolved = false
+                pcall(function()
+                    local link = C_AuctionHouse.GetReplicateItemLink(ent.row)
+                    if link then
+                        resolved = true   -- link is back; row leaves the pile
+                        local _, _, count, _, _, _, _, _, _, buyoutPrice =
+                            C_AuctionHouse.GetReplicateItemInfo(ent.row)
+                        count = count or 1
+                        buyoutPrice = buyoutPrice or 0
+                        if buyoutPrice > 0 and count > 0 then
+                            local key = AH.DB.MakeKey(link)
+                            local unit = floor(buyoutPrice / count)
+                            if key and unit > 0 then
+                                Fold(key, unit, count)
+                                lateTouched[key] = true
+                                passResolved = passResolved + 1
+                            end
+                        end
+                    elseif ent.id and C_Item and C_Item.RequestLoadItemDataByID then
+                        -- Still cold — nudge the loader again for the next pass.
+                        pcall(C_Item.RequestLoadItemDataByID, ent.id)
+                    end
+                end)
+                if not resolved then
+                    remaining[#remaining + 1] = ent
+                end
+                sliceCount = sliceCount + 1
+                if sliceCount >= ROWS_PER_SLICE
+                   or (debugprofilestop() - sliceStart) >= FRAME_BUDGET_MS then
+                    coroutine.yield()
+                    sliceStart = debugprofilestop()
+                    sliceCount = 0
+                end
+            end
+            deferred = remaining
+            retryResolved = retryResolved + passResolved
+            if passResolved > 0 then
+                CommitKeys(lateTouched)   -- durable immediately, upsert-safe
+            else
+                break   -- quiescent pass: the record stream is dry; stop early
+            end
+        end
     end
 
     if VUI.debug then
         VUI.Print(AH.TAG, format(
             "row coverage: %d rows — cold rows keyed via itemID (pos %s): %d; "
-            .. "link-retried: %d of %d resolved; dropped: %d",
+            .. "link-retried: %d of %d resolved over %d pass(es); dropped: %d",
             num, tostring(itemIDPos), nilLinkKeyed,
-            retryResolved, deferredTotal, #deferred))
+            retryResolved, deferredTotal, retryPasses, #deferred))
     end
 
-    -- Commit aggregates to the DB (also chunked — could be tens of thousands of keys).
-    local day = AH.DB.Today()
-    local committed = 0
-    sliceStart = debugprofilestop()
-    sliceCount = 0
-    for key, a in pairs(agg) do
-        AH.DB.Record(key, a.unit, a.qty, day)
-        committed = committed + 1
-        sliceCount = sliceCount + 1
-        if sliceCount >= ROWS_PER_SLICE
-           or (debugprofilestop() - sliceStart) >= FRAME_BUDGET_MS then
-            coroutine.yield()
-            sliceStart = debugprofilestop()
-            sliceCount = 0
-        end
-    end
-
-    return committed, num
+    return kept, num
 end
 
 ----------------------------------------------------------------

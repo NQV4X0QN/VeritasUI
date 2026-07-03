@@ -197,6 +197,23 @@ CHANGELOG/README/git); a file at repo root or in this skill dir never ships to u
 
 ## 5. Log of facts added (newest first)
 
+- **2026-07-02 (post-1.8.0):** **Replicate snapshot row facts (Midnight client), measured via the new `/ah find`
+  in-game sweep tool** (sweeps the last replicate buffer for an itemID; lives in `Replicate.lua`
+  `FindInSnapshot`, wired as `/ah find <shift-clicked link>`):
+  1. **~50% of replicate rows have nil links at scan time** (138k–144k of ~268k across four scans). Any scan
+     logic that requires `GetReplicateItemLink()` silently discards half the AH. Row auction fields
+     (count/buyout) are always present regardless.
+  2. **The row itemID lives at `GetReplicateItemInfo` return #17 on this client — the documented position
+     (#15) is WRONG.** Hardcoding #15 produced non-numbers on every row. The scanner now AUTO-CALIBRATES the
+     position each scan (first 20 link-ok rows: which return equals the link's itemID) — trust the calibration,
+     never a documented position.
+  3. **Item records stream in at roughly ~1k records / 3s** after being requested (measured: 2,980 of 14,682
+     resolved across three 3s retry passes). Retry designs must be budget/quiescence-based, not fixed-count.
+  4. **`GetReplicateItemLink()` calls queue background record loads** — a row nil during a scan resolved
+     within ~1 minute with no explicit request. `C_Item.RequestLoadItemDataByID` accelerates this.
+  5. The replicate buffer **persists in client memory after the scan** (sweepable later) but is **wiped by
+     `/reload`**.
+
 - **2026-06-27 (v1.7.17):** **Tooltip coin column is now MEASURED LIVE per render, not a constant.** Confirmed
   via cross-machine testing that a hardcoded `COIN_COLUMN_X` drifts per-OS: macOS and Windows rasterize the
   same FRIZQT__/12 glyphs to slightly different pixel widths, so the same number lands sub-pixel off on Mac and
