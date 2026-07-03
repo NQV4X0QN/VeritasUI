@@ -2,6 +2,21 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.8.1] - 2026-07-02
+
+### Fixed
+- `VeritasUI_AuctionHouse` — **the price scan now covers the entire auction house instead of silently discarding over half of it.** Diagnosed live via the new `/ah find` snapshot sweep: ~50% of replicate rows (138k–145k of ~270k) have uncached item links at scan time, and the old per-row logic skipped every one of them — which is why a months-old item (Elixir of Greater Water Breathing) could show a day-old tooltip price while 352 units sat on the AH. Three-part fix: **(1)** cold rows are now keyed directly from the row's own itemID — the field's return position is **auto-calibrated live each scan** (measured at return #17 on Midnight; the documented #15 is wrong) by cross-checking the first 20 link-resolved rows, so a future Blizzard reshuffle can't break it; **(2)** gear rows (whose key needs the loaded link for item level) queue record loads and are re-read in **budget/quiescence-guarded retry passes** matched to the measured ~1k records/3s streaming rate — verified draining 14,809 of 14,809 deferred rows with **0 dropped**; **(3)** a chunk-tail guard re-checks the snapshot row count while draining so late-streamed chunks are never dropped. Result on a live realm: **21,612 items priced from 272,220 rows, up from 7,977** — 2.7× coverage. (`Replicate.lua`, `Database.lua`)
+- `VeritasUI_AuctionHouse` — **a scan's main results are now committed (and the 15-minute floor started) the moment row processing finishes**, before the gear-residue retry phase. Closing the AH mid-finalize no longer discards the whole scan; late gear resolutions commit incrementally per retry pass. (`Replicate.lua`)
+- `VeritasUI_AuctionHouse` — **the Scan button no longer loses its backdrop for a second on the session's first press.** The template's separate disabled-state texture streams from disk on first render; the disabled state now reuses the already-streamed normal art, desaturated and dimmed, so the swap can never outrun the texture streamer. (`UI/ScanButton.lua`)
+
+### Added
+- `VeritasUI_AuctionHouse` — **"Finalizing gear… N/M" live counter phase on the scan progress bar.** After the 1→100% row drain, scans with cold gear residue enter a finalize phase (up to ~45s); the bar shows honest resolved/total counts ticking up instead of freezing at 100% (or inventing a percentage with no denominator — the phase can end early on quiescence, so counts are the truthful display). (`UI/ScanProgress.lua`, `Replicate.lua`)
+- `VeritasUI_AuctionHouse` — **`/ah find <shift-clicked item>` diagnostic**: sweeps the last replicate snapshot still in client memory for that item and reports each matching row's count, buyout, link state, and derived key, plus the snapshot-wide nil-link total — the tool that discriminated "absent from server data" vs "present but skipped" and cracked this whole class of bug. (`Replicate.lua`, `Core.lua`)
+
+### Internal
+- `VeritasUI_AuctionHouse` — Scan button centered between the money frame and the scan bar (equal 14px gaps).
+- `PROBE_LIBRARY_AND_REFERENCE.md` — recorded the five hard-won replicate facts (itemID at return #17, ~50% nil-link rate, ~1k/3s record streaming, links self-loading on request, snapshot buffer surviving until `/reload`).
+
 ## [1.8.0] - 2026-07-02
 
 ### Added
