@@ -138,6 +138,30 @@ local function Build()
     end
     -- Relative level bump (absolute does not stick on an AH child — SKILL.md:41).
     btn:SetFrameLevel((parent:GetFrameLevel() or 0) + LEVEL_BUMP)
+
+    -- Disabled-state art fix (in-game finding 2026-07-02): the template's disabled
+    -- texture is a SEPARATE file, streamed on first render — so the session's first
+    -- Disable() showed a blank backdrop for ~1s (label floating on the AH) until it
+    -- loaded. Reuse the ALREADY-STREAMED normal art for the disabled state,
+    -- desaturated + dimmed, so the state flip never waits on the texture streamer.
+    -- Guarded: if the template exposes no single normal/disabled texture objects
+    -- (e.g. a three-slice build), fall back to stock behavior unchanged.
+    pcall(function()
+        local nt = btn.GetNormalTexture and btn:GetNormalTexture()
+        local dt = btn.GetDisabledTexture and btn:GetDisabledTexture()
+        if nt and dt then
+            local atlas = nt.GetAtlas and nt:GetAtlas()
+            if atlas then
+                dt:SetAtlas(atlas)
+            elseif nt:GetTexture() then
+                dt:SetTexture(nt:GetTexture())
+                dt:SetTexCoord(nt:GetTexCoord())
+            end
+            dt:SetDesaturated(true)
+            dt:SetVertexColor(0.6, 0.6, 0.6)
+        end
+    end)
+
     btn:SetText("Scan")
     btn:SetScript("OnClick", OnClick)
     btn:SetScript("OnEnter", function(self)
