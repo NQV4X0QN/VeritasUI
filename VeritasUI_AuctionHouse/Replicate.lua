@@ -59,6 +59,8 @@ local driver               -- OnUpdate ticker frame
 local progress   = 0        -- 0..1
 local retryTimer            -- C_Timer handle watching for a dropped ReplicateItems()
 local fireTime              -- GetTime() at the moment ReplicateItems() was issued
+local finalizeResolved      -- live counters for the gear-residue retry phase;
+local finalizeTotal         -- nil outside the phase (backs FinalizeStatus())
 local firstEventLogged      -- per-scan guard: trace only the FIRST event pulse, not every chunk
 
 ----------------------------------------------------------------
@@ -107,6 +109,18 @@ end
 
 function AH.Replicate.Progress()
     return progress
+end
+
+-- Live finalize-phase counters: (resolved, total) while the gear-residue retry
+-- phase runs, nil otherwise. Read by the ScanProgress label so the user sees
+-- real movement ("Finalizing gear… 2,980/14,682") instead of a static phase
+-- name. Deliberately NOT folded into Progress()'s 0..1: the residue total is
+-- unknown until the main drain ends, and the phase can end early (quiescence /
+-- budget) — a merged percentage would stall or jump. Honest counts instead.
+function AH.Replicate.FinalizeStatus()
+    if finalizeTotal then
+        return finalizeResolved or 0, finalizeTotal
+    end
 end
 
 ----------------------------------------------------------------
@@ -417,6 +431,7 @@ local function ProcessAllRows()
     if deferredTotal > 0 then
         -- Tell the progress UI we've entered the finalize phase (main results
         -- are already committed and usable; this is gear residue resolution).
+        finalizeResolved, finalizeTotal = 0, deferredTotal
         AH.Events.Fire("AH_SCAN_FINALIZING", deferredTotal)
         local retryStart = GetTime()
         while #deferred > 0
@@ -449,6 +464,8 @@ local function ProcessAllRows()
                                 Fold(key, unit, count)
                                 lateTouched[key] = true
                                 passResolved = passResolved + 1
+                                -- live counter for the ScanProgress label
+                                finalizeResolved = (finalizeResolved or 0) + 1
                             end
                         end
                     elseif ent.id and C_Item and C_Item.RequestLoadItemDataByID then
@@ -476,6 +493,8 @@ local function ProcessAllRows()
             end
         end
     end
+
+    finalizeResolved, finalizeTotal = nil, nil   -- phase over; FinalizeStatus() goes dark
 
     if VUI.debug then
         VUI.Print(AH.TAG, format(
@@ -695,6 +714,7 @@ AH.Events.On("AH_CLOSED", function()
         co = nil
         if driver then driver:Hide() end
         progress = 0
+        finalizeResolved, finalizeTotal = nil, nil
         CancelRetry()
         if VUI.debug then VUI.Print(AH.TAG, "Scan aborted (AH closed).") end
     end

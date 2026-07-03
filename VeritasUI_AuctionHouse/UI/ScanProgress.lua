@@ -228,9 +228,19 @@ ticker:SetScript("OnUpdate", function(_, elapsed)
         if state.finalizing then
             -- Phase 3 — gear-residue retries (AH_SCAN_FINALIZING): main results
             -- are already committed; the scan is waiting out item-record
-            -- streaming for cold gear rows. An honest label beats a frozen
-            -- "Scanning… 100%" for up to the retry budget (~45s).
-            state.label:SetText("Finalizing gear prices…")
+            -- streaming for cold gear rows. Honest LIVE COUNTS (resolved/total
+            -- from Replicate.FinalizeStatus) — deliberately not merged into the
+            -- 0-100% scale, which would stall/jump (unknowable duration, phase
+            -- can end early on quiescence/budget with residue).
+            local resolved, total
+            if AH.Replicate.FinalizeStatus then
+                resolved, total = AH.Replicate.FinalizeStatus()
+            end
+            if resolved and total and total > 0 then
+                state.label:SetText(format("Finalizing gear… %d/%d", resolved, total))
+            else
+                state.label:SetText("Finalizing gear prices…")
+            end
         else
             state.label:SetText(format("Scanning… %d%%", floor(p * 100)))
         end
