@@ -57,13 +57,15 @@ local LEVEL_BUMP  = 10
 -- progress bar only shows mid-scan), so the button now sits FIRST, directly right
 -- of the money frame; ScanProgress moved right of it (its GAP_X = 100 accounts for
 -- this button's span: 8 gap + 80 width + 12 clearance).
-local BAND_X      = 16    -- breathing room off the money frame's right edge
+local BAND_X      = 14    -- gap off the money frame's right edge. 14 centers the
+                          -- button between money frame and scan bar: bar left edge
+                          -- is at +108, so gaps are (108 - 80)/2 = 14 on each side.
 local NUDGE_Y     = -1    -- vertical trim to sit level with the Cancel Auction button
                           -- (in-game tuned: -2 low, +2 high with the 22px button)
 
 -- Fallback from AuctionHouseFrame BOTTOMLEFT if MoneyFrameBorder is absent, from
 -- the verified rect (probe ref §2): money left +5, width 158 -> right edge +163.
-local FB_X = (41 - 36) + 158 + BAND_X   -- = 179
+local FB_X = (41 - 36) + 158 + BAND_X   -- = 177
 local FB_Y = (534 - 528)                -- = 6
 
 local state = { built = false, btn = nil }

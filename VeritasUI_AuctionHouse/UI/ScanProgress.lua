@@ -65,7 +65,8 @@ local H         = 18     -- ~ money frame height (19), aligned to it
 local GAP_X     = 108    -- gap between money frame right edge and our left edge.
                         -- v2: the manual Scan button (ScanButton.lua) now sits FIRST in
                         -- this band (it's persistent; this bar is scan-only), so the gap
-                        -- clears it: 16 button gap + 80 button width + 12 clearance.
+                        -- clears it: 14 button gap + 80 button width + 14 clearance
+                        -- (equal gaps — the button sits centered between money and bar).
 local INSET     = 2      -- gap between container edge and the fill bar
 local BAR_RAISE = 1      -- shift inner bar+backing UP this many px so it sits at the
                         -- atlas's visual center (the art's center reads higher than
