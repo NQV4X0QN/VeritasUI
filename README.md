@@ -1,6 +1,6 @@
 # VeritasUI
 
-A personal World of Warcraft addon suite for **Midnight** (12.0.5, Interface 120005), focused on solo play quality-of-life improvements.
+A personal World of Warcraft addon suite for **Midnight** (12.0.7, Interface 120007), focused on solo play quality-of-life improvements.
 
 VeritasUI uses Blizzard's native APIs exclusively and matches Blizzard's UI aesthetics — fonts, spacing, layout, and settings panels are designed to be indistinguishable from the default UI. Most features are configurable through the standard **Options → AddOns** panel, with slash commands available for quick access.
 
@@ -73,10 +73,11 @@ Settings: **Options → AddOns → Advanced Options** | `/ao`
 ### VeritasUI_AuctionHouse
 Auction House price tracking and selling convenience, built entirely on the native Auction House frame.
 
-- **Price database** — a full-AH price scan (`/ah scan`) via `C_AuctionHouse.ReplicateItems`, stored account-wide; auto-runs when you open the Auction House (honoring a 15-minute cooldown) so prices stay fresh without typing anything
-- **Tooltip prices** — appends the last-scanned market price to item and battle-pet tooltips, rendered with Blizzard's own money frame so it's visually identical to the native "Sell Price:" line; works offline (away from the AH)
+- **Price database** — a full-AH price scan via `C_AuctionHouse.ReplicateItems`, stored account-wide. The scan covers the **entire** auction house: rows whose item links haven't streamed to the client yet (roughly half of a large AH) are recovered rather than skipped, so no items are silently dropped — a recent live realm scan priced 21,612 distinct items from 272,220 rows
+- **Manual Scan button** — a **Scan** button on the Auction House frame (bottom band, right of the money frame, on the Buy / Sell / Auctions tabs) is the way to run a scan; you can also use `/ah scan`. Scanning is **user-initiated** — the addon no longer scans automatically on open. The button shows its live state: **Scan** when ready, an **mm:ss countdown** during the 15-minute cooldown, **Retry Scan** if a request needs to be re-sent, and **Scanning…** while results are processing. A **"Finalizing gear… N/M"** progress readout appears while the last item-level-dependent rows resolve
+- **Tooltip prices** — appends the last-scanned market price to item and battle-pet tooltips, rendered with Blizzard's own money frame so it's visually identical to the native "Sell Price:" line; works offline (away from the AH), and prices persist between scans so day-to-day tooltip use never depends on having just scanned
 - **Sell strip** — a horizontal strip of your sellable bag items on the native Sell tab; click an item to load it into Blizzard's own Create-Auction form (you confirm and post — the addon never makes the protected call); right-click to hide an item from the strip
-- Settings hold the tooltip-display toggles and the auto-scan-on-open toggle
+- Settings hold the tooltip-display toggles
 
 Settings: **Options → AddOns → Auction House** | `/ah`
 
@@ -92,7 +93,7 @@ Settings: **Options → AddOns → Auction House** | `/ah`
 
 ## Requirements
 
-- World of Warcraft: Midnight (Patch 12.0.5, Interface 120005)
+- World of Warcraft: Midnight (Patch 12.0.7, Interface 120007)
 - No external library dependencies — fully self-contained
 
 ## Design Philosophy
