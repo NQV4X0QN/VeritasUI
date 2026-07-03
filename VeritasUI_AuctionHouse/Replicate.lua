@@ -110,6 +110,7 @@ local function ProcessAllRows()
     if num == 0 then
         return 0, 0
     end
+    local initialNum = num   -- for the grew-mid-drain debug report
 
     -- Per-scan aggregate: key -> { unit = minUnitPrice, qty = maxQty }.
     local agg = {}
@@ -118,7 +119,16 @@ local function ProcessAllRows()
     local sliceStart = debugprofilestop()
     local sliceCount = 0
 
-    for i = 0, num - 1 do
+    -- CHUNK-TAIL GUARD (2026-07-02): Blizzard streams the snapshot in chunks,
+    -- firing REPLICATE_ITEM_LIST_UPDATE once per chunk — but we start draining at
+    -- the FIRST pulse, so GetNumReplicateItems() read once here can be a PARTIAL
+    -- count. The old `for i = 0, num-1` froze that count and silently dropped any
+    -- rows that streamed in during the multi-second drain: a systematic tail of
+    -- never-priced items (observed 2026-07-02: an item with 352 live buyout units
+    -- absent from a 270k-row scan → stale tooltip). The while-loop re-checks the
+    -- live count at the boundary and keeps draining while the snapshot grows.
+    local i = 0
+    while i < num do
         -- Per-row read is pcall-isolated: a single malformed row (a secret value,
         -- a bad link, an itemInfo throw) is SKIPPED, not fatal to the whole scan.
         -- This is distinct from the documented cold-cache nil-link case (§2.2),
@@ -166,6 +176,22 @@ local function ProcessAllRows()
             sliceStart = debugprofilestop()
             sliceCount = 0
         end
+
+        i = i + 1
+        -- Boundary re-check: pick up rows from chunks that arrived mid-drain.
+        -- Growth is bounded (the server stops streaming once the snapshot is
+        -- complete), so this cannot loop forever.
+        if i >= num then
+            local now = C_AuctionHouse.GetNumReplicateItems() or 0
+            if now > num then num = now end
+        end
+    end
+
+    if VUI.debug and num ~= initialNum then
+        VUI.Print(AH.TAG, format(
+            "snapshot grew mid-drain: %d rows at first pulse -> %d processed "
+            .. "(chunk tail caught; pre-fix these %d rows were dropped)",
+            initialNum, num, num - initialNum))
     end
 
     -- Commit aggregates to the DB (also chunked — could be tens of thousands of keys).
