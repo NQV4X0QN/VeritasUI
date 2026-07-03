@@ -87,6 +87,23 @@ function AH.DB.MakeKey(link)
     return "i:" .. itemID
 end
 
+-- Key derivation WITHOUT a link — for replicate rows whose link is still
+-- uncached (GetReplicateItemLink nil) but whose row itemID is known (the 15th
+-- GetReplicateItemInfo return, always present). Non-gear items are keyed by
+-- bare itemID, identical to MakeKey's fallthrough, so no link is needed.
+-- Gear returns nil: its key requires the item level, which requires the
+-- loaded link — callers must defer those rows until the link resolves.
+-- (Diagnosed 2026-07-02: ~138k of ~268k replicate rows had nil links at scan
+-- time and were silently skipped, leaving over half the AH unpriced per scan.)
+function AH.DB.MakeKeyFromItemID(itemID)
+    if type(itemID) ~= "number" or itemID <= 0 then return nil end
+    local _, _, _, equipLoc = GetItemInfoInstant(itemID)
+    local isGear = equipLoc and equipLoc ~= "" and equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE"
+                   and not equipLoc:find("BAG", 1, true)
+    if isGear then return nil end
+    return "i:" .. itemID
+end
+
 ----------------------------------------------------------------
 --  Writes
 ----------------------------------------------------------------
