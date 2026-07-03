@@ -2,6 +2,22 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.8.0] - 2026-07-02
+
+### Added
+- `VeritasUI_AuctionHouse` — **a "Scan" button on the Auction House frame, now THE way to run a price scan.** It sits in the bottom band right of the money frame (present on the Buy, Sell, and Auctions tabs alike), height-matched and aligned to the native Cancel Auction button. It shows a live state: **"Scan"** when ready, a **mm:ss countdown** during the 15-minute cooldown, **"Retry Scan" (enabled)** during the pre-data wait, and **"Scanning…" (disabled)** only while rows actually drain. The OnClick fires `C_AuctionHouse.ReplicateItems()` **synchronously inside the hardware-event execution context** — Auctionator's model, whose click-fired scan never exhibited the first-open hang our event-fired auto-scan did. The button doubles as hung-scan recovery: clicking "Retry Scan" clears a fired-but-never-arrived request and re-fires; a scan actively processing rows is never interrupted. (`UI/ScanButton.lua`, new; `Replicate.lua` `StartManual`)
+
+### Removed
+- `VeritasUI_AuctionHouse` — **auto-scan on Auction House open is removed.** It fired the replicate request from the `AH_OPEN` event path, which is where the first-open-of-session scan hang lived (the request goes out, `REPLICATE_ITEM_LIST_UPDATE` never arrives, and only closing/reopening the AH recovers — three weeks of falsified candidate fixes: throttle-ready gate v1.7.9, cold-edge settle delay, one-shot and bounded retries). All scans are now user-initiated via the Scan button or `/ah scan`. The `autoScan` settings checkbox is removed and the orphaned saved-vars key is dropped on next login. Tooltip prices persist across sessions in the price database, so day-to-day tooltip use is unchanged between scans.
+- `VeritasUI_AuctionHouse` — **the experimental pre-fire gates are stripped** (`FireWhenReady` throttle-readiness gate, `FireAfterSettle` cold-edge delay, `FireWhenBrowseReady` browse-readiness gate). Live captures falsified their premises: `[FIRE STATE]` showed `throttleReady=true` and `hasFullBrowse=true` at the fire moment of a fresh login's first open, and the AH is fully usable (browse/buy/sell) during a scan hang, so no client-side readiness signal distinguishes a doomed request from a good one. `Start()` and the button's `StartManual()` are now the same direct, synchronous fire path. (`Replicate.lua`)
+
+### Fixed
+- `VeritasUI_QualityOfLife` — **item-level overlays now appear on all bank/Warband Bank items on the first open of a session.** Previously the first open showed ilvls on only a few items (the ones already in the client's item-data cache); flipping tabs "fixed" it because the redraw re-queried after the server had streamed the records in. The overlay code asked `GetDetailedItemLevelInfo()` once at button-draw time and permanently hid the overlay on a nil answer. A nil on equippable gear now queues a one-shot `ItemMixin:ContinueOnItemLoad` retry that re-processes that specific button the moment its item record arrives, with a reuse token so a button reassigned to a different item ignores the stale callback. (`QualityOfLife.lua`)
+
+### Internal
+- `VeritasUI_AuctionHouse` — replicate retry threshold raised **10s → 60s** (`REPLICATE_RETRY_DELAY`), above the measured healthy first-event latency of ~28–40s (re-confirmed 26.5s in a live capture this session). At 10s the "request was dropped; retrying" line fired inside the normal response window on every healthy scan — a misdiagnosis that muddied three weeks of traces. At 60s, a retry means a real drop. (`Replicate.lua`)
+- `VeritasUI_AuctionHouse` — the debug-gated `[FIRE STATE]` snapshot (throttle-ready / full-browse / replicate-count / owned-count at the exact `ReplicateItems()` moment) is retained for diagnosing any future first-open hang under `/run VeritasUI.debug = true`; the invalid `GetNumBrowseResults` probe field was dropped.
+
 ## [1.7.17] - 2026-06-27
 
 ### Fixed
