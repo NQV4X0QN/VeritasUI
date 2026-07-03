@@ -46,8 +46,9 @@ local REPLICATE_RETRY_DELAY = 60        -- seconds to wait for REPLICATE_ITEM_LI
                                         -- 10s this fired a mislabeled "request was dropped" duplicate on EVERY
                                         -- healthy scan, muddying each trace. At 60s, one request producing zero
                                         -- events within the window is an unambiguous drop.
-local LINK_RETRY_WAIT       = 3         -- seconds to let item records stream in before the
-                                        -- gear-row link retry pass (cold-cache coverage fix)
+local LINK_RETRY_WAIT       = 3         -- seconds between link retry passes (lets queued
+                                        -- item-record loads stream in; cold-cache coverage fix)
+local LINK_RETRY_PASSES     = 3         -- max retry passes over still-nil-link rows
 local scanning   = false   -- a scan coroutine is in progress
 local co                    -- the active coroutine
 local driver               -- OnUpdate ticker frame
@@ -133,13 +134,21 @@ function AH.Replicate.FindInSnapshot(targetItemID, targetName)
         local sliceStart = debugprofilestop()
         while i < num and (debugprofilestop() - sliceStart) < FRAME_BUDGET_MS do
             pcall(function()
-                local _, _, count, _, _, _, _, _, _, buyoutPrice,
-                      _, _, _, _, rowItemID = C_AuctionHouse.GetReplicateItemInfo(i)
+                local _, _, count, _, _, _, _, _, _, buyoutPrice =
+                    C_AuctionHouse.GetReplicateItemInfo(i)
                 local link = C_AuctionHouse.GetReplicateItemLink(i)
-                if not link then nilLinks = nilLinks + 1 end
-                -- Match on the row's own itemID (15th return) — present even for
-                -- nil-link rows, so cold-cache rows are matched too.
-                local isMatch = (rowItemID == targetItemID)
+                local isMatch = false
+                if link then
+                    isMatch = (tonumber(link:match("|Hitem:(%d+)")) == targetItemID)
+                else
+                    nilLinks = nilLinks + 1
+                    -- Cold row: match via the position calibrated by the last scan.
+                    local pos = AH.Replicate._itemIDPos
+                    if pos then
+                        isMatch = (select(pos, C_AuctionHouse.GetReplicateItemInfo(i))
+                                   == targetItemID)
+                    end
+                end
                 if isMatch then
                     found = found + 1
                     totalQty = totalQty + (count or 0)
@@ -150,7 +159,7 @@ function AH.Replicate.FindInSnapshot(targetItemID, targetName)
                             i, tostring(count), tostring(buyoutPrice),
                             link and "ok" or "|cFFFF4444NIL|r",
                             tostring(link and AH.DB.MakeKey(link)
-                                or AH.DB.MakeKeyFromItemID(rowItemID))))
+                                or AH.DB.MakeKeyFromItemID(targetItemID))))
                     end
                 end
             end)
@@ -196,11 +205,25 @@ local function ProcessAllRows()
         end
     end
 
-    -- Cold-cache row coverage (the 138k-row fix, 2026-07-02): rows whose link is
-    -- nil are no longer skipped. Non-gear rows are keyed straight from the row's
-    -- own itemID; gear rows get an async data-load request and a retry pass below.
-    local nilLinkKeyed = 0      -- non-gear rows priced via itemID despite nil link
-    local deferred     = {}     -- row indices of gear rows awaiting their link
+    -- Cold-cache row coverage (2026-07-02): ~144k of ~270k rows have nil links at
+    -- scan time and were historically skipped — over half the AH unpriced.
+    --
+    -- ITEMID POSITION AUTO-CALIBRATION: the documented GetReplicateItemInfo
+    -- signature (itemID at return 15) is WRONG on this client (verified in-game
+    -- 2026-07-02: position 15 is not a number on any row). Rather than trust any
+    -- documented position, discover it live: for the first CALIB_ROWS_NEEDED rows
+    -- whose link DOES resolve, extract the itemID from the link and record which
+    -- return positions (11+) hold that exact number. A position that matches on
+    -- ~every sample is the real itemID slot. If none wins, itemIDPos stays nil
+    -- and cold rows rely purely on the retry passes below.
+    local itemIDPos          -- calibrated return position of itemID, or nil
+    local calibrated = false
+    local calibSamples = {}  -- [position] = hit count
+    local calibRows = 0
+    local CALIB_ROWS_NEEDED = 20
+
+    local nilLinkKeyed = 0   -- non-gear rows priced via calibrated itemID
+    local deferred     = {}  -- row indices awaiting a link (gear / uncalibrated)
 
     local sliceStart = debugprofilestop()
     local sliceCount = 0
@@ -222,14 +245,11 @@ local function ProcessAllRows()
         -- actual error propagating out of coroutine.resume and discarding a
         -- 50k-200k-row snapshot over one bad row.
         pcall(function()
-            -- GetReplicateItemInfo positional returns (design §2.2 verified order):
+            -- GetReplicateItemInfo positional returns, verified through 10 (§2.2):
             -- name, texture, count, qualityID, usable, level, levelType, minBid,
-            -- minIncrement, buyoutPrice, bidAmount, highBidder, ownerFullName,
-            -- saleStatus, itemID, hasAllInfo. The row's itemID (15th) is served
-            -- from the auction row itself, so it is present even when the item's
-            -- record isn't cached and GetReplicateItemLink() returns nil.
-            local _, _, count, _, _, _, _, _, _, buyoutPrice,
-                  _, _, _, _, rowItemID = C_AuctionHouse.GetReplicateItemInfo(i)
+            -- minIncrement, buyoutPrice, ... (positions past 10 vary by client —
+            -- see the auto-calibration above; do NOT hardcode an itemID position).
+            local _, _, count, _, _, _, _, _, _, buyoutPrice = C_AuctionHouse.GetReplicateItemInfo(i)
             count = count or 1
             buyoutPrice = buyoutPrice or 0
 
@@ -239,22 +259,62 @@ local function ProcessAllRows()
                 if unit > 0 then
                     local link = C_AuctionHouse.GetReplicateItemLink(i)
                     if link then
+                        -- Calibration sampling: which return position holds the
+                        -- itemID we can independently read from this row's link?
+                        -- Own pcall: a secret-value comparison error here must not
+                        -- abort this row's Fold below.
+                        if not calibrated then pcall(function()
+                            local linkID = tonumber(link:match("|Hitem:(%d+)"))
+                            if linkID then
+                                local rets = { C_AuctionHouse.GetReplicateItemInfo(i) }
+                                for p = 11, #rets do
+                                    if rets[p] == linkID then
+                                        calibSamples[p] = (calibSamples[p] or 0) + 1
+                                    end
+                                end
+                                calibRows = calibRows + 1
+                                if calibRows >= CALIB_ROWS_NEEDED then
+                                    calibrated = true
+                                    local best, bestN
+                                    for p, n in pairs(calibSamples) do
+                                        if not bestN or n > bestN then best, bestN = p, n end
+                                    end
+                                    -- Consensus: winner must have hit on ~every sample
+                                    -- (coincidental matches — e.g. a bidAmount equal to
+                                    -- an itemID — can't sustain 90% across 20 rows).
+                                    if best and bestN >= CALIB_ROWS_NEEDED * 0.9 then
+                                        itemIDPos = best
+                                    end
+                                    -- Expose for /ah find (matches cold rows the same way).
+                                    AH.Replicate._itemIDPos = itemIDPos
+                                    if VUI.debug then
+                                        VUI.Print(AH.TAG, "itemID position calibration: "
+                                            .. (itemIDPos and ("return #" .. itemIDPos)
+                                                or "|cFFFF4444no consensus|r — cold rows use retry passes only"))
+                                    end
+                                end
+                            end
+                        end) end
                         local key = AH.DB.MakeKey(link)
                         if key then Fold(key, unit, count) end
-                    elseif type(rowItemID) == "number" then
-                        -- COLD-CACHE ROW (~half the snapshot, diagnosed 2026-07-02):
-                        -- the link stays nil until the item record streams in, but
-                        -- the auction fields above are always present. Non-gear keys
-                        -- never needed the link — derive from the row itemID.
-                        local key = AH.DB.MakeKeyFromItemID(rowItemID)
+                    else
+                        -- COLD-CACHE ROW (~half the snapshot, diagnosed 2026-07-02).
+                        -- If calibration found the itemID slot, non-gear rows are
+                        -- keyed right now (their key never needed the link). Gear —
+                        -- or anything unresolvable — is deferred to the retry passes:
+                        -- the GetReplicateItemLink call above queues a background
+                        -- record load that typically lands within seconds.
+                        local rowItemID = itemIDPos
+                            and select(itemIDPos, C_AuctionHouse.GetReplicateItemInfo(i))
+                        local key = (type(rowItemID) == "number")
+                            and AH.DB.MakeKeyFromItemID(rowItemID) or nil
                         if key then
                             nilLinkKeyed = nilLinkKeyed + 1
                             Fold(key, unit, count)
                         else
-                            -- Gear (key needs ilvl, which needs the loaded link):
-                            -- kick an async record load now, retry the row later.
                             deferred[#deferred + 1] = i
-                            if C_Item and C_Item.RequestLoadItemDataByID then
+                            if type(rowItemID) == "number"
+                               and C_Item and C_Item.RequestLoadItemDataByID then
                                 pcall(C_Item.RequestLoadItemDataByID, rowItemID)
                             end
                         end
@@ -292,40 +352,46 @@ local function ProcessAllRows()
             initialNum, num, num - initialNum))
     end
 
-    -- Retry pass: gear rows whose link was uncached on the first sweep. Their
-    -- RequestLoadItemDataByID calls have been streaming records in while the main
-    -- drain ran; give the remainder a short settle, then re-read. One pass —
-    -- anything still nil is dropped (counted under debug), same net behavior as
-    -- the old code but only for the residue instead of half the snapshot.
-    local gearResolved, gearDropped = 0, 0
-    if #deferred > 0 then
+    -- Retry passes: rows whose link was uncached on the main sweep. The link
+    -- calls made above queue background record loads that land over the next
+    -- seconds (verified 2026-07-02: a row nil during the scan resolved within
+    -- ~a minute). Wait, re-read the still-nil rows, repeat — each pass shrinks
+    -- the pile. Whatever survives all passes is dropped (counted under debug).
+    local deferredTotal = #deferred
+    local retryResolved = 0
+    for _ = 1, LINK_RETRY_PASSES do
+        if #deferred == 0 then break end
         local deadline = GetTime() + LINK_RETRY_WAIT
         while GetTime() < deadline do
             coroutine.yield()
         end
+        local remaining = {}
         sliceStart = debugprofilestop()
         sliceCount = 0
         for d = 1, #deferred do
             local row = deferred[d]
+            local resolved = false
             pcall(function()
-                local _, _, count, _, _, _, _, _, _, buyoutPrice =
-                    C_AuctionHouse.GetReplicateItemInfo(row)
-                count = count or 1
-                buyoutPrice = buyoutPrice or 0
                 local link = C_AuctionHouse.GetReplicateItemLink(row)
-                if link and buyoutPrice > 0 and count > 0 then
-                    local key = AH.DB.MakeKey(link)
-                    local unit = floor(buyoutPrice / count)
-                    if key and unit > 0 then
-                        Fold(key, unit, count)
-                        gearResolved = gearResolved + 1
-                    else
-                        gearDropped = gearDropped + 1
+                if link then
+                    resolved = true   -- link is back; drop the row from the pile
+                    local _, _, count, _, _, _, _, _, _, buyoutPrice =
+                        C_AuctionHouse.GetReplicateItemInfo(row)
+                    count = count or 1
+                    buyoutPrice = buyoutPrice or 0
+                    if buyoutPrice > 0 and count > 0 then
+                        local key = AH.DB.MakeKey(link)
+                        local unit = floor(buyoutPrice / count)
+                        if key and unit > 0 then
+                            Fold(key, unit, count)
+                            retryResolved = retryResolved + 1
+                        end
                     end
-                else
-                    gearDropped = gearDropped + 1
                 end
             end)
+            if not resolved then
+                remaining[#remaining + 1] = row
+            end
             sliceCount = sliceCount + 1
             if sliceCount >= ROWS_PER_SLICE
                or (debugprofilestop() - sliceStart) >= FRAME_BUDGET_MS then
@@ -334,13 +400,15 @@ local function ProcessAllRows()
                 sliceCount = 0
             end
         end
+        deferred = remaining
     end
 
     if VUI.debug then
         VUI.Print(AH.TAG, format(
-            "row coverage: %d rows — cold-cache keyed by itemID: %d; "
-            .. "gear deferred: %d (resolved %d, dropped %d)",
-            num, nilLinkKeyed, #deferred, gearResolved, gearDropped))
+            "row coverage: %d rows — cold rows keyed via itemID (pos %s): %d; "
+            .. "link-retried: %d of %d resolved; dropped: %d",
+            num, tostring(itemIDPos), nilLinkKeyed,
+            retryResolved, deferredTotal, #deferred))
     end
 
     -- Commit aggregates to the DB (also chunked — could be tens of thousands of keys).
