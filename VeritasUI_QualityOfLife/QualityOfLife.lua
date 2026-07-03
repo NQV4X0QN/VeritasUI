@@ -404,14 +404,54 @@ local function SetupItemLevels()
         return true, itemID
     end
 
-    local function ProcessItem(btn, itemIDOrLink, quality)
+    -- Forward-declared: QueueRetry's callback re-enters ProcessItem after the
+    -- item record loads (same closure-sees-later-assignment pattern as WayCommand).
+    local ProcessItem
+
+    -- Cold item-data-cache retry. On the FIRST bank/warband-bank open of a session
+    -- most item records aren't client-cached yet, so GetDetailedItemLevelInfo()
+    -- returns nil and the overlay silently never appeared (it "fixed itself" on a
+    -- tab flip only because the flip re-fired SetItemButtonQuality after the server
+    -- had streamed the records in). Instead of dropping the button, re-process it
+    -- the moment ITS record arrives, via the Blizzard-provided ItemMixin:
+    -- ContinueOnItemLoad (fires immediately if already loaded, else on data arrival).
+    -- The _vui_pendingIlvl token guards button reuse: any fresh ProcessItem call for
+    -- this button supersedes the pending retry, making the stale callback a no-op.
+    local function QueueRetry(btn, itemIDOrLink, quality)
+        local ok, item = pcall(function()
+            if type(itemIDOrLink) == "string" then
+                return Item:CreateFromItemLink(itemIDOrLink)
+            end
+            return Item:CreateFromItemID(itemIDOrLink)
+        end)
+        if not ok or not item or item:IsItemEmpty() then return end
+        btn._vui_pendingIlvl = itemIDOrLink
+        item:ContinueOnItemLoad(function()
+            if btn._vui_pendingIlvl ~= itemIDOrLink then return end
+            btn._vui_pendingIlvl = nil
+            ProcessItem(btn, itemIDOrLink, quality, true)   -- noRetry: one shot only
+        end)
+    end
+
+    ProcessItem = function(btn, itemIDOrLink, quality, noRetry)
+        -- Any fresh call supersedes a pending cold-cache retry for this button.
+        btn._vui_pendingIlvl = nil
         if not itemIDOrLink then HideOverlay(btn); return end
         if quality ~= nil and quality == 0 then HideOverlay(btn); return end
         local equippable, rawID = IsEquippableGear(itemIDOrLink)
         if not equippable then HideOverlay(btn); return end
         if rawID and SKIP_ITEMS[rawID] then HideOverlay(btn); return end
         local ok, ilvl = pcall(C_Item.GetDetailedItemLevelInfo, itemIDOrLink)
-        if not ok or not ilvl then HideOverlay(btn); return end
+        if not ok or not ilvl then
+            -- nil ilvl on equippable gear = cold item-data cache, not "no ilvl".
+            -- Hide for now; re-run this button once when the record loads. noRetry
+            -- stops a second queue if the loaded record STILL yields no ilvl
+            -- (ContinueOnItemLoad on a loaded item fires synchronously — requeueing
+            -- there would recurse).
+            HideOverlay(btn)
+            if not noRetry then QueueRetry(btn, itemIDOrLink, quality) end
+            return
+        end
         -- ilvl may be a secret value in raid encounters; guard the comparison.
         local cmpOk, tooLow = pcall(function() return ilvl <= 0 end)
         if not cmpOk or tooLow then HideOverlay(btn); return end
