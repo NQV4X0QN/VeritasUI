@@ -2,6 +2,14 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.9.0] - 2026-07-03
+
+### Added
+- `VeritasUI_PriorityRotation` — **"Auto-target next enemy on death" — a per-spec toggle in the rotation Settings tab.** When enabled, holding the rotation key keeps attacking into the next mob the instant your current target dies, instead of stalling until you manually tab. It works by baking a reacquire prefix into each spell step at compile time — `/cleartarget [dead]` drops the corpse and `/targetenemy [noexists]` grabs the nearest enemy, but **only** when you have no target. A live target you picked yourself satisfies neither condition, so it is never overridden: the sole triggers are a target's death or your own tab/click. This is why it can't be replicated with a hand-made macro — the keybind is override-bound straight to the secure button and bypasses the Attack macro's body, so the targeting has to live in the injected step. The toggle is **off by default and stored per spec**, so you enable it only on the characters/specs you want it on. Macro and trinket steps are deliberately left untouched (a macro may carry its own `@mouseover`/`@focus` targeting; trinkets need no target). The added lines are ordinary secure macro commands run through the existing `macrotext` path — no new taint surface. (`Core.lua`, `Profiles.lua`, `Settings.lua`)
+
+### Changed
+- `VeritasUI_AuctionHouse` — **hiding an item from the Sell Strip now requires Shift-Right-click instead of a bare right-click.** The strip sits over the bag/sell area where right-clicks are frequent, and a stray click could blocklist the wrong item (recoverable only via `/ah blocked`). Requiring Shift makes hiding a deliberate act; a plain right-click on the strip is now ignored. The tooltip hint updates to match. (`UI/SellStrip.lua`)
+
 ## [1.8.1] - 2026-07-02
 
 ### Fixed

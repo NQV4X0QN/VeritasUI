@@ -16,7 +16,7 @@
 --   => empty band under Create Auction, above the gold bar (~y555..y643).
 --
 -- VERIFIED PREDICATE (bag introspection): an item appears when it is UNBOUND and
--- has a vendor sell price (matched 31/31 observed sellables). A right-click
+-- has a vendor sell price (matched 31/31 observed sellables). A Shift-Right-click
 -- blocklist (AH.db.sellBlocklist[itemID]) hides items you never want to list.
 --
 -- SCROLL: a fixed row of reusable item buttons + mouse-wheel paging by an offset.
@@ -91,7 +91,7 @@ local function ShowButtonTooltip(button)
     pcall(GameTooltip.SetHyperlink, GameTooltip, button.data.link)
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine("|cFF00FF00Click|r to load into the Sell form.", 1, 1, 1)
-    GameTooltip:AddLine("|cFFFF8800Right-click|r to hide from this strip.", 1, 1, 1)
+    GameTooltip:AddLine("|cFFFF8800Shift-Right-click|r to hide from this strip.", 1, 1, 1)
     GameTooltip:Show()
 end
 
@@ -320,6 +320,11 @@ local function MakeButton(parent, index)
         local data = self.data
         if not data then return end
         if mouseButton == "RightButton" then
+            -- Shift is required to hide. A bare right-click is ignored: the
+            -- strip sits over the bag/sell area where right-clicks fly often,
+            -- and blocklisting the wrong item is annoying to undo. Requiring
+            -- Shift makes hiding a deliberate act.
+            if not IsShiftKeyDown() then return end
             AH.db.sellBlocklist = AH.db.sellBlocklist or {}
             AH.db.sellBlocklist[data.itemID] = true
             VUI.Print(AH.TAG, "Hidden from the sell strip: " .. data.link

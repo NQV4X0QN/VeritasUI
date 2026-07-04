@@ -155,6 +155,11 @@ local function BuildMainWindow()
         if self.specDD and self.specDD.RefreshLabel then
             self.specDD:RefreshLabel()
         end
+        -- Re-sync the reacquire checkbox to the now-current spec's profile
+        -- (reacquire is per-spec, so a spec change flips which value shows).
+        if self.reacqCheck then
+            self.reacqCheck:SetChecked(PR:CurrentProfile().reacquire and true or false)
+        end
     end
 
     -- Content panels — anchored to CONTENT directly (not to specBadge) so
@@ -245,8 +250,50 @@ local function BuildMainWindow()
             "Spam the bound key to cycle through your rotation. "
             .."WoW's built-in cooldown and resource checks handle the rest.")
 
+        -- ── Targeting ─────────────────────────────────────────────
+        -- Per-spec toggle. Writes CurrentProfile().reacquire and forces a
+        -- recompile so the reacquire prefix is (un)baked into the spell
+        -- steps immediately. The checkbox state is re-synced to the live
+        -- profile in win:RefreshBadge (fires on spec change and on show),
+        -- so switching spec always shows THAT spec's setting.
+        local divTarget = Section(txtHow, "BOTTOMLEFT", -10, "Targeting")
+
+        -- Own label fontstring rather than the template's built-in text
+        -- region — avoids the .Text/.text naming drift across CheckButton
+        -- template revisions.
+        local reacqCheck = CreateFrame("CheckButton", nil, cont, "UICheckButtonTemplate")
+        reacqCheck:SetPoint("TOPLEFT", divTarget, "BOTTOMLEFT", 0, -6)
+        reacqCheck:SetSize(24, 24)
+        local reacqLbl = cont:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        reacqLbl:SetPoint("LEFT", reacqCheck, "RIGHT", 2, 0)
+        reacqLbl:SetText("Auto-target next enemy on death")
+        reacqLbl:SetTextColor(1, 1, 1)
+        reacqCheck:SetChecked(PR:CurrentProfile().reacquire and true or false)
+        reacqCheck:SetScript("OnClick", function(self)
+            local checked = self:GetChecked() and true or false
+            PR:CurrentProfile().reacquire = checked
+            PR:CompileSequence()
+            VUI.Print("Priority Rotation", checked
+                and "Auto-target on death |cFF00FF00enabled|r for this spec."
+                or  "Auto-target on death |cFFFF4444disabled|r for this spec.")
+        end)
+        -- Clicking the label toggles the box too — larger hit target.
+        local reacqLabelBtn = CreateFrame("Button", nil, cont)
+        reacqLabelBtn:SetPoint("TOPLEFT",     reacqLbl, "TOPLEFT",     0, 0)
+        reacqLabelBtn:SetPoint("BOTTOMRIGHT", reacqLbl, "BOTTOMRIGHT", 0, 0)
+        reacqLabelBtn:SetScript("OnClick", function()
+            reacqCheck:Click()
+        end)
+        win.reacqCheck = reacqCheck
+
+        local txtTarget = Body(reacqCheck, -4,
+            "When your target dies, holding the rotation key switches to "
+            .."the nearest enemy. Only a target's death or your own "
+            .."tab/click ever changes targets — a live target you picked is "
+            .."never overridden. |cFFFFFF00Set per spec.|r")
+
         -- ── Freq ──────────────────────────────────────────────────
-        local divFreq = Section(txtHow, "BOTTOMLEFT", -10, "Freq")
+        local divFreq = Section(txtTarget, "BOTTOMLEFT", -10, "Freq")
         local txtFreq = Body(divFreq, -6,
             "Controls how often a spell appears in the cycle.\n"
             .."|cFFFFFF00Freq 3+|r  —  priority spells and cooldowns. "

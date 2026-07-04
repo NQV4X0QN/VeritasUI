@@ -167,6 +167,17 @@ function PR:CompileSequence()
 
     local seq, names = {}, {}
     local profile = self:CurrentProfile()
+    -- Reacquire prefix — prepended to spell steps only when the profile
+    -- opts in. `/cleartarget [dead]` drops a corpse; `/targetenemy
+    -- [noexists]` then grabs the nearest enemy only when you have no
+    -- target. A live, manually-chosen target satisfies neither condition,
+    -- so it is never overridden — the sole triggers are target death and
+    -- your own tab/click. Macro and item steps are left untouched (macros
+    -- may carry their own @mouseover/@focus targeting; trinkets need no
+    -- target). These are ordinary secure macro commands run through the
+    -- existing macrotext path — no new taint surface.
+    local reacqPrefix = (profile and profile.reacquire)
+        and "/cleartarget [dead]\n/targetenemy [noexists]\n" or ""
     if profile and profile.spells and #profile.spells > 0 then
         local cooldowns, fillers = {}, {}
         local cdNames,   fillNames = {}, {}
@@ -212,7 +223,7 @@ function PR:CompileSequence()
                         if info == nil then stale = true end
                     end
                     if not stale then
-                        macrotext = "/cast " .. e.spellName
+                        macrotext = reacqPrefix .. "/cast " .. e.spellName
                         entryName = e.spellName
                         if e.spellID then
                             PR._missingSpellWarned[e.spellID] = nil

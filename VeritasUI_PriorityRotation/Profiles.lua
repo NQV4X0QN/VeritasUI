@@ -216,8 +216,13 @@ function PR:BuildDefaultProfile()
     end
     local starter   = self.STARTER_LISTS[specID]
     local profile   = {
-        name   = starter and starter.name or self:GetCurrentSpecLabel(),
-        spells = {},
+        name      = starter and starter.name or self:GetCurrentSpecLabel(),
+        spells    = {},
+        -- When true, spell steps reacquire the nearest enemy the moment
+        -- the current target dies (or you have none), so holding the
+        -- rotation key keeps attacking into the next mob. Off by default;
+        -- toggled per-spec in the Settings tab. See CompileSequence.
+        reacquire = false,
     }
     if starter then
         for _, s in ipairs(starter.spells) do
