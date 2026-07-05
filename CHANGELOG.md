@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.9.4] - 2026-07-04
+
+### Fixed
+- `VeritasUI_QualityOfLife` — **the AFK screen now dismisses the instant you move, instead of sometimes taking several seconds.** Dismissal previously depended entirely on `UnitIsAFK("player")` clearing server-side: `PLAYER_FLAGS_CHANGED` when the server sent it promptly, or the v1.6.21 5-second fallback poll when it didn't — so how fast the overlay disappeared varied with network round-trip time rather than with when you actually moved. A new `PLAYER_STARTED_MOVING` handler drops the overlay the moment the client itself detects movement, with no server confirmation needed. This is a plain event registration, not keyboard capture — it doesn't touch the combat-protected `EnableKeyboard`/`SetPropagateKeyboardInput` path removed in v1.9.2. `PLAYER_FLAGS_CHANGED` and the fallback poll are unchanged and still catch every other AFK-clearing input. (`QualityOfLife.lua`)
+
 ## [1.9.3] - 2026-07-04
 
 The high-severity finding from the full-suite code audit — the final batch of the three-release remediation (lows v1.9.1, mediums v1.9.2).

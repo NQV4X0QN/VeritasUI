@@ -903,7 +903,8 @@ end
 -- (name, level, item level, zone) with a slow camera orbit
 -- to minimise OLED burn-in.
 -- Triggered by PLAYER_FLAGS_CHANGED → UnitIsAFK("player").
--- Dismissed when AFK flag clears (any input).
+-- Dismissed when AFK flag clears (any input), OR instantly on
+-- PLAYER_STARTED_MOVING — see the fast-path note at that handler.
 -- ─────────────────────────────────────────────────────────────
 local afkOverlay          -- the fullscreen frame (created once, reused)
 local afkClockTicker      -- 30s timer for real-world clock refresh
@@ -1239,6 +1240,7 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_LOGOUT")
 frame:RegisterEvent("USER_WAYPOINT_UPDATED")
 frame:RegisterEvent("PLAYER_FLAGS_CHANGED")
+frame:RegisterEvent("PLAYER_STARTED_MOVING")
 
 frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" then
@@ -1347,6 +1349,18 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         elseif afk == false then
             AFK_Exit()
         end
+
+    elseif event == "PLAYER_STARTED_MOVING" then
+        -- Fast path: PLAYER_FLAGS_CHANGED depends on a server round-trip
+        -- confirming the AFK flag cleared, which is why dismissal felt
+        -- sometimes instant and sometimes several-seconds-late (up to the
+        -- 5s fallback poll interval) — the round-trip time varies with
+        -- latency/server load. Movement is detected client-side the moment
+        -- it happens, so drop the overlay immediately without waiting for
+        -- the server to confirm. Not keyboard capture (no EnableKeyboard
+        -- on the frame), so this doesn't touch the combat-protection issue
+        -- that got the old OnKeyDown handler removed in v1.9.2.
+        if afkActive then AFK_Exit() end
 
     elseif event == "USER_WAYPOINT_UPDATED" then
         -- Fired when the waypoint is cleared externally (e.g. map right-click UI).
