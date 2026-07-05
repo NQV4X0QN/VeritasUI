@@ -2,6 +2,13 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.9.3] - 2026-07-04
+
+The high-severity finding from the full-suite code audit — the final batch of the three-release remediation (lows v1.9.1, mediums v1.9.2).
+
+### Fixed
+- `VeritasUI_ZoneQuests` — **newly accepted quests are no longer silently un-tracked until the next zone change.** `SyncTracking` reuses a cached zone quest set that was only invalidated on `ZONE_CHANGED*`. The v1.7.14 rewrite changed what that cache holds: the old cache (v1.6.3 lineage) held the zone *name set* — stable within a zone, so the v1.6.27 removal of the `QUEST_ACCEPTED` handler was sound at the time — but the new cache holds the zone *quest-ID set*, which changes on every acceptance. Accepting a quest fired `QUEST_LOG_UPDATE` → the debounced sync judged the new quest against the stale set → not in it, not pinned → `RemoveQuestWatch`, actively undoing Blizzard's auto-watch until a zone boundary rebuilt the cache (and even `/zq refresh` used the stale set, so the manual escape hatch couldn't rescue it; pinned categories masked the bug for Campaign/Important/etc.). Fix, scoped deliberately: `QUEST_ACCEPTED` is re-registered and does exactly two things — invalidate the cache and route through the existing cancellable 0.3s debounce (NOT the stacked per-event `C_Timer.After` the v1.6.27 hardening removed, and NOT blanket invalidation on `QUEST_LOG_UPDATE`, which fires on every objective tick and would rebuild the map query per kill-credit burst — the exact cost the cache exists to avoid). One rebuild per acceptance burst; `/zq refresh` now also rebuilds fresh. Zone-transition behavior, pins, super-track preservation, and the strict sub-zone semantics re-confirmed in v1.9.2 are all untouched. (`ZoneQuests.lua`)
+
 ## [1.9.2] - 2026-07-04
 
 Medium-severity batch from the full-suite code audit (3 findings shipped of 4 — one was falsified during in-game validation and reverted, see Internal; the low batch shipped as v1.9.1, the high finding ships as v1.9.3). Each fix was validated against the git history of the code it touches.

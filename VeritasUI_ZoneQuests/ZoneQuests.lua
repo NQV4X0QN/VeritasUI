@@ -358,6 +358,20 @@ ef:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 ef:RegisterEvent("ZONE_CHANGED_INDOORS")
 ef:RegisterEvent("QUEST_LOG_UPDATE")
 ef:RegisterEvent("SUPER_TRACKING_CHANGED")
+-- QUEST_ACCEPTED returns (removed v1.6.27, required again since v1.7.14):
+-- the v1.6.27 removal was correct when the cache held the zone NAME set —
+-- stable within a zone, so a newly accepted quest still matched by header.
+-- v1.7.14 changed the cache to hold the zone QUEST-ID set, which changes on
+-- every acceptance: a quest accepted in-zone was not in the stale set, and
+-- the next QUEST_LOG_UPDATE sync actively UN-tracked it (undoing Blizzard's
+-- auto-watch) until the next zone transition rebuilt the cache. This handler
+-- only invalidates the cache and routes through the existing cancellable
+-- debounce — NOT the stacked C_Timer.After the v1.6.27 removal eliminated.
+-- Deliberately NOT invalidating on QUEST_LOG_UPDATE itself: that fires on
+-- every objective tick (each kill credit), and rebuilding the map query per
+-- burst is the exact cost the cache exists to avoid; stale IDs for quests
+-- no longer in the log are dead keys the sync loop never consults.
+ef:RegisterEvent("QUEST_ACCEPTED")
 
 ef:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
@@ -414,6 +428,14 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         lastDirectSync = GetTime()
         SyncTracking(false)
 
+    elseif event == "QUEST_ACCEPTED" then
+        -- Rebuild the zone quest set so the just-accepted quest is judged
+        -- against fresh map data instead of being removed by a stale cache
+        -- (see the registration comment above). One rebuild per acceptance
+        -- burst — the debounce collapses the accompanying QUEST_LOG_UPDATEs.
+        cachedQuestSet = nil
+        if db.enabled then ScheduleSync() end
+
     elseif event == "SUPER_TRACKING_CHANGED" then
         -- Player set or cleared the minimap direction arrow. Re-sync so the
         -- quest appears/disappears from the tracker promptly.
@@ -447,6 +469,10 @@ SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
 
     elseif msg == "refresh" then
         if not db then VUI.Print("Zone Quests", "Not ready."); return end
+        -- A manual refresh should judge against fresh map data, not the
+        -- cache — previously even /zq refresh couldn't rescue a quest the
+        -- stale set had dropped.
+        cachedQuestSet = nil
         SyncTracking(false)
         VUI.Print("Zone Quests", "Refreshed — " .. ZoneName())
 
