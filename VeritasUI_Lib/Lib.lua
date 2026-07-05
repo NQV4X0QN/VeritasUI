@@ -27,7 +27,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.9.1"
+VUI.VERSION = "1.9.2"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: CombatQueue pcall failures, see
 -- Lib.lua:348).  Off by default to avoid clutter; flip at runtime via
@@ -41,9 +41,21 @@ function VUI.Print(tag, msg)
     print(format("|cFF00CCFF[%s]|r %s", tag, msg))
 end
 
+-- On/off print for settings that require a /reload to apply (CleanSolo's
+-- hooksecurefunc-based features — see the POLICY block in CleanSolo.lua).
 function VUI.PrintOnOff(tag, label, state)
     local word = state and "|cFF00FF00turned on|r" or "|cFFFF4444turned off|r"
     VUI.Print(tag, label .. " " .. word .. " — |cFFFFFF00/reload|r to apply.")
+end
+
+-- On/off print for settings that apply IMMEDIATELY (QoL's v1.6.28
+-- mid-session-apply pattern, AH tooltip toggles).  The "/reload to apply"
+-- suffix dates to v1.2.0 when every setting genuinely needed one; telling
+-- users to /reload for a live-apply toggle was wrong for nine settings
+-- across two modules.
+function VUI.PrintOnOffLive(tag, label, state)
+    local word = state and "|cFF00FF00turned on|r" or "|cFFFF4444turned off|r"
+    VUI.Print(tag, label .. " " .. word .. ".")
 end
 
 ----------------------------------------------------------------

@@ -917,7 +917,15 @@ local function AFK_CreateOverlay()
     f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:SetFrameLevel(500)
     f:SetIgnoreParentAlpha(true)
-    f:EnableKeyboard(true)
+    -- Keyboard is deliberately NOT captured (no EnableKeyboard). Dismissal is
+    -- driven by PLAYER_FLAGS_CHANGED + the fallback poll, never by keystrokes,
+    -- so capturing input added nothing — and the old OnKeyDown handler's
+    -- SetPropagateKeyboardInput(true) is combat-protected (10.1.5+): a mob
+    -- attacking the AFK player put us in combat, and the wake-up keypress
+    -- then triggered a blocked-action error — and, if it was the session's
+    -- first overlay keypress, the key was swallowed (propagation still at its
+    -- default false), so the player couldn't move to clear AFK. With no
+    -- keyboard capture, every key reaches the game directly.
     f:Hide()
 
     -- ── Vignette overlay ──
@@ -1007,14 +1015,9 @@ local function AFK_CreateOverlay()
     clockText:SetShadowOffset(1, -1)
     f._clockText = clockText
 
-    -- ── Input dismiss ──
-    -- Only character movement (keyboard) clears AFK in Blizzard's default
-    -- behavior — mouse clicks do not.  Propagate every key so the movement
-    -- key that wakes the player also reaches the game.  Mouse is not
-    -- captured (EnableMouse stays false) so clicks fall through harmlessly.
-    f:SetScript("OnKeyDown", function(self, key)
-        self:SetPropagateKeyboardInput(true)
-    end)
+    -- No input scripts: mouse is not captured (EnableMouse stays false) and
+    -- keyboard is not captured (see the note at frame creation), so movement
+    -- keys and clicks all fall through to the game untouched.
 
     afkOverlay = f
     return f
@@ -1150,7 +1153,9 @@ local function InitializeOptions()
             category, ADDON_NAME .. "_" .. key, key,
             VeritasUI_QualityOfLifeDB, type(defaults[key]), name, defaults[key])
         setting:SetValueChangedCallback(function(_, value)
-            VUI.PrintOnOff("Quality of Life", name, value)
+            -- Live variant: every QoL toggle applies mid-session (v1.6.28
+            -- pattern) — the old PrintOnOff instructed a needless /reload.
+            VUI.PrintOnOffLive("Quality of Life", name, value)
             if onChange then onChange(value) end
         end)
         Settings.CreateCheckbox(category, setting, tip)
@@ -1173,11 +1178,26 @@ local function InitializeOptions()
             if value then SetupItemLevels() end
         end)
 
+    -- Mid-session enable: MERCHANT_SHOW/CLOSED are registered at PLAYER_LOGIN
+    -- only if a merchant feature was already on.  If BOTH were off at login,
+    -- enabling one later did nothing until /reload — the only QoL toggle that
+    -- violated the module's live-apply pattern.  RegisterEvent is idempotent,
+    -- so registering again from the callback is safe; disable needs no
+    -- unregister (the MERCHANT_SHOW handler gates on the db flags).
+    local function EnsureMerchantEvents(value)
+        if value then
+            frame:RegisterEvent("MERCHANT_SHOW")
+            frame:RegisterEvent("MERCHANT_CLOSED")
+        end
+    end
+
     AddCheckbox("autoSellJunk", "Auto Sell Junk",
-        "Automatically sells all grey items when you visit a merchant.")
+        "Automatically sells all grey items when you visit a merchant.",
+        EnsureMerchantEvents)
 
     AddCheckbox("autoRepair", "Auto Repair",
-        "Automatically repairs all equipment at repair vendors. Funding source is selected below.")
+        "Automatically repairs all equipment at repair vendors. Funding source is selected below.",
+        EnsureMerchantEvents)
 
     -- Repair Funding dropdown — appears directly below the Auto Repair checkbox.
     local repairSetting = Settings.RegisterAddOnSetting(

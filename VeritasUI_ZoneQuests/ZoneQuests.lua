@@ -77,6 +77,19 @@ local function BuildZoneQuestSet()
         if not info then break end
         local mt = info.mapType or -1
         if mt == MAP_TYPE_WORLD or mt == MAP_TYPE_COSMIC then break end
+        -- POLICY (falsified "fix", 2026-07-04 — do not re-add it): validMaps
+        -- stays anchored to the BEST map + its descendants even when the walk
+        -- ascends.  A v1.9.2 audit-remediation draft extended the accept set
+        -- with each walked ancestor level + its descendants (reasoning: "the
+        -- tracker empties in quest-less micro-maps"); in-game it pulled
+        -- parent-zone quests into sub-zones — standing in Silvermoon City
+        -- surfaced Eversong's Windrunner Spire quest — and was reverted the
+        -- same day.  The strict semantics are INTENDED: a map with no quests
+        -- of its own shows only pinned quests, and the walk exists solely to
+        -- catch quests filed at an ancestor level whose per-POI mapID points
+        -- back INTO the best map or its sub-areas (the v1.7.14 "Stalkers of
+        -- the Stars" case).  Future audits: treat ascent-level rejection as
+        -- policy, not drift.
         local quests = C_QuestLog.GetQuestsOnMap(mapID)
         if quests and #quests > 0 then
             for _, e in ipairs(quests) do

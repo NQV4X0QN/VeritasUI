@@ -678,7 +678,14 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         VUI.Print("Priority Rotation", "  C_RestrictedActions:       " .. (hasRestrict and G.."available"..E or R.."NOT FOUND"..E))
 
         VUI.Print("Priority Rotation", "─────────────────────────────────────────")
-        local cvarOk, cvarErr = pcall(C_CVar.SetCVar, "ActionButtonUseKeyDown", "0")
+        -- Write-permission probe: write back the CVar's CURRENT value.  The
+        -- old hardcoded "0" silently flipped a user-facing setting — with PR
+        -- disabled, EnsureActionBarCVar keeps this CVar at "1" (Press-and-
+        -- Hold Casting), and a diagnostic must never mutate that.  A same-
+        -- value SetCVar still exercises write lockdown, which is all this
+        -- probe exists to test.
+        local cvarCur = C_CVar.GetCVar("ActionButtonUseKeyDown")
+        local cvarOk, cvarErr = pcall(C_CVar.SetCVar, "ActionButtonUseKeyDown", cvarCur or "0")
         if cvarOk then
             VUI.Print("Priority Rotation", "  SetCVar ActionButtonUseKeyDown: " .. G .. "OK" .. E)
         else

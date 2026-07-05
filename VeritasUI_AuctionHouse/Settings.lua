@@ -32,7 +32,9 @@ local function BuildNativeSettingsPanel()
                 category, ADDON_NAME .. "_" .. key, key,
                 store, "boolean", name, default)
             setting:SetValueChangedCallback(function(_, value)
-                VUI.PrintOnOff(AH.TAG, name, value)
+                -- Live variant: tooltip toggles take effect on the next
+                -- hover — no /reload involved.
+                VUI.PrintOnOffLive(AH.TAG, name, value)
             end)
             Settings.CreateCheckbox(category, setting, tip)
         end
