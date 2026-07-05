@@ -631,10 +631,19 @@ end)
 SLASH_VERITASUI_CLEANSOLO1 = "/cleansolo"
 SLASH_VERITASUI_CLEANSOLO2 = "/cs"
 SlashCmdList["VERITASUI_CLEANSOLO"] = function()
-    Settings.OpenToCategory(settingsCategoryID)
+    -- Guard against nil (options init not yet run, or failed) — same
+    -- "still loading" pattern as PriorityRotation / ZoneQuests / AH.
+    if settingsCategoryID then
+        Settings.OpenToCategory(settingsCategoryID)
+    else
+        VUI.Print("Clean Solo",
+            "Settings are still loading — try again in a moment.")
+    end
 end
 
 -- ── Addon Compartment (minimap dropdown) ────────────────────
 function VeritasUI_CleanSolo_OnAddonCompartmentClick()
-    C_Timer.After(0, function() Settings.OpenToCategory(settingsCategoryID) end)
+    C_Timer.After(0, function()
+        if settingsCategoryID then Settings.OpenToCategory(settingsCategoryID) end
+    end)
 end

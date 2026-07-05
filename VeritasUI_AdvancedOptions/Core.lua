@@ -87,9 +87,13 @@ function AO:GetCVar(name)
 end
 
 --- Read a CVar as a boolean. Returns true/false or nil on failure.
+--- NOTE: a plain `ok and val or nil` would collapse a legitimate `false`
+--- into nil, making "off" indistinguishable from "unreadable" — the
+--- explicit branch preserves the documented contract.
 function AO:GetCVarBool(name)
     local ok, val = pcall(C_CVar.GetCVarBool, name)
-    return ok and val or nil
+    if ok then return val end
+    return nil
 end
 
 --- Read the default value for a CVar. Returns string or nil.

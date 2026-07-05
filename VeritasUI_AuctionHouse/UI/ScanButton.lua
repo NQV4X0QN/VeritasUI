@@ -71,6 +71,65 @@ local FB_Y = (534 - 528)                -- = 6
 local state = { built = false, btn = nil }
 
 ----------------------------------------------------------------
+--  DISABLED-ART PRE-WARM — real Enable()/Disable(), no streaming blank
+--  (in-game finding 2026-07-02; root-caused via /ah btnprobe 2026-07-04)
+--
+--  The session's first real Disable() blanked the button for ~1s. The
+--  investigation record, in order, so none of it is re-tried:
+--    * v1.8.1 pre-filled GetDisabledTexture — a SILENT NO-OP: this
+--      template is a three-slice build; GetNormalTexture/GetDisabledTexture
+--      are nil (proven by /ah btnprobe), so the copy's guard always fell
+--      through and its "verified" pass was a warm-cache coincidence.
+--    * desaturation, overlay, and grey-text-on-normal-art emulations all
+--      failed side-by-side comparison vs Cancel Auction. The last one came
+--      from misreading btnprobe's file 130824 as the NORMAL art (fileID
+--      recalled from memory — do not do that). The rendered evidence +
+--      the highlight slice at 130826 settle the family mapping
+--      (Disabled/Down/Highlight/Up ≈ 130824..130827): native disabled
+--      buttons swap their three BACKGROUND slices to file 130824 — the
+--      SILVER disabled art — and grey the text via GameFontDisable. The
+--      blank was that silver file streaming on the session's first swap.
+--
+--  So: use the REAL Disable()/Enable() — native silver art, native grey
+--  text, the suite's native-first philosophy — and kill the blank by
+--  making the disabled art resident BEFORE the first flip:
+--    * at build, flip Disable()→read→Enable() synchronously (no frame
+--      renders in between, so nothing is ever visible) and record the
+--      file(s) the template swaps into its BACKGROUND slices;
+--    * park 1px, 5%-alpha textures on those files so they render — and
+--      therefore stream — from AH open onward, seconds before any real
+--      disable can occur.
+--  Worst case (AH opened during an active cooldown on a cold client): the
+--  countdown disables immediately at open and the silver art can still
+--  take ~1s to appear ONCE, at open — not mid-interaction. A mid-session
+--  flip can no longer blank.
+----------------------------------------------------------------
+local function PrewarmDisabledArt(btn)
+    local files = {}
+    pcall(function()
+        btn:Disable()
+        for _, region in ipairs({ btn:GetRegions() }) do
+            if region:IsObjectType("Texture")
+               and region:GetDrawLayer() == "BACKGROUND" then
+                local f = region:GetTexture()
+                if f then files[f] = true end
+            end
+        end
+        btn:Enable()
+    end)
+    -- Measured fallback (btnprobe 2026-07-04): if discovery came up empty,
+    -- pre-warm the known disabled slice file directly.
+    if not next(files) then files[130824] = true end
+    for file in pairs(files) do
+        local warm = btn:CreateTexture(nil, "BACKGROUND", nil, -8)
+        warm:SetSize(1, 1)
+        warm:SetPoint("CENTER")
+        warm:SetAlpha(0.05)
+        pcall(warm.SetTexture, warm, file)
+    end
+end
+
+----------------------------------------------------------------
 --  Label reflects live scan state (polled while shown)
 ----------------------------------------------------------------
 local function RefreshLabel()
@@ -141,30 +200,12 @@ local function Build()
     -- Relative level bump (absolute does not stick on an AH child — SKILL.md:41).
     btn:SetFrameLevel((parent:GetFrameLevel() or 0) + LEVEL_BUMP)
 
-    -- Disabled-state art fix (in-game finding 2026-07-02): the template's disabled
-    -- texture is a SEPARATE file, streamed on first render — so the session's first
-    -- Disable() showed a blank backdrop for ~1s (label floating on the AH) until it
-    -- loaded. Reuse the ALREADY-STREAMED normal art for the disabled state,
-    -- desaturated + dimmed, so the state flip never waits on the texture streamer.
-    -- Guarded: if the template exposes no single normal/disabled texture objects
-    -- (e.g. a three-slice build), fall back to stock behavior unchanged.
-    pcall(function()
-        local nt = btn.GetNormalTexture and btn:GetNormalTexture()
-        local dt = btn.GetDisabledTexture and btn:GetDisabledTexture()
-        if nt and dt then
-            local atlas = nt.GetAtlas and nt:GetAtlas()
-            if atlas then
-                dt:SetAtlas(atlas)
-            elseif nt:GetTexture() then
-                dt:SetTexture(nt:GetTexture())
-                dt:SetTexCoord(nt:GetTexCoord())
-            end
-            dt:SetDesaturated(true)
-            dt:SetVertexColor(0.6, 0.6, 0.6)
-        end
-    end)
-
     btn:SetText("Scan")
+
+    -- Make the disabled slice art resident before any real disable can
+    -- happen (see the DISABLED-ART PRE-WARM block comment).
+    PrewarmDisabledArt(btn)
+
     btn:SetScript("OnClick", OnClick)
     btn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
@@ -216,3 +257,79 @@ AH.Events.On("AH_SCAN_START", RefreshLabel)
 AH.Events.On("AH_SCAN_REQUESTED", RefreshLabel)
 AH.Events.On("AH_SCAN_COMPLETE", RefreshLabel)
 AH.Events.On("AH_SCAN_FAILED", RefreshLabel)
+
+----------------------------------------------------------------
+--  TEMP DIAGNOSTIC — /ah btnprobe
+--
+--  Dumps the LIVE art state of every disabled native button under
+--  AuctionHouseFrame (run it while Cancel Auction is greyed out): per
+--  texture — atlas/file, draw layer, shown, alpha, vertex color,
+--  desaturation; per label — font object and text color. Purpose: match
+--  our soft-disabled Scan button to MEASURED values instead of guesses
+--  (the probe-library method). Remove once the grey is signed off.
+----------------------------------------------------------------
+function AH.ProbeDisabledButtons()
+    local AHF = _G.AuctionHouseFrame
+    if not AHF then
+        VUI.Print(AH.TAG, "Open the Auction House first.")
+        return
+    end
+    local found = 0
+
+    local function DumpTexture(label, t)
+        if not t then return end
+        pcall(function()
+            local atlas = t.GetAtlas and t:GetAtlas()
+            local file  = (not atlas) and t.GetTexture and t:GetTexture()
+            local r, g, b, va = 1, 1, 1, 1
+            if t.GetVertexColor then r, g, b, va = t:GetVertexColor() end
+            VUI.Print(AH.TAG, string.format(
+                "    %s: |cFFFFFF00%s|r layer=%s shown=%s a=%.2f vtx=%.2f/%.2f/%.2f(%.2f) desat=%s",
+                label, tostring(atlas or file or "none"),
+                tostring(t.GetDrawLayer and t:GetDrawLayer() or "?"),
+                tostring(t:IsShown()), t:GetAlpha() or 1,
+                r, g, b, va,
+                tostring(t.IsDesaturated and t:IsDesaturated())))
+        end)
+    end
+
+    local function Visit(f, depth)
+        if depth > 8 then return end
+        if f:IsObjectType("Button") then
+            local okT, txt = pcall(f.GetText, f)
+            local enabled = true
+            pcall(function() enabled = f:IsEnabled() end)
+            if okT and txt and txt ~= "" and not enabled then
+                found = found + 1
+                VUI.Print(AH.TAG, string.format(
+                    "Disabled button: |cFF00FF00%s|r (%s, %dx%d)",
+                    txt, f:GetName() or "anonymous",
+                    math.floor(f:GetWidth() or 0), math.floor(f:GetHeight() or 0)))
+                DumpTexture("Normal  ", f.GetNormalTexture and f:GetNormalTexture())
+                DumpTexture("Disabled", f.GetDisabledTexture and f:GetDisabledTexture())
+                for i, region in ipairs({ f:GetRegions() }) do
+                    if region:IsObjectType("Texture") then
+                        DumpTexture("region" .. i, region)
+                    elseif region:IsObjectType("FontString") then
+                        pcall(function()
+                            local fo = region:GetFontObject()
+                            local r, g, b = region:GetTextColor()
+                            VUI.Print(AH.TAG, string.format(
+                                "    text: font=|cFFFFFF00%s|r color=%.2f/%.2f/%.2f",
+                                tostring(fo and fo.GetName and fo:GetName() or "?"),
+                                r or 1, g or 1, b or 1))
+                        end)
+                    end
+                end
+            end
+        end
+        for _, child in ipairs({ f:GetChildren() }) do
+            Visit(child, depth + 1)
+        end
+    end
+
+    pcall(Visit, AHF, 0)
+    VUI.Print(AH.TAG, string.format(
+        "btnprobe: %d disabled button(s) dumped. (Nothing listed? Make sure "
+        .. "a native button like Cancel Auction is currently greyed out.)", found))
+end

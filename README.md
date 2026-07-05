@@ -55,7 +55,7 @@ Settings: `/pr` or `/pr settings`
 Zone-specific quest tracking via the native Objective Tracker.
 
 - Automatically manages quest watch state so only current-zone quests appear
-- Uses a robust zone matching system: `C_Map` hierarchy walk, directional prefix stripping, bidirectional substring matching
+- Location-based filtering: quests are matched by their objectives' actual map (`C_QuestLog.GetQuestsOnMap` + per-POI `mapID` against the current zone and its sub-areas), so quests filed under activity headers still show when they're genuinely local, and neighbouring-zone bleed-in is rejected
 - Always-show categories configurable: Campaign, Important, Legendary, Meta, Repeatable
 - Event-debounced updates to handle `QUEST_LOG_UPDATE` bursts
 
@@ -76,7 +76,7 @@ Auction House price tracking and selling convenience, built entirely on the nati
 - **Price database** — a **Scan** button on the Auction House frame does a complete sweep of the auction house and stores current market prices account-wide. Every item on the AH is captured in a single scan; you can also run one with `/ah scan`
 - **Scan button states** — the button tells you where a scan stands at a glance: ready to scan, counting down the cooldown between scans, or working through results
 - **Tooltip prices** — shows the latest market price on item and battle-pet tooltips, styled to match Blizzard's own "Sell Price:" line. Prices stay available everywhere, including away from the Auction House
-- **Sell strip** — a strip of your sellable bag items on the Sell tab; click one to load it into Blizzard's Create-Auction form (you confirm and post), or right-click to hide it from the strip
+- **Sell strip** — a strip of your sellable bag items on the Sell tab; click one to load it into Blizzard's Create-Auction form (you confirm and post), or Shift-Right-click to hide it from the strip
 - Settings hold the tooltip-display toggles
 
 Settings: **Options → AddOns → Auction House** | `/ah`

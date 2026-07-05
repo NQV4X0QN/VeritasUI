@@ -109,9 +109,10 @@ end
 --              label font and genuinely track any future Blizzard restyle.
 --   * Label  = a real tooltip AddLine ("Auction:"), so the label inherits the exact
 --              tooltip body font the native "Sell Price:" label uses — no font guessing.
---   * The coin fontstring is parented to UIParent (never the tooltip — touching the
---     tooltip's child list is itself a taint vector), raised to TOOLTIP strata, anchored
---     to the line, and hidden on the tooltip's OnHide so it never orphans.
+--   * The coin fontstring is created once per tooltip frame and PARENTED TO THE
+--     TOOLTIP (an earlier UIParent-parented overlay attempt rendered invisible —
+--     see the RenderCoinLine block below), anchored to our label line, and hidden
+--     on OnTooltipCleared so it never leaks onto non-item tooltips.
 local PRICE_PREFIX = "Auction:"
 
 -- Where the coin block starts: the x-offset (px, from the line's LEFT edge) at which our

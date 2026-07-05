@@ -230,7 +230,15 @@ function AO:CreateSlider(parent, cfg)
         return format("%d", v)
     end
 
+    -- Declared BEFORE Refresh so Refresh can capture it as an upvalue.
+    local pendingWrite
+
     local function Refresh()
+        -- Cancel any in-flight debounced drag write: Refresh reflects the
+        -- authoritative CVar value (reset button, external change), and a
+        -- stale pending write landing 0.15s later would silently re-apply
+        -- the dragged value over it.
+        if pendingWrite then pendingWrite:Cancel(); pendingWrite = nil end
         local raw = AO:GetCVar(cfg.cvar)
         local val = tonumber(raw) or cfg.min
         val = math_max(cfg.min, math_min(cfg.max, val))
@@ -239,7 +247,6 @@ function AO:CreateSlider(parent, cfg)
     end
     Refresh()
 
-    local pendingWrite
     slider:SetScript("OnValueChanged", function(self, value, userInput)
         -- Snap to step
         local step = cfg.step or 1

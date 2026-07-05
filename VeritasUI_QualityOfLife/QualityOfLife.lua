@@ -111,9 +111,18 @@ local saleCount              -- count of grey stacks at sell start (for print)
 local lastRemainingValue     -- previous cycle's remaining value (progress detection)
 local noProgressSince        -- GetTime() of last cycle that made progress (or sell start)
 local sellRetryTimer         -- safety timer; fires if BAG_UPDATE_DELAYED is lost
+local sellPending  = {}      -- [itemID] = true: grey whose GetItemInfo was a clean
+                             -- cache miss during ScanJunk (all-cold first visit);
+                             -- GET_ITEM_INFO_RECEIVED re-runs the scan when one lands
+local coldSellTimer          -- debounce for GET_ITEM_INFO_RECEIVED bursts
+local ScheduleColdSellRetry  -- forward declaration; defined after AutoSellJunk
 
 local function CancelSellRetry()
     if sellRetryTimer then sellRetryTimer:Cancel(); sellRetryTimer = nil end
+end
+
+local function CancelColdSellRetry()
+    if coldSellTimer then coldSellTimer:Cancel(); coldSellTimer = nil end
 end
 
 -- Walk bags once, return (totalValue, count) for every grey item that has
@@ -144,6 +153,20 @@ local function ScanJunk()
                     local okP, _, _, _, _, _, _, _, _, _, _, price =
                         pcall(C_Item.GetItemInfo, info.itemID)
                     if okP then
+                        if price == nil then
+                            -- Clean cache miss (distinct from a secret value,
+                            -- which is non-nil and caught by the pcall below).
+                            -- Request the record and flag the itemID so
+                            -- GET_ITEM_INFO_RECEIVED can re-run the junk scan
+                            -- once it lands — otherwise a fully cold cache
+                            -- (fresh client start straight to a vendor) sells
+                            -- nothing for the visit. Mirrors the proven
+                            -- SellStrip pending/RequestLoadItemDataByID pattern.
+                            sellPending[info.itemID] = true
+                            if C_Item.RequestLoadItemDataByID then
+                                pcall(C_Item.RequestLoadItemDataByID, info.itemID)
+                            end
+                        end
                         -- price may be a secret value; guard arithmetic.
                         local okC, contrib = pcall(function()
                             if price and price > 0 then
@@ -288,6 +311,21 @@ local function AutoSellJunk()
     ScheduleSellRetry()
 end
 
+-- Cold-cache retry: re-run AutoSellJunk once a pending grey's item record
+-- streams in. Fires ONLY while idle (saleTotal nil) — AutoSellJunk resets the
+-- sale accounting, so re-entering mid-sale would corrupt the report; a sale
+-- already in progress re-scans the bags every cycle and needs no retry.
+-- Debounced 0.1s: GET_ITEM_INFO_RECEIVED cache fills arrive in bursts.
+ScheduleColdSellRetry = function()
+    CancelColdSellRetry()
+    coldSellTimer = C_Timer.NewTimer(0.1, function()
+        coldSellTimer = nil
+        if saleTotal then return end
+        if not (MerchantFrame and MerchantFrame:IsShown()) then return end
+        if db and db.autoSellJunk then AutoSellJunk() end
+    end)
+end
+
 -- ── Feature: Auto Repair ────────────────────────────────────
 -- Fires independently from MERCHANT_SHOW; never chained off
 -- AutoSellJunk.  Print uses GetRepairAllCost() directly — no
@@ -324,6 +362,16 @@ local function AutoRepair()
         VUI.Print("Quality of Life", format(
             "Repaired for %s (guild bank)", GetCoinTextureString(cost)))
     else
+        -- RepairAllItems silently no-ops when personal gold can't cover the
+        -- bill, so an unconditional print would claim a repair that never
+        -- happened. Synchronous read-once pre-check — no delta math, no
+        -- PLAYER_MONEY listener (the v1.6.36 constraints are preserved).
+        if GetMoney() < cost then
+            VUI.Print("Quality of Life", format(
+                "Can't repair — costs %s and you don't have enough gold.",
+                GetCoinTextureString(cost)))
+            return
+        end
         RepairAllItems(false)
         VUI.Print("Quality of Life", format(
             "Repaired for %s", GetCoinTextureString(cost)))
@@ -688,6 +736,13 @@ local function SetupMapCoordinates()
             local y = ((anchor:GetBottom() or 0) * aScale
                        - (container:GetBottom() or 0) * cScale) / cScale
             db.mapCoordsPos = { x = x, y = y }
+            -- Re-anchor to the container immediately: StartMoving() silently
+            -- re-anchors the frame to screen coordinates, so without this the
+            -- coords stop tracking the map frame (move/rescale the windowed
+            -- map and they float) until the next login. This is the exact
+            -- restore path already used at init, applied live.
+            anchor:ClearAllPoints()
+            anchor:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", x, y)
         end
 
         -- Player coords (gold) — left side.
@@ -1223,13 +1278,32 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- disables item sales entirely; AutoRepair must still fire.
         -- Same pattern as Scrap (Button:OnMerchant in
         -- jaliborc/Scrap addons/merchant/button.lua).
+        --
+        -- GET_ITEM_INFO_RECEIVED is registered only for the merchant visit:
+        -- it fires far too often to listen to globally, and it's only needed
+        -- to catch greys whose item data was cold when ScanJunk ran.
+        if db.autoSellJunk then
+            self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+        end
         C_Timer.After(0, function()
             if db.autoRepair   then AutoRepair()  end
             if db.autoSellJunk then AutoSellJunk() end
         end)
 
     elseif event == "MERCHANT_CLOSED" then
+        self:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
+        CancelColdSellRetry()
+        wipe(sellPending)
         if saleTotal then ResetSellState() end
+
+    elseif event == "GET_ITEM_INFO_RECEIVED" then
+        -- arg1 = itemID whose record just arrived. Only react to itemIDs
+        -- flagged as cold-cache misses by ScanJunk, and only while idle —
+        -- see ScheduleColdSellRetry for the mid-sale guard rationale.
+        if arg1 and sellPending[arg1] then
+            sellPending[arg1] = nil
+            if not saleTotal then ScheduleColdSellRetry() end
+        end
 
     elseif event == "BAG_UPDATE_DELAYED" then
         CancelSellRetry()
@@ -1266,7 +1340,14 @@ end)
 SLASH_VERITASUI_QOL1 = "/qol"
 SLASH_VERITASUI_QOL2 = "/qualityoflife"
 SlashCmdList["VERITASUI_QOL"] = function()
-    Settings.OpenToCategory(settingsCategoryID)
+    -- Guard against nil (options init not yet run, or failed) — same
+    -- "still loading" pattern as PriorityRotation / ZoneQuests / AH.
+    if settingsCategoryID then
+        Settings.OpenToCategory(settingsCategoryID)
+    else
+        VUI.Print("Quality of Life",
+            "Settings are still loading — try again in a moment.")
+    end
 end
 
 -- ── /way — TomTom-compatible waypoint command ────────────────
@@ -1355,5 +1436,7 @@ end
 
 -- ── Addon Compartment (minimap dropdown) ────────────────────
 function VeritasUI_QualityOfLife_OnAddonCompartmentClick()
-    C_Timer.After(0, function() Settings.OpenToCategory(settingsCategoryID) end)
+    C_Timer.After(0, function()
+        if settingsCategoryID then Settings.OpenToCategory(settingsCategoryID) end
+    end)
 end

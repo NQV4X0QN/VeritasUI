@@ -62,6 +62,12 @@ local fireTime              -- GetTime() at the moment ReplicateItems() was issu
 local finalizeResolved      -- live counters for the gear-residue retry phase;
 local finalizeTotal         -- nil outside the phase (backs FinalizeStatus())
 local firstEventLogged      -- per-scan guard: trace only the FIRST event pulse, not every chunk
+local mainCommit            -- { kept, rows } once the phase-1 commit lands (set in
+                            -- ProcessAllRows); nil until then. Lets the driver
+                            -- distinguish a pre-commit failure (nothing durable →
+                            -- AH_SCAN_FAILED) from a finalize-phase failure (main
+                            -- results committed + scan floor running → report the
+                            -- committed result; only late gear residue was lost).
 
 ----------------------------------------------------------------
 --  Scan lifecycle — why there is NO timeout (do not re-add one)
@@ -412,6 +418,8 @@ local function ProcessAllRows()
     -- without this, an abort mid-finalize would leave no cooldown and invite an
     -- immediate re-scan straight into the server's own replicate throttle.
     SetLastScanTime(time())
+    -- Mark the commit for the driver's error path (see mainCommit declaration).
+    mainCommit = { kept = kept, rows = num }
 
     ----------------------------------------------------------------
     --  RETRY PHASE — gear rows whose link was uncached on the main sweep.
@@ -519,13 +527,28 @@ local function EnsureDriver()
         local ok, a, b = coroutine.resume(co)
         if not ok then
             -- Coroutine errored — abort cleanly.
-            if VUI.debug then
-                VUI.Print(AH.TAG, "|cFFFF4444Scan error|r: " .. tostring(a))
-            end
             scanning = false
             co = nil
             driver:Hide()
-            AH.Events.Fire("AH_SCAN_FAILED", tostring(a))
+            finalizeResolved, finalizeTotal = nil, nil
+            if mainCommit then
+                -- The error hit AFTER the phase-1 commit (gear-residue
+                -- finalize path): the main scan is durable and the 15-min
+                -- floor is already running, so "Scan failed — try again
+                -- shortly" would be false on both counts. Report the
+                -- committed result; only late gear residue was lost.
+                progress = 1
+                if VUI.debug then
+                    VUI.Print(AH.TAG, "|cFFFF8800Finalize-phase error|r "
+                        .. "(main results already committed): " .. tostring(a))
+                end
+                AH.Events.Fire("AH_SCAN_COMPLETE", mainCommit.kept, mainCommit.rows)
+            else
+                if VUI.debug then
+                    VUI.Print(AH.TAG, "|cFFFF4444Scan error|r: " .. tostring(a))
+                end
+                AH.Events.Fire("AH_SCAN_FAILED", tostring(a))
+            end
             return
         end
         if coroutine.status(co) == "dead" then
@@ -575,6 +598,7 @@ local function DoFire()
     scanning = true          -- set ONLY here, at the real fire moment
     fireTime = GetTime()     -- stamp for first-event / total-scan latency measurement
     firstEventLogged = false -- re-arm the one-line-per-scan trace for this attempt
+    mainCommit = nil         -- no durable commit yet for THIS attempt
     -- FIRE-MOMENT STATE SNAPSHOT: capture the observable AH API state at the exact instant
     -- we issue ReplicateItems(). Compare a FAILING cold open vs the WORKING reopen right
     -- after — whatever field differs is the "something different on first open". This is
@@ -715,6 +739,7 @@ AH.Events.On("AH_CLOSED", function()
         if driver then driver:Hide() end
         progress = 0
         finalizeResolved, finalizeTotal = nil, nil
+        mainCommit = nil
         CancelRetry()
         if VUI.debug then VUI.Print(AH.TAG, "Scan aborted (AH closed).") end
     end

@@ -198,7 +198,11 @@ end
 ----------------------------------------------------------------
 
 -- Compose the Phase-1 wait label: phase-specific text + live elapsed "(Ns)".
--- "connect"   = before AUCTION_HOUSE_THROTTLED_SYSTEM_READY (throttle/connect wait)
+-- "connect"   = AH_SCAN_START seen, AH_SCAN_REQUESTED not yet. Since v1.8.0 the
+--               fire path is synchronous (Start() → DoFire() in one call stack —
+--               all pre-fire gates were stripped), so this phase lasts zero
+--               frames in practice; kept as the defensive default in case a
+--               deferred fire path ever returns.
 -- "requested" = ReplicateItems() has fired; awaiting the snapshot (AH_SCAN_REQUESTED)
 -- These are TRUE state transitions from Replicate, not invented progress — there is
 -- still no percentage here (no denominator), only which wait we're in and how long.
@@ -277,7 +281,7 @@ local function ShowScanning()
     Build()
     if not state.built then return end
     CancelHide()
-    state.phase      = "connect"     -- first wait: throttle/connect (pre-ReplicateItems)
+    state.phase      = "connect"     -- pre-REQUESTED default (zero-length since v1.8.0's synchronous fire)
     state.waitStart  = GetTime()     -- start the elapsed "(Ns)" clock
     state.finalizing = false
     state.bar:SetValue(0)
