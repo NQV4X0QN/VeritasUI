@@ -225,6 +225,7 @@ local function PrintHelp()
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah wipe|r         — clear the price database")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah blocked|r      — manage sell-strip hidden items")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah settings|r     — open settings panel")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah debug|r        — toggle debug prints (suite-wide)")
 end
 
 local function PrintDiag()
@@ -253,6 +254,34 @@ local function PrintDiag()
             readyText = "|cFF00FF00ready|r"
         end
         VUI.Print(AH.TAG, format("  scan:         %s", readyText))
+    end
+
+    -- Always-on scan trace (v1.9.5): the full attempt-chain record of the
+    -- current/most-recent scan, captured regardless of the debug flag — so a
+    -- hang can be classified after the fact even when debug was off during it.
+    if AH.Replicate and AH.Replicate.LastTrace then
+        local tr = AH.Replicate.LastTrace()
+        if tr then
+            local line
+            if tr.outcome == "requesting" then
+                line = format("|cFFFFFF00requesting|r — attempt %d, no data for %ds",
+                    tr.attempts or 0,
+                    tr.firedAt and floor(GetTime() - tr.firedAt) or 0)
+            elseif tr.outcome == "complete" then
+                line = format("|cFF00FF00complete|r — %d attempt(s), %d/%d in %.0fs",
+                    tr.attempts or 0, tr.committed or 0, tr.rows or 0, tr.totalTime or 0)
+            else
+                -- processing / failed / aborted
+                line = format("%s — %d attempt(s)", tostring(tr.outcome), tr.attempts or 0)
+            end
+            VUI.Print(AH.TAG, format("  last scan:    %s", line))
+            VUI.Print(AH.TAG, format("  first data:   %s; event pulses: %d",
+                tr.firstEventLatency
+                    and format("%.1fs after fire (attempt %d)",
+                        tr.firstEventLatency, tr.firstEventAttempt or 1)
+                    or "|cFFFF4444never arrived|r",
+                tr.pulses or 0))
+        end
     end
 
     -- Money helper self-test (verifies coin formatting without needing the AH).
@@ -346,6 +375,16 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
 
     elseif cmd == "diag" then
         PrintDiag()
+
+    elseif cmd == "debug" then
+        -- Suite-wide toggle: VUI.debug is the shared Lib gate every module's
+        -- debug prints check. Surfaced here because the AH scanner is its
+        -- heaviest consumer and "/run VeritasUI.debug = true" proved to be an
+        -- incantation nobody remembers during a live repro (2026-07-11).
+        VUI.debug = not VUI.debug
+        VUI.Print(AH.TAG, "Debug prints " .. (VUI.debug
+            and "|cFF00FF00ON|r (suite-wide; scans now emit fire/latency traces)"
+            or  "|cFFFF4444OFF|r"))
 
     elseif cmd == "check" then
         PrintCheck(rawRest)

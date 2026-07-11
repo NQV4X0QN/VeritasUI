@@ -42,10 +42,12 @@ local ROWS_PER_SLICE        = 2000      -- safety cap on rows per frame
 local FRAME_BUDGET_MS       = 8         -- ~8ms/frame work budget (debugprofilestop)
 local REPLICATE_RETRY_DELAY = 60        -- seconds to wait for REPLICATE_ITEM_LIST_UPDATE before retrying.
                                         -- MUST sit above the measured healthy first-event latency (~28-40s,
-                                        -- probe ref §5 2026-06-27 + confirmed 26.5s on 2026-07-02): at the old
-                                        -- 10s this fired a mislabeled "request was dropped" duplicate on EVERY
-                                        -- healthy scan, muddying each trace. At 60s, one request producing zero
-                                        -- events within the window is an unambiguous drop.
+                                        -- probe ref §5 2026-06-27 + confirmed 26.5s on 2026-07-02 and 23.9s on
+                                        -- 2026-07-11): at the old 10s this fired a mislabeled "request was
+                                        -- dropped" duplicate on EVERY healthy scan, muddying each trace. At 60s,
+                                        -- one request producing zero events within the window is an unambiguous
+                                        -- drop. Since v1.9.5 the retry is PERSISTENT (re-arms after each
+                                        -- re-fire) — see ArmRetry for the measurement that forced this.
 local LINK_RETRY_WAIT       = 3         -- seconds between link retry passes (lets queued
                                         -- item-record loads stream in; cold-cache coverage fix)
 local LINK_RETRY_BUDGET     = 45        -- hard cap (seconds) on the whole retry phase. Records
@@ -62,6 +64,23 @@ local fireTime              -- GetTime() at the moment ReplicateItems() was issu
 local finalizeResolved      -- live counters for the gear-residue retry phase;
 local finalizeTotal         -- nil outside the phase (backs FinalizeStatus())
 local firstEventLogged      -- per-scan guard: trace only the FIRST event pulse, not every chunk
+local trace                 -- ALWAYS-ON diagnostic record of the current/most-recent scan
+                            -- attempt chain (v1.9.5). The 2026-07-11 hang went dark because
+                            -- the only instrumentation was debug-gated prints and debug was
+                            -- off during the rare repro. This table records regardless of
+                            -- VUI.debug; /ah diag dumps it. Fields:
+                            --   startedAt         time() at first fire of the chain
+                            --   firedAt           GetTime() of the LATEST fire (elapsed math)
+                            --   attempts          total ReplicateItems() calls in the chain
+                            --                     (auto re-fires AND manual Retry clicks —
+                            --                     a manual retry on a still-hung request
+                            --                     CONTINUES the chain, see DoFire)
+                            --   pulses            REPLICATE_ITEM_LIST_UPDATE events seen
+                            --   firstEventLatency GetTime()-firedAt at the first pulse
+                            --   firstEventAttempt which attempt the first pulse followed
+                            --   outcome           "requesting" | "processing" | "complete"
+                            --                     | "failed" | "aborted"
+                            --   committed, rows, totalTime   set on completion
 local mainCommit            -- { kept, rows } once the phase-1 commit lands (set in
                             -- ProcessAllRows); nil until then. Lets the driver
                             -- distinguish a pre-commit failure (nothing durable →
@@ -127,6 +146,13 @@ function AH.Replicate.FinalizeStatus()
     if finalizeTotal then
         return finalizeResolved or 0, finalizeTotal
     end
+end
+
+-- The always-on scan trace (see the `trace` declaration for the field list).
+-- Read by /ah diag (Core.lua) and the ScanProgress attempt counter. May be nil
+-- (no scan attempted this session). Treat as read-only.
+function AH.Replicate.LastTrace()
+    return trace
 end
 
 ----------------------------------------------------------------
@@ -538,12 +564,19 @@ local function EnsureDriver()
                 -- shortly" would be false on both counts. Report the
                 -- committed result; only late gear residue was lost.
                 progress = 1
+                if trace then
+                    trace.outcome   = "complete"
+                    trace.committed = mainCommit.kept
+                    trace.rows      = mainCommit.rows
+                    trace.totalTime = fireTime and (GetTime() - fireTime) or nil
+                end
                 if VUI.debug then
                     VUI.Print(AH.TAG, "|cFFFF8800Finalize-phase error|r "
                         .. "(main results already committed): " .. tostring(a))
                 end
                 AH.Events.Fire("AH_SCAN_COMPLETE", mainCommit.kept, mainCommit.rows)
             else
+                if trace then trace.outcome = "failed" end
                 if VUI.debug then
                     VUI.Print(AH.TAG, "|cFFFF4444Scan error|r: " .. tostring(a))
                 end
@@ -558,6 +591,12 @@ local function EnsureDriver()
             driver:Hide()
             progress = 1
             SetLastScanTime(time())
+            if trace then
+                trace.outcome   = "complete"
+                trace.committed = a or 0
+                trace.rows      = b or 0
+                trace.totalTime = fireTime and (GetTime() - fireTime) or nil
+            end
             AH.Events.Fire("AH_SCAN_COMPLETE", a or 0, b or 0)
             -- DEBUG (debug-gated): total scan time = fire -> drain complete. Pairs with
             -- the time-to-first-event trace in the event handler. Together they separate
@@ -594,11 +633,73 @@ local function CancelRetry()
     end
 end
 
+----------------------------------------------------------------
+--  ArmRetry — PERSISTENT re-fire (v1.9.5; replaces the one-shot retry)
+--
+--  Why persistent: 2026-07-11, first login after 6 idle days — the server
+--  silently dropped every ReplicateItems() for ~12 minutes (numReplicate=0 at
+--  each later fire proved nothing was ever assembled), then accepted one and
+--  delivered a textbook-healthy scan (first pulse 23.9s, 255,990 rows). The
+--  one-shot retry fired once at 60s and then gave up FOREVER — the addon sat
+--  silent for the remaining ~11 minutes while the user's manual Retry clicks
+--  did the job this timer should have done. Client-side gating cannot help:
+--  throttleReady/hasFullBrowse read true at both failing and working fires
+--  (measured 2026-07-02 AND 2026-07-11). The only strategy that works is to
+--  keep asking until the server says yes.
+--
+--  Duplicate fires are proven safe: the v1.7.9 10s timer fired a duplicate on
+--  every healthy scan for weeks with no harm, and the 2026-07-11 success came
+--  4 minutes after a prior (dropped) fire — requests don't reset each other.
+--
+--  Unbounded BY DESIGN, same reasoning as the no-timeout rule above: a cap
+--  would just recreate the "gave up N seconds before the server recovered"
+--  failure at a different N. The chain lives only while the AH session does —
+--  every re-fire re-checks (AH open, scanning, no coroutine), AH_CLOSED
+--  cancels the timer, and a refused request is a server-side no-op, so an
+--  abandoned-open-AH worst case is one dropped packet per minute.
+----------------------------------------------------------------
+local function ArmRetry()
+    CancelRetry()
+    retryTimer = C_Timer.NewTimer(REPLICATE_RETRY_DELAY, function()
+        retryTimer = nil
+        -- Only re-fire if: AH still open, scan flag still set, but the coroutine
+        -- never started. co ~= nil means data arrived and we're processing.
+        if not AH.isOpen or not scanning or co then return end
+        if trace then
+            trace.attempts = (trace.attempts or 1) + 1
+            trace.firedAt  = GetTime()
+        end
+        if VUI.debug then
+            VUI.Print(AH.TAG, format("REPLICATE_ITEM_LIST_UPDATE not received after %ds "
+                .. "— request was dropped; re-firing ReplicateItems() (attempt %d)",
+                REPLICATE_RETRY_DELAY, trace and trace.attempts or 0))
+        end
+        C_AuctionHouse.ReplicateItems()
+        ArmRetry()   -- persistent: keep the chain alive until data arrives or the AH closes
+    end)
+end
+
 local function DoFire()
     scanning = true          -- set ONLY here, at the real fire moment
     fireTime = GetTime()     -- stamp for first-event / total-scan latency measurement
     firstEventLogged = false -- re-arm the one-line-per-scan trace for this attempt
     mainCommit = nil         -- no durable commit yet for THIS attempt
+    -- Trace chain continuity: a manual Retry click on a still-hung request
+    -- (outcome "requesting" — no data ever arrived) CONTINUES the existing
+    -- chain, so /ah diag shows the full history of a hang across user retries.
+    -- Anything else (fresh scan, or a scan that reached data) starts a new chain.
+    if trace and trace.outcome == "requesting" then
+        trace.attempts = (trace.attempts or 1) + 1
+        trace.firedAt  = GetTime()
+    else
+        trace = {
+            startedAt = time(),
+            firedAt   = GetTime(),
+            attempts  = 1,
+            pulses    = 0,
+            outcome   = "requesting",
+        }
+    end
     -- FIRE-MOMENT STATE SNAPSHOT: capture the observable AH API state at the exact instant
     -- we issue ReplicateItems(). Compare a FAILING cold open vs the WORKING reopen right
     -- after — whatever field differs is the "something different on first open". This is
@@ -621,25 +722,14 @@ local function DoFire()
     if VUI.debug then
         VUI.Print(AH.TAG, "ReplicateItems() fired")
     end
-    -- Arm a retry: if REPLICATE_ITEM_LIST_UPDATE doesn't arrive within
-    -- REPLICATE_RETRY_DELAY seconds the request was silently dropped by the server.
-    -- A dropped request produces NO event at all — so after this delay we know with
-    -- certainty the call was dropped (not slow), and it's safe to retry.
-    -- This is NOT a watchdog: it only fires when co is still nil (coroutine never
-    -- started), meaning the event genuinely never arrived. If the event arrives
-    -- first (normal path), CancelRetry() below defuses this timer immediately.
-    CancelRetry()
-    retryTimer = C_Timer.NewTimer(REPLICATE_RETRY_DELAY, function()
-        retryTimer = nil
-        -- Only retry if: AH still open, scan flag still set, but coroutine never started.
-        -- co ~= nil means the event arrived and we're processing — don't retry.
-        if not AH.isOpen or not scanning or co then return end
-        if VUI.debug then
-            VUI.Print(AH.TAG, "REPLICATE_ITEM_LIST_UPDATE not received after "
-                .. REPLICATE_RETRY_DELAY .. "s — request was dropped; retrying ReplicateItems()")
-        end
-        C_AuctionHouse.ReplicateItems()
-    end)
+    -- Arm the persistent retry chain: if REPLICATE_ITEM_LIST_UPDATE doesn't
+    -- arrive within REPLICATE_RETRY_DELAY seconds the request was silently
+    -- dropped by the server (a dropped request produces NO event at all), so
+    -- ArmRetry re-fires and re-arms until data arrives or the AH closes.
+    -- This is NOT a watchdog: it only fires while co is still nil (coroutine
+    -- never started). If the event arrives first (normal path), CancelRetry()
+    -- in the event handler defuses the chain immediately.
+    ArmRetry()
 end
 
 ----------------------------------------------------------------
@@ -715,17 +805,28 @@ ef:SetScript("OnEvent", function(_, event)
         -- ~28-40s (probe ref §5; confirmed 26.5s on 2026-07-02), so the retry timer must
         -- sit above that (REPLICATE_RETRY_DELAY=60) and stay gated on co==nil.
         -- Costs nothing in normal play (only emits under VeritasUI.debug).
+        -- ALWAYS-ON trace capture (v1.9.5): pulse count + first-event latency are
+        -- recorded regardless of VUI.debug, so the next rare hang repro is never
+        -- dark. The debug flag now only gates the PRINT below.
+        if trace then
+            trace.pulses = (trace.pulses or 0) + 1
+            if not trace.firstEventLatency then
+                trace.firstEventLatency = trace.firedAt and (GetTime() - trace.firedAt) or -1
+                trace.firstEventAttempt = trace.attempts
+            end
+        end
         if VUI.debug and not firstEventLogged then
             firstEventLogged = true
             local latency = fireTime and (GetTime() - fireTime) or -1
             VUI.Print(AH.TAG, format("REPLICATE_ITEM_LIST_UPDATE first pulse (scanning=%s, co=%s) "
                 .. "time-to-first-event=%.1fs", tostring(scanning), tostring(co ~= nil), latency))
         end
-        -- Event arrived — the request was NOT dropped. Cancel the retry timer.
+        -- Event arrived — the request was NOT dropped. Cancel the retry chain.
         CancelRetry()
         -- The snapshot is ready to read. Only act if WE initiated a scan
         -- (scanning == true) and we're not already draining a coroutine.
         if not scanning or co then return end
+        if trace then trace.outcome = "processing" end
         co = coroutine.create(ProcessAllRows)
         EnsureDriver():Show()
     end
@@ -741,6 +842,9 @@ AH.Events.On("AH_CLOSED", function()
         finalizeResolved, finalizeTotal = nil, nil
         mainCommit = nil
         CancelRetry()
+        if trace and (trace.outcome == "requesting" or trace.outcome == "processing") then
+            trace.outcome = "aborted"
+        end
         if VUI.debug then VUI.Print(AH.TAG, "Scan aborted (AH closed).") end
     end
 end)
@@ -763,5 +867,10 @@ AH.Events.On("AH_OPEN", function()
     if scanning and not co then
         scanning = false
         progress = 0
+        -- Close out the stale trace chain: this is a NEW AH session, so a later
+        -- scan must start a fresh chain, not continue the dead one's counters.
+        if trace and trace.outcome == "requesting" then
+            trace.outcome = "aborted"
+        end
     end
 end)

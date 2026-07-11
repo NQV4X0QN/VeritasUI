@@ -2,6 +2,18 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.9.5] - 2026-07-11
+
+The first-scan hang, finally classified from a live repro (first login after 6 idle days, debug trace captured in-game): **the server silently drops every `ReplicateItems()` request for an extended window after a long-idle login (~12 minutes measured), then recovers on its own** — `numReplicate=0` at each later fire proved no snapshot was ever assembled, and the eventual accepted request delivered a textbook-healthy scan (first pulse 23.9s, 255,990 rows in 75.6s). Two prior hypotheses are falsified by the same repro: the hardware-click fire path does *not* prevent the hang (v1.8.0's premise), and closing/reopening the AH is *not* required to recover — a later fire in the same AH session succeeded. Client-side gating remains impossible (`throttleReady`/`hasFullBrowse` read `true` at failing and working fires alike, 2026-07-02 and 2026-07-11). The only working strategy is to keep asking until the server says yes — which the addon now does.
+
+### Fixed
+- `VeritasUI_AuctionHouse` — **a scan now recovers from the long-idle-login server drop window by itself; no more indefinite "Requesting auctions…" hang.** The 60s no-event auto-retry was one-shot: it re-fired once and then gave up forever, so during the measured 12-minute drop window the addon fired at ~0s and ~60s and then sat silent while the user's manual Retry clicks did its job. The retry chain is now persistent — it re-fires and re-arms every 60s (above the ~24–40s healthy first-event latency band, so it never duplicates a healthy scan) until data arrives or the AH closes. Every re-fire re-checks AH-open/scanning/no-coroutine, `AH_CLOSED` cancels the chain, and duplicate fires are proven safe (the v1.7.9 10s timer duplicated on every healthy scan for weeks without harm; the 2026-07-11 success came 4 minutes after a dropped fire). Deliberately unbounded, same reasoning as the established no-timeout rule: any cap just recreates "gave up N seconds before the server recovered" at a different N. Today's hang would have self-recovered with zero clicks. (`Replicate.lua`)
+
+### Added
+- `VeritasUI_AuctionHouse` — **always-on scan trace, so the next rare repro is never dark.** The purpose-built hang diagnostics were debug-gated prints, and `VUI.debug` was off during the 2026-07-11 repro — the classification only happened because the hang lasted long enough to enable debug mid-hang. Every scan now records an attempt-chain trace regardless of the debug flag: attempts fired (auto re-fires *and* manual Retry clicks continue the same chain), event pulses seen, first-event latency and which attempt it followed, outcome (`requesting`/`processing`/`complete`/`failed`/`aborted`), and committed/rows/total-time on completion. `/ah diag` dumps it — during a hang ("requesting — attempt 5, no data for 43s / first data: never arrived") and after the fact. Exposed as `AH.Replicate.LastTrace()`. (`Replicate.lua`, `Core.lua`)
+- `VeritasUI_AuctionHouse` — **`/ah debug` toggles the suite-wide debug gate** — `/run VeritasUI.debug = true` proved to be an incantation nobody remembers during a live repro. Listed in `/ah` help; prints the new state. (`Core.lua`, comment touch-up in `Lib.lua`)
+- `VeritasUI_AuctionHouse` — **the scan progress bar shows the retry chain working**: from the second attempt on, the wait label reads "Requesting auctions… (43s, try 3)" so a long wait is visibly the addon retrying, not hung. (`UI/ScanProgress.lua`)
+
 ## [1.9.4] - 2026-07-04
 
 ### Fixed

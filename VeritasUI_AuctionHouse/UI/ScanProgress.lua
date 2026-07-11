@@ -213,6 +213,16 @@ local function WaitLabel()
     if state.waitStart then
         local secs = floor(GetTime() - state.waitStart)
         if secs > 0 then
+            -- Attempt counter (v1.9.5): the retry chain is now persistent
+            -- (Replicate re-fires every 60s while the server drops requests —
+            -- measured ~12 min of silent drops on 2026-07-11), so a long wait
+            -- must read as the addon actively working, not hung. Shown from
+            -- the second attempt on; attempt 1 keeps the plain label.
+            local tr = AH.Replicate.LastTrace and AH.Replicate.LastTrace()
+            local attempts = tr and tr.attempts or 1
+            if attempts > 1 then
+                return format("%s (%ds, try %d)", base, secs, attempts)
+            end
             return format("%s (%ds)", base, secs)
         end
     end
