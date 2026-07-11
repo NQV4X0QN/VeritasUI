@@ -127,7 +127,22 @@ rotBtn:Show()
 -- a click arrives before the first InjectSequence call.
 rotBtn:Execute("macros = newtable(); macros[1] = ''")
 
+-- PARITY BUG (found 2026-07-11, latent since inception): the keybind path
+-- (SetOverrideBindingClick) delivers TWO clicks per physical press — key-down
+-- and key-up — and this wrap ran on both, advancing two steps per press while
+-- the cast fires only on the UP edge (ActionButtonUseKeyDown=0, which
+-- EnsureActionBarCVar enforces whenever PR is enabled). Result: every other
+-- compiled step was silently discarded. The old clumping compiler masked it
+-- (consecutive duplicate steps put every spell in both parity classes); the
+-- v1.9.6 smooth-weave compiler exposed it as hard starvation — with an
+-- even-length cycle the executed parity is FIXED, and any ability living
+-- only on the other parity NEVER casts (observed in-game: Immolation Aura
+-- silent for 40s). The `down` argument is standard in secure OnClick
+-- snippets; gating on it consumes exactly one step per physical press, on
+-- the same edge that casts — which also restores the "After" adjacency
+-- guarantee (the follower step is the literal next executed step).
 rotBtn:WrapScript(rotBtn, "OnClick", [=[
+    if down then return end
     local step = tonumber(self:GetAttribute('step'))
     if not macros or #macros == 0 then return end
     self:SetAttribute('macrotext', macros[step] or '')
