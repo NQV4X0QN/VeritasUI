@@ -149,7 +149,54 @@ function PR:ScheduleCompile()
 end
 
 ----------------------------------------------------------------
---  Interleave Compiler
+--  Entry identity — stable key for an entry across sessions/reorders.
+--  Used by the "After" (follows) feature: e.follows stores the TARGET
+--  entry's key, so the link survives list reordering and re-adding the
+--  same spell. Nil for entries that can't be identified.
+----------------------------------------------------------------
+function PR.EntryKey(e)
+    if not e then return nil end
+    if e.macroName then return "macro:" .. e.macroName end
+    if e.itemID    then return "item:"  .. tostring(e.itemID) end
+    if e.spellID   then return "spell:" .. tostring(e.spellID) end
+    if e.spellName then return "spellname:" .. e.spellName end
+    return nil
+end
+
+----------------------------------------------------------------
+--  Smooth-Weave Compiler (v1.9.6 — replaces the clumping interleave)
+--
+--  WHY (design session 2026-07-11): PR is a BLIND stepper — the secure
+--  snippet cannot see cooldowns, so the only lever for "cast X reliably
+--  when it comes off cooldown" is HOW OFTEN the sequence attempts X.
+--  Attempt economics are lopsided: a not-ready attempt costs one press
+--  (~100ms at spam/hardware-repeat rates; the GCD throttles real
+--  throughput, not presses), while a ready ability waiting for its next
+--  step costs seconds of uptime. So high priority = attempted often,
+--  and attempts must be SPREAD EVENLY. The old interleave appended
+--  copies in blocks (freq 4 → four consecutive steps of the same
+--  spell), guaranteeing dead-press runs and long gaps — the root of
+--  "misses the window" complaints.
+--
+--  Placement: smooth weighted round-robin (the nginx algorithm) —
+--  each slot, every entry gains its weight; the highest current wins
+--  the slot and pays back the total. Deterministic, respects profile
+--  order on ties, and yields per-entry gaps as even as arithmetic
+--  allows (weight 4 of total 10 → attempted every 2-3 steps).
+--
+--  Follow-up pairing ("After" column): an entry with e.follows set is
+--  ALSO emitted immediately after every occurrence of its target, on
+--  top of its own weighted placement. This is the class-agnostic form
+--  of "Blade Dance must land within 6s of Eye Beam": whenever the
+--  target actually casts, the very next press attempts the follower.
+--  Followers cascade (A after B after C) with a per-step visited guard
+--  so a cycle in hand-edited data cannot loop. Adjacent duplicate
+--  steps are collapsed (identical macrotext back-to-back adds nothing).
+--
+--  Constraints this design honors (memory: pr-rotation-constraints):
+--  castsequence and multi-line /cast fallback are both falsified by
+--  in-game testing — everything here is plain single-/cast steps,
+--  the same runtime mechanics PR has always used.
 ----------------------------------------------------------------
 function PR:CompileSequence()
     if not self.db then return end
@@ -179,8 +226,7 @@ function PR:CompileSequence()
     local reacqPrefix = (profile and profile.reacquire)
         and "/cleartarget [dead]\n/targetenemy [noexists]\n" or ""
     if profile and profile.spells and #profile.spells > 0 then
-        local cooldowns, fillers = {}, {}
-        local cdNames,   fillNames = {}, {}
+        local entries = {}   -- resolved steps: { text, name, key, weight, follows }
         for _, e in ipairs(profile.spells) do
             if e then
                 local macrotext, entryName
@@ -237,31 +283,70 @@ function PR:CompileSequence()
                 end
 
                 if macrotext then
-                    local freq = e.freq or 1
-                    if freq <= 1 then
-                        cooldowns[#cooldowns + 1] = macrotext
-                        cdNames[#cdNames + 1]     = entryName
-                    else
-                        for _ = 1, freq do
-                            fillers[#fillers + 1]   = macrotext
-                            fillNames[#fillNames + 1] = entryName
-                        end
+                    local weight = e.freq or 1
+                    if weight < 1 then weight = 1 elseif weight > 5 then weight = 5 end
+                    entries[#entries + 1] = {
+                        text    = macrotext,
+                        name    = entryName,
+                        key     = PR.EntryKey(e),
+                        weight  = weight,
+                        follows = e.follows,
+                        current = 0,   -- smooth-WRR accumulator
+                    }
+                end
+            end
+        end
+
+        -- Smooth weighted round-robin: cycle length = sum of weights;
+        -- ipairs order makes tie-breaking stable in profile order.
+        local total = 0
+        for _, it in ipairs(entries) do total = total + it.weight end
+        local base = {}
+        for _ = 1, total do
+            local best
+            for _, it in ipairs(entries) do
+                it.current = it.current + it.weight
+                if not best or it.current > best.current then best = it end
+            end
+            best.current = best.current - total
+            base[#base + 1] = best
+        end
+
+        -- Follower map: target key → followers in profile order. A follows
+        -- link whose target isn't in the compiled list is inert (the target
+        -- was removed or elided) — re-adding the same spell reactivates it.
+        local followersOf
+        for _, it in ipairs(entries) do
+            if it.follows then
+                followersOf = followersOf or {}
+                local l = followersOf[it.follows]
+                if not l then l = {}; followersOf[it.follows] = l end
+                l[#l + 1] = it
+            end
+        end
+
+        -- Emit with cascading follower insertion. `visited` is per base
+        -- step so chains (A after B after C) expand fully but a cycle in
+        -- hand-edited data terminates. Identical back-to-back steps are
+        -- collapsed — a duplicate adds nothing at runtime (same macrotext),
+        -- and skipping its cascade is correct because the surviving copy
+        -- already cascaded the same follower set.
+        local function Emit(it, visited)
+            if seq[#seq] == it.text then return end
+            seq[#seq + 1] = it.text
+            names[#seq]   = it.name
+            local fl = followersOf and it.key and followersOf[it.key]
+            if fl then
+                for _, f in ipairs(fl) do
+                    if not visited[f] then
+                        visited[f] = true
+                        Emit(f, visited)
                     end
                 end
             end
         end
-        local ci, fi = 1, 1
-        while ci <= #cooldowns or fi <= #fillers do
-            if ci <= #cooldowns then
-                seq[#seq + 1] = cooldowns[ci]
-                names[#seq]   = cdNames[ci]
-                ci = ci + 1
-            end
-            if fi <= #fillers then
-                seq[#seq + 1] = fillers[fi]
-                names[#seq]   = fillNames[fi]
-                fi = fi + 1
-            end
+        for _, it in ipairs(base) do
+            Emit(it, { [it] = true })
         end
     end
 

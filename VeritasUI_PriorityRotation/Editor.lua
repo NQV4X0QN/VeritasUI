@@ -176,6 +176,20 @@ local function BuildEntryFromCursor()
     return nil, "Drag a spell, macro, or trinket onto this slot."
 end
 
+-- Resolve a follows-key (see PR.EntryKey) back to the profile entry it
+-- names, or nil if that entry is no longer in the list (stale link —
+-- kept in the data so re-adding the same ability reactivates it).
+local function FindEntryByKey(key)
+    if not key then return nil end
+    for _, o in ipairs(PR:CurrentProfile().spells) do
+        if PR.EntryKey(o) == key then return o end
+    end
+end
+
+local function EntryDisplayName(e)
+    return e and (e.spellName or e.macroName or e.itemName) or "?"
+end
+
 local function HandleDrop(slotIndex)
     local entry, errMsg = BuildEntryFromCursor()
     if not entry then
@@ -209,7 +223,8 @@ function PR:BuildEditor(parent, contentWidth)
         "|cFF00CCFFDrag spells|r from your spellbook, |cFF00CCFFmacros|r from /macro, "
         .."or |cFF00CCFFtrinkets|r from your character pane onto a slot.\n"
         .."Right-click to remove. Use arrows to reorder.\n"
-        .."|cFFFFFF00Freq|r = how often per cycle (3+=priority/cooldown, 1=filler).")
+        .."|cFFFFFF00Freq|r = attempts per cycle, spread evenly (5=constant, 1=rare).\n"
+        .."|cFFFFFF00After|r = also cast right after another ability (click to cycle).")
 
     -- Divider below the header-label row. Column headers themselves are
     -- created AFTER the row loop so they can anchor to row 1's components
@@ -470,6 +485,85 @@ function PR:BuildEditor(parent, contentWidth)
         end)
 
         row.decBtn, row.incBtn = decBtn, incBtn
+
+        -- "After" (follows) button — shows the icon of the ability this one
+        -- is also cast immediately after (compile-time follow-up pairing;
+        -- see the Smooth-Weave Compiler in Core.lua). Left-click cycles
+        -- through the other entries and back to none; right-click clears.
+        -- Reuses the empty-slot texture the icon column already streams.
+        local followBtn = CreateFrame("Button", nil, row)
+        followBtn:SetSize(24, 24)
+        followBtn:SetPoint("LEFT", freqFrame, "RIGHT", 4, 0)
+        followBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+
+        local followEmpty = followBtn:CreateTexture(nil, "ARTWORK")
+        followEmpty:SetAllPoints()
+        followEmpty:SetTexture("Interface\\PaperDoll\\UI-Backpack-EmptySlot")
+        followEmpty:SetAlpha(0.35)
+        followBtn.empty = followEmpty
+
+        local followTex = followBtn:CreateTexture(nil, "ARTWORK")
+        followTex:SetAllPoints()
+        followTex:Hide()
+        followBtn.tex = followTex
+
+        followBtn:SetScript("OnClick", function(_, btn)
+            local spells = PR:CurrentProfile().spells
+            local e = spells[i]
+            if not e then return end
+            if btn == "RightButton" then
+                e.follows = nil
+            else
+                -- Candidates: every OTHER entry with a resolvable key, in
+                -- profile order. Excludes entries sharing this entry's own
+                -- key (self-follow would collapse at compile anyway).
+                local selfKey = PR.EntryKey(e)
+                local cands = {}
+                for j, o in ipairs(spells) do
+                    local k = PR.EntryKey(o)
+                    if j ~= i and k and k ~= selfKey then
+                        cands[#cands + 1] = k
+                    end
+                end
+                if #cands == 0 then
+                    VUI.Print("Priority Rotation",
+                        "Add another ability first — |cFFFFFF00After|r links this one to it.")
+                    return
+                end
+                local cur
+                for idx, k in ipairs(cands) do
+                    if k == e.follows then cur = idx; break end
+                end
+                -- none → first candidate → … → last candidate → none
+                e.follows = cur and cands[cur + 1] or cands[1]
+            end
+            PR:SaveCurrentProfile(); editor:Refresh()
+        end)
+        followBtn:SetScript("OnEnter", function(self)
+            local e = PR:CurrentProfile().spells[i]
+            if not e then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine("After", 1, 0.82, 0)
+            local target = FindEntryByKey(e.follows)
+            if target then
+                GameTooltip:AddLine(format(
+                    "|cFFFFFF00%s|r is also cast immediately after every |cFF00CCFF%s|r,"
+                    .. " on top of its normal placement.",
+                    EntryDisplayName(e), EntryDisplayName(target)), 0.8, 0.8, 0.8, true)
+            else
+                GameTooltip:AddLine(
+                    "Not linked. Link this ability to another to guarantee it is"
+                    .. " attempted on the very next press after that one casts"
+                    .. " — for combo windows like Blade Dance after Eye Beam.",
+                    0.8, 0.8, 0.8, true)
+            end
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("|cFF888888Click to cycle · Right-click to clear|r")
+            GameTooltip:Show()
+        end)
+        followBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row.followBtn = followBtn
+
         rows[i] = row
     end
 
@@ -483,6 +577,7 @@ function PR:BuildEditor(parent, contentWidth)
     --   iconBtn   LEFT=47,  width=28   → center=61
     --   nameLbl   LEFT=82,  width=130  → LEFT=82 (left-justified header)
     --   freqFrame LEFT=216, width=70   → center=251
+    --   followBtn LEFT=290, width=24   → center=302
     -- If you change row column sizing, update these offsets in lockstep.
     local HEADER_Y = 6
     local function MakeCenteredHeader(xOff, text)
@@ -500,6 +595,7 @@ function PR:BuildEditor(parent, contentWidth)
     hAbility:SetTextColor(0.85, 0.75, 0.20)
     hAbility:SetText("Ability")
     MakeCenteredHeader(251, "Freq")
+    MakeCenteredHeader(302, "After")
 
     -- ── Sequence preview card ────────────────────────────────────
     -- Wraps the "Compiled Sequence:" header + preview text in a card
@@ -635,6 +731,19 @@ function PR:BuildEditor(parent, contentWidth)
                 row.decBtn:SetAlpha((e.freq or 1) > 1 and 1 or 0.30)
                 row.incBtn:SetAlpha((e.freq or 1) < 5 and 1 or 0.30)
                 row.freqFrame:Show()
+                -- "After" indicator: target's icon when the link resolves;
+                -- dimmed empty slot when unset (or the target was removed —
+                -- the stored key is kept, so re-adding the target relinks).
+                local target = FindEntryByKey(e.follows)
+                if target and target.icon then
+                    row.followBtn.tex:SetTexture(target.icon)
+                    row.followBtn.tex:Show()
+                    row.followBtn.empty:Hide()
+                else
+                    row.followBtn.tex:Hide()
+                    row.followBtn.empty:Show()
+                end
+                row.followBtn:Show()
                 row.moveCol:Show()
                 row.moveUpBtn:SetAlpha(i > 1 and 1 or 0.20)
                 row.moveDownBtn:SetAlpha(i < numSpells and 1 or 0.20)
@@ -643,6 +752,7 @@ function PR:BuildEditor(parent, contentWidth)
                 row.iconBtn.empty:Show()
                 row.nameLbl:SetText("|cFF3A3A3A-- empty --|r")
                 row.freqFrame:Hide()
+                row.followBtn:Hide()
                 row.moveCol:Hide()
             end
         end
