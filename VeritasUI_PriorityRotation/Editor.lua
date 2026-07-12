@@ -223,7 +223,7 @@ function PR:BuildEditor(parent, contentWidth)
         "|cFF00CCFFDrag spells|r from your spellbook, |cFF00CCFFmacros|r from /macro, "
         .."or |cFF00CCFFtrinkets|r from your character pane onto a slot.\n"
         .."Right-click to remove. Use arrows to reorder.\n"
-        .."|cFFFFFF00Freq|r = attempts per cycle, spread evenly (5=constant, 1=rare).\n"
+        .."|cFFFFFF00Frequency|r = attempts per cycle, spread evenly (5=constant, 1=rare).\n"
         .."|cFFFFFF00After|r = also cast right after another ability (click to cycle).\n"
         .."|cFFFFFF00Combat|r = only cast in combat — leave your opener unchecked.")
 
@@ -236,6 +236,22 @@ function PR:BuildEditor(parent, contentWidth)
     divLine:SetPoint("TOPLEFT",  lHelp,  "BOTTOMLEFT", -4, -22)
     divLine:SetPoint("TOPRIGHT", parent, "TOPRIGHT",   -6,   0)
     divLine:SetColorTexture(0.35, 0.35, 0.35, 0.9)
+
+    -- ── Control-column grid (Frequency / After / Combat) ─────────
+    -- The identity cluster (#, arrows, icon, name) is a compact left-
+    -- aligned unit ending at x=212. The three CONTROL columns to its
+    -- right are laid out on an equal-gap grid computed from the actual
+    -- row width: whatever space remains after the fixed element widths
+    -- is split into three identical gaps (freq→after, after→combat,
+    -- combat→right border), so the spacing reads as designed rather
+    -- than as an accident of neighbor-chained anchors.
+    local ROW_W  = W - 12
+    local FREQ_L = 216                        -- name ends 212 + 4 gap
+    local FREQ_W, AFTER_W, CHK_W = 70, 24, 22
+    local CTL_GAP = math.floor((ROW_W - FREQ_L - FREQ_W - AFTER_W - CHK_W) / 3)
+    if CTL_GAP < 4 then CTL_GAP = 4 end
+    local AFTER_L = FREQ_L + FREQ_W + CTL_GAP
+    local CHK_L   = AFTER_L + AFTER_W + CTL_GAP
 
     -- ── Rows ─────────────────────────────────────────────────
     local rows = {}
@@ -423,10 +439,10 @@ function PR:BuildEditor(parent, contentWidth)
         nameLbl:SetJustifyH("LEFT")
         row.nameLbl = nameLbl
 
-        -- Freq spinner
+        -- Frequency spinner (grid column 1)
         local freqFrame = CreateFrame("Frame", nil, row)
-        freqFrame:SetSize(70, ROW_H)
-        freqFrame:SetPoint("LEFT", nameLbl, "RIGHT", 4, 0)
+        freqFrame:SetSize(FREQ_W, ROW_H)
+        freqFrame:SetPoint("LEFT", row, "LEFT", FREQ_L, 0)
         freqFrame:Hide()
         row.freqFrame = freqFrame
 
@@ -493,8 +509,8 @@ function PR:BuildEditor(parent, contentWidth)
         -- through the other entries and back to none; right-click clears.
         -- Reuses the empty-slot texture the icon column already streams.
         local followBtn = CreateFrame("Button", nil, row)
-        followBtn:SetSize(24, 24)
-        followBtn:SetPoint("LEFT", freqFrame, "RIGHT", 4, 0)
+        followBtn:SetSize(AFTER_W, AFTER_W)
+        followBtn:SetPoint("LEFT", row, "LEFT", AFTER_L, 0)   -- grid column 2
         followBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
         local followEmpty = followBtn:CreateTexture(nil, "ARTWORK")
@@ -571,11 +587,8 @@ function PR:BuildEditor(parent, contentWidth)
         -- user's hand-macro [combat, nochanneling] convention. The entry left
         -- unchecked is the opener: castable out of combat to start the fight.
         local combatChk = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
-        combatChk:SetSize(22, 22)
-        -- Right-anchored (unlike the LEFT-chained columns): the box hugs the
-        -- row's right border with a fixed margin, under the right-anchored
-        -- "Combat" header, instead of floating mid-row off the After column.
-        combatChk:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+        combatChk:SetSize(CHK_W, CHK_W)
+        combatChk:SetPoint("LEFT", row, "LEFT", CHK_L, 0)     -- grid column 3
         combatChk:SetScript("OnClick", function(self)
             local e = PR:CurrentProfile().spells[i]
             if not e then return end
@@ -607,11 +620,10 @@ function PR:BuildEditor(parent, contentWidth)
     --   numLbl    LEFT=4,   width=18   → center=13
     --   iconBtn   LEFT=47,  width=28   → center=61
     --   nameLbl   LEFT=82,  width=130  → LEFT=82 (left-justified header)
-    --   freqFrame LEFT=216, width=70   → center=251
-    --   followBtn LEFT=290, width=24   → center=302
-    --   combatChk RIGHT=-10, width=22  → center = row right edge -21
-    --     (right-anchored; its header anchors to rows[1] TOPRIGHT, not TOPLEFT)
-    -- If you change row column sizing, update these offsets in lockstep.
+    -- The three control columns sit on the computed equal-gap grid
+    -- (FREQ_L / AFTER_L / CHK_L above) — headers center on element
+    -- centers derived from the same constants, so they stay aligned
+    -- for any panel width without hand-tuned offsets.
     local HEADER_Y = 6
     local function MakeCenteredHeader(xOff, text)
         local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -627,15 +639,9 @@ function PR:BuildEditor(parent, contentWidth)
     hAbility:SetPoint("BOTTOMLEFT", rows[1], "TOPLEFT", 82, HEADER_Y)
     hAbility:SetTextColor(0.85, 0.75, 0.20)
     hAbility:SetText("Ability")
-    MakeCenteredHeader(251, "Freq")
-    MakeCenteredHeader(302, "After")
-    -- "Combat" header centers over the right-anchored checkbox column
-    -- (box center = row right -21), so it anchors to TOPRIGHT, unlike the
-    -- LEFT-offset headers above.
-    local hCombat = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    hCombat:SetPoint("BOTTOM", rows[1], "TOPRIGHT", -21, HEADER_Y)
-    hCombat:SetTextColor(0.85, 0.75, 0.20)
-    hCombat:SetText("Combat")
+    MakeCenteredHeader(FREQ_L + FREQ_W / 2, "Frequency")
+    MakeCenteredHeader(AFTER_L + AFTER_W / 2, "After")
+    MakeCenteredHeader(CHK_L + CHK_W / 2, "Combat")
 
     -- ── Sequence preview card ────────────────────────────────────
     -- Wraps the "Compiled Sequence:" header + preview text in a card
