@@ -233,8 +233,11 @@ function PR:BuildEditor(parent, contentWidth)
     -- the header fontstrings between lHelp and divLine).
     local divLine = parent:CreateTexture(nil, "ARTWORK")
     divLine:SetHeight(1)
-    divLine:SetPoint("TOPLEFT",  lHelp,  "BOTTOMLEFT", -4, -22)
-    divLine:SetPoint("TOPRIGHT", parent, "TOPRIGHT",   -6,   0)
+    divLine:SetPoint("TOPLEFT", lHelp, "BOTTOMLEFT", -4, -22)
+    -- Width matches the rows exactly (they anchor to this line's BOTTOMLEFT
+    -- and are W-12 wide). The old TOPRIGHT-to-parent anchor used the panel's
+    -- own inset (-6), which fell a few px short of the rows' right edge.
+    divLine:SetWidth(W - 12)
     divLine:SetColorTexture(0.35, 0.35, 0.35, 0.9)
 
     -- ── Control-column grid (Frequency / After / Combat) ─────────
@@ -248,10 +251,18 @@ function PR:BuildEditor(parent, contentWidth)
     local ROW_W  = W - 12
     local FREQ_L = 216                        -- name ends 212 + 4 gap
     local FREQ_W, AFTER_W, CHK_W = 70, 24, 22
+    -- The border margin for the Combat column comes from the equal-edge-gap
+    -- split; but the After column is placed by CENTER, not edge. The eye
+    -- (and the headers) track column centers, and the Frequency element is
+    -- ~3x wider than the other two — equal edge gaps made the After/Combat
+    -- centers sit visibly closer than Frequency/After (measured 91 vs 67).
+    -- Centering After midway between the Frequency and Combat centers gives
+    -- perfectly even header rhythm.
     local CTL_GAP = math.floor((ROW_W - FREQ_L - FREQ_W - AFTER_W - CHK_W) / 3)
     if CTL_GAP < 4 then CTL_GAP = 4 end
-    local AFTER_L = FREQ_L + FREQ_W + CTL_GAP
-    local CHK_L   = AFTER_L + AFTER_W + CTL_GAP
+    local CHK_L   = ROW_W - CTL_GAP - CHK_W
+    local AFTER_L = math.floor((FREQ_L + FREQ_W / 2 + CHK_L + CHK_W / 2) / 2
+                        - AFTER_W / 2)
 
     -- ── Rows ─────────────────────────────────────────────────
     local rows = {}
