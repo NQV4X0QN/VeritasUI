@@ -242,20 +242,17 @@ function PR:BuildEditor(parent, contentWidth)
 
     -- ── Control-column grid (Frequency / After / Combat) ─────────
     -- The identity cluster (#, arrows, icon, name) is a compact left-
-    -- aligned unit ending at x=212. The three CONTROL columns to its
-    -- right are laid out on an equal-gap grid computed from the actual
-    -- row width: whatever space remains after the fixed element widths
-    -- is split into three identical gaps (freq→after, after→combat,
-    -- combat→right border), so the spacing reads as designed rather
-    -- than as an accident of neighbor-chained anchors.
-    -- Geometry is EXACT, not eyeballed: PNL_W=420 → CONTENT_W=402 (Settings.lua)
-    -- → ROW_W=390. The eye judges gaps between VISIBLE edges — for the spinner
-    -- that's the arrow ART (inset 4px inside its frame: 20px buttons, art
-    -- centered ±10), not the invisible frame edge. With unequal element widths,
-    -- even center-spacing and even gaps are mutually exclusive (the mismatch
+    -- aligned unit ending at x=212; the three CONTROL columns to its right
+    -- sit on a computed grid. Geometry is exact, not eyeballed: PNL_W=420 →
+    -- CONTENT_W=402 (Settings.lua) → ROW_W=390.
+    --
+    -- The eye judges gaps between VISIBLE edges — for the spinner that's
+    -- the arrow ART (inset 4px inside its frame: 20px buttons, art centered
+    -- ±10), not the invisible frame edge. With unequal element widths, even
+    -- center-spacing and even gaps are mutually exclusive (the mismatch
     -- equals the half-width difference), so: the spinner is narrowed to 56
-    -- (arrows tuck in beside the number instead of floating), and the three
-    -- gaps — spinner→After, After→Combat, Combat→border — come out identical:
+    -- (arrows tuck in beside the number instead of floating) and the three
+    -- gaps — spinner→After, After→Combat, Combat→border — are split equal:
     -- 25/25/26 at the live width. Headers sit on true element centers.
     local ROW_W  = W - 12
     local FREQ_L = 216                        -- name ends 212 + 4 gap
@@ -564,8 +561,15 @@ function PR:BuildEditor(parent, contentWidth)
                 for idx, k in ipairs(cands) do
                     if k == e.follows then cur = idx; break end
                 end
-                -- none → first candidate → … → last candidate → none
-                e.follows = cur and cands[cur + 1] or cands[1]
+                -- none → first candidate → … → last candidate → none.
+                -- Explicit branch: `cur and cands[cur+1] or cands[1]` would
+                -- wrap last→first and make "none" unreachable by left-click,
+                -- contradicting this comment and the tooltip.
+                if cur then
+                    e.follows = cands[cur + 1]   -- nil past the end = none
+                else
+                    e.follows = cands[1]
+                end
             end
             PR:SaveCurrentProfile(); editor:Refresh()
         end)
@@ -594,7 +598,7 @@ function PR:BuildEditor(parent, contentWidth)
         followBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
         row.followBtn = followBtn
 
-        -- "Cbt" (combat-only) checkbox — compiles [combat] into this entry's
+        -- "Combat" (combat-only) checkbox — compiles [combat] into this entry's
         -- conditional (spell/trinket entries only; macro bodies are user-owned
         -- and untouched, so the box is hidden for macro entries). Replaces the
         -- user's hand-macro [combat, nochanneling] convention. The entry left

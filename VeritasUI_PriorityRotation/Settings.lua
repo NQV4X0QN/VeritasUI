@@ -292,14 +292,17 @@ local function BuildMainWindow()
             .."tab/click ever changes targets — a live target you picked is "
             .."never overridden. |cFFFFFF00Set per spec.|r")
 
-        -- ── Freq ──────────────────────────────────────────────────
-        local divFreq = Section(txtTarget, "BOTTOMLEFT", -10, "Freq")
+        -- ── Rotation Columns ──────────────────────────────────────
+        local divFreq = Section(txtTarget, "BOTTOMLEFT", -10, "Rotation Columns")
         local txtFreq = Body(divFreq, -6,
-            "Controls how often a spell appears in the cycle.\n"
-            .."|cFFFFFF00Freq 3+|r  —  priority spells and cooldowns. "
-            .."They fire as often as possible.\n"
-            .."|cFFFFFF00Freq 1|r   —  filler spells. "
-            .."They activate only when your higher-priority spells are on cooldown.")
+            "|cFFFFFF00Frequency|r — attempts per cycle, spread evenly through "
+            .."the rotation. 5 = attempted almost constantly (short cooldowns, "
+            .."spenders); 1 = once per cycle. A not-ready attempt is skipped "
+            .."harmlessly, so err on the high side for important abilities.\n"
+            .."|cFFFFFF00After|r — also casts an ability on the very next press "
+            .."after another one (combo windows, e.g. Blade Dance after Eye Beam).\n"
+            .."|cFFFFFF00Combat|r — only cast in combat. Leave your opener "
+            .."unchecked so a key press can start the fight.")
 
         -- ── Setup ─────────────────────────────────────────────────
         local divSetup = Section(txtFreq, "BOTTOMLEFT", -10, "Setup")
