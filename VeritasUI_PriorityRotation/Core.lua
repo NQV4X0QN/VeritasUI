@@ -269,7 +269,8 @@ function PR:CompileSequence()
                     if not useTarget or useTarget == "" then
                         useTarget = "item:" .. tostring(e.itemID)
                     end
-                    macrotext = "/use [nochanneling] " .. useTarget
+                    macrotext = "/use " .. (e.combatOnly and "[combat, nochanneling] "
+                        or "[nochanneling] ") .. useTarget
                     entryName = "[ITEM:" .. (e.itemName or tostring(e.itemID)) .. "]"
                 elseif e.spellName then
                     -- Validate spellID resolves; stale IDs would otherwise
@@ -294,7 +295,16 @@ function PR:CompileSequence()
                         -- a channel becomes a no-op; the channel completes; the next
                         -- press casts normally. Macro entries are NOT touched —
                         -- their bodies (and conditionals) belong to the user.
-                        macrotext = reacqPrefix .. "/cast [nochanneling] " .. e.spellName
+                        --
+                        -- COMBAT GATE (v1.9.7): per-entry opt-in [combat] — the
+                        -- Editor's "Combat" checkbox. Replicates the user's
+                        -- hand-macro convention [combat, nochanneling] so profiles
+                        -- no longer need hand-built macros at all; the entry left
+                        -- unchecked is the designated opener (castable out of
+                        -- combat to start the fight).
+                        macrotext = reacqPrefix .. "/cast "
+                            .. (e.combatOnly and "[combat, nochanneling] "
+                                or "[nochanneling] ") .. e.spellName
                         entryName = e.spellName
                         if e.spellID then
                             PR._missingSpellWarned[e.spellID] = nil

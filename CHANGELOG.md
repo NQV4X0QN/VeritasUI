@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.9.7] - 2026-07-11
+
+### Added
+- `VeritasUI_PriorityRotation` — **per-ability "Cbt" (combat-only) checkbox — hand-built macros are no longer needed for anything.** The last remaining reason to wrap spells in macros before importing them into PR was adding `[combat, nochanneling]` by hand (`[nochanneling]` has been compiled in since v1.9.6). Each spell/trinket row now has a Combat checkbox: checked compiles the step as `/cast [combat, nochanneling] <spell>` so it only fires in combat; unchecked keeps it castable anytime — leave exactly your opener unchecked so a key press out of combat starts the fight. Macro entries deliberately have no checkbox (their bodies and conditionals stay user-owned), and existing profiles are unaffected (the gate defaults off). Verify any profile's compiled conditionals with `/pr debug` + `/pr test`. (`Core.lua`, `Editor.lua`)
+
 ## [1.9.6] - 2026-07-11
 
 The PriorityRotation compiler redesign, from the 2026-07-11 design session. PR is a blind stepper — the secure snippet legally cannot see cooldowns, procs, or cast history (the same wall that stops every addon short of Blizzard's engine-side Assisted Combat) — so the only lever for "cast X reliably when it comes off cooldown" is how often, and how evenly, the sequence *attempts* X. Attempt economics are lopsided: a not-ready attempt costs one press (~100ms at hardware-repeat rates; the GCD throttles real throughput, not presses), while a ready ability waiting for its next step costs seconds of uptime. Both features below are pure compile-time placement of the same single-`/cast` steps PR has always fired — no new secure surface, and no reliance on the approaches falsified by in-game testing (castsequence, multi-line `/cast` fallback, press-and-hold-driven SBR).

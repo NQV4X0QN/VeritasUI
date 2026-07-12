@@ -224,7 +224,8 @@ function PR:BuildEditor(parent, contentWidth)
         .."or |cFF00CCFFtrinkets|r from your character pane onto a slot.\n"
         .."Right-click to remove. Use arrows to reorder.\n"
         .."|cFFFFFF00Freq|r = attempts per cycle, spread evenly (5=constant, 1=rare).\n"
-        .."|cFFFFFF00After|r = also cast right after another ability (click to cycle).")
+        .."|cFFFFFF00After|r = also cast right after another ability (click to cycle).\n"
+        .."|cFFFFFF00Cbt|r = only cast in combat — leave your opener unchecked.")
 
     -- Divider below the header-label row. Column headers themselves are
     -- created AFTER the row loop so they can anchor to row 1's components
@@ -564,6 +565,33 @@ function PR:BuildEditor(parent, contentWidth)
         followBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
         row.followBtn = followBtn
 
+        -- "Cbt" (combat-only) checkbox — compiles [combat] into this entry's
+        -- conditional (spell/trinket entries only; macro bodies are user-owned
+        -- and untouched, so the box is hidden for macro entries). Replaces the
+        -- user's hand-macro [combat, nochanneling] convention. The entry left
+        -- unchecked is the opener: castable out of combat to start the fight.
+        local combatChk = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+        combatChk:SetSize(22, 22)
+        combatChk:SetPoint("LEFT", followBtn, "RIGHT", 6, 0)
+        combatChk:SetScript("OnClick", function(self)
+            local e = PR:CurrentProfile().spells[i]
+            if not e then return end
+            e.combatOnly = self:GetChecked() and true or nil
+            PR:SaveCurrentProfile(); editor:Refresh()
+        end)
+        combatChk:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine("Combat only", 1, 0.82, 0)
+            GameTooltip:AddLine(
+                "Checked: compiled with |cFFFFFF00[combat]|r — this ability only"
+                .. " casts while in combat. Leave your opener unchecked so a key"
+                .. " press out of combat can start the fight.",
+                0.8, 0.8, 0.8, true)
+            GameTooltip:Show()
+        end)
+        combatChk:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row.combatChk = combatChk
+
         rows[i] = row
     end
 
@@ -578,6 +606,7 @@ function PR:BuildEditor(parent, contentWidth)
     --   nameLbl   LEFT=82,  width=130  → LEFT=82 (left-justified header)
     --   freqFrame LEFT=216, width=70   → center=251
     --   followBtn LEFT=290, width=24   → center=302
+    --   combatChk LEFT=320, width=22   → center=331
     -- If you change row column sizing, update these offsets in lockstep.
     local HEADER_Y = 6
     local function MakeCenteredHeader(xOff, text)
@@ -596,6 +625,7 @@ function PR:BuildEditor(parent, contentWidth)
     hAbility:SetText("Ability")
     MakeCenteredHeader(251, "Freq")
     MakeCenteredHeader(302, "After")
+    MakeCenteredHeader(331, "Cbt")
 
     -- ── Sequence preview card ────────────────────────────────────
     -- Wraps the "Compiled Sequence:" header + preview text in a card
@@ -744,6 +774,14 @@ function PR:BuildEditor(parent, contentWidth)
                     row.followBtn.empty:Show()
                 end
                 row.followBtn:Show()
+                -- Combat gate applies only to entries PR compiles itself
+                -- (spells/trinkets); macro bodies are user-owned, so no box.
+                if e.macroName then
+                    row.combatChk:Hide()
+                else
+                    row.combatChk:SetChecked(e.combatOnly and true or false)
+                    row.combatChk:Show()
+                end
                 row.moveCol:Show()
                 row.moveUpBtn:SetAlpha(i > 1 and 1 or 0.20)
                 row.moveDownBtn:SetAlpha(i < numSpells and 1 or 0.20)
@@ -753,6 +791,7 @@ function PR:BuildEditor(parent, contentWidth)
                 row.nameLbl:SetText("|cFF3A3A3A-- empty --|r")
                 row.freqFrame:Hide()
                 row.followBtn:Hide()
+                row.combatChk:Hide()
                 row.moveCol:Hide()
             end
         end
