@@ -748,6 +748,15 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         for i, s in ipairs(PR.compiledSequence) do
             local label = PR.compiledNames and PR.compiledNames[i] or s
             VUI.Print("Priority Rotation", "    " .. i .. ". " .. label)
+            -- With debug on, show the step's ACTUAL macrotext so compiled
+            -- conditionals ([nochanneling], reacquire lines) are verifiable
+            -- in-game instead of inferred from behavior (2026-07-11: the
+            -- channel-protection rollout was untestable without this).
+            if PR.debug then
+                for line in s:gmatch("[^\n]+") do
+                    VUI.Print("Priority Rotation", "       |cFF888888" .. line .. "|r")
+                end
+            end
         end
         local override = PR.overrides[PR.MACRO_NAME]
         if override and override.keys then
