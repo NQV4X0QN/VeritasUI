@@ -248,21 +248,23 @@ function PR:BuildEditor(parent, contentWidth)
     -- is split into three identical gaps (freq→after, after→combat,
     -- combat→right border), so the spacing reads as designed rather
     -- than as an accident of neighbor-chained anchors.
+    -- Geometry is EXACT, not eyeballed: PNL_W=420 → CONTENT_W=402 (Settings.lua)
+    -- → ROW_W=390. The eye judges gaps between VISIBLE edges — for the spinner
+    -- that's the arrow ART (inset 4px inside its frame: 20px buttons, art
+    -- centered ±10), not the invisible frame edge. With unequal element widths,
+    -- even center-spacing and even gaps are mutually exclusive (the mismatch
+    -- equals the half-width difference), so: the spinner is narrowed to 56
+    -- (arrows tuck in beside the number instead of floating), and the three
+    -- gaps — spinner→After, After→Combat, Combat→border — come out identical:
+    -- 25/25/26 at the live width. Headers sit on true element centers.
     local ROW_W  = W - 12
     local FREQ_L = 216                        -- name ends 212 + 4 gap
-    local FREQ_W, AFTER_W, CHK_W = 70, 24, 22
-    -- The border margin for the Combat column comes from the equal-edge-gap
-    -- split; but the After column is placed by CENTER, not edge. The eye
-    -- (and the headers) track column centers, and the Frequency element is
-    -- ~3x wider than the other two — equal edge gaps made the After/Combat
-    -- centers sit visibly closer than Frequency/After (measured 91 vs 67).
-    -- Centering After midway between the Frequency and Combat centers gives
-    -- perfectly even header rhythm.
-    local CTL_GAP = math.floor((ROW_W - FREQ_L - FREQ_W - AFTER_W - CHK_W) / 3)
+    local FREQ_W, AFTER_W, CHK_W = 56, 24, 22
+    local FREQ_VIS_R = FREQ_L + FREQ_W - 4    -- inc-arrow art right edge
+    local CTL_GAP = math.floor((ROW_W - FREQ_VIS_R - AFTER_W - CHK_W) / 3)
     if CTL_GAP < 4 then CTL_GAP = 4 end
-    local CHK_L   = ROW_W - CTL_GAP - CHK_W
-    local AFTER_L = math.floor((FREQ_L + FREQ_W / 2 + CHK_L + CHK_W / 2) / 2
-                        - AFTER_W / 2)
+    local AFTER_L = FREQ_VIS_R + CTL_GAP
+    local CHK_L   = AFTER_L + AFTER_W + CTL_GAP
 
     -- ── Rows ─────────────────────────────────────────────────
     local rows = {}
