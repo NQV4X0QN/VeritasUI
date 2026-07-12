@@ -4,6 +4,9 @@ All notable changes to VeritasUI are documented here. Dates reflect the conversa
 
 ## [1.9.7] - 2026-07-11
 
+### Changed
+- `VeritasUI_PriorityRotation` — **editor column layout rebuilt on exact geometry.** "Freq" is now "Frequency"; the Frequency / After / Combat columns sit on a grid computed from the panel's real content width (420 → 390-px rows) with identical visible gaps between the spinner's arrow art, the After icon, the Combat checkbox, and the right border (25/25/26 px); headers center on their elements' true centers, and the frequency spinner narrowed from 70 to 56 px so its arrows tuck in beside the number instead of floating. The header divider line now spans exactly the row width (the old panel-inset anchor fell a few px short on the right). The Settings info tab's stale "Freq 3+/1" section (pre-v1.9.6 semantics) is rewritten to teach the current Frequency / After / Combat model. (`Editor.lua`, `Settings.lua`)
+
 ### Added
 - `VeritasUI_PriorityRotation` — **per-ability "Cbt" (combat-only) checkbox — hand-built macros are no longer needed for anything.** The last remaining reason to wrap spells in macros before importing them into PR was adding `[combat, nochanneling]` by hand (`[nochanneling]` has been compiled in since v1.9.6). Each spell/trinket row now has a Combat checkbox: checked compiles the step as `/cast [combat, nochanneling] <spell>` so it only fires in combat; unchecked keeps it castable anytime — leave exactly your opener unchecked so a key press out of combat starts the fight. Macro entries deliberately have no checkbox (their bodies and conditionals stay user-owned), and existing profiles are unaffected (the gate defaults off). Verify any profile's compiled conditionals with `/pr debug` + `/pr test`. (`Core.lua`, `Editor.lua`)
 
