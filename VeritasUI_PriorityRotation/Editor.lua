@@ -225,7 +225,7 @@ function PR:BuildEditor(parent, contentWidth)
         .."Right-click to remove. Use arrows to reorder.\n"
         .."|cFFFFFF00Freq|r = attempts per cycle, spread evenly (5=constant, 1=rare).\n"
         .."|cFFFFFF00After|r = also cast right after another ability (click to cycle).\n"
-        .."|cFFFFFF00Cbt|r = only cast in combat — leave your opener unchecked.")
+        .."|cFFFFFF00Combat|r = only cast in combat — leave your opener unchecked.")
 
     -- Divider below the header-label row. Column headers themselves are
     -- created AFTER the row loop so they can anchor to row 1's components
@@ -572,7 +572,10 @@ function PR:BuildEditor(parent, contentWidth)
         -- unchecked is the opener: castable out of combat to start the fight.
         local combatChk = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
         combatChk:SetSize(22, 22)
-        combatChk:SetPoint("LEFT", followBtn, "RIGHT", 6, 0)
+        -- Right-anchored (unlike the LEFT-chained columns): the box hugs the
+        -- row's right border with a fixed margin, under the right-anchored
+        -- "Combat" header, instead of floating mid-row off the After column.
+        combatChk:SetPoint("RIGHT", row, "RIGHT", -10, 0)
         combatChk:SetScript("OnClick", function(self)
             local e = PR:CurrentProfile().spells[i]
             if not e then return end
@@ -606,7 +609,8 @@ function PR:BuildEditor(parent, contentWidth)
     --   nameLbl   LEFT=82,  width=130  → LEFT=82 (left-justified header)
     --   freqFrame LEFT=216, width=70   → center=251
     --   followBtn LEFT=290, width=24   → center=302
-    --   combatChk LEFT=320, width=22   → center=331
+    --   combatChk RIGHT=-10, width=22  → center = row right edge -21
+    --     (right-anchored; its header anchors to rows[1] TOPRIGHT, not TOPLEFT)
     -- If you change row column sizing, update these offsets in lockstep.
     local HEADER_Y = 6
     local function MakeCenteredHeader(xOff, text)
@@ -625,7 +629,13 @@ function PR:BuildEditor(parent, contentWidth)
     hAbility:SetText("Ability")
     MakeCenteredHeader(251, "Freq")
     MakeCenteredHeader(302, "After")
-    MakeCenteredHeader(331, "Cbt")
+    -- "Combat" header centers over the right-anchored checkbox column
+    -- (box center = row right -21), so it anchors to TOPRIGHT, unlike the
+    -- LEFT-offset headers above.
+    local hCombat = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hCombat:SetPoint("BOTTOM", rows[1], "TOPRIGHT", -21, HEADER_Y)
+    hCombat:SetTextColor(0.85, 0.75, 0.20)
+    hCombat:SetText("Combat")
 
     -- ── Sequence preview card ────────────────────────────────────
     -- Wraps the "Compiled Sequence:" header + preview text in a card
