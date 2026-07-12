@@ -269,7 +269,7 @@ function PR:CompileSequence()
                     if not useTarget or useTarget == "" then
                         useTarget = "item:" .. tostring(e.itemID)
                     end
-                    macrotext = "/use " .. useTarget
+                    macrotext = "/use [nochanneling] " .. useTarget
                     entryName = "[ITEM:" .. (e.itemName or tostring(e.itemID)) .. "]"
                 elseif e.spellName then
                     -- Validate spellID resolves; stale IDs would otherwise
@@ -284,7 +284,17 @@ function PR:CompileSequence()
                         if info == nil then stale = true end
                     end
                     if not stale then
-                        macrotext = reacqPrefix .. "/cast " .. e.spellName
+                        -- CHANNEL PROTECTION (2026-07-11, verified in-game): a press
+                        -- landing mid-channel CLIPS the channel tail at GCD-end —
+                        -- one unprotected Throw Glaive macro cost every Eye Beam its
+                        -- full-channel bonus and ~4-6k DPS before it was found. The
+                        -- user's hand-built macros have always carried
+                        -- [nochanneling]; spell entries compiled here must get the
+                        -- same protection or raw-spell profiles clip. A press during
+                        -- a channel becomes a no-op; the channel completes; the next
+                        -- press casts normally. Macro entries are NOT touched —
+                        -- their bodies (and conditionals) belong to the user.
+                        macrotext = reacqPrefix .. "/cast [nochanneling] " .. e.spellName
                         entryName = e.spellName
                         if e.spellID then
                             PR._missingSpellWarned[e.spellID] = nil
