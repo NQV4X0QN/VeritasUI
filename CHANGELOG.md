@@ -2,6 +2,11 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.9.8] - 2026-07-19
+
+### Fixed
+- `VeritasUI_ZoneQuests` — **normal quests were pinned as "Important" and stayed in the tracker across zones; quest-type detection now trusts `questClassification` only.** Found in-game (Harandar, alt character): "Stalkers of the Stars" and "Veterans of the Great Dark" — Silvermoon City quests with normal-quest icons — survived zone filtering, and unchecking "Always Show: Important Quests" removed them, proving they were misclassified. A `/zq dumpquest` probe showed why: Blizzard's tag layer and classification layer disagree — quest 96049 carries tagID 282 / tagName "Important Quest" while `questClassification = 7` (Normal), and it renders with the classification's normal icons. The pin logic's tagName substring matching (`"important"`, `"campaign"`, `"legendary"`, `"meta"`) trusted the wrong layer; all of it is removed. Every pin category now checks `Enum.QuestClassification` (Campaign / Important / Legendary / Meta / Recurring) — the same field that drives the pink-! and campaign-shield visuals the player actually sees — with the legacy structured fields (`isCampaign`, `campaignID`, `frequency`, …) kept as harmless backup. Dailies/weeklies additionally match the Recurring classification. (`ZoneQuests.lua`)
+
 ## [1.9.7] - 2026-07-11
 
 ### Changed

@@ -118,56 +118,60 @@ local function GetWatchType()
     return WATCH_TYPE
 end
 
--- Enum-safe constant — avoids hardcoded magic numbers.
-local META_CLASSIFICATION = (Enum and Enum.QuestClassification and Enum.QuestClassification.Meta) or 4
+-- Enum-safe classification constants — avoid hardcoded magic numbers.
+-- Meta keeps its in-game-verified numeric fallback (4); the others are
+-- nil-guarded at the call site, so a missing enum key merely disables
+-- that classification check instead of comparing against a guess.
+local QC = (Enum and Enum.QuestClassification) or {}
+local QC_CAMPAIGN  = QC.Campaign
+local QC_IMPORTANT = QC.Important
+local QC_LEGENDARY = QC.Legendary
+local QC_META      = QC.Meta or 4
+local QC_RECURRING = QC.Recurring
 
 -- ── Always-track predicate ────────────────────────────────────────
+-- questClassification is the ONLY trusted quest-type signal (falsified
+-- alternative, 2026-07-19 — do not re-add): GetQuestTagInfo tagName
+-- substring matching pinned normal quests as important. Probed in-game:
+-- "Stalkers of the Stars" (96049) carries tagID 282 / "Important Quest"
+-- yet questClassification = 7 (Normal) and renders with normal-quest
+-- icons — the tag layer disagrees with the classification layer, and
+-- classification is what drives the quest log's visual language (pink !,
+-- campaign shield) that the player actually sees. The legacy is* /
+-- campaignID field checks remain as a harmless backup for quests where
+-- classification is absent (nil never matches them).
 local function IsAlwaysTracked(info)
     if not db then return false, nil end
 
-    local tagName = nil
-    if info.questID then
-        local tok, tagInfo = pcall(C_QuestLog.GetQuestTagInfo, info.questID)
-        if tok and tagInfo and tagInfo.tagName then
-            tagName = tagInfo.tagName:lower()
-        end
-    end
+    local qc = info.questClassification
 
     if db.pinCampaign then
         if info.isCampaign or (info.campaignID and info.campaignID > 0) then
             return true, "campaign"
         end
-        if tagName and tagName:find("campaign", 1, true) then
-            return true, "campaign"
-        end
+        if QC_CAMPAIGN and qc == QC_CAMPAIGN then return true, "campaign" end
     end
 
     if db.pinImportant then
         if info.isImportant then return true, "important" end
-        if tagName and tagName:find("important", 1, true) then
-            return true, "important"
-        end
+        if QC_IMPORTANT and qc == QC_IMPORTANT then return true, "important" end
     end
 
     if db.pinLegendary then
         if info.isLegendary then return true, "legendary" end
-        if tagName and tagName:find("legendary", 1, true) then
-            return true, "legendary"
-        end
+        if QC_LEGENDARY and qc == QC_LEGENDARY then return true, "legendary" end
     end
 
     if db.pinMeta then
         if info.isMeta then return true, "meta" end
-        if info.questClassification == META_CLASSIFICATION then return true, "meta" end
-        if tagName and tagName:find("meta", 1, true) then
-            return true, "meta"
-        end
+        if qc == QC_META then return true, "meta" end
     end
 
     if db.pinRepeatable then
         if (info.frequency and info.frequency ~= 0) or info.isRepeatable then
             return true, "repeatable"
         end
+        if QC_RECURRING and qc == QC_RECURRING then return true, "repeatable" end
     end
 
     return false, nil
