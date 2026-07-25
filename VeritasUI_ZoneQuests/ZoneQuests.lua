@@ -25,6 +25,16 @@ local DEFAULTS = {
 
 local db = nil  -- assigned only after ADDON_LOADED
 
+-- ── No hot-global localization block here, on purpose ─────────────
+-- Most modules in the suite open with a block of `local x = x` upvalues; this one
+-- does not, and C_QuestLog, C_Map, pcall, table.insert, table.sort and GetTime are
+-- consumed as bare globals, including inside the quest-log loops. That is the right
+-- trade here and not an oversight: those blocks exist for genuinely hot paths — the
+-- auction scan's per-row work runs hundreds of thousands of times, and the scan
+-- progress bar's runs every frame — whereas this module's heaviest loop is driven by
+-- a debounced event and walks a quest log of roughly 25-50 entries. Adding a block to
+-- match the other modules would trade real lines for an unmeasurable saving.
+
 -- ── Map-type constants (used by the location-based quest scan) ────
 local MAP_TYPE_WORLD  = (Enum and Enum.UIMapType and Enum.UIMapType.World)  or 1
 local MAP_TYPE_COSMIC = (Enum and Enum.UIMapType and Enum.UIMapType.Cosmic) or 0
