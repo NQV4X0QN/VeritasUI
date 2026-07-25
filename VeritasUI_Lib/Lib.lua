@@ -29,10 +29,10 @@ local VUI = {}
 _G.VeritasUI = VUI
 VUI.VERSION = "1.9.11"
 -- Diagnostic gate.  When true, opt-in error prints surface from
--- normally-silent paths (currently: CombatQueue pcall failures, see
--- Lib.lua:348).  Off by default to avoid clutter; toggle at runtime via
--- /ah debug (suite-wide despite the prefix) or /run VeritasUI.debug = true,
--- then reproduce the issue.
+-- normally-silent paths (currently: the pcall failures caught in the
+-- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
+-- toggle at runtime via /ah debug (suite-wide despite the prefix) or
+-- /run VeritasUI.debug = true, then reproduce the issue.
 VUI.debug = false
 
 ----------------------------------------------------------------
