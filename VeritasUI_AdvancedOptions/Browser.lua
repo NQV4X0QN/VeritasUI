@@ -274,6 +274,19 @@ local function RefreshEntry(entry)
     entry.server  = server or false
 end
 
+-- Paint the Value column from the entry: blue when the CVar differs from its
+-- default, grey when it matches. Every site that updates a row's value in place
+-- must go through this. The right-click reset path used to hardcode the grey,
+-- which asserted "this is the default" even when the write had been deferred
+-- (combat) or rejected, leaving the live value still modified on screen.
+local function PaintValue(fs, entry)
+    if entry.value ~= entry.default then
+        fs:SetTextColor(0.4, 0.8, 1)
+    else
+        fs:SetTextColor(0.75, 0.75, 0.75)
+    end
+end
+
 ----------------------------------------------------------------
 --  Search / filter
 ----------------------------------------------------------------
@@ -422,11 +435,7 @@ function AO:BuildBrowserContent(parent)
         RefreshEntry(entry)
         -- Update the row's display
         editingRow._valFs:SetText(entry.value)
-        if entry.value ~= entry.default then
-            editingRow._valFs:SetTextColor(0.4, 0.8, 1)
-        else
-            editingRow._valFs:SetTextColor(0.75, 0.75, 0.75)
-        end
+        PaintValue(editingRow._valFs, entry)
         CloseInlineEdit()
     end)
 
@@ -501,11 +510,7 @@ function AO:BuildBrowserContent(parent)
         row._defFs:SetText(elementData.default)
 
         -- Modified indicator
-        if elementData.value ~= elementData.default then
-            row._valFs:SetTextColor(0.4, 0.8, 1)
-        else
-            row._valFs:SetTextColor(0.75, 0.75, 0.75)
-        end
+        PaintValue(row._valFs, elementData)
 
         -- Star colour
         local isFav = AO:IsFavorite(elementData.name)
@@ -540,7 +545,7 @@ function AO:BuildBrowserContent(parent)
                 AO:ResetCVar(elementData.name)
                 RefreshEntry(elementData)
                 row._valFs:SetText(elementData.value)
-                row._valFs:SetTextColor(0.75, 0.75, 0.75)
+                PaintValue(row._valFs, elementData)
                 if editingRow == row then CloseInlineEdit() end
             else
                 -- Left-click → toggle inline edit
