@@ -227,11 +227,19 @@ end
 local function RenderCoinLine(tooltip, price)
     if not (tooltip.AddLine and tooltip.CreateFontString) then return false end
 
+    -- Resolve the frame name BEFORE adding anything. false means "I rendered nothing, caller
+    -- use the text-coin fallback", so every false exit must leave the tooltip untouched -
+    -- which is why this lookup happens first instead of after the label row.
+    local name = tooltip.GetName and tooltip:GetName()
+    if not name then return false end
+
     -- Friz label line (matches native "Sell Price:" label font). Reserves the row.
     tooltip:AddLine(PRICE_PREFIX, 1, 1, 1)
 
-    local name = tooltip.GetName and tooltip:GetName()
-    if not name then return true end
+    -- NumLines is only correct once the label row exists, so this one cannot be hoisted.
+    -- Returning true here is deliberate, not a copy of the bug fixed above: the label row is
+    -- already committed, so returning false would make the caller add a SECOND "Auction:"
+    -- line. The exit cannot fire anyway - the AddLine directly above guarantees the row.
     local left = _G[name .. "TextLeft" .. tooltip:NumLines()]
     if not left then return true end
 
