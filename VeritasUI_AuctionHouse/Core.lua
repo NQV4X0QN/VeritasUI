@@ -371,6 +371,8 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
         if AH.DB then
             AH.DB.Wipe()
             VUI.Print(AH.TAG, "Price database cleared.")
+        else
+            VUI.Print(AH.TAG, "DB not loaded.")
         end
 
     elseif cmd == "diag" then
@@ -425,6 +427,8 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             else
                 AH.SellStrip.ListBlocked()
             end
+        else
+            VUI.Print(AH.TAG, "Sell strip not loaded.")
         end
 
     else
