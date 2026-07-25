@@ -241,7 +241,7 @@ local function Build()
 end
 
 ----------------------------------------------------------------
---  Poll the label while the AH is open (cheap: 1 Hz, only while shown)
+--  Poll the label while the AH is open (cheap: 2 Hz, only while shown)
 ----------------------------------------------------------------
 local ticker = CreateFrame("Frame")
 ticker:Hide()
