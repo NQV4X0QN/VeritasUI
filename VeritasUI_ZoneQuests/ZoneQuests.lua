@@ -451,6 +451,12 @@ ef:SetScript("OnEvent", function(_, event, arg1)
 end)
 
 -- ── Slash commands ────────────────────────────────────────────────
+-- POLICY — output channel. User-facing messages go through VUI.Print, which tags them
+-- [Zone Quests]. The diagnostic commands (synctest, dumpquest, debug) deliberately use
+-- raw print: they are multi-line dumps with their own inline colouring, and a per-line
+-- module tag would be noise in output whose purpose is to be copy-pasted. This split is
+-- intentional, not drift — do not "unify" it. The one other bare print, in the header,
+-- fires only when VUI itself is nil and therefore cannot use VUI.Print at all.
 SLASH_VERITASUI_ZONEQUESTS1 = "/zq"
 SLASH_VERITASUI_ZONEQUESTS2 = "/zonequests"
 SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
