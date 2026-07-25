@@ -383,6 +383,28 @@ function PR:CompileSequence()
         for _, it in ipairs(base) do
             Emit(it, { [it] = true })
         end
+
+        -- Cycle wrap-around collapse. The sequence is CYCLIC — the secure
+        -- snippet advances with `step % #macros + 1` — so the last step and
+        -- the first are adjacent at runtime as well, and that is the one
+        -- adjacent pair the peephole in Emit never compares. Left unhandled,
+        -- {A freq 3, B freq 1} compiles to [A, B, A] and plays
+        -- A,B,A,A,B,A… — a dead duplicate press every cycle, which is exactly
+        -- the clumping the v1.9.6 redesign exists to remove. It happens
+        -- whenever the top-weight entry also wins the final slot, i.e. the
+        -- normal case.
+        --
+        -- Dropping the LAST step is safe here precisely BECAUSE the two texts
+        -- are identical. If that step was a follower emitted for "After"
+        -- adjacency, the wrap now lands on seq[1], which carries the same
+        -- macrotext — so "the follower is the literal next executed step"
+        -- still holds for the target that ends the cycle. And exactly one drop
+        -- can ever be needed: Emit guarantees no two consecutive steps match,
+        -- so the new last step cannot equal seq[1] either.
+        if #seq > 1 and seq[#seq] == seq[1] then
+            names[#seq] = nil
+            seq[#seq]   = nil
+        end
     end
 
     self.compiledSequence = seq
