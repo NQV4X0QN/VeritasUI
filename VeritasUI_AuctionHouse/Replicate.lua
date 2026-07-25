@@ -47,14 +47,14 @@ AH.Replicate = {}
 local SCAN_FLOOR_SECONDS    = 15 * 60   -- minimum gap between full scans
 local ROWS_PER_SLICE        = 2000      -- safety cap on rows per frame
 local FRAME_BUDGET_MS       = 8         -- ~8ms/frame work budget (debugprofilestop)
-local REPLICATE_RETRY_DELAY = 60        -- seconds to wait for REPLICATE_ITEM_LIST_UPDATE before retrying.
+local REPLICATE_STALL_TIMEOUT = 60      -- seconds of total silence after which the request is declared LOST.
                                         -- MUST sit above the measured healthy first-event latency (~28-40s,
-                                        -- probe ref §5 2026-06-27 + confirmed 26.5s on 2026-07-02 and 23.9s on
-                                        -- 2026-07-11): at the old 10s this fired a mislabeled "request was
-                                        -- dropped" duplicate on EVERY healthy scan, muddying each trace. At 60s,
-                                        -- one request producing zero events within the window is an unambiguous
-                                        -- drop. Since v1.9.5 the retry is PERSISTENT (re-arms after each
-                                        -- re-fire) — see ArmRetry for the measurement that forced this.
+                                        -- probe ref §5 2026-06-27 + confirmed 26.5s on 2026-07-02, 23.9s on
+                                        -- 2026-07-11 and 26.0s on 2026-07-24): at the old 10s this tripped on
+                                        -- EVERY healthy scan. At 60s, one request producing zero events inside
+                                        -- the window is an unambiguous loss. This does NOT abort the scan (see
+                                        -- the no-timeout rule above) — it only stops re-firing and tells the
+                                        -- user the one recovery that works. See ArmStallDetector.
 local LINK_RETRY_WAIT       = 3         -- seconds between link retry passes (lets queued
                                         -- item-record loads stream in; cold-cache coverage fix)
 local LINK_RETRY_BUDGET     = 45        -- hard cap (seconds) on the whole retry phase. Records
@@ -67,7 +67,11 @@ local co                    -- the active coroutine
 local driver               -- OnUpdate ticker frame
 local finder               -- OnUpdate ticker frame for /ah find, reused across calls
 local progress   = 0        -- 0..1
-local retryTimer            -- C_Timer handle watching for a dropped ReplicateItems()
+local stallTimer            -- C_Timer handle watching for a lost ReplicateItems()
+local sessionRequestLost    -- true once a request in THIS AH session was declared lost.
+                            -- A poisoned AH session never yields a snapshot again, no
+                            -- matter how many times we ask (measured: 4 HOURS of re-fires,
+                            -- 2026-07-24). Cleared on AH_OPEN — a fresh session is clean.
 local fireTime              -- GetTime() at the moment ReplicateItems() was issued
 local finalizeResolved      -- live counters for the gear-residue retry phase;
 local finalizeTotal         -- nil outside the phase (backs FinalizeStatus())
@@ -79,10 +83,11 @@ local trace                 -- ALWAYS-ON diagnostic record of the current/most-r
                             -- VUI.debug; /ah diag dumps it. Fields:
                             --   startedAt         time() at first fire of the chain
                             --   firedAt           GetTime() of the LATEST fire (elapsed math)
-                            --   attempts          total ReplicateItems() calls in the chain
-                            --                     (auto re-fires AND manual Retry clicks —
-                            --                     a manual retry on a still-hung request
-                            --                     CONTINUES the chain, see DoFire)
+                            --   attempts          total ReplicateItems() calls in the chain.
+                            --                     Since v1.9.14 there are no automatic
+                            --                     re-fires, so this counts user-initiated
+                            --                     fires only (a manual retry on a still-hung
+                            --                     request CONTINUES the chain, see DoFire)
                             --   pulses            REPLICATE_ITEM_LIST_UPDATE events seen
                             --   firstEventLatency GetTime()-firedAt at the first pulse
                             --   firstEventAttempt which attempt the first pulse followed
@@ -681,56 +686,62 @@ end
 --  the Scan button's OnClick (hardware-event stack, Auctionator's model) or
 --  /ah scan. Do not reintroduce a deferred/gated fire path.
 ----------------------------------------------------------------
-local function CancelRetry()
-    if retryTimer then
-        retryTimer:Cancel()
-        retryTimer = nil
+local function CancelStallDetector()
+    if stallTimer then
+        stallTimer:Cancel()
+        stallTimer = nil
     end
 end
 
 ----------------------------------------------------------------
---  ArmRetry — PERSISTENT re-fire (v1.9.5; replaces the one-shot retry)
+--  ArmStallDetector — detect a lost request; DO NOT re-fire (v1.9.14)
 --
---  Why persistent: 2026-07-11, first login after 6 idle days — the server
---  silently dropped every ReplicateItems() for ~12 minutes (numReplicate=0 at
---  each later fire proved nothing was ever assembled), then accepted one and
---  delivered a textbook-healthy scan (first pulse 23.9s, 255,990 rows). The
---  one-shot retry fired once at 60s and then gave up FOREVER — the addon sat
---  silent for the remaining ~11 minutes while the user's manual Retry clicks
---  did the job this timer should have done. Client-side gating cannot help:
---  throttleReady/hasFullBrowse read true at both failing and working fires
---  (measured 2026-07-02 AND 2026-07-11). The only strategy that works is to
---  keep asking until the server says yes.
+--  Replaces the v1.9.5 persistent re-fire chain, which could not work.
 --
---  Duplicate fires are proven safe: the v1.7.9 10s timer fired a duplicate on
---  every healthy scan for weeks with no harm, and the 2026-07-11 success came
---  4 minutes after a prior (dropped) fire — requests don't reset each other.
+--  THE MEASUREMENT THAT KILLED IT (2026-07-24, owner's Windows client): a hung
+--  scan was left re-firing every 60s for FOUR HOURS. Not one of those requests
+--  was ever answered. Re-asking inside a poisoned AH session is futile at any
+--  duration — the v1.9.5 header's "keep asking until the server says yes" is
+--  false, and its supporting 2026-07-11 episode (a re-fire succeeding ~12min
+--  in) could not be reproduced and is not trusted.
 --
---  Unbounded BY DESIGN, same reasoning as the no-timeout rule above: a cap
---  would just recreate the "gave up N seconds before the server recovered"
---  failure at a different N. The chain lives only while the AH session does —
---  every re-fire re-checks (AH open, scanning, no coroutine), AH_CLOSED
---  cancels the timer, and a refused request is a server-side no-op, so an
---  abandoned-open-AH worst case is one dropped packet per minute.
+--  WHAT ACTUALLY RECOVERS IT: close the AH and reopen it. The owner's standing
+--  practice — wait 60s, close, reopen IMMEDIATELY, scan — has always worked
+--  (single exception 2026-07-24). No waiting is involved, which also rules out
+--  any time-based server cooldown: an immediate new session succeeds. The
+--  failure is bound to the AH SESSION, not to the clock.
+--
+--  Corroborating evidence that the fault is neither ours nor the connection's:
+--    * [FIRE STATE] is byte-identical at a failing fire and the succeeding one
+--      (2026-07-02, 2026-07-11, 2026-07-24) — no client-side signal predicts it.
+--    * Search / buy / sell all work normally during a hang, so only the bulk
+--      replicate request is being refused.
+--    * event pulses: 0 at every hang — the snapshot is never even started, so
+--      this is not our guard dropping a delivered event.
+--
+--  So: one request per AH session. On silence, say so in PLAIN SIGHT (the old
+--  re-fire notice was debug-gated, which is why a spinning addon looked frozen
+--  and drove 400s waits and reload cycles) and name the fix.
+--
+--  Deliberately does NOT abort the scan: `scanning` stays true and the event
+--  handler stays live, so a late snapshot is still processed (the no-timeout
+--  rule above). AH_CLOSED does the teardown — and closing is exactly what the
+--  user is being told to do.
 ----------------------------------------------------------------
-local function ArmRetry()
-    CancelRetry()
-    retryTimer = C_Timer.NewTimer(REPLICATE_RETRY_DELAY, function()
-        retryTimer = nil
-        -- Only re-fire if: AH still open, scan flag still set, but the coroutine
+local function ArmStallDetector()
+    CancelStallDetector()
+    stallTimer = C_Timer.NewTimer(REPLICATE_STALL_TIMEOUT, function()
+        stallTimer = nil
+        -- Only report if: AH still open, scan flag still set, but the coroutine
         -- never started. co ~= nil means data arrived and we're processing.
         if not AH.isOpen or not scanning or co then return end
-        if trace then
-            trace.attempts = (trace.attempts or 1) + 1
-            trace.firedAt  = GetTime()
-        end
-        if VUI.debug then
-            VUI.Print(AH.TAG, format("REPLICATE_ITEM_LIST_UPDATE not received after %ds "
-                .. "— request was dropped; re-firing ReplicateItems() (attempt %d)",
-                REPLICATE_RETRY_DELAY, trace and trace.attempts or 0))
-        end
-        C_AuctionHouse.ReplicateItems()
-        ArmRetry()   -- persistent: keep the chain alive until data arrives or the AH closes
+        -- Poison the session: further fires here cannot succeed, so Start()
+        -- refuses them and points at the reopen instead of burning another 60s.
+        sessionRequestLost = true
+        VUI.Print(AH.TAG, format(
+            "|cFFFF4444No response after %ds — the scan request was lost.|r "
+            .. "|cFFFFFF00Close the Auction House and reopen it, then press Scan again.|r "
+            .. "It works straight away; there is no need to wait.", REPLICATE_STALL_TIMEOUT))
     end)
 end
 
@@ -777,14 +788,13 @@ local function DoFire()
     if VUI.debug then
         VUI.Print(AH.TAG, "ReplicateItems() fired")
     end
-    -- Arm the persistent retry chain: if REPLICATE_ITEM_LIST_UPDATE doesn't
-    -- arrive within REPLICATE_RETRY_DELAY seconds the request was silently
-    -- dropped by the server (a dropped request produces NO event at all), so
-    -- ArmRetry re-fires and re-arms until data arrives or the AH closes.
-    -- This is NOT a watchdog: it only fires while co is still nil (coroutine
-    -- never started). If the event arrives first (normal path), CancelRetry()
-    -- in the event handler defuses the chain immediately.
-    ArmRetry()
+    -- Arm the stall detector: if REPLICATE_ITEM_LIST_UPDATE doesn't arrive
+    -- within REPLICATE_STALL_TIMEOUT seconds the request was lost (a lost
+    -- request produces NO event at all). It does not re-fire and does not
+    -- abort — it marks the session and tells the user to reopen the AH.
+    -- If the event arrives first (normal path), CancelStallDetector() in the
+    -- event handler defuses it immediately.
+    ArmStallDetector()
 end
 
 ----------------------------------------------------------------
@@ -811,6 +821,13 @@ function AH.Replicate.Start()
     if not (C_AuctionHouse and C_AuctionHouse.ReplicateItems) then
         return false, "C_AuctionHouse.ReplicateItems unavailable."
     end
+    -- A request already went missing in THIS AH session, so the session is spent:
+    -- re-firing here is futile (4h of re-fires answered nothing, 2026-07-24). Send
+    -- the user to the only recovery that works rather than costing them another 60s.
+    if sessionRequestLost then
+        return false, "This Auction House session can no longer scan — "
+            .. "close it and reopen it, then press Scan again."
+    end
     if scanning then
         if co then
             return false, "A scan is already processing."
@@ -818,7 +835,7 @@ function AH.Replicate.Start()
         -- scanning == true, co == nil  ->  a fired-but-never-arrived (hung) request:
         -- clear it and re-fire.
         scanning = false
-        CancelRetry()
+        CancelStallDetector()
     end
 
     local wait = AH.Replicate.SecondsUntilReady()
@@ -856,9 +873,9 @@ ef:SetScript("OnEvent", function(_, event)
         --                                   (scanning/co state bug — fix in our code)
         --   * line NEVER appears in a hang → server never delivered the snapshot for the
         --                                   first request (readiness/timing path)
-        -- The reported latency also sets the retry threshold: a HEALTHY first arrival is
-        -- ~28-40s (probe ref §5; confirmed 26.5s on 2026-07-02), so the retry timer must
-        -- sit above that (REPLICATE_RETRY_DELAY=60) and stay gated on co==nil.
+        -- The reported latency also sets the stall threshold: a HEALTHY first arrival is
+        -- ~28-40s (probe ref §5; confirmed 26.5s on 2026-07-02, 26.0s on 2026-07-24), so
+        -- the stall timer must sit above that (REPLICATE_STALL_TIMEOUT=60).
         -- Costs nothing in normal play (only emits under VeritasUI.debug).
         -- ALWAYS-ON trace capture (v1.9.5): pulse count + first-event latency are
         -- recorded regardless of VUI.debug, so the next rare hang repro is never
@@ -877,7 +894,7 @@ ef:SetScript("OnEvent", function(_, event)
                 .. "time-to-first-event=%.1fs", tostring(scanning), tostring(co ~= nil), latency))
         end
         -- Event arrived — the request was NOT dropped. Cancel the retry chain.
-        CancelRetry()
+        CancelStallDetector()
         -- The snapshot is ready to read. Only act if WE initiated a scan
         -- (scanning == true) and we're not already draining a coroutine.
         if not scanning or co then return end
@@ -896,7 +913,7 @@ AH.Events.On("AH_CLOSED", function()
         progress = 0
         finalizeResolved, finalizeTotal = nil, nil
         mainCommit = nil
-        CancelRetry()
+        CancelStallDetector()
         if trace and (trace.outcome == "requesting" or trace.outcome == "processing") then
             trace.outcome = "aborted"
         end
@@ -914,6 +931,8 @@ end)
 --  Scan button (UI/ScanButton.lua, hardware-event fire path) or /ah scan.
 ----------------------------------------------------------------
 AH.Events.On("AH_OPEN", function()
+    -- Fresh AH session => fresh replicate allowance (see ArmStallDetector).
+    sessionRequestLost = false
     -- Stuck-flag guard (v1.7.5 — the correct fix that replaces the old watchdog): a
     -- scan only lives within one AH session. If a prior session ended with
     -- `scanning` still true (event genuinely never delivered, no AH_CLOSED seen),

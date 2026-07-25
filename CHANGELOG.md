@@ -2,6 +2,30 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.9.14] - 2026-07-25
+
+A hung Auction House scan used to cost minutes or hours; it now costs about seventy seconds. The addon no longer retries a lost scan request, because retrying cannot work: a hung scan was left re-firing every sixty seconds for four hours on the owner's Windows client and not one of those requests was ever answered. Once a request goes missing, that Auction House session is spent, and the only thing that recovers it is closing the window and reopening it — immediately, with no waiting, which also rules out any time-based server cooldown. The old persistent retry was therefore pure cost: it produced activity that looked like progress, and every one of its notices was hidden behind the debug flag, so in normal play the addon simply went silent for minutes. That is what drove four-hundred-second waits, repeated close/reopen cycles and full reloads.
+
+So the sixty-second timer stays, but it now detects rather than retries. On silence it says so in plain sight, debug or not, and names the one recovery that works. The session is marked spent, so pressing Scan again without reopening refuses instantly instead of burning another silent minute. Deliberately not done: the scan is *not* aborted — `scanning` stays set and the event handler stays live, so a late snapshot is still processed, honouring the module's standing no-timeout rule. Also deliberately not done: failed attempts are still *not* recorded against the fifteen-minute scan floor. Recording them was in the original plan and would have been actively harmful, because it would have blocked the immediate reopen-and-rescan that is the actual fix.
+
+The underlying cause — why the first request of a session goes missing at all, on one machine and not the other — is still unknown and is not addressed here. Five hypotheses were raised and falsified in the course of diagnosis (server-side drop with timed recovery, auction-house subsystem readiness, teardown-versus-time, a self-resetting server cooldown, and a competing addon). What is now measured: [FIRE STATE] is byte-identical between a failing fire and the succeeding one, ordinary search/buy/sell work perfectly during a hang, and event pulses are zero, so the snapshot is never begun and no client-side signal distinguishes a doomed request from a good one. The v1.9.5 rationale claiming a re-fire once succeeded twelve minutes in could not be reproduced and is no longer trusted.
+
+### Changed
+
+- The Auction House scan no longer re-fires a lost request. `ArmRetry` (persistent, unbounded, sixty-second re-fire chain, v1.9.5) is replaced by `ArmStallDetector`, which fires once, does not re-request, and does not abort the scan.
+- The lost-request notice is no longer debug-gated. It is always visible and states the recovery: close the Auction House and reopen it, then press Scan again.
+- `AH.Replicate.Start()` refuses a fire in an Auction House session where a request was already lost, returning the reopen instruction immediately instead of issuing a request that cannot be answered.
+
+### Fixed
+
+- A hung scan left to retry no longer wastes unbounded time. The four-hour measurement of 2026-07-24 established that in-session re-firing never succeeds at any duration.
+- The addon no longer appears frozen during a hung scan. Previously the only indication anything was happening was a debug-gated message, so a normal user saw "Full scan started…" followed by silence.
+
+### Documentation
+
+- `ArmStallDetector` carries the full evidence that retired the retry chain: the four-hour test, the immediate-reopen recovery, the identical fire-state captures across three dates, and the healthy first-event latency now confirmed at 26.0s on 2026-07-24.
+- The scan-floor reasoning records why a failed attempt must *not* be timestamped, so a future reader does not "fix" the asymmetry and reintroduce the lockout.
+
 ## [1.9.13] - 2026-07-25
 
 Phase 5 of the fourth code audit, and the last one — the leftovers, which turned out to be clusters rather than individual defects. Four of them: the suite was split down the middle on whether to guard saved-variable access, on whether to localize hot globals, on whether help text goes through the module's own print, and on whether a constant lives in one place or two. Each was settled as a single convention with a stated boundary rather than by converting every site that looked odd — module tables the load order guarantees are now explicitly *not* guarded and say why, saved-variable state is guarded at every consumer, diagnostic paths are hardened generously, hot-path globals are localized while cold ones are left alone, user-facing help is tagged while multi-line diagnostic dumps deliberately stay untagged for copy-paste. Roughly a third of the findings here resolved to no code change at all, which is the point: an apparent inconsistency that is actually a deliberate trade is worse than a real one, because the next reader will "fix" it. Those are now written down in the files.
