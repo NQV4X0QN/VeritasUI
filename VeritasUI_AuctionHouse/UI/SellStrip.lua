@@ -342,7 +342,7 @@ local function MakeButton(parent, index)
 end
 
 ----------------------------------------------------------------
---  Render the current page (offset -> VISIBLE buttons) + arrow states
+--  Render the current page (offset -> VISIBLE buttons); paging is mouse-wheel only
 ----------------------------------------------------------------
 function Render()
     local n = #state.items
