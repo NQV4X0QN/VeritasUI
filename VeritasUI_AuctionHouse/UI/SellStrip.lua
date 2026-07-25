@@ -550,7 +550,13 @@ if AH.Events and AH.Events.On then
     AH.Events.On("AH_OPEN", function()
         Build()
         UpdateVisibility()  -- shows + refreshes if you opened straight into Sell
-        Refresh()           -- warm the bag on the Buy tab; strip stays hidden,
-                            -- so the GET_ITEM_INFO_RECEIVED burst settles off-screen
+        -- Warm the bag when the AH did NOT open into Sell: the strip stays hidden,
+        -- so the GET_ITEM_INFO_RECEIVED burst settles off-screen (v1.7.15). Guarded
+        -- because UpdateVisibility ALREADY refreshes in Sell mode -- unconditional,
+        -- this ran a full six-bag CollectItems pass twice per Sell-mode open (three
+        -- times on the session's first). Do NOT move this into UpdateVisibility's
+        -- else branch: that function is also the SetDisplayMode hook, so it would
+        -- scan on every tab switch away from Sell, which currently costs nothing.
+        if not IsSellMode() then Refresh() end
     end)
 end
