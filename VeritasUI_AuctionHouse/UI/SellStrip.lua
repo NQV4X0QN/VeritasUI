@@ -560,4 +560,23 @@ if AH.Events and AH.Events.On then
         -- scan on every tab switch away from Sell, which currently costs nothing.
         if not IsSellMode() then Refresh() end
     end)
+
+    -- Teardown on close. Core documents AH_CLOSED as the teardown signal and every
+    -- other AH UI file subscribes; this one did not, so state.pending survived the
+    -- session and GET_ITEM_INFO_RECEIVED kept arming debounce timers during normal
+    -- play for items that were cold when the AH shut, each resolving to a Refresh
+    -- that only early-returns on AH.isOpen. Nothing is lost by dropping the set: the
+    -- next session's CollectItems pass rebuilds it from the bags.
+    --
+    -- Do NOT fix this by unregistering GET_ITEM_INFO_RECEIVED instead. The v1.7.15
+    -- warm-while-hidden behaviour needs that event delivered with the strip hidden,
+    -- and removing the registration would bring back the on-screen reshuffle that
+    -- change existed to kill. Clear the state, keep the registration.
+    AH.Events.On("AH_CLOSED", function()
+        if state.refreshTimer then
+            state.refreshTimer:Cancel()
+            state.refreshTimer = nil
+        end
+        state.pending = {}
+    end)
 end
