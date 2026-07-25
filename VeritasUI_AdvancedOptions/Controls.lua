@@ -21,6 +21,7 @@ local math_min       = math.min
 local CreateFrame    = CreateFrame
 local C_Timer        = C_Timer
 local GameTooltip    = GameTooltip
+local InCombatLockdown = InCombatLockdown
 
 ----------------------------------------------------------------
 --  Shared style constants
@@ -205,16 +206,20 @@ function AO:CreateSlider(parent, cfg)
     slider:SetValueStep(cfg.step or 1)
     slider:SetObeyStepOnDrag(true)
 
-    -- Hide the built-in Low/High labels from OptionsSliderTemplate
+    -- Hide the built-in Low/High/Text labels from OptionsSliderTemplate.
+    -- The slider is deliberately created unnamed (see CreateFrame above), so the
+    -- original _G[sliderName .. "Low"] lookup could never resolve and the labels
+    -- rendered anyway. Prefer the template's parentKey references, and keep the
+    -- name-based path as a fallback for a named slider. Both are optional: if a
+    -- future template drops a key we silently leave it alone rather than error.
     local sliderName = slider:GetName()
-    if sliderName then
-        local low  = _G[sliderName .. "Low"]
-        local high = _G[sliderName .. "High"]
-        local text = _G[sliderName .. "Text"]
-        if low  then low:SetText("")  end
-        if high then high:SetText("") end
-        if text then text:SetText("") end
+    local function ClearLabel(key)
+        local fs = slider[key] or (sliderName and _G[sliderName .. key])
+        if fs and fs.SetText then fs:SetText("") end
     end
+    ClearLabel("Low")
+    ClearLabel("High")
+    ClearLabel("Text")
 
     -- Value display
     local valText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -348,12 +353,17 @@ function AO:CreateDropdown(parent, cfg)
         return cur or "?"
     end
 
-    local function Refresh()
+    -- Single place that knows how to paint the closed dropdown's label.
+    local function SetLabel(text)
         if dropdown.OverrideText then
-            dropdown:OverrideText(CurrentText())
+            dropdown:OverrideText(text)
         elseif dropdown.SetDefaultText then
-            dropdown:SetDefaultText(CurrentText())
+            dropdown:SetDefaultText(text)
         end
+    end
+
+    local function Refresh()
+        SetLabel(CurrentText())
     end
 
     dropdown:SetupMenu(function(_, root)
@@ -368,8 +378,18 @@ function AO:CreateDropdown(parent, cfg)
                     return cur ~= nil and tostring(cur) == tostring(opt.value)
                 end,
                 function()
-                    AO:SetCVar(cfg.cvar, opt.value)
-                    Refresh()
+                    -- AO:SetCVar returns false both when the write is deferred to
+                    -- the end of combat and when it genuinely fails, so disambiguate
+                    -- here rather than changing its contract. On a deferred write,
+                    -- Refresh() would re-read the live CVar (still the old value) and
+                    -- snap the label back, throwing away both the user's selection
+                    -- and the optimistic cache write AO:SetCVar just made. Show the
+                    -- chosen option instead; the CVar catches up when combat ends.
+                    if AO:SetCVar(cfg.cvar, opt.value) or not InCombatLockdown() then
+                        Refresh()
+                    else
+                        SetLabel(opt.text)
+                    end
                     return MenuResponse.Close
                 end
             )
