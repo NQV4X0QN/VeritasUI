@@ -19,7 +19,9 @@ if not VUI then return end
 --  Localize hot globals
 ----------------------------------------------------------------
 local ipairs         = ipairs
+local pairs          = pairs
 local CreateFrame    = CreateFrame
+local InCombatLockdown = InCombatLockdown
 
 ----------------------------------------------------------------
 --  Category definitions
@@ -457,6 +459,26 @@ function AO:BuildFeaturedContent(parent)
         scrollBox:SetDataProvider(dp)
     end
 
+    -- ── Refresh values only — no relayout ────────────────────
+    --  The factories in Controls.lua read their CVar exactly once, at creation,
+    --  and the element initializer below only reparents cached controls. Without
+    --  this pass a control keeps displaying whatever the value was the first time
+    --  the panel was built, which is wrong (and writes the wrong value on the next
+    --  click) because many of these CVars are also editable from Blizzard's own
+    --  Options panel and from the Browser tab.
+    --
+    --  Values only, deliberately: rebuilding the DataProvider here would reset the
+    --  scroll position every time the tab is shown.
+    --
+    --  Skipped in combat so a combat-deferred write (see AO:SetCVar) keeps showing
+    --  the pending value instead of snapping back to the not-yet-updated CVar.
+    local function RefreshValues()
+        if InCombatLockdown() then return end
+        for _, ctrl in pairs(controlCache) do
+            if ctrl.Refresh then ctrl.Refresh() end
+        end
+    end
+
     -- ── View setup ──────────────────────────────────────────
     local view = CreateScrollBoxListLinearView()
 
@@ -593,8 +615,14 @@ function AO:BuildFeaturedContent(parent)
     -- ── Wire ScrollBox + ScrollBar ──────────────────────────
     ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
 
-    -- Store refresh handle for external callers
+    -- Re-read every control's CVar whenever the tab becomes visible.
+    -- Mirrors Browser.lua's OnShow → FullRefresh wiring; fires on both window
+    -- show and tab switch, because ActivateTab uses contFeatured:SetShown().
+    parent:SetScript("OnShow", RefreshValues)
+
+    -- Store refresh handles for external callers
     self._featuredRefresh = Refresh
+    self._featuredRefreshValues = RefreshValues
 
     -- Initial populate
     Refresh()
