@@ -4,8 +4,8 @@
 --
 -- Owns the AH session lifecycle (AUCTION_HOUSE_SHOW/CLOSED/DISABLED), a tiny
 -- internal pub/sub bus (AH.Events) that sibling files hook, the price-DB saved
--- vars, and the /ah slash surface (help / scan / wipe / diag / blocked /
--- settings). See AUCTIONHOUSE_DESIGN.md §2.8 (lifecycle).
+-- vars, and the /ah slash surface (help / scan / diag / check / find / wipe /
+-- blocked / settings / debug). See AUCTIONHOUSE_DESIGN.md §2.8 (lifecycle).
 
 local ADDON_NAME, AH = ...
 local VUI = _G.VeritasUI
@@ -217,7 +217,10 @@ end)
 ----------------------------------------------------------------
 --  Slash Commands
 --
---  Surface: help / scan / wipe / diag / blocked / settings.
+--  Surface: help / scan / diag / check / find / wipe / blocked / settings / debug.
+--  This list, the `cmd ==` branches below, and PrintHelp are meant to stay
+--  one-for-one — the list had drifted, silently gaining four commands it never
+--  learned about, so check all three together when adding or removing one.
 ----------------------------------------------------------------
 SLASH_VERITASUI_AH1 = "/ah"
 SLASH_VERITASUI_AH2 = "/auctionhouse"
