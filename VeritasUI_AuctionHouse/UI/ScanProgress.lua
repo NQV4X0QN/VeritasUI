@@ -65,6 +65,9 @@ if not VUI then return end
 local CreateFrame = CreateFrame
 local floor       = math.floor
 local format      = string.format
+-- Hot: WaitLabel reads GetTime once per frame, and a Phase-1 wait can now last minutes
+-- (see v1.9.5). Localized for the same reason Replicate.lua localizes it.
+local GetTime     = GetTime
 
 ----------------------------------------------------------------
 --  Geometry — small, money-frame-scale. All tunable; the ANCHOR is verified but
