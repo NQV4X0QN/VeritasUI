@@ -45,6 +45,10 @@ local defaults = {
     showItemLevels = true,
     showMapCoords  = true,
     afkScreen      = true,
+    -- Set while the AFK overlay has the UI hidden, cleared when it restores it.
+    -- Persisted so a crash or disconnect during AFK can be recovered at the next
+    -- PLAYER_LOGIN without force-restoring the UI on every ordinary login.
+    afkUIDirty     = false,
 }
 
 local db
@@ -1122,6 +1126,10 @@ local function AFK_Enter()
         MinimapCluster:Hide()
     end
 
+    -- Mark the UI as ours-and-hidden so a crash while AFK can be recovered at
+    -- the next login. AFK_Exit clears it, so a clean exit leaves nothing to undo.
+    db.afkUIDirty = true
+
     -- Refresh info and show
     AFK_RefreshInfo()
     overlay:Show()
@@ -1152,6 +1160,7 @@ local function AFK_Exit()
             MinimapCluster:Show()
         end
     end
+    if db then db.afkUIDirty = false end
 
     -- Hide overlay
     if afkOverlay then afkOverlay:Hide() end
@@ -1291,12 +1300,18 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         self:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
-        -- Belt-and-suspenders: if we crashed/disconnected while AFK was
-        -- active, UIParent alpha and MinimapCluster may be in a bad state.
-        -- Restore unconditionally on every login — these are no-ops when
-        -- already at their default values.
-        UIParent:SetAlpha(1)
-        if MinimapCluster then MinimapCluster:Show() end
+        -- Belt-and-suspenders: if we crashed or disconnected while the AFK
+        -- screen was up, UIParent alpha and MinimapCluster are left hidden.
+        -- Gated on the persisted dirty flag rather than run unconditionally:
+        -- UIParent:SetAlpha(1) genuinely is a no-op at the default, but
+        -- MinimapCluster:Show() is not — running it on every login un-hid a
+        -- minimap that another addon or an Edit Mode layout had deliberately
+        -- hidden, which is precisely what AFK_Exit goes out of its way to avoid.
+        if db.afkUIDirty then
+            UIParent:SetAlpha(1)
+            if MinimapCluster then MinimapCluster:Show() end
+            db.afkUIDirty = false
+        end
 
         if db.showItemLevels then SetupItemLevels()     end
         if db.showMapCoords  then SetupMapCoordinates() end
