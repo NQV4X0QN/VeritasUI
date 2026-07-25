@@ -97,9 +97,17 @@ function AH.DB.MakeKey(link)
 end
 
 -- Key derivation WITHOUT a link — for replicate rows whose link is still
--- uncached (GetReplicateItemLink nil) but whose row itemID is known (the 15th
--- GetReplicateItemInfo return, always present). Non-gear items are keyed by
--- bare itemID, identical to MakeKey's fallthrough, so no link is needed.
+-- uncached (GetReplicateItemLink nil) but whose row itemID was recovered by
+-- Replicate's live calibration.  Do NOT assume a fixed return position for
+-- that itemID: Blizzard's documented #15 is WRONG (it lands on
+-- bidderFullName, a string), the position measured on Midnight is #17, and
+-- Replicate re-measures it against link-resolved rows on every scan rather
+-- than trusting either number.  It is also NOT always present — if
+-- calibration cannot reach consensus the position stays nil and cold rows
+-- fall through to the gear retry passes instead.  See v1.8.1, which raised
+-- coverage from 7,977 to 21,612 items by removing exactly that assumption.
+-- Non-gear items are keyed by bare itemID, identical to MakeKey's
+-- fallthrough, so no link is needed.
 -- Gear returns nil: its key requires the item level, which requires the
 -- loaded link — callers must defer those rows until the link resolves.
 -- (Diagnosed 2026-07-02: ~138k of ~268k replicate rows had nil links at scan
