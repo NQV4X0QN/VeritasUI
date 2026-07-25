@@ -80,7 +80,14 @@ AH.disabled = false   -- true after AUCTION_HOUSE_DISABLED (this session)
 --  a predictable structure to work against.
 ----------------------------------------------------------------
 local defaults = {
-    dbVersion = 1,     -- schema version for the price DB (bump on layout change)
+    -- Schema version, reported by /ah diag. Diagnostic only: InitDB seeds keys
+    -- solely when absent, so an existing saved-variables file keeps its stored
+    -- value forever and bumping this number would not upgrade anything. Schema
+    -- changes are made as unconditional tombstone assignments below (see
+    -- db.shopping and db.settings.autoScan), which are version-independent and
+    -- need no comparison. Do not treat this as a migration trigger without
+    -- first adding the comparison it would require.
+    dbVersion = 1,
     prices    = {},    -- [itemKeyString] = price-history record (see Database.lua)
     settings  = {},    -- user toggles (tooltip display); settings.retentionDays optional
     lastScan  = 0,     -- Unix time of last full replicate scan (scan-floor bookkeeping)
