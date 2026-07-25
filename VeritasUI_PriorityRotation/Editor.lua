@@ -393,15 +393,18 @@ function PR:BuildEditor(parent, contentWidth)
 
         iconBtn:SetScript("OnReceiveDrag", function() HandleDrop(i) end)
         iconBtn:SetScript("OnClick", function(_, btn)
+            -- Resolve the list once, as every sibling handler in this file does.
+            -- table.remove mutates in place, so the single local stays correct.
+            local spells = PR:CurrentProfile().spells
             if btn == "RightButton" then
-                if PR:CurrentProfile().spells[i] then
-                    table.remove(PR:CurrentProfile().spells, i)
+                if spells[i] then
+                    table.remove(spells, i)
                     PR:SaveCurrentProfile(); editor:Refresh()
                 end
             else
                 local ct = GetCursorInfo()
                 if ct == "spell" or ct == "macro" or ct == "item" then HandleDrop(i)
-                elseif not PR:CurrentProfile().spells[i] then
+                elseif not spells[i] then
                     if IsShiftKeyDown() then ToggleMacroPanel() else ToggleSpellBookPanel() end
                 end
             end
