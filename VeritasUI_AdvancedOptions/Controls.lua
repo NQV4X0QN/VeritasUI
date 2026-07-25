@@ -92,9 +92,11 @@ end
 --  a /reload or GX restart to take effect.
 --  Uses "!" text (orange); atlas approach conflicted with pool-frame
 --  reparenting and was abandoned.
+--
+--  Called only from inside FinishRow's `if cfg.restart` branch, so it always
+--  creates the fontstring and never returns nil — the caller must not test it.
 ----------------------------------------------------------------
-local function CreateRestartIndicator(parent, requiresRestart)
-    if not requiresRestart then return nil end
+local function CreateRestartIndicator(parent)
     local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetText("!")
     fs:SetTextColor(1, 0.5, 0)
@@ -132,10 +134,8 @@ local function FinishRow(row, cfg, Refresh)
     resetBtn:SetPoint("RIGHT", row, "RIGHT", 8, 0)
 
     if cfg.restart then
-        local indicator = CreateRestartIndicator(row, true)
-        if indicator then
-            indicator:SetPoint("RIGHT", resetBtn, "LEFT", -4, 0)
-        end
+        local indicator = CreateRestartIndicator(row)
+        indicator:SetPoint("RIGHT", resetBtn, "LEFT", -4, 0)
     end
 
     if cfg.tooltip then
