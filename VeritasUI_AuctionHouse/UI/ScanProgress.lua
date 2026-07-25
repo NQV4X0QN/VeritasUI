@@ -36,17 +36,27 @@
 --   atlas (SellStrip.lua:417; cf. SKILL.md "Native sell-card art"), applied as a
 --   BACKGROUND texture slightly outset from the bar, at small scale.
 --
--- THE TWO-PHASE TRUTH (do not collapse into one % bar)
+-- THE THREE-PHASE TRUTH (do not collapse into one % bar)
 --   Phase 1 — WAITING: ReplicateItems() fired, REPLICATE_ITEM_LIST_UPDATE hasn't
 --     arrived. UNBOUNDED by design (§2.2: no timeout). Progress() is 0 and STAYS 0 —
---     no denominator exists, so a frozen "0%" would be a lie. We show an INDETERMINATE
---     sweep + "Waiting for data…".
+--     no denominator exists, so a frozen "0%" would be a lie. INDETERMINATE sweep +
+--     WaitLabel(): "Connecting…", then "Requesting auctions…" once AH_SCAN_REQUESTED
+--     lands, each with a live "(Ns)" elapsed suffix and a "try N" counter from the
+--     second attempt on (v1.9.5: the server can silently drop requests for ~12 min,
+--     so a long wait must read as the addon working, not hung).
 --   Phase 2 — PROCESSING: snapshot landed; the coroutine folds rows and Progress()
 --     climbs 0->1. A real determinate fill + "Scanning… N%". This is the 1->100% the
 --     user wants to watch.
---   Phase is derived purely from the public accessors:
+--   Phase 3 — FINALIZING: main results are already committed; gear-residue retries are
+--     waiting out item-record streaming. Honest live counts — "Finalizing gear… N/M",
+--     or "Finalizing gear prices…" until FinalizeStatus has numbers. Its duration is
+--     unknowable and it can end early on quiescence/budget, so it is deliberately NOT
+--     folded into the 0-100% scale; see the fuller note in the ticker's Phase-3 branch.
+--   Phase is a HYBRID of public accessors and lifecycle events, NOT accessors alone:
 --     IsScanning() and Progress()==0  -> Phase 1 (indeterminate)
 --     IsScanning() and Progress()>0   -> Phase 2 (determinate)
+--     which Phase-1 wait it is <- state.phase, set by the AH_SCAN_REQUESTED handler
+--     Phase 3 <- state.finalizing, set by the AH_SCAN_FINALIZING handler
 
 local _, AH = ...
 local VUI = _G.VeritasUI
