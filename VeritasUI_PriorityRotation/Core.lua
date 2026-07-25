@@ -484,7 +484,7 @@ function PR:UpdateMacroStub()
         return true
     else
         if GetNumMacros() < (MAX_ACCOUNT_MACROS or 120) then
-            -- pcall-wrap CreateMacro for the same reason F-7 wrapped
+            -- pcall-wrap CreateMacro for the same reason v1.6.39 wrapped
             -- EditMacro in the sibling branch above — the macro frame can
             -- be in a transient state during /reload bursts.  Mirrors the
             -- failure-return contract from EditMacro and the macro-
@@ -642,7 +642,7 @@ ef:RegisterEvent("ADDON_LOADED")
 ef:RegisterEvent("PLAYER_LOGIN")
 ef:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 -- UPDATE_MACROS fires when any macro is created, edited, deleted, or
--- reordered.  We re-run the compile so the F-5 missing-macro warning
+-- reordered.  We re-run the compile so the missing-macro warning (v1.6.39)
 -- surfaces immediately on external deletion (the user has no other
 -- trigger; PR's own editor is debounced separately).  ScheduleCompile's
 -- 0.3s debounce coalesces editor bursts (rapid save/rename/reorder) into
@@ -683,7 +683,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
     elseif event == "UPDATE_MACROS" then
         -- Route through ScheduleCompile so editor bursts (rapid
         -- save/rename/reorder) collapse into one recompile 0.3s after
-        -- the last fire.  CompileSequence then surfaces the F-5 warning
+        -- the last fire.  CompileSequence then surfaces its missing-macro warning
         -- for any rotation entry whose macro was deleted, and the now-
         -- missing entry is elided so the rotation continues working
         -- with whatever else is in the profile.

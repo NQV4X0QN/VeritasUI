@@ -899,7 +899,7 @@ end)
 --  Scan button (UI/ScanButton.lua, hardware-event fire path) or /ah scan.
 ----------------------------------------------------------------
 AH.Events.On("AH_OPEN", function()
-    -- F-2 stuck-flag guard (the correct fix that replaces the old watchdog): a
+    -- Stuck-flag guard (v1.7.5 — the correct fix that replaces the old watchdog): a
     -- scan only lives within one AH session. If a prior session ended with
     -- `scanning` still true (event genuinely never delivered, no AH_CLOSED seen),
     -- clear it here so a fresh session can always start a new scan — no false
