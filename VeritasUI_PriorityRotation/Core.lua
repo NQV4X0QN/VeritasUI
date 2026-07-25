@@ -640,7 +640,7 @@ ef:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 -- trigger; PR's own editor is debounced separately).  ScheduleCompile's
 -- 0.3s debounce coalesces editor bursts (rapid save/rename/reorder) into
 -- a single recompile, and CompileSequence's `if not self.db then return`
--- guard at line 150 makes any early fire (before ADDON_LOADED) a no-op.
+-- guard makes any early fire (before ADDON_LOADED) a no-op.
 ef:RegisterEvent("UPDATE_MACROS")
 -- PLAYER_REGEN_ENABLED is owned by VUI.CombatQueue (Lib.lua).
 -- All deferred post-combat actions go through VUI.CombatQueue.Add().
