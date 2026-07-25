@@ -525,6 +525,12 @@ function VUI._InitReloadButton()
             for _, child in ipairs({ f:GetChildren() }) do
                 if child:IsObjectType("Button") then
                     local t = child:GetText()
+                    -- The "Defaults" literal is a WON'T FIX decided in cycle 4, not an oversight:
+                    -- DEFAULTS is the correct localized global and is tested first, so the literal can
+                    -- only ever help on enUS, where the two are equal anyway. If DEFAULTS were nil the
+                    -- search simply fails and the else branch below mis-anchors the button to a fixed
+                    -- offset - cosmetic, never a fault. Paired with the AH tooltip's ": " separator as
+                    -- one decision: single-user addon on an English client.
                     if t and (t == DEFAULTS or t == "Defaults") then
                         defaultsBtn = child; return
                     end

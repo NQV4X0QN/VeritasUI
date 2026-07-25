@@ -125,6 +125,13 @@ local PRICE_PREFIX = "Auction:"
 -- therefore MEASURE it live at render time (MeasureNativePrefix) so each OS self-corrects,
 -- the same principle as copying the live label font. The constants below are only the
 -- fallback (if the live measure fails) and an optional manual fine-tune.
+-- WON'T FIX, decided in cycle 4, not an oversight: the word comes from Blizzard's
+-- localized SELL_PRICE global but the ": " is ours, so a locale that spaces its colon
+-- (Prix de vente : ) measures one space short and shifts the first coin digit a few
+-- pixels left of the native column - the exact defect the live measure exists to kill.
+-- Cosmetic, non-enUS only, and this is a single-user addon on an English client. The
+-- suite's only other hardcoded-English site, the "Defaults" fallback in Lib's reload
+-- button anchor search, carries the same note and the same decision.
 local SELL_PREFIX          = (SELL_PRICE or "Sell Price") .. ": " -- string we measure live
 local COIN_COLUMN_FALLBACK = 59  -- used ONLY if the live measure returns nil (px)
 local COIN_COLUMN_NUDGE    = 0   -- manual fine-tune added after auto-measure (px; + = right)
