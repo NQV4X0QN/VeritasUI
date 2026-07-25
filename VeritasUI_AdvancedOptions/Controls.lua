@@ -102,6 +102,57 @@ local function CreateRestartIndicator(parent, requiresRestart)
 end
 
 ----------------------------------------------------------------
+--  Shared row scaffolding
+--
+--  All three factories build the same outer frame and the same trailing
+--  furniture. These two helpers hold the single copy. v1.6.26's theme was
+--  collapsing exactly this kind of duplicate (CONTROL_HEIGHTS from one
+--  ROW_HEIGHT, SB_INSET defined once), and the module's stated design goal is
+--  that adding a CVar is one table entry — so duplication *inside* the
+--  factories undercuts the layer they exist to provide.
+----------------------------------------------------------------
+
+-- Full-width row frame. The 400 fallback covers the first control created
+-- before its parent has been laid out (GetWidth() == 0).
+local function CreateRow(parent, height)
+    local row = CreateFrame("Frame", nil, parent)
+    local rowW = parent:GetWidth(); rowW = (rowW > 0) and rowW or 400
+    row:SetSize(rowW, height)
+    return row
+end
+
+-- Trailing furniture shared by all three factories: reset button on the far
+-- right, optional restart indicator to its left, optional whole-row tooltip,
+-- and the row.Refresh handle Featured.lua's tab-show refresh reads.
+--
+-- ⚠ Deliberately NOT used by the dropdown's pcall fallback path: that path has
+-- no reset button, no indicator and no tooltip, and returns early by design.
+local function FinishRow(row, cfg, Refresh)
+    local resetBtn = CreateResetButton(row, cfg.cvar, Refresh)
+    resetBtn:SetPoint("RIGHT", row, "RIGHT", 8, 0)
+
+    if cfg.restart then
+        local indicator = CreateRestartIndicator(row, true)
+        if indicator then
+            indicator:SetPoint("RIGHT", resetBtn, "LEFT", -4, 0)
+        end
+    end
+
+    if cfg.tooltip then
+        row:EnableMouse(true)
+        row:SetScript("OnEnter", function(self)
+            ShowTooltip(self, cfg.label, cfg.tooltip
+                .. (cfg.restart and "\n\n|cFFFF8800Requires /reload to take effect.|r" or ""))
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+
+    row.Refresh = Refresh
+    row.cvar    = cfg.cvar
+    return row
+end
+
+----------------------------------------------------------------
 --  1. CHECKBOX — boolean CVars
 --
 --  cfg = {
@@ -113,9 +164,7 @@ end
 --  }
 ----------------------------------------------------------------
 function AO:CreateCheckbox(parent, cfg)
-    local row = CreateFrame("Frame", nil, parent)
-    local rowW = parent:GetWidth(); rowW = (rowW > 0) and rowW or 400
-    row:SetSize(rowW, ROW_HEIGHT)
+    local row = CreateRow(parent, ROW_HEIGHT)
 
     local cb = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
     cb:SetSize(22, 22)
@@ -145,31 +194,7 @@ function AO:CreateCheckbox(parent, cfg)
         AO:SetCVar(cfg.cvar, checked and "1" or "0")
     end)
 
-    -- Reset button — anchored to the far right of the row
-    local resetBtn = CreateResetButton(row, cfg.cvar, Refresh)
-    resetBtn:SetPoint("RIGHT", row, "RIGHT", 8, 0)
-
-    -- Restart indicator — to the left of the reset button
-    if cfg.restart then
-        local indicator = CreateRestartIndicator(row, true)
-        if indicator then
-            indicator:SetPoint("RIGHT", resetBtn, "LEFT", -4, 0)
-        end
-    end
-
-    -- Tooltip on the whole row
-    if cfg.tooltip then
-        row:EnableMouse(true)
-        row:SetScript("OnEnter", function(self)
-            ShowTooltip(self, cfg.label, cfg.tooltip
-                .. (cfg.restart and "\n\n|cFFFF8800Requires /reload to take effect.|r" or ""))
-        end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    end
-
-    row.Refresh = Refresh
-    row.cvar    = cfg.cvar
-    return row
+    return FinishRow(row, cfg, Refresh)
 end
 
 ----------------------------------------------------------------
@@ -188,9 +213,7 @@ end
 --  }
 ----------------------------------------------------------------
 function AO:CreateSlider(parent, cfg)
-    local row = CreateFrame("Frame", nil, parent)
-    local rowW = parent:GetWidth(); rowW = (rowW > 0) and rowW or 400
-    row:SetSize(rowW, ROW_HEIGHT + 8)
+    local row = CreateRow(parent, ROW_HEIGHT + 8)
 
     local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
@@ -269,31 +292,7 @@ function AO:CreateSlider(parent, cfg)
         end)
     end)
 
-    -- Reset button — anchored to the far right of the row
-    local resetBtn = CreateResetButton(row, cfg.cvar, Refresh)
-    resetBtn:SetPoint("RIGHT", row, "RIGHT", 8, 0)
-
-    -- Restart indicator — to the left of the reset button
-    if cfg.restart then
-        local indicator = CreateRestartIndicator(row, true)
-        if indicator then
-            indicator:SetPoint("RIGHT", resetBtn, "LEFT", -4, 0)
-        end
-    end
-
-    -- Tooltip
-    if cfg.tooltip then
-        row:EnableMouse(true)
-        row:SetScript("OnEnter", function(self)
-            ShowTooltip(self, cfg.label, cfg.tooltip
-                .. (cfg.restart and "\n\n|cFFFF8800Requires /reload to take effect.|r" or ""))
-        end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    end
-
-    row.Refresh = Refresh
-    row.cvar    = cfg.cvar
-    return row
+    return FinishRow(row, cfg, Refresh)
 end
 
 ----------------------------------------------------------------
@@ -311,9 +310,7 @@ end
 --  pcall-wrapped creation and the WoWUIBugs #783 taint workaround.
 ----------------------------------------------------------------
 function AO:CreateDropdown(parent, cfg)
-    local row = CreateFrame("Frame", nil, parent)
-    local rowW = parent:GetWidth(); rowW = (rowW > 0) and rowW or 400
-    row:SetSize(rowW, ROW_HEIGHT + 4)
+    local row = CreateRow(parent, ROW_HEIGHT + 4)
 
     local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("LEFT", row, "LEFT", 0, 0)
@@ -397,29 +394,5 @@ function AO:CreateDropdown(parent, cfg)
     end)
     Refresh()
 
-    -- Reset button — anchored to the far right of the row
-    local resetBtn = CreateResetButton(row, cfg.cvar, Refresh)
-    resetBtn:SetPoint("RIGHT", row, "RIGHT", 8, 0)
-
-    -- Restart indicator — to the left of the reset button
-    if cfg.restart then
-        local indicator = CreateRestartIndicator(row, true)
-        if indicator then
-            indicator:SetPoint("RIGHT", resetBtn, "LEFT", -4, 0)
-        end
-    end
-
-    -- Tooltip
-    if cfg.tooltip then
-        row:EnableMouse(true)
-        row:SetScript("OnEnter", function(self)
-            ShowTooltip(self, cfg.label, cfg.tooltip
-                .. (cfg.restart and "\n\n|cFFFF8800Requires /reload to take effect.|r" or ""))
-        end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    end
-
-    row.Refresh = Refresh
-    row.cvar    = cfg.cvar
-    return row
+    return FinishRow(row, cfg, Refresh)
 end
