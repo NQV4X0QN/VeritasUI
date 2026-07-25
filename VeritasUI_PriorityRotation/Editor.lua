@@ -545,10 +545,17 @@ function PR:BuildEditor(parent, contentWidth)
                 -- profile order. Excludes entries sharing this entry's own
                 -- key (self-follow would collapse at compile anyway).
                 local selfKey = PR.EntryKey(e)
-                local cands = {}
+                local cands, seen = {}, {}
                 for j, o in ipairs(spells) do
                     local k = PR.EntryKey(o)
-                    if j ~= i and k and k ~= selfKey then
+                    -- Deduplicate by key. e.follows stores a KEY, not a slot
+                    -- index, so two slots holding the same ability are a single
+                    -- candidate. Without this the forward search below always
+                    -- matches the FIRST duplicate, so the cycle oscillates
+                    -- between two entries and both "none" and every later
+                    -- candidate become permanently unreachable.
+                    if j ~= i and k and k ~= selfKey and not seen[k] then
+                        seen[k] = true
                         cands[#cands + 1] = k
                     end
                 end
