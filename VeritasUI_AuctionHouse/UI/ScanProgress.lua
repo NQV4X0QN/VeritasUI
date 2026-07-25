@@ -327,6 +327,16 @@ local function ShowScanning()
 end
 
 -- Park a terminal (complete/failed) message, then auto-hide after HOLD_SEC.
+--
+-- Deliberately NOT gated on IsScanning(), unlike the AH_SCAN_REQUESTED and
+-- AH_SCAN_FINALIZING handlers below. That asymmetry is intended: those two only
+-- mutate state, so a guard is free, whereas a terminal message is the one thing
+-- that must land precisely because the scan has just stopped. There is also no
+-- stray fire to guard against. Replicate's AH_CLOSED handler aborts by clearing
+-- the scan coroutine and hiding its driver, and emits no terminal event of its
+-- own, so AH_SCAN_COMPLETE / AH_SCAN_FAILED cannot arrive after a close. Nor can
+-- a reopen inside HOLD_SEC surface a stale message: AH_CLOSED runs HideNow, which
+-- hides the frame and cancels the hide timer, and AH_OPEN only calls Build().
 local function ShowTerminal(text, color, fill)
     if not state.built then return end
     StopTicking()
