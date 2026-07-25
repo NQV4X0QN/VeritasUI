@@ -48,9 +48,15 @@ local filteredList   = {}    -- current search-filtered view
 -- POLICY (formalized v1.6.41 per audit OQ#2): KNOWN_CVARS is
 -- intentionally broad.  Dead names — CVars that existed in earlier
 -- builds but have been removed in Midnight or any subsequent patch
--- cycle — are silently skipped at runtime via C_CVar.GetCVarInfo
--- returning nil (see Strategy 3 loop at line 223).  Entries are NOT
--- pruned on Midnight removals.
+-- cycle — are silently skipped at runtime: the Strategy 3 probe loop
+-- below calls C_CVar.GetCVarInfo for each name and builds a row only
+-- when it returns a non-nil value.  Entries are NOT pruned on Midnight
+-- removals.
+--
+-- (That pointer names the loop rather than citing a line number on
+-- purpose.  The number drifted three times — v1.6.41 wrote "225",
+-- v1.7.13 corrected it, and it was wrong again by v1.9.8.  Do not
+-- re-add one.)
 --
 -- Rationale: removing a name from this list risks accidentally
 -- removing a CVar that does exist on this client.  The cost of
