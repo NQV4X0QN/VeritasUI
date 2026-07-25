@@ -98,7 +98,7 @@ end
 --   in-game" claim is hereby falsified — see Known Landmines correction.)
 --
 -- HOW THIS RENDERS NATIVELY WITHOUT ANY MONEY MATH (probe-verified specs 12.0.5):
---   * Coins  = the Coin-Gold / Coin-Silver / Coin-Copper atlases at 13x13, emitted as
+--   * Coins  = the Coin-Gold / Coin-Silver / Coin-Copper atlases at 14x14, emitted as
 --              inline |A:atlas:h:w|a markup in a fontstring. Pure text → zero Blizzard
 --              arithmetic → cannot throw on a Secret Value, in any content.
 --   * Numbers= the tooltip BODY font, copied at render time from our own label line
@@ -130,9 +130,10 @@ local COIN_COLUMN_FALLBACK = 59  -- used ONLY if the live measure returns nil (p
 local COIN_COLUMN_NUDGE    = 0   -- manual fine-tune added after auto-measure (px; + = right)
 
 -- Inline atlas coin markup, matched EXACTLY to the native "Sell Price:" line via raw-
--- markup probe (12.0.7): |A:coin-gold:14:14:2:0|a. The :14:14 is the icon size (the
--- old "13x13" code comment was wrong — native is 14); the trailing :2:0 are the atlas
--- x/y pixel offsets native uses to vertically center the coin on the text baseline.
+-- markup probe (12.0.7): |A:coin-gold:14:14:2:0|a. The :14:14 is the icon size (an
+-- earlier 13x13 figure was wrong — native is 14, corrected in v1.7.15); the trailing
+-- :2:0 are the atlas x/y pixel offsets native uses to vertically center the coin on
+-- the text baseline.
 -- Omitting either made ours read small and sit slightly off. (Sizes are tunable here.)
 local COIN_G = "|A:coin-gold:14:14:2:0|a"
 local COIN_S = "|A:coin-silver:14:14:2:0|a"
