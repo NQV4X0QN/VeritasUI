@@ -968,16 +968,16 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
 
     elseif cmd == "help" then
         VUI.Print("Priority Rotation", "Commands:")
-        print("  |cFFFFFF00/pr|r           — toggle editor")
-        print("  |cFFFFFF00/pr settings|r  — open settings panel")
-        print("  |cFFFFFF00/pr scan|r      — bind to keybind/bar")
-        print("  |cFFFFFF00/pr macro|r     — create macro stub")
-        print("  |cFFFFFF00/pr status|r    — show current state at a glance")
-        print("  |cFFFFFF00/pr reset|r     — reset to spec defaults")
-        print("  |cFFFFFF00/pr clear|r     — clear spell list")
-        print("  |cFFFFFF00/pr test|r      — show compiled sequence")
-        print("  |cFFFFFF00/pr diag|r      — live-patch API diagnostic")
-        print("  |cFFFFFF00/pr debug|r     — toggle debug output")
+        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr|r           — toggle editor")
+        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr settings|r  — open settings panel")
+        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr scan|r      — bind to keybind/bar")
+        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr macro|r     — create macro stub")
+        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr status|r    — show current state at a glance")
+        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr reset|r     — reset to spec defaults")
+        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr clear|r     — clear spell list")
+        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr test|r      — show compiled sequence")
+        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr diag|r      — live-patch API diagnostic")
+        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr debug|r     — toggle debug output")
 
     else
         if PR.MainWindow then
