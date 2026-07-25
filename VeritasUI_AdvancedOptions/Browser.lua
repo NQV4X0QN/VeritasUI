@@ -330,7 +330,13 @@ end
 --    Search box at top
 --    Column headers (★ | Name | Value | Default)
 --    Native ScrollBox list of rows
---    Click row → inline expand with edit box + Set + Reset buttons
+--    Left-click row  → inline edit box positioned over the Value column
+--                      (Enter applies, Esc cancels, left-click again closes)
+--    Right-click row → reset that CVar to its default
+--
+--  There are no Set or Reset buttons, and rows never expand.  v1.6.23/24
+--  deleted the overlay editor panel and EXPAND_H entirely; that pattern is
+--  on the do-not-reintroduce list.
 ----------------------------------------------------------------
 local ROW_H       = 20
 
@@ -472,9 +478,10 @@ function AO:BuildBrowserContent(parent)
     -- recycles row frames automatically — no manual pool needed.
     local view = CreateScrollBoxListLinearView()
 
-    -- Element extent: fixed height for all rows. The inline editor
-    -- floats as an overlay below the expanded row at a higher frame level,
-    -- so no variable extent is needed.
+    -- Element extent: fixed height for all rows. The inline editor is
+    -- parented to the clicked row and floats over its Value column at a
+    -- higher frame level, so the row itself never changes height and no
+    -- variable extent is needed.
     view:SetElementExtentCalculator(function(dataIndex, elementData)
         return ROW_H
     end)
