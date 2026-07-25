@@ -310,6 +310,15 @@ end
 --  dropped; see design §2.2). Also prints the derived key so a key mismatch
 --  between the scanned link and the tooltip link would be visible.
 ----------------------------------------------------------------
+-- /ah check runs when something is already wrong, so it must not itself error if a sibling
+-- module failed to load. The TOC loads Core.lua BEFORE Money.lua, so unlike Tooltip.lua this
+-- file has no load-order guarantee to lean on. Falling back to raw copper keeps the rest of
+-- the report readable; folding the nil case into the "never recorded" string would report a
+-- missing module as a missing price.
+local function MoneyStr(copper)
+    return AH.Money and AH.Money.Format(copper) or tostring(copper)
+end
+
 local function PrintCheck(rawArg)
     if not AH.DB then
         VUI.Print(AH.TAG, "DB not loaded.")
@@ -334,7 +343,7 @@ local function PrintCheck(rawArg)
     local age   = AH.DB.GetPriceAge(key)
     local today = AH.DB.Today()
     VUI.Print(AH.TAG, format("  stored price: %s",
-        price and AH.Money.Format(price) or "|cFFFF4444(none — never recorded)|r"))
+        price and MoneyStr(price) or "|cFFFF4444(none — never recorded)|r"))
     VUI.Print(AH.TAG, format("  age:          %s",
         age and (age .. " day(s)") or "|cFFFF4444n/a|r"))
     VUI.Print(AH.TAG, format("  today / seen: %d / %s",
@@ -343,7 +352,7 @@ local function PrintCheck(rawArg)
     local hist = AH.DB.GetPriceHistory(key)
     if hist[1] then
         VUI.Print(AH.TAG, format("  latest day:   day %d — min %s, qty %d",
-            hist[1].day, AH.Money.Format(hist[1].min or 0), hist[1].qty or 0))
+            hist[1].day, MoneyStr(hist[1].min or 0), hist[1].qty or 0))
     else
         VUI.Print(AH.TAG, "  history:      |cFFFF4444empty|r")
     end
