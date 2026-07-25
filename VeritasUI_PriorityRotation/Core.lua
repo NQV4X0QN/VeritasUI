@@ -978,6 +978,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         VUI.Print("Priority Rotation", "  |cFFFFFF00/pr test|r      — show compiled sequence")
         VUI.Print("Priority Rotation", "  |cFFFFFF00/pr diag|r      — live-patch API diagnostic")
         VUI.Print("Priority Rotation", "  |cFFFFFF00/pr debug|r     — toggle debug output")
+        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr help|r      — show this help")
 
     else
         if PR.MainWindow then
