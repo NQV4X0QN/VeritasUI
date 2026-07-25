@@ -325,6 +325,7 @@ local function MakeButton(parent, index)
             -- and blocklisting the wrong item is annoying to undo. Requiring
             -- Shift makes hiding a deliberate act.
             if not IsShiftKeyDown() then return end
+            if not AH.db then return end
             AH.db.sellBlocklist = AH.db.sellBlocklist or {}
             AH.db.sellBlocklist[data.itemID] = true
             VUI.Print(AH.TAG, "Hidden from the sell strip: " .. data.link
