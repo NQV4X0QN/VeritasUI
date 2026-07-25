@@ -245,6 +245,7 @@ end
 -- that snapshot state, not the player's original pre-enable tracking.
 -- This is an accepted Midnight limitation.
 local function SnapshotWatched()
+    if not db then return end
     db.manualWatched = {}
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
         local ok, info = pcall(C_QuestLog.GetInfo, i)
@@ -255,6 +256,7 @@ local function SnapshotWatched()
 end
 
 local function RestoreWatched()
+    if not db then return end
     local watchType = GetWatchType()
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
         local ok, info = pcall(C_QuestLog.GetInfo, i)
