@@ -74,6 +74,15 @@ function AH.DB.MakeKey(link)
     if not itemID then return nil end
 
     -- Equippable gear → append item level so different-ilvl drops don't collapse.
+    --
+    -- ⚠ This three-line predicate is duplicated verbatim in MakeKeyFromItemID and the
+    -- two MUST agree. They are deliberately not extracted into a shared helper: the
+    -- predicate is not the duplication that matters, the opposite-polarity gear
+    -- handling is. This branch appends the ilvl; the other refuses gear outright so the
+    -- caller defers it. Loosen one predicate without the other and gear slips through
+    -- the cold path to be keyed as a bare i:<itemID>, which is the ilvl-agnostic gear
+    -- key design section 2.4 forbids by name, and it fails silently - no error, just
+    -- prices averaged across every ilvl variant of the item.
     local _, _, _, equipLoc = GetItemInfoInstant(link)
     local isGear = equipLoc and equipLoc ~= "" and equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE"
                    and not equipLoc:find("BAG", 1, true)
@@ -114,6 +123,10 @@ end
 -- time and were silently skipped, leaving over half the AH unpriced per scan.)
 function AH.DB.MakeKeyFromItemID(itemID)
     if type(itemID) ~= "number" or itemID <= 0 then return nil end
+    -- ⚠ Predicate duplicated verbatim from MakeKey; the two MUST agree. See the note
+    -- there for why they are not extracted and what breaks silently if they diverge.
+    -- Returning nil for gear is by design, not an omission: the key needs an item
+    -- level, which needs the loaded link this function exists to do without.
     local _, _, _, equipLoc = GetItemInfoInstant(itemID)
     local isGear = equipLoc and equipLoc ~= "" and equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE"
                    and not equipLoc:find("BAG", 1, true)
