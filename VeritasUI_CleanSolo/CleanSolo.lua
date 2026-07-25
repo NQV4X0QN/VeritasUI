@@ -304,8 +304,26 @@ local function HideVoiceChatButton()
 end
 
 -- ── Feature: Micro Menu Fade ────────────────────────────────
+-- Both return values are captured and driven from ExitEditMode, mirroring the
+-- action-bar path below. They were added to HookHoverFade AFTER this call site
+-- was written (FadeOut in v1.6.13, RefreshChildren in v1.6.14, both for the
+-- action-bar feature) and this site was never migrated — the omission was an
+-- oversight, not a decision. Both of the conditions that motivated them apply
+-- to the micro menu equally: it is Edit-Mode movable, so Blizzard forces it
+-- visible during layout editing and no OnLeave fires afterwards to re-assert
+-- alpha 0; and its child set changes (the Great Vault button appears and
+-- disappears), which invalidates the child cache HookHoverFade builds at hook
+-- time.
 local function SetupMicroMenuFade()
-    VUI.HookHoverFade(MicroMenu)
+    local fo, rc = VUI.HookHoverFade(MicroMenu)
+    if fo and EditModeManagerFrame then
+        pcall(hooksecurefunc, EditModeManagerFrame, "ExitEditMode", function()
+            C_Timer.After(0.2, function()
+                if rc then rc() end
+                fo()
+            end)
+        end)
+    end
 end
 
 -- ── Feature: Player Frame Fade ──────────────────────────────
