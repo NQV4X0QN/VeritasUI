@@ -632,9 +632,6 @@ function AO:BuildBrowserContent(parent)
         FullRefresh()
     end
 
-    -- Store refresh handle
-    AO._browserRefresh = FullRefresh
-
     -- ── Debounced search ────────────────────────────────────
     local searchTimer
     searchBox:HookScript("OnTextChanged", function()

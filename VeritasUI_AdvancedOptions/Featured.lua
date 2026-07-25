@@ -631,10 +631,6 @@ function AO:BuildFeaturedContent(parent)
     -- show and tab switch, because ActivateTab uses contFeatured:SetShown().
     parent:SetScript("OnShow", RefreshValues)
 
-    -- Store refresh handles for external callers
-    self._featuredRefresh = Refresh
-    self._featuredRefreshValues = RefreshValues
-
     -- Initial populate
     Refresh()
 

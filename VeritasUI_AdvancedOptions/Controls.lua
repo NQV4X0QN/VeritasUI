@@ -148,7 +148,6 @@ local function FinishRow(row, cfg, Refresh)
     end
 
     row.Refresh = Refresh
-    row.cvar    = cfg.cvar
     return row
 end
 
@@ -332,7 +331,6 @@ function AO:CreateDropdown(parent, cfg)
         row.Refresh = function()
             fallback:SetText(AO:GetCVar(cfg.cvar) or "?")
         end
-        row.cvar = cfg.cvar
         return row
     end
 
