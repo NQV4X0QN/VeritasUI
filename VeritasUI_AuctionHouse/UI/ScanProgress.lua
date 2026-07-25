@@ -94,6 +94,16 @@ local HOLD_SEC  = 2.5    -- how long the terminal (complete/failed) message ling
 local NUDGE_Y   = -2     -- drop the whole panel down a couple px so the atlas top
                         -- edge stops bleeding into the panel border above it
 
+-- DERIVED inner geometry — single source of truth for the backing, the fill bar and
+-- the sweep. BAR_RAISE shrinks the top inset and grows the bottom; BAR_SHRINK trims
+-- the bottom only, so the interior is NOT symmetric and its height is NOT H-INSET*2.
+-- That expression was correct only before BAR_RAISE/BAR_SHRINK existed; anything
+-- sized to the bar's interior must use BAR_H so it cannot drift out of step again.
+-- (Width is unaffected: the left/right insets are still a symmetric INSET each.)
+local BAR_TOP_INSET = INSET - BAR_RAISE                  -- = 1
+local BAR_BOT_INSET = INSET + BAR_RAISE + BAR_SHRINK     -- = 4
+local BAR_H         = H - BAR_TOP_INSET - BAR_BOT_INSET  -- = 13
+
 -- Fallback offset from AuctionHouseFrame BOTTOMLEFT, from the verified rect:
 --   money left = x41 vs AHF x36 -> +5; width 158 -> right edge +163; +GAP_X.
 --   money y534 vs AHF y528 -> +6.
@@ -163,8 +173,8 @@ local function Build()
     -- Raised by BAR_RAISE: smaller top inset, larger bottom inset -> centered on the
     -- atlas art rather than the frame's geometric center.
     local bg = f:CreateTexture(nil, "BORDER")
-    bg:SetPoint("TOPLEFT", f, "TOPLEFT", INSET, -(INSET - BAR_RAISE))
-    bg:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -INSET, INSET + BAR_RAISE + BAR_SHRINK)
+    bg:SetPoint("TOPLEFT", f, "TOPLEFT", INSET, -BAR_TOP_INSET)
+    bg:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -INSET, BAR_BOT_INSET)
     bg:SetColorTexture(0, 0, 0, 0.55)
 
     -- Determinate fill (raised in lockstep with the backing).
@@ -174,8 +184,8 @@ local function Build()
     -- rather than snapping to native size), and hand that to SetStatusBarTexture.
     -- It's tintable, so our green/amber phase colors via SetStatusBarColor apply.
     local bar = CreateFrame("StatusBar", nil, f)
-    bar:SetPoint("TOPLEFT", f, "TOPLEFT", INSET, -(INSET - BAR_RAISE))
-    bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -INSET, INSET + BAR_RAISE + BAR_SHRINK)
+    bar:SetPoint("TOPLEFT", f, "TOPLEFT", INSET, -BAR_TOP_INSET)
+    bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -INSET, BAR_BOT_INSET)
     local barTex = bar:CreateTexture(nil, "ARTWORK")
     barTex:SetAtlas("UI-HUD-UnitFrame-Player-PortraitOn-Bar-Health", false)
     bar:SetStatusBarTexture(barTex)
@@ -188,7 +198,7 @@ local function Build()
     local sweep = bar:CreateTexture(nil, "OVERLAY")
     sweep:SetAtlas("UI-HUD-UnitFrame-Player-PortraitOn-Bar-Health", false)
     sweep:SetVertexColor(1, 1, 1, 0.30)
-    sweep:SetSize(SWEEP_W, H - INSET * 2)
+    sweep:SetSize(SWEEP_W, BAR_H)
     sweep:SetPoint("LEFT", bar, "LEFT", 0, 0)
     sweep:Hide()
     state.sweep = sweep
