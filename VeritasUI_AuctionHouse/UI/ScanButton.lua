@@ -55,8 +55,9 @@ local LEVEL_BUMP  = 10
 
 -- v3 SWAP (user request): the button is the PERSISTENT element in this band (the
 -- progress bar only shows mid-scan), so the button now sits FIRST, directly right
--- of the money frame; ScanProgress moved right of it (its GAP_X = 100 accounts for
--- this button's span: 8 gap + 80 width + 12 clearance).
+-- of the money frame; ScanProgress moved right of it (its GAP_X = 108 accounts for
+-- this button's span: BAND_X 14 gap + 80 width + 14 clearance, which is the same
+-- 108 the BAND_X note below derives independently).
 local BAND_X      = 14    -- gap off the money frame's right edge. 14 centers the
                           -- button between money frame and scan bar: bar left edge
                           -- is at +108, so gaps are (108 - 80)/2 = 14 on each side.
