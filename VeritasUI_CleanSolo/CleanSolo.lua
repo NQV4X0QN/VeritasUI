@@ -608,7 +608,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- aliasing across saved-vars and the constant).  Currently safe
         -- because fadeActionBars is a flat table, but future nested
         -- defaults need the recursive pattern to be correct.  Mirrors
-        -- ZoneQuests.lua:357-362.  See Known Landmines in SKILL.md.
+        -- ZoneQuests' own DeepCopy in its ADDON_LOADED handler.  See Known
+        -- Landmines in SKILL.md.
         local function DeepCopy(t)
             local c = {}
             for k, v in pairs(t) do
