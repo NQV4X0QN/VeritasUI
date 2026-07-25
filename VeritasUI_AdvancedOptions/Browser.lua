@@ -340,6 +340,15 @@ end
 ----------------------------------------------------------------
 local ROW_H       = 20
 
+-- Column widths, shared by the header fontstrings and the row fontstrings. Their
+-- alignment is load-bearing and stated as such where the header is built ("Right edge
+-- matches the scrollBox so columns align with data rows"), but until now each width
+-- was written twice, once per set, with nothing keeping the pairs equal. Collapsed for
+-- the same reason v1.6.26 collapsed the control heights.
+local COL_NAME_W  = 200
+local COL_VAL_W   = 100
+local COL_DEF_W   = 100
+
 function AO:BuildBrowserContent(parent)
     local INSET = 8
 
@@ -373,21 +382,21 @@ function AO:BuildBrowserContent(parent)
 
     local hdrName = headerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hdrName:SetPoint("LEFT", hdrStar, "RIGHT", 4, 0)
-    hdrName:SetWidth(200)
+    hdrName:SetWidth(COL_NAME_W)
     hdrName:SetJustifyH("LEFT")
     hdrName:SetText("CVar")
     hdrName:SetTextColor(1, 0.82, 0)
 
     local hdrValue = headerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hdrValue:SetPoint("LEFT", hdrName, "RIGHT", 4, 0)
-    hdrValue:SetWidth(100)
+    hdrValue:SetWidth(COL_VAL_W)
     hdrValue:SetJustifyH("LEFT")
     hdrValue:SetText("Value")
     hdrValue:SetTextColor(1, 0.82, 0)
 
     local hdrDefault = headerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hdrDefault:SetPoint("LEFT", hdrValue, "RIGHT", 4, 0)
-    hdrDefault:SetWidth(100)
+    hdrDefault:SetWidth(COL_DEF_W)
     hdrDefault:SetJustifyH("LEFT")
     hdrDefault:SetText("Default")
     hdrDefault:SetTextColor(1, 0.82, 0)
@@ -513,19 +522,19 @@ function AO:BuildBrowserContent(parent)
 
             local nameFs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             nameFs:SetPoint("LEFT", star, "RIGHT", 4, 0)
-            nameFs:SetWidth(200)
+            nameFs:SetWidth(COL_NAME_W)
             nameFs:SetJustifyH("LEFT")
             row._nameFs = nameFs
 
             local valFs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             valFs:SetPoint("LEFT", nameFs, "RIGHT", 4, 0)
-            valFs:SetWidth(100)
+            valFs:SetWidth(COL_VAL_W)
             valFs:SetJustifyH("LEFT")
             row._valFs = valFs
 
             local defFs = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             defFs:SetPoint("LEFT", valFs, "RIGHT", 4, 0)
-            defFs:SetWidth(100)
+            defFs:SetWidth(COL_DEF_W)
             defFs:SetJustifyH("LEFT")
             defFs:SetTextColor(0.5, 0.5, 0.5)
             row._defFs = defFs
