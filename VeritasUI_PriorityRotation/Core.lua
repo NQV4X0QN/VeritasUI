@@ -922,7 +922,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         end
         VUI.Print("Priority Rotation", "    Errored slots:   " .. (errorSlots > 0 and R .. errorSlots .. E or G .. "0" .. E))
         if #macroSlots > 0 then
-            VUI.Print("Priority Rotation", "    \"" .. PR.MACRO_NAME .. "\" macro found on: " .. G .. "slot(s) " .. table.concat(macroSlots, ", ") .. E)
+            VUI.Print("Priority Rotation", "    \"" .. PR.MACRO_NAME .. "\" macro found on: " .. G .. "slot(s) " .. tconcat(macroSlots, ", ") .. E)
         else
             VUI.Print("Priority Rotation", "    \"" .. PR.MACRO_NAME .. "\" macro found on: " .. R .. "NO SLOTS" .. E)
             if macroIdx > 0 then
@@ -952,7 +952,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         if override then
             VUI.Print("Priority Rotation", "  Override slot: " .. G .. override.slot .. E)
             if override.keys then
-                VUI.Print("Priority Rotation", "  Bound keys:   " .. G .. table.concat(override.keys, ", ") .. E)
+                VUI.Print("Priority Rotation", "  Bound keys:   " .. G .. tconcat(override.keys, ", ") .. E)
             else
                 VUI.Print("Priority Rotation", "  Bound keys:   " .. Y .. "none (macro found but no keybind assigned)" .. E)
             end
