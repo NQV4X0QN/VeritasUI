@@ -82,6 +82,15 @@ function AH.DB.MakeKey(link)
         if ilvl and ilvl > 0 then
             return "i:" .. itemID .. ":" .. ilvl
         end
+        -- Gear with no resolvable item level must NOT be keyed. A link can be
+        -- loaded while the detailed item data behind it is not (different cache
+        -- layers), so this is reachable on a cold cache. Returning a bare
+        -- i:<itemID> here would create exactly the ilvl-agnostic gear key the
+        -- design forbids, collapsing every ilvl variant of the item into one
+        -- price record. Returning nil defers the row into the existing retry
+        -- machinery, which already handles this case. Matches
+        -- MakeKeyFromItemID's policy, written later for the same problem.
+        return nil
     end
 
     return "i:" .. itemID
