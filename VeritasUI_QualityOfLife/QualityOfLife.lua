@@ -720,7 +720,6 @@ local function SetupMapCoordinates()
     if mapCoordsSetup then return end
     mapCoordsSetup = true
 
-    local fmt = string.format
     local THROTTLE = 0.033   -- ~30 fps
 
     -- Normal colours
@@ -891,7 +890,7 @@ local function SetupMapCoordinates()
                 if ok and pos then
                     local x, y = pos:GetXY()
                     if x and y and (x > 0 or y > 0) then
-                        pStr = fmt("Player: %.1f, %.1f", x * 100, y * 100)
+                        pStr = format("Player: %.1f, %.1f", x * 100, y * 100)
                     end
                 end
             end
@@ -906,7 +905,7 @@ local function SetupMapCoordinates()
             if container:IsMouseOver() then
                 local ok, cx, cy = pcall(container.GetNormalizedCursorPosition, container)
                 if ok and cx and cy and cx >= 0 and cx <= 1 and cy >= 0 and cy <= 1 then
-                    cStr = fmt("Cursor: %.1f, %.1f", cx * 100, cy * 100)
+                    cStr = format("Cursor: %.1f, %.1f", cx * 100, cy * 100)
                 end
             end
             if cStr ~= self._lastCursor then
@@ -1493,7 +1492,7 @@ WayCommand = function(msg)
     local mapInfo = C_Map.GetMapInfo(mapID)
     if not mapInfo then
         VUI.Print("Quality of Life",
-            string.format("Unknown map ID |cFFFFFF00%d|r.", mapID))
+            format("Unknown map ID |cFFFFFF00%d|r.", mapID))
         return
     end
 
@@ -1512,9 +1511,9 @@ WayCommand = function(msg)
 
     -- Build confirmation message.
     local zoneName = mapInfo.name or ("Map " .. mapID)
-    local desc = (label ~= "") and string.format(" |cFFCCCCCC(%s)|r", label) or ""
+    local desc = (label ~= "") and format(" |cFFCCCCCC(%s)|r", label) or ""
     VUI.Print("Quality of Life",
-        string.format("Waypoint set: |cFFFFD200%s|r — |cFF00FF00%.1f, %.1f|r%s",
+        format("Waypoint set: |cFFFFD200%s|r — |cFF00FF00%.1f, %.1f|r%s",
             zoneName, x, y, desc))
 end
 
