@@ -452,8 +452,12 @@ local function BuildMainWindow()
                                     -- SetSpecialization may be absent or shimmed.
                                     -- Try the modern namespace first, fall back
                                     -- to the global, surface the actual error
-                                    -- if both fail so we can diagnose.
-                                    local ok, err
+                                    -- if both fail so we can diagnose. err is
+                                    -- seeded because if neither API exists no
+                                    -- pcall runs and it would stay nil, printing
+                                    -- "failed: nil" - the exact diagnostic dead
+                                    -- end this block was written to prevent.
+                                    local ok, err = false, "no spec-switch API on this client"
                                     if C_SpecializationInfo and C_SpecializationInfo.SetSpecialization then
                                         ok, err = pcall(C_SpecializationInfo.SetSpecialization, i)
                                     end
