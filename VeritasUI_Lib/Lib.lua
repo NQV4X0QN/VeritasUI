@@ -17,6 +17,16 @@ local CreateFrame    = CreateFrame
 local C_Timer        = C_Timer
 local InCombatLockdown = InCombatLockdown
 
+-- Mouse-focus compatibility shim.  Probed live on this client: the legacy
+-- GetMouseFocus global is GONE - type(GetMouseFocus) is "nil" and calling it
+-- raises "attempt to call a nil value" - so the GetMouseFoci() branch is the
+-- only live path and the `GetMouseFocus or` half is the dead one.  Kept in that
+-- direction anyway: it costs one load-time truth test and keeps working if the
+-- global ever returns.  DO NOT collapse this to a bare GetMouseFocus call.
+-- VUI.HookPlayerFrameFade's hover test reads it from a 5 Hz ticker (see
+-- PLAYER_FRAME_HOVER_POLL_RATE) plus both hover hooks, and CleanSolo hooks the
+-- player frame in normal play, so a nil call would error five times a second
+-- for as long as the frame is faded in.
 local GetMouseFocus  = GetMouseFocus or function()
     local frames = GetMouseFoci()
     return frames and frames[1]
