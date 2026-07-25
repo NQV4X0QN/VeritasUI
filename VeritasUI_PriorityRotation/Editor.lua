@@ -148,7 +148,7 @@ local function BuildEntryFromCursor()
         local itemID = cursorData
         -- C_Item.GetItemInfo return values may be Secret Values in raid
         -- encounters; guard the call and the equipLoc comparison.
-        -- Mirrors IsEquippableGear at QualityOfLife.lua:339-350.
+        -- Mirrors IsEquippableGear in QualityOfLife.lua.
         local ok, name, _, quality, _, _, _, _, _, equipLoc, icon =
             pcall(C_Item.GetItemInfo, itemID)
         if not ok or not name then

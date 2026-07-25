@@ -151,7 +151,7 @@ local function ScanJunk()
                 -- info.quality / info.hasNoValue may be secret values in
                 -- raid encounters; guard the comparison.  Items that fail
                 -- the check are skipped (treated as not-junk).  Mirrors the
-                -- defensive pattern at IsEquippableGear (lines 339-350).
+                -- defensive pattern in IsEquippableGear, below.
                 local okJ, isJunk = pcall(function()
                     return info.quality == 0 and not info.hasNoValue
                 end)
@@ -235,7 +235,7 @@ local function SellNextBatch()
                 -- info.quality / info.hasNoValue / info.isLocked may be
                 -- secret values in raid encounters; guard the comparison.
                 -- Items that fail the check are skipped (treated as not-
-                -- sellable).  Mirrors IsEquippableGear (lines 339-350).
+                -- sellable).  Mirrors IsEquippableGear, below.
                 local okJ, isSellable = pcall(function()
                     return info.quality == 0
                         and not info.hasNoValue
