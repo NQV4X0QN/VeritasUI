@@ -490,7 +490,13 @@ function AO:BuildFeaturedContent(parent)
     view:SetElementExtentCalculator(function(dataIndex, elementData)
         if elementData.type == "header" then return HEADER_H end
         if elementData.type == "gap"    then return SECTION_GAP end
-        return (AO.CONTROL_HEIGHTS[elementData.cfg.type] or 26) + GAP
+        -- Fallback references the table instead of restating its value: v1.6.26 made
+        -- AO.CONTROL_HEIGHTS the single definition of control heights, and a bare 26
+        -- here would silently disagree with it the day ROW_HEIGHT moves. Unreachable
+        -- today, since cfg.type is always one of the table's three keys, and kept only
+        -- because this is a scroll-box extent callback: arithmetic on a nil would blank
+        -- the whole panel rather than fail anywhere useful.
+        return (AO.CONTROL_HEIGHTS[elementData.cfg.type] or AO.CONTROL_HEIGHTS.checkbox) + GAP
     end)
 
     -- Element initializer — creates or retrieves cached UI, reparents
