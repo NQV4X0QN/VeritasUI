@@ -145,6 +145,11 @@ local COIN_C = "|A:coin-copper:14:14:2:0|a"
 -- NOTE: the exact intermediate-zero rule (e.g. 1g 0s 5c) is the one piece not verified
 -- against the live "Sell Price:" line — AH prices almost never carry an intermediate
 -- zero, and this is one-line tunable if an edge case looks off in-game.
+-- AH.Money needs no nil-guard here or in the two text-coin fallbacks below: the TOC loads
+-- Money.lua before this file, both files bail identically if VUI is missing, and every call
+-- site runs at hover time. Two guards that could never fire were removed in v1.9.13 - do not
+-- re-add them; the load order is the guarantee. The `or tostring(price)` fallbacks stay,
+-- since those cover Format returning nil, which is a different risk.
 local function CoinMarkup(copper)
     local g, s, c = AH.Money.Breakdown(copper)
     local parts = {}
@@ -259,7 +264,7 @@ local function AppendPriceForKey(tooltip, key)
     if not price then return end
     if not RenderCoinLine(tooltip, price) then
         -- Self-render path unavailable (no tooltip name/anchor) → plain text-coin line.
-        local coins = AH.Money and AH.Money.Format(price) or tostring(price)
+        local coins = AH.Money.Format(price) or tostring(price)
         tooltip:AddLine(PRICE_PREFIX .. "  " .. coins, 1, 1, 1)
     end
     if extras then tooltip:AddLine(extras) end
@@ -326,7 +331,7 @@ local function AppendPetPrice(petTooltip, speciesID)
     -- uses a text coin string (the modern GetCoinTextureString via AH.Money.Format).
     -- It won't be pixel-identical to a GameTooltip money frame, but BattlePetTooltip
     -- has no native money line to match against anyway.
-    local coins = AH.Money and AH.Money.Format(price) or tostring(price)
+    local coins = AH.Money.Format(price) or tostring(price)
     petTooltip:AddLine("Auction:  " .. coins, 1, 1, 1)
     if extras then petTooltip:AddLine(extras) end
 end
