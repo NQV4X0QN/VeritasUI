@@ -516,6 +516,62 @@ function AO:BuildBrowserContent(parent)
             defFs:SetJustifyH("LEFT")
             defFs:SetTextColor(0.5, 0.5, 0.5)
             row._defFs = defFs
+
+            -- ── Row click handlers — wired ONCE per pool frame ──
+            --
+            -- v1.6.7's design, restated: handlers are wired at pool creation and
+            -- read the row's data through the stable row._entry backref, so
+            -- scrolling does not re-register clicks or allocate fresh closures
+            -- per bind. These five lines had drifted into the data-bind section
+            -- below (most likely during v1.6.18's initializer rewrite), which
+            -- cost four closures and five calls on every row rebind.
+            --
+            -- ⚠ Nothing in here may capture elementData: this block runs once,
+            -- while the frame is reused for a different CVar on every scroll
+            -- step. Read self._entry at event time instead. A captured
+            -- elementData binds the frame to whichever CVar occupied it first,
+            -- and fails silently by acting on the wrong CVar.
+            star:SetScript("OnClick", function(self)
+                local e = self:GetParent()._entry
+                if not e then return end
+                AO:ToggleFavorite(e.name)
+                AO:RefreshBrowser()
+            end)
+
+            row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            row:SetScript("OnClick", function(self, button)
+                local e = self._entry
+                if not e then return end
+                if button == "RightButton" then
+                    -- Right-click → reset to default
+                    AO:ResetCVar(e.name)
+                    RefreshEntry(e)
+                    self._valFs:SetText(e.value)
+                    PaintValue(self._valFs, e)
+                    if editingRow == self then CloseInlineEdit() end
+                else
+                    -- Left-click → toggle inline edit
+                    if editingRow == self then
+                        CloseInlineEdit()
+                    else
+                        OpenInlineEdit(self, e)
+                    end
+                end
+            end)
+
+            row:SetScript("OnEnter", function(self)
+                local e = self._entry
+                if e and e.help and e.help ~= "" then
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(e.name, 1, 1, 1)
+                    GameTooltip:AddLine(e.help, 0.75, 0.75, 0.75, true)
+                    if e.locked then
+                        GameTooltip:AddLine("Locked by graphics engine", 1, 0.6, 0)
+                    end
+                    GameTooltip:Show()
+                end
+            end)
+            row:SetScript("OnLeave", function() GameTooltip:Hide() end)
         end
 
         -- ── Data bind ───────────────────────────────────────
@@ -546,45 +602,6 @@ function AO:BuildBrowserContent(parent)
         end
         -- Ensure value fontstring is visible on rebind
         row._valFs:Show()
-
-        -- ── Row click handlers ──────────────────────────────
-        row._star:SetScript("OnClick", function()
-            AO:ToggleFavorite(elementData.name)
-            AO:RefreshBrowser()
-        end)
-
-        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        row:SetScript("OnClick", function(self, button)
-            if button == "RightButton" then
-                -- Right-click → reset to default
-                AO:ResetCVar(elementData.name)
-                RefreshEntry(elementData)
-                row._valFs:SetText(elementData.value)
-                PaintValue(row._valFs, elementData)
-                if editingRow == row then CloseInlineEdit() end
-            else
-                -- Left-click → toggle inline edit
-                if editingRow == row then
-                    CloseInlineEdit()
-                else
-                    OpenInlineEdit(row, elementData)
-                end
-            end
-        end)
-
-        row:SetScript("OnEnter", function(self)
-            local e = self._entry
-            if e and e.help and e.help ~= "" then
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(e.name, 1, 1, 1)
-                GameTooltip:AddLine(e.help, 0.75, 0.75, 0.75, true)
-                if e.locked then
-                    GameTooltip:AddLine("Locked by graphics engine", 1, 0.6, 0)
-                end
-                GameTooltip:Show()
-            end
-        end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end)
 
     -- ── Wire ScrollBox + ScrollBar ──────────────────────────
