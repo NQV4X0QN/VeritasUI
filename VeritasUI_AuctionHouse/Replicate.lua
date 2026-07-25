@@ -58,6 +58,7 @@ local LINK_RETRY_BUDGET     = 45        -- hard cap (seconds) on the whole retry
 local scanning   = false   -- a scan coroutine is in progress
 local co                    -- the active coroutine
 local driver               -- OnUpdate ticker frame
+local finder               -- OnUpdate ticker frame for /ah find, reused across calls
 local progress   = 0        -- 0..1
 local retryTimer            -- C_Timer handle watching for a dropped ReplicateItems()
 local fireTime              -- GetTime() at the moment ReplicateItems() was issued
@@ -164,13 +165,19 @@ end
 --  buyoutPrice, link-resolved?, derived key. Purpose: discriminate the stale-
 --  tooltip classes — "item absent from snapshot" (server-side omission) vs
 --  "present but skipped" (nil link / bid-only / zero unit) — instead of
---  inferring from silence. Chunked on its own throwaway driver so a 270k-row
+--  inferring from silence. Chunked on a reused driver frame so a 270k-row
 --  sweep never hitches the client. Run it right after a scan completes.
 ----------------------------------------------------------------
 local MAX_FIND_PRINTS = 10   -- per-row print cap; the summary still counts all
 function AH.Replicate.FindInSnapshot(targetItemID, targetName)
     if scanning then
         return false, "A scan is running — try again after it completes."
+    end
+    -- One sweep at a time. The driver frame is shared across calls now, so a
+    -- second sweep would replace the first one's OnUpdate and abandon it partway
+    -- with no summary printed. Refuse instead of losing it silently.
+    if finder and finder:GetScript("OnUpdate") then
+        return false, "A /ah find sweep is already running — wait for its summary."
     end
     local num = C_AuctionHouse.GetNumReplicateItems() or 0
     if num == 0 then
@@ -179,8 +186,12 @@ function AH.Replicate.FindInSnapshot(targetItemID, targetName)
 
     local i, found, nilLinks, printed = 0, 0, 0, 0
     local totalQty = 0
-    local sweeper = CreateFrame("Frame")
-    sweeper:SetScript("OnUpdate", function(self)
+    -- Created once and reused, same as EnsureDriver's scan driver: WoW frames
+    -- cannot be destroyed, so a per-call frame stayed alive for the session. The
+    -- per-sweep counters remain locals captured by a fresh closure each call, so
+    -- there is no shared mutable state to reset or clobber.
+    if not finder then finder = CreateFrame("Frame") end
+    finder:SetScript("OnUpdate", function(self)
         local sliceStart = debugprofilestop()
         while i < num and (debugprofilestop() - sliceStart) < FRAME_BUDGET_MS do
             pcall(function()
@@ -227,6 +238,9 @@ function AH.Replicate.FindInSnapshot(targetItemID, targetName)
             end
         end
     end)
+    -- Explicit, not relying on a fresh frame's default shown state: OnUpdate only
+    -- fires while the frame is visible, and this one now outlives a single sweep.
+    finder:Show()
     return true
 end
 
