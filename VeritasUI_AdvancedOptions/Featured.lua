@@ -418,6 +418,10 @@ local PAD_X       = 8
 local headerCache  = {}    -- [catIdx] = { btn=, arrowDown=, arrowRight=, text=, div= }
 local controlCache = {}    -- ["catIdx-ctrlIdx"] = control frame
 
+-- One-shot dedupe for the unknown-control-type warning: the initializer runs on
+-- every layout pass, and an uncached control would otherwise reprint each time.
+local warnedControls = {}  -- ["catIdx-ctrlIdx"] = true once warned
+
 function AO:BuildFeaturedContent(parent)
     -- ── ScrollBox + MinimalScrollBar ────────────────────────
     local SB_INSET = AO.SB_INSET   -- shared with Browser tab for visual alignment
@@ -579,25 +583,32 @@ function AO:BuildFeaturedContent(parent)
 
             -- Create control on first encounter via factory, cache thereafter
             if not controlCache[key] then
-                -- Use a temp sizing parent so the factory can read width
-                local tmpParent = CreateFrame("Frame", nil, UIParent)
-                tmpParent:SetSize(
-                    (parent:GetWidth() > 0 and parent:GetWidth() or 480) - PAD_X * 2,
-                    (AO.CONTROL_HEIGHTS[cfg.type] or 26) + GAP
-                )
+                -- Pass the real container as the factory parent. The factories only
+                -- read parent:GetWidth() (and fall back to 400 when it is zero), and
+                -- the reparent+anchor block below overrides the row's width outright,
+                -- so the throwaway sizing frame this used to create per control was
+                -- computing a value that was immediately discarded — while orphaning
+                -- one permanent frame each, since WoW frames cannot be destroyed.
+                -- The control is only a child of `parent` until the reparent below.
                 local ctrl
                 if cfg.type == "checkbox" then
-                    ctrl = self:CreateCheckbox(tmpParent, cfg)
+                    ctrl = self:CreateCheckbox(parent, cfg)
                 elseif cfg.type == "slider" then
-                    ctrl = self:CreateSlider(tmpParent, cfg)
+                    ctrl = self:CreateSlider(parent, cfg)
                 elseif cfg.type == "dropdown" then
-                    ctrl = self:CreateDropdown(tmpParent, cfg)
+                    ctrl = self:CreateDropdown(parent, cfg)
                 end
                 if ctrl then
                     controlCache[key] = ctrl
+                elseif not warnedControls[key] then
+                    -- Unrecognised cfg.type: nothing gets cached, so this branch runs
+                    -- again on every layout pass while the row renders empty. Say it
+                    -- once rather than failing silently.
+                    warnedControls[key] = true
+                    VUI.Print("Advanced Options",
+                        "unknown control type '" .. tostring(cfg.type)
+                        .. "' for " .. tostring(cfg.cvar) .. " — row left empty.")
                 end
-                -- Clean up temp parent (ctrl is reparented below)
-                tmpParent:Hide()
             end
 
             local ctrl = controlCache[key]
