@@ -17,8 +17,12 @@
 --            everything else by itemID — design §2.2/§2.4)
 --   * skip bid-only rows (buyoutPrice == 0): the DB tracks buyout market price
 --   * unitPrice = floor(buyoutPrice / count) so stacks/commodities normalize
---   * aggregate per key within a scan: keep the min unit price + max qty seen,
---     then write once per key at the end (one DB.Record call per item, not per row)
+--   * aggregate per key within a scan: keep the MIN unit price + the SUMMED qty
+--     (each row is a distinct auction, so the units listed for an item is the sum
+--     of its rows' counts, NOT its largest stack), then write once per key at the
+--     end (one DB.Record call per item, not per row). AH.DB.Record then keeps a
+--     per-day MAX of that per-scan sum, so the pipeline is: sum within a scan,
+--     max across scans within a day. Both halves are deliberate.
 --
 -- Scan floor: Blizzard/-server throttle replicate heavily; we enforce a 15-min
 -- minimum between scans (design §2.2), persisted across sessions.
@@ -254,7 +258,12 @@ local function ProcessAllRows()
     end
     local initialNum = num   -- for the grew-mid-drain debug report
 
-    -- Per-scan aggregate: key -> { unit = minUnitPrice, qty = maxQty }.
+    -- Per-scan aggregate: key -> { unit = minUnitPrice, qty = summedQty }.
+    -- qty SUMS across rows because each replicate row is a distinct auction. Do NOT
+    -- "correct" this to a max: that would collapse every item to its biggest single
+    -- stack and silently under-report availability across the whole database, with
+    -- no error and no way to notice except comparing against the live AH.
+    -- The per-DAY max across scans is applied later, by AH.DB.Record.
     local agg = {}
     local kept = 0
 
