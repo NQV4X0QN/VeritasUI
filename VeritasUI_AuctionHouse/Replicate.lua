@@ -455,12 +455,14 @@ local function ProcessAllRows()
     --  2026-07-02: 2,980 of 14,682 resolved across three 3s passes — fixed pass
     --  counts are the wrong shape for a rate-limited stream). So: keep passing
     --  WHILE passes make progress, re-requesting stragglers each pass, and stop
-    --  on quiescence (a pass that resolves nothing — the stream is dry) or on
-    --  the hard budget (scan must terminate). Resolved keys are committed
-    --  incrementally after each pass, so even an abort mid-phase keeps them.
+    --  on quiescence (a pass in which not one row's link came back — the stream
+    --  is dry) or on the hard budget (scan must terminate). Resolved keys are
+    --  committed incrementally after each pass, so even an abort mid-phase keeps
+    --  them. NOTE: "resolves nothing" means nothing LEFT THE PILE, not nothing
+    --  was folded — see the two-counter comment in the pass loop below.
     ----------------------------------------------------------------
     local deferredTotal = #deferred
-    local retryResolved = 0
+    local retryResolved = 0   -- rows whose link came back (NOT the fold count)
     local retryPasses   = 0
     if deferredTotal > 0 then
         -- Tell the progress UI we've entered the finalize phase (main results
@@ -477,7 +479,16 @@ local function ProcessAllRows()
             end
             local remaining   = {}
             local lateTouched = {}   -- keys folded this pass -> recommit below
-            local passResolved = 0
+            -- TWO counters, deliberately. A row leaves the pile the moment its
+            -- link resolves, but only a subset of resolved rows are FOLDED into
+            -- the aggregate (bid-only, zero count, unit 0 and nil-key rows are
+            -- legitimately skipped). The two quantities drive two different
+            -- decisions and one counter cannot serve both: passResolved gates
+            -- CommitKeys (calling it with an empty set is pointless), while
+            -- passTouched gates the quiescence break (a pass can drain rows
+            -- without folding any, and that is NOT a dry stream).
+            local passResolved = 0   -- rows folded into the aggregate this pass
+            local passTouched  = 0   -- rows that left the pile this pass
             sliceStart = debugprofilestop()
             sliceCount = 0
             for d = 1, #deferred do
@@ -498,8 +509,6 @@ local function ProcessAllRows()
                                 Fold(key, unit, count)
                                 lateTouched[key] = true
                                 passResolved = passResolved + 1
-                                -- live counter for the ScanProgress label
-                                finalizeResolved = (finalizeResolved or 0) + 1
                             end
                         end
                     elseif ent.id and C_Item and C_Item.RequestLoadItemDataByID then
@@ -509,6 +518,17 @@ local function ProcessAllRows()
                 end)
                 if not resolved then
                     remaining[#remaining + 1] = ent
+                else
+                    passTouched = passTouched + 1
+                    -- Live counter for the ScanProgress label. Counted here, on
+                    -- resolution, so the numerator measures the same population
+                    -- as the denominator (deferredTotal = rows deferred, not
+                    -- rows eligible to fold). Counting folds instead meant the
+                    -- label could never reach its own total even on a pass that
+                    -- fully drained the pile. The denominator is NOT the side to
+                    -- change: whether a row is bid-only is unknowable until its
+                    -- link resolves.
+                    finalizeResolved = (finalizeResolved or 0) + 1
                 end
                 sliceCount = sliceCount + 1
                 if sliceCount >= ROWS_PER_SLICE
@@ -519,11 +539,17 @@ local function ProcessAllRows()
                 end
             end
             deferred = remaining
-            retryResolved = retryResolved + passResolved
+            retryResolved = retryResolved + passTouched
             if passResolved > 0 then
                 CommitKeys(lateTouched)   -- durable immediately, upsert-safe
-            else
-                break   -- quiescent pass: the record stream is dry; stop early
+            end
+            if passTouched == 0 then
+                -- Quiescent pass: not one row left the pile, so the loader
+                -- stream really is dry. Previously this tested the FOLD count,
+                -- which abandoned the remaining pile whenever a pass resolved
+                -- only skip-worthy rows — ordinary for a small bid-only tail,
+                -- while the stream was demonstrably still delivering.
+                break
             end
         end
     end
