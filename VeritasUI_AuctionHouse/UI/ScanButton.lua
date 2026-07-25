@@ -72,17 +72,20 @@ local state = { built = false, btn = nil }
 
 ----------------------------------------------------------------
 --  DISABLED-ART PRE-WARM — real Enable()/Disable(), no streaming blank
---  (in-game finding 2026-07-02; root-caused via /ah btnprobe 2026-07-04)
+--  (in-game finding 2026-07-02; root-caused 2026-07-04 by the /ah btnprobe
+--  diagnostic, which was REMOVED in v1.9.11 after its measured values were
+--  transcribed to PROBE_LIBRARY_AND_REFERENCE.md §2/§2.1 — that file is the
+--  durable record and outranks this comment.)
 --
 --  The session's first real Disable() blanked the button for ~1s. The
 --  investigation record, in order, so none of it is re-tried:
 --    * v1.8.1 pre-filled GetDisabledTexture — a SILENT NO-OP: this
 --      template is a three-slice build; GetNormalTexture/GetDisabledTexture
---      are nil (proven by /ah btnprobe), so the copy's guard always fell
+--      are nil (measured, not assumed), so the copy's guard always fell
 --      through and its "verified" pass was a warm-cache coincidence.
 --    * desaturation, overlay, and grey-text-on-normal-art emulations all
 --      failed side-by-side comparison vs Cancel Auction. The last one came
---      from misreading btnprobe's file 130824 as the NORMAL art (fileID
+--      from misreading the probe's file 130824 as the NORMAL art (fileID
 --      recalled from memory — do not do that). The rendered evidence +
 --      the highlight slice at 130826 settle the family mapping
 --      (Disabled/Down/Highlight/Up ≈ 130824..130827): native disabled
@@ -117,8 +120,8 @@ local function PrewarmDisabledArt(btn)
         end
         btn:Enable()
     end)
-    -- Measured fallback (btnprobe 2026-07-04): if discovery came up empty,
-    -- pre-warm the known disabled slice file directly.
+    -- Measured fallback (probe library §2, 2026-07-04): if discovery came up
+    -- empty, pre-warm the known disabled slice file directly.
     if not next(files) then files[130824] = true end
     for file in pairs(files) do
         local warm = btn:CreateTexture(nil, "BACKGROUND", nil, -8)
@@ -257,79 +260,3 @@ AH.Events.On("AH_SCAN_START", RefreshLabel)
 AH.Events.On("AH_SCAN_REQUESTED", RefreshLabel)
 AH.Events.On("AH_SCAN_COMPLETE", RefreshLabel)
 AH.Events.On("AH_SCAN_FAILED", RefreshLabel)
-
-----------------------------------------------------------------
---  TEMP DIAGNOSTIC — /ah btnprobe
---
---  Dumps the LIVE art state of every disabled native button under
---  AuctionHouseFrame (run it while Cancel Auction is greyed out): per
---  texture — atlas/file, draw layer, shown, alpha, vertex color,
---  desaturation; per label — font object and text color. Purpose: match
---  our soft-disabled Scan button to MEASURED values instead of guesses
---  (the probe-library method). Remove once the grey is signed off.
-----------------------------------------------------------------
-function AH.ProbeDisabledButtons()
-    local AHF = _G.AuctionHouseFrame
-    if not AHF then
-        VUI.Print(AH.TAG, "Open the Auction House first.")
-        return
-    end
-    local found = 0
-
-    local function DumpTexture(label, t)
-        if not t then return end
-        pcall(function()
-            local atlas = t.GetAtlas and t:GetAtlas()
-            local file  = (not atlas) and t.GetTexture and t:GetTexture()
-            local r, g, b, va = 1, 1, 1, 1
-            if t.GetVertexColor then r, g, b, va = t:GetVertexColor() end
-            VUI.Print(AH.TAG, string.format(
-                "    %s: |cFFFFFF00%s|r layer=%s shown=%s a=%.2f vtx=%.2f/%.2f/%.2f(%.2f) desat=%s",
-                label, tostring(atlas or file or "none"),
-                tostring(t.GetDrawLayer and t:GetDrawLayer() or "?"),
-                tostring(t:IsShown()), t:GetAlpha() or 1,
-                r, g, b, va,
-                tostring(t.IsDesaturated and t:IsDesaturated())))
-        end)
-    end
-
-    local function Visit(f, depth)
-        if depth > 8 then return end
-        if f:IsObjectType("Button") then
-            local okT, txt = pcall(f.GetText, f)
-            local enabled = true
-            pcall(function() enabled = f:IsEnabled() end)
-            if okT and txt and txt ~= "" and not enabled then
-                found = found + 1
-                VUI.Print(AH.TAG, string.format(
-                    "Disabled button: |cFF00FF00%s|r (%s, %dx%d)",
-                    txt, f:GetName() or "anonymous",
-                    math.floor(f:GetWidth() or 0), math.floor(f:GetHeight() or 0)))
-                DumpTexture("Normal  ", f.GetNormalTexture and f:GetNormalTexture())
-                DumpTexture("Disabled", f.GetDisabledTexture and f:GetDisabledTexture())
-                for i, region in ipairs({ f:GetRegions() }) do
-                    if region:IsObjectType("Texture") then
-                        DumpTexture("region" .. i, region)
-                    elseif region:IsObjectType("FontString") then
-                        pcall(function()
-                            local fo = region:GetFontObject()
-                            local r, g, b = region:GetTextColor()
-                            VUI.Print(AH.TAG, string.format(
-                                "    text: font=|cFFFFFF00%s|r color=%.2f/%.2f/%.2f",
-                                tostring(fo and fo.GetName and fo:GetName() or "?"),
-                                r or 1, g or 1, b or 1))
-                        end)
-                    end
-                end
-            end
-        end
-        for _, child in ipairs({ f:GetChildren() }) do
-            Visit(child, depth + 1)
-        end
-    end
-
-    pcall(Visit, AHF, 0)
-    VUI.Print(AH.TAG, string.format(
-        "btnprobe: %d disabled button(s) dumped. (Nothing listed? Make sure "
-        .. "a native button like Cancel Auction is currently greyed out.)", found))
-end

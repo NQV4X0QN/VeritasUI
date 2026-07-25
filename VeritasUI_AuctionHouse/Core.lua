@@ -417,16 +417,6 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             VUI.Print(AH.TAG, reason or "Sweep could not start.")
         end
 
-    elseif cmd == "btnprobe" then
-        -- TEMP DIAGNOSTIC: dump the live art of disabled native AH buttons
-        -- (e.g. Cancel Auction) so the Scan button's soft-disabled grey can
-        -- be matched to measured values. See UI/ScanButton.lua; remove with it.
-        if AH.ProbeDisabledButtons then
-            AH.ProbeDisabledButtons()
-        else
-            VUI.Print(AH.TAG, "Probe not loaded.")
-        end
-
     elseif cmd == "blocked" then
         if AH.SellStrip then
             if rest == "clear" then
