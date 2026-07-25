@@ -217,8 +217,9 @@ SlashCmdList["VERITASUI_AO"] = function(msg)
 
     elseif cmd == "help" then
         VUI.Print("Advanced Options", "Commands:")
-        print("  |cFFFFFF00/ao|r           — toggle window")
-        print("  |cFFFFFF00/ao settings|r  — open settings panel")
+        VUI.Print("Advanced Options", "  |cFFFFFF00/ao|r           — toggle window")
+        VUI.Print("Advanced Options", "  |cFFFFFF00/ao settings|r  — open settings panel")
+        VUI.Print("Advanced Options", "  |cFFFFFF00/ao help|r      — show this help")
 
     else
         -- Default: toggle main window
