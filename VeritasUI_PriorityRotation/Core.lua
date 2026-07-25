@@ -735,6 +735,16 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             VUI.Print("Priority Rotation",
                 "Keybind |cFF00FF00" .. tconcat(override.keys, ", ")
                 .. "|r override active — spam the key to play.")
+        elseif override and not SLOT_TO_BIND[override.slot] then
+            -- Slots 13-24 are action bar pages 2+ and the stance/stealth bars, which
+            -- SLOT_TO_BIND deliberately does not map. They arrive here in the same
+            -- keys == nil state as an unbound main-bar slot, but the advice below is
+            -- useless for them: no key assigned to such a slot produces a binding this
+            -- code can override, so the user could follow it forever. Druid form bars
+            -- and the rogue stealth bar are ordinary places to park a macro.
+            VUI.Print("Priority Rotation",
+                "|cFFFF8800Found on slot " .. override.slot
+                .. "|r — that bar page can't be bound. Move the macro to a main bar.")
         elseif override then
             VUI.Print("Priority Rotation",
                 "|cFFFF8800Found on slot " .. override.slot
