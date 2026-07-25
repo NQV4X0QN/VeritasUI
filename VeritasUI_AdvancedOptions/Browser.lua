@@ -536,11 +536,9 @@ function AO:BuildBrowserContent(parent)
                                       isFav and 0 or 0.25)
         row._starIcon:SetDesaturated(not isFav)
 
-        -- Alternating background — derive from name byte sum (stable,
-        -- no API call needed; FindIndex doesn't exist on ScrollBox).
-        local nameSum = 0
-        for i = 1, #elementData.name do nameSum = nameSum + elementData.name:byte(i) end
-        row._bg:SetColorTexture(1, 1, 1, (nameSum % 2 == 0) and 0.03 or 0)
+        -- Alternating background — driven by the row's position in the current
+        -- filtered view, stamped onto the entry by FullRefresh.
+        row._bg:SetColorTexture(1, 1, 1, ((elementData.rowIndex or 0) % 2 == 0) and 0.03 or 0)
 
         -- ── Inline edit: close if this row is recycled while editing ──
         if editingRow == row then
@@ -598,7 +596,15 @@ function AO:BuildBrowserContent(parent)
         ApplyFilter(searchBox:GetText() or "")
 
         local dataProvider = CreateDataProvider()
-        for _, entry in ipairs(filteredList) do
+        for i, entry in ipairs(filteredList) do
+            -- Stamp the visible row position for the striping in the initializer.
+            -- It must be stamped here, in the same pass that inserts into the
+            -- provider, and not in EnumerateCVars: filteredList is rebuilt and
+            -- reordered on every search and favourite toggle, so an enumeration-
+            -- time index would follow the unfiltered alphabetical order instead
+            -- of the view. The ScrollBox cannot supply this — the initializer
+            -- signature in use is (row, elementData), with no index.
+            entry.rowIndex = i
             dataProvider:Insert(entry)
         end
         scrollBox:SetDataProvider(dataProvider)
