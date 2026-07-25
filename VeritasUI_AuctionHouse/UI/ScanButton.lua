@@ -1,17 +1,26 @@
 -- VeritasUI_AuctionHouse / UI/ScanButton.lua
 -- The "Scan" button — since v1.8.0 THE way to run a price scan (auto-scan-on-open
--- removed; it was the locus of the first-open-of-session replicate hang).
+-- removed: an unattended scan fired at every AH open had nobody to retry it when
+-- the server dropped the request, and no way to show that it had).
 --
--- FIRE PATH (deliberate, do not defer): OnClick calls AH.Replicate.StartManual()
--- (alias of Start()) SYNCHRONOUSLY — no timer, no event defer, no gate — so the
--- hardware-event execution context (which propagates through synchronous calls
--- but is lost across C_Timer/coroutine/OnEvent boundaries) is preserved all the
--- way to ReplicateItems(). Auctionator's model: its click-fired scan never
--- exhibited the hang that the AH_OPEN-fired auto-scan did.
+-- FIRE PATH: OnClick calls AH.Replicate.StartManual() (alias of Start())
+-- SYNCHRONOUSLY — no timer, no event defer, no gate.
+--
+-- ⚠ v1.8.0 believed that synchronous fire was WHY manual scanning worked: that the
+-- hardware-event execution context (propagated through synchronous calls, lost
+-- across C_Timer / coroutine / OnEvent boundaries) was what let ReplicateItems()
+-- through, following Auctionator's click-fired model. v1.9.5 FALSIFIED this from a
+-- live repro: the server silently drops EVERY ReplicateItems() request for ~12
+-- minutes after a long-idle login and then recovers on its own, regardless of how
+-- the call was fired. The fire path is not a workaround for anything. It stays
+-- synchronous because that is the simplest thing that works and nothing needs a
+-- defer — NOT because deferring is known to break the request.
 --
 -- The button doubles as hung-scan recovery: during the pre-data wait it stays
 -- ENABLED as "Retry Scan" (Start() clears a fired-but-never-arrived request and
--- re-fires); it disables only while rows actually drain (Progress() > 0).
+-- re-fires); it disables only while rows actually drain (Progress() > 0). Since
+-- v1.9.5's persistent 60s retry chain a dropped request recovers with zero clicks,
+-- so this is the impatient path, no longer the only one.
 --
 -- ISOLATION (suite rule #4: one module never edits another)
 --   Pure VIEW + controller over Replicate's PUBLIC api: AH.Replicate.StartManual(),
@@ -33,9 +42,10 @@
 --   fallback scheme ScanProgress uses if the global is absent.
 --
 -- ENABLED-DURING-HANG (v2, in-game finding): the original label logic disabled the
---   button whenever IsScanning() was true — which INCLUDED the hung state
---   (scanning=true, Progress()==0 forever), the exact state StartManual() exists to
---   recover. The hang was therefore untestable. Now the button stays ENABLED through
+--   button whenever IsScanning() was true — which INCLUDED the dropped-request state
+--   (scanning=true, Progress()==0 for as long as the server keeps refusing; ~12
+--   minutes in the v1.9.5 repro), the exact state StartManual() exists to recover.
+--   The hang was therefore untestable. Now the button stays ENABLED through
 --   the pre-data wait ("Retry Scan") and disables only during the actual row drain
 --   (Progress() > 0). Misclicks during a HEALTHY wait are safe: StartManual() refuses
 --   while a coroutine is draining, and a duplicate ReplicateItems() during the wait is
@@ -168,16 +178,18 @@ local function RefreshLabel()
 end
 
 ----------------------------------------------------------------
---  OnClick — the hardware-event fire path (the whole point of this file)
+--  OnClick — fires the scan directly (see the FIRE PATH note in the header)
 ----------------------------------------------------------------
 local function OnClick()
     if not (AH.Replicate and AH.Replicate.StartManual) then
         VUI.Print(AH.TAG, "Scanner not loaded.")
         return
     end
-    -- SYNCHRONOUS call inside OnClick: preserves the hardware-event execution context
-    -- through to C_AuctionHouse.ReplicateItems(). Do NOT wrap this in C_Timer or defer
-    -- it in any way — that would destroy the exact property under test.
+    -- Called synchronously, straight out of OnClick. v1.8.0 did this to preserve the
+    -- hardware-event execution context through to C_AuctionHouse.ReplicateItems();
+    -- v1.9.5 falsified that premise (see the header note) — the drop window is
+    -- server-side and fire-path independent. Left synchronous because nothing here
+    -- needs to wait, NOT because a defer is known to break the request.
     local ok, reason = AH.Replicate.StartManual()
     if not ok then
         VUI.Print(AH.TAG, reason or "Scan could not start.")
