@@ -21,7 +21,8 @@
 -- ANCHOR / FRAME LEVEL — reuse the verified ScanProgress/SellStrip pattern
 --   Parent to AuctionHouseFrame (must exist; same lazy-build gate as SellStrip/
 --   ScanProgress). RELATIVE frame-level bump off the parent (absolute SetFrameLevel
---   does not stick on an AuctionHouseFrame child — SKILL.md:41 landmine).
+--   does not stick on an AuctionHouseFrame child — SKILL.md "Frame-level lesson"
+--   landmine).
 --
 --   v2 REPOSITION (in-game finding): the original TOPRIGHT(-14,-30) anchor sat ON TOP
 --   of Blizzard's own controls and made them unclickable. The button now lives in the
@@ -201,7 +202,8 @@ local function Build()
     else
         btn:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", FB_X, FB_Y + NUDGE_Y)
     end
-    -- Relative level bump (absolute does not stick on an AH child — SKILL.md:41).
+    -- Relative level bump (absolute does not stick on an AH child —
+    -- SKILL.md "Frame-level lesson").
     btn:SetFrameLevel((parent:GetFrameLevel() or 0) + LEVEL_BUMP)
 
     btn:SetText("Scan")

@@ -22,7 +22,7 @@
 --   moving it). Fallback (global absent): BOTTOMLEFT of AuctionHouseFrame at the
 --   offset computed from the verified rect (money right edge +gap; +6 y).
 --
--- FRAME LEVEL — the SKILL.md:41 landmine
+-- FRAME LEVEL — the SKILL.md "Frame-level lesson" landmine
 --   Absolute SetFrameLevel does NOT stick on a child of AuctionHouseFrame (set 50,
 --   read back 1 -> buried). The PROVEN pattern (SellStrip.lua:396) is a RELATIVE
 --   bump off the parent's level and inheriting by hierarchy. We parent to
@@ -33,8 +33,8 @@
 --
 -- BORDER ART
 --   Reuse the SAME art that frames the sell strip: the `auctionhouse-itemheaderframe`
---   atlas (SellStrip.lua:417; cf. SKILL.md:44), applied as a BACKGROUND texture
---   slightly outset from the bar, at small scale.
+--   atlas (SellStrip.lua:417; cf. SKILL.md "Native sell-card art"), applied as a
+--   BACKGROUND texture slightly outset from the bar, at small scale.
 --
 -- THE TWO-PHASE TRUTH (do not collapse into one % bar)
 --   Phase 1 — WAITING: ReplicateItems() fired, REPLICATE_ITEM_LIST_UPDATE hasn't
@@ -138,7 +138,8 @@ local function Build()
         f:SetPoint("BOTTOMLEFT", AuctionHouseFrame, "BOTTOMLEFT", FB_X, FB_Y + NUDGE_Y)
     end
 
-    -- RELATIVE level bump (SKILL.md:41 — absolute SetFrameLevel does not stick here).
+    -- RELATIVE level bump (SKILL.md "Frame-level lesson" — absolute SetFrameLevel
+    -- does not stick here).
     f:SetFrameLevel((AuctionHouseFrame:GetFrameLevel() or 0) + 10)
 
     -- Backing card: the same atlas that frames the sell strip, at small scale,
