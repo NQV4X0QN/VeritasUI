@@ -174,8 +174,16 @@ PR.STARTER_LISTS = {
 function PR:GetProfileKey()
     local name  = UnitName("player") or "Unknown"
     local realm = GetRealmName()     or "Unknown"
+    -- Explicit branch, matching BuildDefaultProfile below. v1.6.25 rewrote that one
+    -- away from the and/or form because GetSpecializationInfo returns many values and
+    -- the form was silently wrong without parentheses to truncate the call. This key
+    -- names the saved profile, so a regression here strands every profile the player
+    -- owns; it does not get to keep the pattern that was condemned 36 lines away.
     local specIndex = C_SpecializationInfo.GetSpecialization()
-    local specID = specIndex and (C_SpecializationInfo.GetSpecializationInfo(specIndex) or 0) or 0
+    local specID = 0
+    if specIndex then
+        specID = C_SpecializationInfo.GetSpecializationInfo(specIndex) or 0
+    end
     return string.format("%s-%s-%d", realm, name, specID)
 end
 
