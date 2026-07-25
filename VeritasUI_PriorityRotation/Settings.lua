@@ -327,17 +327,10 @@ local function BuildMainWindow()
         macroBtn:SetSize(CW, 28)
         macroBtn:SetPoint("TOPLEFT", txtSetup, "BOTTOMLEFT", 0, -14)
         macroBtn:SetText("Create / Update Macro")
+        -- Delegate like scanBtn below: the combat guard, the success wording and
+        -- UpdateMacroStub's failure messages all live in one place, /pr macro.
         macroBtn:SetScript("OnClick", function()
-            if InCombatLockdown() then
-                VUI.Print("Priority Rotation", "|cFFFF4444Can't create macro in combat.|r")
-                return
-            end
-            if PR:UpdateMacroStub() then
-                VUI.Print("Priority Rotation",
-                    "Macro |cFFFFFF00" .. PR.MACRO_NAME
-                    .. "|r is ready — drag it from /macro to an action bar.")
-            end
-            -- On failure, UpdateMacroStub already printed the specific reason.
+            SlashCmdList["VERITASUI_PR"]("macro")
         end)
 
         local scanBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")

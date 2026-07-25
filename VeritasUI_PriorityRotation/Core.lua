@@ -753,8 +753,10 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         end
         if PR:UpdateMacroStub() then
             VUI.Print("Priority Rotation",
-                "Macro |cFFFFFF00" .. PR.MACRO_NAME .. "|r ready in /macro.")
+                "Macro |cFFFFFF00" .. PR.MACRO_NAME
+                .. "|r is ready — drag it from /macro to an action bar.")
         end
+        -- On failure, UpdateMacroStub already printed the specific reason.
 
     elseif cmd == "status" then
         local function yn(v) return v and "|cFF00FF00yes|r" or "|cFFFF4444no|r" end
