@@ -164,16 +164,19 @@ end
 --  Snapshot search — DIAGNOSTIC (/ah find <shift-clicked item link>)
 --
 --  Sweeps the LAST replicate snapshot still in client memory for rows matching
---  a target itemID (by link, falling back to exact name for rows whose link is
---  nil), and prints what the scan actually saw for that item: row index, count,
---  buyoutPrice, link-resolved?, derived key. Purpose: discriminate the stale-
---  tooltip classes — "item absent from snapshot" (server-side omission) vs
---  "present but skipped" (nil link / bid-only / zero unit) — instead of
---  inferring from silence. Chunked on a reused driver frame so a 270k-row
---  sweep never hitches the client. Run it right after a scan completes.
+--  a target itemID, and prints what the scan actually saw for that item: row
+--  index, count, buyoutPrice, link-resolved?, derived key. Warm rows match on
+--  the itemID parsed out of the row's own link; cold rows (nil link) match on
+--  the return position calibrated live by the last scan, the same mechanism the
+--  scan itself uses. There is NO name-based fallback — matching is by itemID
+--  only, both paths. Purpose: discriminate the stale-tooltip classes — "item
+--  absent from snapshot" (server-side omission) vs "present but skipped"
+--  (nil link / bid-only / zero unit) — instead of inferring from silence.
+--  Chunked on a reused driver frame so a 270k-row sweep never hitches the
+--  client. Run it right after a scan completes.
 ----------------------------------------------------------------
 local MAX_FIND_PRINTS = 10   -- per-row print cap; the summary still counts all
-function AH.Replicate.FindInSnapshot(targetItemID, targetName)
+function AH.Replicate.FindInSnapshot(targetItemID)
     if scanning then
         return false, "A scan is running — try again after it completes."
     end

@@ -409,13 +409,12 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
         end
         local link = rawRest:match("|H.-|h.-|h")
         local itemID = link and tonumber(link:match("|Hitem:(%d+)"))
-        local name   = link and link:match("|h%[(.-)%]|h")
         if not itemID then
             VUI.Print(AH.TAG, "Usage: |cFFFFFF00/ah find|r then shift-click an item link.")
             return
         end
         VUI.Print(AH.TAG, format("Searching last snapshot for %s (itemID %d)…", link, itemID))
-        local ok, reason = AH.Replicate.FindInSnapshot(itemID, name)
+        local ok, reason = AH.Replicate.FindInSnapshot(itemID)
         if not ok then
             VUI.Print(AH.TAG, reason or "Sweep could not start.")
         end
