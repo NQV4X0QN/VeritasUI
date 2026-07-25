@@ -11,6 +11,13 @@
 -- │ throws "Secret values only allowed during untainted execution" in          │
 -- │ Delves, M+, and raids.                                                    │
 -- │                                                                            │
+-- │ NAMING: `rotBtn` is PR's OWN SecureActionButton, created tainted at        │
+-- │ load; nothing else shares its execution context, so PR writes its          │
+-- │ attributes freely (see rotBtn:SetAttribute at load and in                  │
+-- │ InjectSequence).  `btn` below means one of BLIZZARD's ActionButtons,       │
+-- │ whose context Blizzard's own cooldown code depends on.  The two are        │
+-- │ NOT interchangeable - that is the whole boundary this block guards.        │
+-- │                                                                            │
 -- │ SAFE from addon code:                                                      │
 -- │   rotBtn:Execute(...)           — runs in the secure restricted env        │
 -- │   SetOverrideBindingClick(...)  — does not touch button attributes         │
