@@ -89,6 +89,10 @@ function AO:GetCVar(name)
         return val
     end
     -- CVar not (yet) in the registry — return cached value if we have one.
+    -- The `or nil` cannot swallow a real value the way GetCVarBool's did: every writer
+    -- of cvarCache stores a string — this function's own read above, and SetCVar's
+    -- three writes, whose callers pass "1"/"0", tostring(value), a dropdown's string
+    -- option, or an edit box's text. Even "" is truthy in Lua.
     return db and db.cvarCache[name] or nil
 end
 
@@ -104,8 +108,12 @@ end
 
 --- Read the default value for a CVar. Returns string or nil.
 function AO:GetCVarDefault(name)
+    -- Explicit branch, matching GetCVarBool above and GetCVarInfo below: every
+    -- pcall-wrapped read in this file distinguishes "call failed" from "call returned
+    -- a falsy value". Identical behaviour for a string API; one rule instead of two.
     local ok, val = pcall(C_CVar.GetCVarDefault, name)
-    return ok and val or nil
+    if ok then return val end
+    return nil
 end
 
 --- Full CVar info. Returns (value, default, serverStored, lockedByGx) or nils.
@@ -157,6 +165,10 @@ end
 --  Favourites helpers (Browser tab)
 ----------------------------------------------------------------
 function AO:IsFavorite(cvarName)
+    -- `or false` is a deliberate nil -> false normalisation, not the collapse
+    -- GetCVarBool was fixed for: ToggleFavorite only ever stores true or nil, so no
+    -- real boolean is swallowed. Keep the boolean return; the Browser's star colour
+    -- reads it three times per row and an explicit branch would buy nothing.
     return db and db.favorites[cvarName] or false
 end
 
@@ -173,7 +185,15 @@ end
 --  Collapse state helpers (Featured tab)
 ----------------------------------------------------------------
 function AO:IsCollapsed(categoryKey)
-    return db and db.collapsed[categoryKey] or false
+    -- Explicit, because this is the one accessor here whose stored value can really be
+    -- false: ToggleCollapsed writes `not db.collapsed[key]`. The short form swallowed
+    -- that false and returned false anyway — correct by coincidence, since the
+    -- swallowed value and the fallback happened to match. That stops being true the
+    -- day the fallback changes, so it is not left resting on the coincidence.
+    if not db then return false end
+    local v = db.collapsed[categoryKey]
+    if v == nil then return false end
+    return v
 end
 
 function AO:ToggleCollapsed(categoryKey)
