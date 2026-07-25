@@ -478,8 +478,8 @@ function PR:UpdateMacroStub()
     else
         if GetNumMacros() < (MAX_ACCOUNT_MACROS or 120) then
             -- pcall-wrap CreateMacro for the same reason F-7 wrapped
-            -- EditMacro at line 318 — the macro frame can be in a
-            -- transient state during /reload bursts.  Mirrors the
+            -- EditMacro in the sibling branch above — the macro frame can
+            -- be in a transient state during /reload bursts.  Mirrors the
             -- failure-return contract from EditMacro and the macro-
             -- list-full branch below.
             local ok, err = pcall(CreateMacro, self.MACRO_NAME, macroIcon, macroBody)
