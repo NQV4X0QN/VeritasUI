@@ -561,18 +561,17 @@ SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
         local qn = 0
         for _ in pairs(qs) do qn = qn + 1 end
         print("  Zone quest set: " .. qn .. " quest(s)")
-        for i = 1, C_QuestLog.GetNumQuestLogEntries() do
-            local ok, info = pcall(C_QuestLog.GetInfo, i)
-            if ok and info and not info.isHeader and not info.isHidden and info.questID then
-                local pinned, tag = IsAlwaysTracked(info)
-                local inZone = qs[info.questID] or false
-                local reason
-                if inZone then reason = "|cFF44FF44zone|r"
-                elseif pinned then reason = "|cFF44AAFFpin:" .. tostring(tag) .. "|r"
-                else reason = "|cFFFF6666dropped|r" end
-                print("    [" .. reason .. "] " .. tostring(info.title))
-            end
-        end
+        -- Per-quest dispositions deliberately live in /zq synctest, not here. This
+        -- loop used to recompute them, and the copy had already drifted from
+        -- SyncTracking in three ways at once: it had no super-tracked branch, so a
+        -- quest kept solely by super-tracking was reported as dropped while it was in
+        -- fact tracked; it tested zone before pin, inverting the precedence the real
+        -- code uses for its label; and it built a fresh quest set, bypassing the cache
+        -- the live tracker reads. /zq synctest calls SyncTracking in verbose mode, so
+        -- its per-quest ADD/REMOVE lines come from the code that actually decides. Do
+        -- not restore the loop by adding the missing super-tracked branch - that keeps
+        -- the second copy alive and guarantees the next drift.
+        print("  Per-quest dispositions: run |cFFFFFF00/zq synctest|r")
         print("  WatchType: " .. tostring(GetWatchType()))
         print("  db.enabled: " .. tostring(db and db.enabled))
 
