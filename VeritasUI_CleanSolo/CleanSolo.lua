@@ -201,6 +201,19 @@ local function SetupChatTabFading()
     end
 
     local hideTimer
+    -- Handle for the "fade-out finished → go hard HIDDEN" timer armed in
+    -- HideAllTabs. It MUST be cancellable: it is armed for FADE_OUT + 0.05
+    -- (2.05s by default) while the hide countdown is only FADE_DELAY (1.0s),
+    -- so an ordinary hover out → in → out cycle can start a second fade-out
+    -- while the first cycle's timer is still pending. If that stale timer
+    -- lands it flips state to HIDDEN mid-fade, and the alpha hook below then
+    -- slams every remaining fade frame to 0 — turning a 2s fade into a snap.
+    local fadeDoneTimer
+
+    local function CancelTimers()
+        if hideTimer then hideTimer:Cancel(); hideTimer = nil end
+        if fadeDoneTimer then fadeDoneTimer:Cancel(); fadeDoneTimer = nil end
+    end
 
     local function IsOverAnyChatElement()
         for _, cf in ipairs(chatFrames) do
@@ -213,7 +226,7 @@ local function SetupChatTabFading()
     end
 
     local function ShowAllTabs()
-        if hideTimer then hideTimer:Cancel(); hideTimer = nil end
+        CancelTimers()
         for _, tab in ipairs(tabs) do
             tab._vui_fadeState = "VISIBLE"
             VUI.SmoothFade(tab, FADE_IN, 1)
@@ -221,7 +234,7 @@ local function SetupChatTabFading()
     end
 
     local function HideAllTabs()
-        if hideTimer then hideTimer:Cancel() end
+        CancelTimers()
         hideTimer = C_Timer.NewTimer(FADE_DELAY, function()
             hideTimer = nil
             if not IsOverAnyChatElement() then
@@ -231,7 +244,9 @@ local function SetupChatTabFading()
                     VUI.SmoothFade(tab, FADE_OUT, 0)
                 end
                 -- After the fade-out duration, switch to hard HIDDEN.
-                C_Timer.After(FADE_OUT + 0.05, function()
+                -- Guards below are the second line of defence and stay as-is.
+                fadeDoneTimer = C_Timer.NewTimer(FADE_OUT + 0.05, function()
+                    fadeDoneTimer = nil
                     if not IsOverAnyChatElement() then
                         for _, tab in ipairs(tabs) do
                             if tab._vui_fadeState == "FADING_OUT" then
