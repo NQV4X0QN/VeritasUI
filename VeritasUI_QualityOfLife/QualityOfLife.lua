@@ -12,6 +12,7 @@ local _G               = _G
 local ipairs, pairs    = ipairs, pairs
 local pcall, type      = pcall, type
 local format           = string.format
+local math_min         = math.min
 local CreateFrame      = CreateFrame
 local C_Timer          = C_Timer
 local C_Container      = C_Container
@@ -335,9 +336,14 @@ end
 --   "guild"    — try guild bank first, then personal covers any remainder.
 --                Skipped if the guild's info text contains [noautorepair]
 --                (a convention used by GMs to block auto-repairs against
---                the guild bank). Our dual-call approach always covers
---                the remainder with personal gold regardless of withdrawal
---                limit — we never silently under-repair.
+--                the guild bank). The remainder left by the daily withdrawal
+--                limit is checked against personal gold BEFORE repairing, so
+--                we never claim a repair we couldn't pay for. The residual
+--                case we deliberately do NOT predict is a guild bank whose
+--                balance is below the withdrawal limit: GetGuildBankMoney()
+--                is unreliable until the bank frame has been opened, and
+--                trusting a stale zero there would refuse repairs that would
+--                actually succeed.
 --   "personal" — always use personal gold, skip guild entirely.
 local function AutoRepair()
     if not CanMerchantRepair() then return end
@@ -357,8 +363,26 @@ local function AutoRepair()
         and not (GetGuildInfoText() or ""):lower():find("%[%s*noautorepair%s*%]")
 
     if useGuild then
-        RepairAllItems(true)   -- guild funds first
-        RepairAllItems(false)  -- personal gold covers any remainder
+        -- Work out the split BEFORE repairing anything. GetRepairAllCost() must
+        -- NOT be re-read after RepairAllItems(true) — that stale-cache race was
+        -- removed in v1.3.21 — so the guild's share is derived from the daily
+        -- withdrawal limit instead. A limit of -1 means unlimited.
+        local limit     = GetGuildBankWithdrawMoney() or 0
+        local guildPays = (limit < 0) and cost or math_min(limit, cost)
+        local remainder = cost - guildPays
+
+        if remainder > 0 and GetMoney() < remainder then
+            VUI.Print("Quality of Life", format(
+                "Can't repair — costs %s, the guild bank can cover %s and you "
+                .. "don't have enough gold for the rest.",
+                GetCoinTextureString(cost), GetCoinTextureString(guildPays)))
+            return
+        end
+
+        RepairAllItems(true)              -- guild funds first
+        if remainder > 0 then
+            RepairAllItems(false)         -- personal gold covers the remainder
+        end
         VUI.Print("Quality of Life", format(
             "Repaired for %s (guild bank)", GetCoinTextureString(cost)))
     else

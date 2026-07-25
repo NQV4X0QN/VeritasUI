@@ -89,6 +89,7 @@ read_globals = {
     "GetMerchantNumItems", "MerchantFrame", "MERCHANT_ITEMS_PER_PAGE",
     "CanMerchantRepair", "GetRepairAllCost", "RepairAllItems",
     "CanGuildBankRepair", "IsInGuild", "GetGuildInfoText", "GetMoney",
+    "GetGuildBankWithdrawMoney",
     "SetItemButtonQuality",
     -- Player / unit / AFK
     "UnitName", "UnitClass", "UnitLevel", "UnitIsAFK", "GetAverageItemLevel",
