@@ -179,9 +179,12 @@ end
 -- Resolve a follows-key (see PR.EntryKey) back to the profile entry it
 -- names, or nil if that entry is no longer in the list (stale link —
 -- kept in the data so re-adding the same ability reactivates it).
-local function FindEntryByKey(key)
+-- `spells` is OPTIONAL: pass it when the caller already holds the list, so a
+-- full editor repaint resolves the profile once instead of once per row. The
+-- followBtn tooltip caller has no such local in scope, hence the fallback.
+local function FindEntryByKey(key, spells)
     if not key then return nil end
-    for _, o in ipairs(PR:CurrentProfile().spells) do
+    for _, o in ipairs(spells or PR:CurrentProfile().spells) do
         if PR.EntryKey(o) == key then return o end
     end
 end
@@ -804,7 +807,7 @@ function PR:BuildEditor(parent, contentWidth)
                 -- "After" indicator: target's icon when the link resolves;
                 -- dimmed empty slot when unset (or the target was removed —
                 -- the stored key is kept, so re-adding the target relinks).
-                local target = FindEntryByKey(e.follows)
+                local target = FindEntryByKey(e.follows, spells)
                 if target and target.icon then
                     row.followBtn.tex:SetTexture(target.icon)
                     row.followBtn.tex:Show()
