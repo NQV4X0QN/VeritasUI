@@ -495,7 +495,25 @@ end
 
 function VUI._InitReloadButton()
     if VUI._reloadBtnHooked then return end
-    if not SettingsPanel then return end
+    if not SettingsPanel then
+        -- Deferred retry. RegisterSettingsLabel re-attempts on every call and
+        -- all seven modules call it, but they all register in the same load
+        -- phase — so seven retries at the same instant are one retry, and if
+        -- SettingsPanel were ever absent then (LoD Blizzard_Settings) the
+        -- Reload button would silently never exist for the whole session with
+        -- nothing to trigger another attempt. PLAYER_LOGIN is strictly later
+        -- than addon load, so it is the one retry point that adds a genuinely
+        -- new opportunity. One-shot: the frame unregisters itself.
+        if not VUI._reloadBtnRetry then
+            VUI._reloadBtnRetry = CreateFrame("Frame")
+            VUI._reloadBtnRetry:RegisterEvent("PLAYER_LOGIN")
+            VUI._reloadBtnRetry:SetScript("OnEvent", function(self)
+                self:UnregisterAllEvents()
+                VUI._InitReloadButton()
+            end)
+        end
+        return
+    end
     VUI._reloadBtnHooked = true
 
     SettingsPanel:HookScript("OnShow", function()
