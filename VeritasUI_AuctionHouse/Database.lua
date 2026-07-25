@@ -161,13 +161,6 @@ function AH.DB.GetMarketPrice(key)
     return rec and rec.market or nil
 end
 
--- Convenience: market price straight from an item link (derives the key).
-function AH.DB.GetMarketPriceForLink(link)
-    local key = AH.DB.MakeKey(link)
-    if not key then return nil end
-    return AH.DB.GetMarketPrice(key), key
-end
-
 -- Sorted price history (newest day first). Returns array of
 -- { day, min, max, qty }.
 function AH.DB.GetPriceHistory(key)
