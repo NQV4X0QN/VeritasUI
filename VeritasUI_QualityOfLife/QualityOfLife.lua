@@ -53,6 +53,7 @@ local frame = CreateFrame("Frame")
 
 local itemLevelsSetup   = false  -- guards SetupItemLevels() re-entry
 local coordsInitialized = false  -- guards InitCoords() re-entry
+local mapCoordsSetup    = false  -- guards SetupMapCoordinates() re-entry
 local mapCoordsAnchor   = nil    -- reference for mid-session show/hide
 
 -- ── /way — proximity auto-clear state ───────────────────────
@@ -705,6 +706,16 @@ end
 -- Handles WorldMapFrame being load-on-demand (Blizzard_WorldMap).
 -- Gracefully shows "—" in instances or areas without position data.
 local function SetupMapCoordinates()
+    -- Own re-entry guard, matching SetupItemLevels. Distinct from
+    -- coordsInitialized, which means "the anchor exists" and is only set once
+    -- InitCoords actually runs. When Blizzard_WorldMap is not loaded yet this
+    -- function creates an ADDON_LOADED loader frame and returns with
+    -- coordsInitialized still false, so the settings toggle re-entered on
+    -- exactly the condition that was still unmet and stacked another loader
+    -- frame on every off/on cycle.
+    if mapCoordsSetup then return end
+    mapCoordsSetup = true
+
     local fmt = string.format
     local THROTTLE = 0.033   -- ~30 fps
 
