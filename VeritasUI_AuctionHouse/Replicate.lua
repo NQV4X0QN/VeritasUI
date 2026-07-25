@@ -38,6 +38,9 @@ local time       = time
 local GetTime    = GetTime
 local coroutine  = coroutine
 local CreateFrame = CreateFrame
+-- Hot: three of the eleven call sites are inside the per-row slice loops, evaluated up to
+-- once per row across a ~270k-row snapshot.
+local debugprofilestop = debugprofilestop
 
 AH.Replicate = {}
 
@@ -820,7 +823,7 @@ function AH.Replicate.Start()
 
     local wait = AH.Replicate.SecondsUntilReady()
     if wait > 0 then
-        return false, string.format("Next scan available in %d:%02d.",
+        return false, format("Next scan available in %d:%02d.",
             floor(wait / 60), wait % 60)
     end
 
