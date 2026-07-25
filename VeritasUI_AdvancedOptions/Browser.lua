@@ -19,6 +19,7 @@ local format         = string.format
 local CreateFrame    = CreateFrame
 local C_Timer        = C_Timer
 local GameTooltip    = GameTooltip
+local InCombatLockdown = InCombatLockdown
 
 ----------------------------------------------------------------
 --  CVar cache — populated once, reused across sessions
@@ -279,8 +280,11 @@ end
 -- must go through this. The right-click reset path used to hardcode the grey,
 -- which asserted "this is the default" even when the write had been deferred
 -- (combat) or rejected, leaving the live value still modified on screen.
-local function PaintValue(fs, entry)
-    if entry.value ~= entry.default then
+--
+-- shownValue overrides entry.value for the comparison, for the one caller that
+-- displays a pending value the live CVar has not caught up to yet.
+local function PaintValue(fs, entry, shownValue)
+    if (shownValue or entry.value) ~= entry.default then
         fs:SetTextColor(0.4, 0.8, 1)
     else
         fs:SetTextColor(0.75, 0.75, 0.75)
@@ -431,11 +435,24 @@ function AO:BuildBrowserContent(parent)
         if not editingRow then return end
         local entry = editingRow._entry
         if not entry then CloseInlineEdit(); return end
-        AO:SetCVar(entry.name, self:GetText())
-        RefreshEntry(entry)
-        -- Update the row's display
-        editingRow._valFs:SetText(entry.value)
-        PaintValue(editingRow._valFs, entry)
+        local typed = self:GetText()
+        -- AO:SetCVar returns false both when the write is deferred to the end of
+        -- combat and when it genuinely fails, so disambiguate here rather than
+        -- changing its contract — same shape as the Featured dropdown. On a
+        -- deferred write RefreshEntry re-reads the live CVar, which is still the
+        -- old value, and snaps the row back, discarding both the typed text and
+        -- the optimistic cache write AO:SetCVar just made. Keep the typed value
+        -- on screen instead; the CVar catches up when combat ends.
+        -- No message is printed here: AO:SetCVar already reports both the
+        -- deferred and the failed case itself.
+        if AO:SetCVar(entry.name, typed) or not InCombatLockdown() then
+            RefreshEntry(entry)
+            editingRow._valFs:SetText(entry.value)
+            PaintValue(editingRow._valFs, entry)
+        else
+            editingRow._valFs:SetText(typed)
+            PaintValue(editingRow._valFs, entry, typed)
+        end
         CloseInlineEdit()
     end)
 
