@@ -991,6 +991,15 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         VUI.Print("Priority Rotation", "  |cFFFFFF00/pr diag|r      — live-patch API diagnostic")
         VUI.Print("Priority Rotation", "  |cFFFFFF00/pr debug|r     — toggle debug output")
         VUI.Print("Priority Rotation", "  |cFFFFFF00/pr help|r      — show this help")
+        -- /pr debug gates DebugPrint only. The two operations this module defers through
+        -- VUI.CombatQueue, the queued recompile and ClearOverride, swallow errors unless
+        -- the separate suite-wide VUI.debug flag is set, so someone diagnosing "my
+        -- rotation didn't recompile after combat" with /pr debug alone gets silence.
+        -- Pointed at the existing suite-wide toggle rather than making /pr debug write
+        -- VUI.debug: that would turn every other module's debug output on and off as a
+        -- side effect, and would silently clear a flag the user set from /ah debug.
+        VUI.Print("Priority Rotation",
+            "  |cFF888888combat-queue errors need suite-wide debug: /ah debug|r")
 
     else
         if PR.MainWindow then
