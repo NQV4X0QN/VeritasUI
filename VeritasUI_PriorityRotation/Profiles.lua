@@ -202,6 +202,12 @@ function PR:IsEnabled()
 end
 
 function PR:CurrentProfile()
+    -- Slash commands are registered at file scope, so /pr clear and /pr reset are callable
+    -- in the file-load -> ADDON_LOADED window, before db exists. IsEnabled and
+    -- CompileSequence already guard for that window; this is the choke point for the rest.
+    -- Returning a throwaway default keeps the "always returns a profile" contract that ~25
+    -- call sites rely on; writes to it are discarded, which beats erroring at 25 sites.
+    if not self.db then return self:BuildDefaultProfile() end
     local key = self:GetProfileKey()
     local profiles = self.db.profiles
     if not profiles[key] then profiles[key] = self:BuildDefaultProfile() end
@@ -246,6 +252,7 @@ function PR:SaveCurrentProfile()
 end
 
 function PR:ResetCurrentProfileToDefault()
+    if not self.db then return end
     self.db.profiles[self:GetProfileKey()] = self:BuildDefaultProfile()
 end
 
