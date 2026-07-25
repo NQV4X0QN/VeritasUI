@@ -295,10 +295,14 @@ local function BuildMainWindow()
         -- ── Rotation Columns ──────────────────────────────────────
         local divFreq = Section(txtTarget, "BOTTOMLEFT", -10, "Rotation Columns")
         local txtFreq = Body(divFreq, -6,
-            "|cFFFFFF00Frequency|r — attempts per cycle, spread evenly through "
-            .."the rotation. 5 = attempted almost constantly (short cooldowns, "
-            .."spenders); 1 = once per cycle. A not-ready attempt is skipped "
-            .."harmlessly, so err on the high side for important abilities.\n"
+            "|cFFFFFF00Frequency|r — how often an ability is attempted relative "
+            .."to the others, spread as evenly as the numbers allow. 5 = attempted "
+            .."almost constantly (short cooldowns, spenders); 1 = attempted "
+            .."rarely. It sets the spacing, not a literal count — back-to-back "
+            .."presses of the same ability are collapsed, so a high frequency "
+            .."buys you shorter gaps rather than more steps. A not-ready attempt "
+            .."is skipped harmlessly, so err on the high side for important "
+            .."abilities.\n"
             .."|cFFFFFF00After|r — also casts an ability on the very next press "
             .."after another one (combo windows, e.g. Blade Dance after Eye Beam).\n"
             .."|cFFFFFF00Combat|r — only cast in combat. Leave your opener "

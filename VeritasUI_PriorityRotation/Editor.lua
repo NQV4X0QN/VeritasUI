@@ -223,7 +223,7 @@ function PR:BuildEditor(parent, contentWidth)
         "|cFF00CCFFDrag spells|r from your spellbook, |cFF00CCFFmacros|r from /macro, "
         .."or |cFF00CCFFtrinkets|r from your character pane onto a slot.\n"
         .."Right-click to remove. Use arrows to reorder.\n"
-        .."|cFFFFFF00Frequency|r = attempts per cycle, spread evenly (5=constant, 1=rare).\n"
+        .."|cFFFFFF00Frequency|r = how often relative to the others — spacing, not a count (5=constant, 1=rare).\n"
         .."|cFFFFFF00After|r = also cast right after another ability (click to cycle).\n"
         .."|cFFFFFF00Combat|r = only cast in combat — leave your opener unchecked.")
 
