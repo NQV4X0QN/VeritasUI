@@ -51,7 +51,13 @@ function AO:InitDB()
     db = VeritasUI_AdvancedOptionsDB
     for k, v in pairs(defaults) do
         if db[k] == nil then
-            -- Deep-copy table defaults to avoid shared references
+            -- Shallow-copy table defaults so the shared `defaults` table above is
+            -- never aliased into the saved DB (v1.3.21). One level is enough because
+            -- every table default is flat and empty, which also means the inner loop
+            -- runs zero times on a fresh DB. Adding a NESTED default (windowPos =
+            -- { x = 0 }, per-category collapse sub-tables) would alias that inner
+            -- table and let saved settings mutate `defaults` for the session — that
+            -- case needs a genuinely recursive copy, which this loop is NOT.
             if type(v) == "table" then
                 db[k] = {}
                 for sk, sv in pairs(v) do db[k][sk] = sv end
