@@ -37,7 +37,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.9.14"
+VUI.VERSION = "1.9.15"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -589,9 +589,208 @@ function VUI._InitReloadButton()
 end
 
 ----------------------------------------------------------------
+--  Blocked / forbidden action recorder
+--
+--  ADDON_ACTION_FORBIDDEN (insecure code called a function it may NEVER call)
+--  and ADDON_ACTION_BLOCKED (a protected call reached from tainted execution)
+--  both name the offending addon AND the offending function.  That function
+--  name is the single datum that turns "some VeritasUI module tainted
+--  something" into an actionable defect, and Blizzard hands it over exactly
+--  once, in an event that is gone the instant the session ends.
+--
+--  ALWAYS ON, deliberately NOT gated on VUI.debug.  Same reasoning as the AH
+--  scan trace: you cannot ask a taint popup to happen on cue, so a debug flag
+--  would be off precisely when it mattered.  Recorded to SavedVariables so it
+--  survives /reload and logout -- a popup dismissed with "Ignore" days ago is
+--  still readable with /vui taint.
+--
+--  This records; it never prints on the event.  ADDON_ACTION_BLOCKED can fire
+--  hundreds of times on one zone entry (see the ActionButton taint landmine),
+--  so printing would bury the user in the symptom.  Entries are deduped on
+--  event|addon|function, which turns that flood into a counter increment rather
+--  than table growth, and timestamps are stored as time() integers and
+--  formatted only at dump time so date() never runs on the flood path.
+----------------------------------------------------------------
+local TAINT_LOG_MAX = 25   -- cap on DISTINCT signatures, not on occurrences
+
+-- pairs/time/date/sort are deliberately NOT localized at file top: the only
+-- per-event work here is a table lookup and an increment, and every other path
+-- (new signature, dump) is cold.  Per the suite's hot-global policy, cold
+-- globals stay global.
+local function TaintDB()
+    local db = _G.VeritasUI_LibDB
+    if type(db) ~= "table" then return nil end
+    if type(db.taintLog) ~= "table" then db.taintLog = {} end
+    return db
+end
+
+local function CountTaintEntries(db)
+    local n = 0
+    for _ in pairs(db.taintLog) do n = n + 1 end
+    return n
+end
+
+local function RecordTaintEvent(event, addonName, funcName)
+    local db = TaintDB()
+    if not db then return end   -- fired before SavedVariables loaded; nothing to do
+    local key = event .. "|" .. tostring(addonName) .. "|" .. tostring(funcName)
+    local entry = db.taintLog[key]
+    if entry then
+        entry.count = (entry.count or 0) + 1
+        entry.last  = time()
+        return
+    end
+    if CountTaintEntries(db) >= TAINT_LOG_MAX then
+        -- Only reachable via many DISTINCT signatures; a repeat of a recorded
+        -- one is handled above and never consumes a slot.
+        --
+        -- FORBIDDEN outranks BLOCKED for a full log.  BLOCKED is the noisy
+        -- event (a tainted action bar throws it in volume, and each distinct
+        -- function name takes its own slot) while FORBIDDEN is rare and names a
+        -- call insecure code may never make -- the datum this recorder exists to
+        -- capture.  A plain first-come cap would let BLOCKED noise fill the log
+        -- and drop the one entry that matters, so a FORBIDDEN arriving at a full
+        -- log evicts the least-seen BLOCKED entry instead of being discarded.
+        -- FORBIDDEN never evicts FORBIDDEN.
+        local evictKey
+        if event == "ADDON_ACTION_FORBIDDEN" then
+            local fewest
+            for k, v in pairs(db.taintLog) do
+                if v.event == "ADDON_ACTION_BLOCKED"
+                   and (not fewest or (v.count or 0) < fewest) then
+                    fewest, evictKey = (v.count or 0), k
+                end
+            end
+        end
+        if not evictKey then
+            db.taintLogDropped = (db.taintLogDropped or 0) + 1
+            return
+        end
+        db.taintLog[evictKey] = nil
+        db.taintLogDropped = (db.taintLogDropped or 0) + 1
+    end
+    -- Context is gathered ONCE per signature and every read is pcall'd.  This
+    -- code runs when something is already broken, so the recorder must never
+    -- become the thing that errors -- the audit's "harden diagnostics
+    -- generously" rule, at its most literal.
+    local ctx = {}
+    pcall(function() ctx.zone   = GetZoneText() end)
+    pcall(function() ctx.player = UnitName("player") end)
+    pcall(function() ctx.combat = InCombatLockdown() and true or false end)
+    pcall(function()
+        -- Whether Blizzard_AuctionHouseUI is loaded discriminates the two
+        -- candidate taint sources for the 2026-07-28 housing-vault report:
+        -- AuctionHouse/Tooltip.lua arms at PLAYER_LOGIN and needs no AH visit,
+        -- while SellStrip's AuctionHouseFrame hooks cannot exist without one.
+        ctx.ahui = (C_AddOns and C_AddOns.IsAddOnLoaded
+            and C_AddOns.IsAddOnLoaded("Blizzard_AuctionHouseUI")) and true or false
+    end)
+    db.taintLog[key] = {
+        event   = event,
+        addon   = tostring(addonName),
+        func    = tostring(funcName),
+        count   = 1,
+        first   = time(),
+        last    = time(),
+        version = VUI.VERSION,
+        ctx     = ctx,
+    }
+end
+
+-- Programmatic read, for a future session that CAN reach the SavedVariables
+-- file directly (or for another module that wants to react to the log).
+function VUI.GetTaintLog()
+    local db = TaintDB()
+    return db and db.taintLog or nil
+end
+
+local function DumpTaintLog()
+    local db = TaintDB()
+    if not db then
+        VUI.Print("VeritasUI", "Diagnostic log unavailable — saved variables not loaded yet.")
+        return
+    end
+    local keys = {}
+    for k in pairs(db.taintLog) do keys[#keys + 1] = k end
+    if #keys == 0 then
+        VUI.Print("VeritasUI", "No blocked-action events recorded.")
+        return
+    end
+    table.sort(keys, function(a, b)
+        return (db.taintLog[a].first or 0) < (db.taintLog[b].first or 0)
+    end)
+    VUI.Print("VeritasUI", format("Blocked-action log — %d distinct event%s:",
+        #keys, #keys == 1 and "" or "s"))
+    -- Body lines are raw print, NOT VUI.Print.  This is a diagnostic dump meant
+    -- to be copy-pasted verbatim, and a per-line [VeritasUI] tag is noise in a
+    -- paste -- the same split /zq debug and /ah diag already use.  Do not
+    -- "unify" these onto VUI.Print.
+    for i, k in ipairs(keys) do
+        local e = db.taintLog[k]
+        local c = e.ctx or {}
+        print(format("%d) %s", i, e.event or "?"))
+        print(format("   addon = %s", e.addon or "?"))
+        print(format("   func  = %s", e.func or "?"))
+        print(format("   seen %d time(s), first %s, last %s",
+            e.count or 0,
+            date("%Y-%m-%d %H:%M", e.first or 0),
+            date("%Y-%m-%d %H:%M", e.last or 0)))
+        print(format("   vui %s | char %s | zone %s | combat %s | ah-ui-loaded %s",
+            e.version or "?", c.player or "?", c.zone or "?",
+            tostring(c.combat), tostring(c.ahui)))
+    end
+    if (db.taintLogDropped or 0) > 0 then
+        print(format("   (%d further distinct signature(s) dropped — log caps at %d)",
+            db.taintLogDropped, TAINT_LOG_MAX))
+    end
+    VUI.Print("VeritasUI", "|cFF888888/vui taint clear|r to reset the log.")
+end
+
+local taintFrame = CreateFrame("Frame")
+taintFrame:RegisterEvent("ADDON_LOADED")
+taintFrame:RegisterEvent("PLAYER_LOGIN")
+taintFrame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+taintFrame:RegisterEvent("ADDON_ACTION_BLOCKED")
+taintFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
+    if event == "ADDON_ACTION_FORBIDDEN" or event == "ADDON_ACTION_BLOCKED" then
+        RecordTaintEvent(event, arg1, arg2)
+    elseif event == "ADDON_LOADED" then
+        if arg1 ~= "VeritasUI_Lib" then return end
+        if type(_G.VeritasUI_LibDB) ~= "table" then _G.VeritasUI_LibDB = {} end
+        TaintDB()   -- seeds .taintLog
+    else
+        -- PLAYER_LOGIN: one-line nudge so a popup dismissed with "Ignore" long
+        -- ago does not sit unread in the log forever.
+        local db = TaintDB()
+        if not db then return end
+        local n = CountTaintEntries(db)
+        if n > 0 then
+            VUI.Print("VeritasUI", format(
+                "|cFFFF8800%d blocked-action event%s recorded|r — |cFFFFFF00/vui taint|r to view.",
+                n, n == 1 and "" or "s"))
+        end
+    end
+end)
+
+----------------------------------------------------------------
 --  /veritasui slash command
 ----------------------------------------------------------------
 SLASH_VERITASUI1 = "/veritasui"
-SlashCmdList["VERITASUI"] = function()
-    VUI.Print("VeritasUI", "Version " .. VUI.VERSION .. " loaded.")
+SLASH_VERITASUI2 = "/vui"
+SlashCmdList["VERITASUI"] = function(msg)
+    local cmd = (msg or ""):lower():match("^%s*(.-)%s*$")
+    if cmd == "taint" then
+        DumpTaintLog()
+    elseif cmd == "taint clear" then
+        local db = TaintDB()
+        if db then
+            db.taintLog = {}
+            db.taintLogDropped = nil
+        end
+        VUI.Print("VeritasUI", "Blocked-action log cleared.")
+    else
+        VUI.Print("VeritasUI", "Version " .. VUI.VERSION .. " loaded.")
+        VUI.Print("VeritasUI", "|cFFFFFF00/vui taint|r — show recorded blocked-action events.")
+        VUI.Print("VeritasUI", "|cFFFFFF00/vui taint clear|r — reset that log.")
+    end
 end

@@ -22,11 +22,12 @@ globals = {
     "VeritasUI_AdvancedOptionsDB",
     "VeritasUI_AuctionHouseDB",
     "VeritasUI_CleanSoloDB",
+    "VeritasUI_LibDB",
     "VeritasUI_PriorityRotationDB",
     "VeritasUI_QualityOfLifeDB",
     "VeritasUI_ZoneQuestsDB",
     -- SLASH_* command registrations (WoW reads these globals by name)
-    "SLASH_VERITASUI1",
+    "SLASH_VERITASUI1", "SLASH_VERITASUI2",
     "SLASH_VERITASUI_AO1", "SLASH_VERITASUI_AO2",
     "SLASH_VERITASUI_AH1", "SLASH_VERITASUI_AH2",
     "SLASH_VERITASUI_CLEANSOLO1", "SLASH_VERITASUI_CLEANSOLO2",

@@ -1,7 +1,8 @@
 ## Interface: 120007
 ## Title: VeritasUI Library
 ## Notes: Shared library for VeritasUI addons. |cFF888888Must load first.|r
-## Version: 1.9.14
+## Version: 1.9.15
 ## Author: NQV4X0QN
+## SavedVariables: VeritasUI_LibDB
 
 Lib.lua
