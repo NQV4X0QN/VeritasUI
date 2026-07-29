@@ -464,6 +464,23 @@ local function SetupItemLevels()
     end
 
     local function HideOverlay(btn)
+        -- Also CANCEL any pending cold-cache retry for this button.
+        --
+        -- This is the single choke point that every early return and every
+        -- ProcessItem bail already calls, which is why the cancel lives here
+        -- rather than at each caller. The v1.8.0 retry guarded button reuse with
+        -- the _vui_pendingIlvl token, but the token was only ever cleared inside
+        -- ProcessItem — and the hook's three early returns (nil item, Poor
+        -- quality, quest-reward button) all return BEFORE reaching it. So a bank
+        -- button that was emptied or reassigned kept its token armed, the pending
+        -- ContinueOnItemLoad callback's guard still matched, and it stamped an
+        -- item level onto a now-empty slot once the record streamed in. Clearing
+        -- here makes that stale callback unreachable from every path at once
+        -- instead of patching three of them.
+        --
+        -- Ordering note: ProcessItem calls HideOverlay and THEN QueueRetry, so a
+        -- deliberate arm still lands. Do not reorder those two.
+        btn._vui_pendingIlvl = nil
         if btn._vui_ilvl   then btn._vui_ilvl:Hide()   end
         if btn._vui_ilvlBG then btn._vui_ilvlBG:Hide() end
     end
@@ -481,6 +498,98 @@ local function SetupItemLevels()
         return true, itemID
     end
 
+    -- Resolve an item's quality from the item itself. Returns 0 for Poor, which
+    -- matters: `(ok and q) or 1` looks like it would turn 0 into 1, but 0 is
+    -- TRUTHY in Lua, so `0 or 1` is 0 and junk is reported correctly.
+    --
+    -- MUST be defined above ProcessItem. ProcessItem is a forward-assigned
+    -- closure, so a local declared BELOW it would be captured as a global
+    -- lookup and be nil at call time — the documented forward-reference trap
+    -- that silently broke /way (see the Lua-scoping landmine).
+    local function GetItemQuality(link)
+        if not link then return 1 end
+        local ok, _, _, q = pcall(C_Item.GetItemInfo, link)
+        return (ok and q) or 1
+    end
+
+    -- Cosmetic gear carries a real item level of 1, so the `ilvl <= 0` filter
+    -- lets it through and renders a meaningless "1" (reported at vendors).
+    -- Deliberately NOT fixed by raising that threshold: a genuine low-level
+    -- alt's gear legitimately sits in single digits, so a cutoff would hide
+    -- numbers that are real. Conservative, mirroring SellStrip's Warband
+    -- predicate: reject only on a definitive true, so a missing API or a cold
+    -- record shows the item rather than hiding a legitimate one.
+    local function IsCosmetic(itemIDOrLink)
+        if not (C_Item and C_Item.IsCosmeticItem) then return false end
+        local ok, cosmetic = pcall(C_Item.IsCosmeticItem, itemIDOrLink)
+        return (ok and cosmetic) and true or false
+    end
+
+    -- Resolve the link the button is CURRENTLY displaying, from the button's own
+    -- accessors. Extracted from the SetItemButtonQuality hook so the cold-cache
+    -- retry can re-check what a button holds before painting it; the branch order
+    -- and semantics are unchanged from the inline version.
+    --
+    -- Returns: link (or nil), knowable
+    --   knowable = we successfully queried this button's slot, so a nil link
+    --   means the slot is EMPTY rather than merely unresolved. That distinction
+    --   is what lets the retry tell "this button was emptied" (bail) apart from
+    --   "this button has no accessor I understand" (proceed) — merchant buttons
+    --   are the latter, since their link is passed in rather than derived.
+    local function ResolveButtonLink(btn)
+        local link, knowable = nil, false
+        -- Fall-through order preserved EXACTLY from the inline version: each
+        -- accessor is tried only while no link has been found, so a button whose
+        -- GetItemLink returns nil still gets its container queried. Returning on
+        -- the first merely-callable accessor would silently downgrade such
+        -- buttons to the bare itemID, and with it the effective item level.
+        if btn.GetItemLink then
+            local ok, r = pcall(btn.GetItemLink, btn)
+            if ok then knowable = true; if r then link = r end end
+        end
+        if not link and btn.GetBagID and btn.GetID then
+            local ok, r = pcall(C_Container.GetContainerItemLink,
+                btn:GetBagID(), btn:GetID())
+            if ok then knowable = true; if r then link = r end end
+        end
+        if not link and btn.GetBankTabID and btn.GetContainerSlotID then
+            local ok, r = pcall(C_Container.GetContainerItemLink,
+                btn:GetBankTabID(), btn:GetContainerSlotID())
+            if ok then knowable = true; if r then link = r end end
+        end
+        if not link and btn.GetID
+            and not btn.GetBagID and not btn.GetBankTabID then
+            local slotID = btn:GetID()
+            local pName = btn:GetParent()
+                and btn:GetParent().GetName
+                and btn:GetParent():GetName() or ""
+            -- Blizzard bank container (-1) has slots 1–28 in Midnight.
+            if slotID >= 1 and slotID <= 28 and pName:find("Bank") then
+                local ok, r = pcall(C_Container.GetContainerItemLink, -1, slotID)
+                if ok then knowable = true; if r then link = r end end
+            end
+        end
+        if not link and btn.GetID then
+            local bName = btn.GetName and btn:GetName() or ""
+            if bName:find("Character") then
+                local ok, r = pcall(GetInventoryItemLink, "player", btn:GetID())
+                if ok then knowable = true; if r then link = r end end
+            end
+        end
+        return link, knowable
+    end
+
+    -- Compare two item references by itemID. Full links are not compared
+    -- directly: two links for the same item can differ in bonus/context strings
+    -- while still being the same item, and the retry only needs to know the
+    -- button has not been handed a DIFFERENT item.
+    local function SameItemID(a, b)
+        if not (a and b) then return false end
+        local okA, idA = pcall(C_Item.GetItemInfoInstant, a)
+        local okB, idB = pcall(C_Item.GetItemInfoInstant, b)
+        return okA and okB and idA ~= nil and idA == idB
+    end
+
     -- Forward-declared: QueueRetry's callback re-enters ProcessItem after the
     -- item record loads (same closure-sees-later-assignment pattern as WayCommand).
     local ProcessItem
@@ -493,8 +602,17 @@ local function SetupItemLevels()
     -- the moment ITS record arrives, via the Blizzard-provided ItemMixin:
     -- ContinueOnItemLoad (fires immediately if already loaded, else on data arrival).
     -- The _vui_pendingIlvl token guards button reuse: any fresh ProcessItem call for
-    -- this button supersedes the pending retry, making the stale callback a no-op.
-    local function QueueRetry(btn, itemIDOrLink, quality)
+    -- this button supersedes the pending retry, making the stale callback a no-op,
+    -- and HideOverlay now cancels it too (see the comment there).
+    --
+    -- Quality is deliberately NOT captured. v1.8.0 captured the quality argument
+    -- alongside the item and replayed it, but on a cold cache Blizzard passes
+    -- quality = nil, and that nil then (a) skipped the Poor filter entirely, so
+    -- junk got an overlay, and (b) fell through ApplyOverlay's `quality or 1`
+    -- to Common = WHITE, which is why retried items rendered white instead of
+    -- their rarity colour. By the time this callback runs the record is loaded by
+    -- definition, so ProcessItem re-resolves quality from the item instead.
+    local function QueueRetry(btn, itemIDOrLink)
         local ok, item = pcall(function()
             if type(itemIDOrLink) == "string" then
                 return Item:CreateFromItemLink(itemIDOrLink)
@@ -506,7 +624,21 @@ local function SetupItemLevels()
         item:ContinueOnItemLoad(function()
             if btn._vui_pendingIlvl ~= itemIDOrLink then return end
             btn._vui_pendingIlvl = nil
-            ProcessItem(btn, itemIDOrLink, quality, true)   -- noRetry: one shot only
+            -- Re-check what the button holds NOW. The token alone cannot cover a
+            -- button that Blizzard empties without calling SetItemButtonQuality
+            -- for it — whether it always does is unverified, and this makes the
+            -- question moot rather than betting on it.
+            local curLink, knowable = ResolveButtonLink(btn)
+            if knowable then
+                if not curLink then HideOverlay(btn); return end
+                if not SameItemID(curLink, itemIDOrLink) then return end
+            end
+            -- Prefer the freshly resolved LINK over the captured reference: if
+            -- the hook was handed a bare itemID, the link yields the effective
+            -- (upgraded) item level where the ID yields only the base. This
+            -- aligns the retry path with the hook path, which has always
+            -- resolved a link first.
+            ProcessItem(btn, curLink or itemIDOrLink, nil, true)   -- one shot only
         end)
     end
 
@@ -514,10 +646,15 @@ local function SetupItemLevels()
         -- Any fresh call supersedes a pending cold-cache retry for this button.
         btn._vui_pendingIlvl = nil
         if not itemIDOrLink then HideOverlay(btn); return end
-        if quality ~= nil and quality == 0 then HideOverlay(btn); return end
+        -- Resolve a nil quality from the item rather than trusting the argument.
+        -- Blizzard passes nil while the record is cold, and every consumer below
+        -- treats nil as "not Poor, colour it white" — see QueueRetry's note.
+        if quality == nil then quality = GetItemQuality(itemIDOrLink) end
+        if quality == 0 then HideOverlay(btn); return end
         local equippable, rawID = IsEquippableGear(itemIDOrLink)
         if not equippable then HideOverlay(btn); return end
         if rawID and SKIP_ITEMS[rawID] then HideOverlay(btn); return end
+        if IsCosmetic(itemIDOrLink) then HideOverlay(btn); return end
         local ok, ilvl = pcall(C_Item.GetDetailedItemLevelInfo, itemIDOrLink)
         if not ok or not ilvl then
             -- nil ilvl on equippable gear = cold item-data cache, not "no ilvl".
@@ -526,19 +663,13 @@ local function SetupItemLevels()
             -- (ContinueOnItemLoad on a loaded item fires synchronously — requeueing
             -- there would recurse).
             HideOverlay(btn)
-            if not noRetry then QueueRetry(btn, itemIDOrLink, quality) end
+            if not noRetry then QueueRetry(btn, itemIDOrLink) end
             return
         end
         -- ilvl may be a secret value in raid encounters; guard the comparison.
         local cmpOk, tooLow = pcall(function() return ilvl <= 0 end)
         if not cmpOk or tooLow then HideOverlay(btn); return end
         ApplyOverlay(btn, ilvl, quality)
-    end
-
-    local function GetItemQuality(link)
-        if not link then return 1 end
-        local ok, _, _, q = pcall(C_Item.GetItemInfo, link)
-        return (ok and q) or 1
     end
 
     ----------------------------------------------------------------
@@ -577,44 +708,12 @@ local function SetupItemLevels()
 
         -- Resolve a full item link for accurate ilvl (effective vs base).
         -- The passed itemIDOrLink may be a numeric ID; a full link gives
-        -- GetDetailedItemLevelInfo the effective (upgraded) ilvl.
+        -- GetDetailedItemLevelInfo the effective (upgraded) ilvl. The
+        -- button-accessor chain lives in ResolveButtonLink so the cold-cache
+        -- retry can reuse it.
         local link = type(itemIDOrLink) == "string" and itemIDOrLink or nil
         if not link then
-            if btn.GetItemLink then
-                local ok, r = pcall(btn.GetItemLink, btn)
-                if ok and r then link = r end
-            end
-            if not link and btn.GetBagID and btn.GetID then
-                local ok, r = pcall(C_Container.GetContainerItemLink,
-                    btn:GetBagID(), btn:GetID())
-                if ok and r then link = r end
-            end
-            if not link and btn.GetBankTabID and btn.GetContainerSlotID then
-                local ok, r = pcall(C_Container.GetContainerItemLink,
-                    btn:GetBankTabID(), btn:GetContainerSlotID())
-                if ok and r then link = r end
-            end
-            if not link and btn.GetID
-                and not btn.GetBagID and not btn.GetBankTabID then
-                local slotID = btn:GetID()
-                local pName = btn:GetParent()
-                    and btn:GetParent().GetName
-                    and btn:GetParent():GetName() or ""
-                -- Blizzard bank container (-1) has slots 1–28 in Midnight.
-                if slotID >= 1 and slotID <= 28 and pName:find("Bank") then
-                    local ok, r = pcall(C_Container.GetContainerItemLink,
-                        -1, slotID)
-                    if ok and r then link = r end
-                end
-            end
-            if not link and btn.GetID then
-                local bName = btn.GetName and btn:GetName() or ""
-                if bName:find("Character") then
-                    local ok, r = pcall(GetInventoryItemLink,
-                        "player", btn:GetID())
-                    if ok and r then link = r end
-                end
-            end
+            link = ResolveButtonLink(btn)
         end
 
         -- Delegate to ProcessItem for equippability, skip, ilvl, and overlay.
@@ -1420,9 +1519,114 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 end)
 
 -- ── Slash commands ──────────────────────────────────────────
+----------------------------------------------------------------
+--  /qol ilvl — item-level source comparison (diagnostic)
+--
+--  Answers one question with measurement instead of argument: when the tooltip
+--  and the icon disagree (reported 2026-07-28: a Timewalking item whose tooltip
+--  read 120 while the overlay read 78), WHICH source is right, and can we afford
+--  to use the tooltip one?
+--
+--  GetDetailedItemLevelInfo answers "what is this item's level", from the item
+--  record plus the link's upgrade/bonus data. The tooltip answers "what is this
+--  item's level FOR ME, RIGHT NOW". For ordinary current-content gear the two
+--  agree, which is why those numbers have always looked correct. They diverge
+--  wherever the displayed level depends on context the link does not carry —
+--  Timewalking scaling, heirlooms, level-scaled loot.
+--
+--  So this dumps both, side by side, plus C_TooltipInfo's answer (the modern
+--  structured tooltip-data API — reading the tooltip without showing one) and
+--  the cost of that call, since it would have to run across ~200 bank slots.
+--  Nothing here changes behaviour; it exists to decide the follow-up on evidence.
+--  Remove once that decision is made (probe-then-remove, per module practice).
+----------------------------------------------------------------
+local function DumpIlvlDiag(link)
+    local TAG = "Quality of Life"
+    if not link or link == "" then
+        VUI.Print(TAG, "Usage: |cFFFFFF00/qol ilvl|r then SHIFT-CLICK an item into the chat box.")
+        VUI.Print(TAG, "  Compares the overlay's item-level source against the tooltip's.")
+        return
+    end
+    VUI.Print(TAG, "Item-level sources for " .. link .. ":")
+    -- Body lines raw-print for clean copy-paste (suite print-split policy).
+    local okI, itemID, _, _, equipLoc, _, classID, subClassID =
+        pcall(C_Item.GetItemInfoInstant, link)
+    print(("   itemID = %s   class/subclass = %s/%s   equipLoc = %s"):format(
+        tostring(okI and itemID), tostring(okI and classID),
+        tostring(okI and subClassID), tostring(okI and equipLoc)))
+
+    local okQ, _, _, quality = pcall(C_Item.GetItemInfo, link)
+    print(("   quality = %s"):format(tostring(okQ and quality)))
+
+    -- The comparison that matters: link (effective) vs bare itemID (base).
+    local okL, byLink = pcall(C_Item.GetDetailedItemLevelInfo, link)
+    print(("   GetDetailedItemLevelInfo(link)   = %s   <- what the overlay uses"):format(
+        tostring(okL and byLink)))
+    if okI and itemID then
+        local okD, byID = pcall(C_Item.GetDetailedItemLevelInfo, itemID)
+        print(("   GetDetailedItemLevelInfo(itemID) = %s   <- base only"):format(
+            tostring(okD and byID)))
+    end
+    local okG, _, _, _, giLvl = pcall(C_Item.GetItemInfo, link)
+    print(("   GetItemInfo ilvl (index 4)       = %s"):format(tostring(okG and giLvl)))
+
+    print(("   IsCosmeticItem = %s   (API present: %s)"):format(
+        tostring(C_Item and C_Item.IsCosmeticItem
+            and select(2, pcall(C_Item.IsCosmeticItem, link))),
+        tostring(C_Item and C_Item.IsCosmeticItem ~= nil)))
+
+    -- Tooltip route.
+    if not (C_TooltipInfo and C_TooltipInfo.GetHyperlink) then
+        print("   C_TooltipInfo.GetHyperlink = ABSENT on this client")
+        return
+    end
+    local okT, data = pcall(C_TooltipInfo.GetHyperlink, link)
+    if not okT or not data then
+        print("   C_TooltipInfo.GetHyperlink returned nothing")
+        return
+    end
+    if TooltipUtil and TooltipUtil.SurfaceArgs then
+        pcall(TooltipUtil.SurfaceArgs, data)
+    end
+    local lines = data.lines or {}
+    -- Build the match pattern from the LOCALIZED global rather than a literal.
+    local pat = type(ITEM_LEVEL) == "string"
+        and ITEM_LEVEL:gsub("%%d", "(%%d+)") or "Item Level (%d+)"
+    local found
+    for _, line in ipairs(lines) do
+        if TooltipUtil and TooltipUtil.SurfaceArgs then
+            pcall(TooltipUtil.SurfaceArgs, line)
+        end
+        local t = line.leftText
+        if type(t) == "string" then
+            local n = t:match(pat) or t:match("[Ii]tem [Ll]evel%s*(%d+)")
+            if n and not found then found = n end
+        end
+    end
+    print(("   C_TooltipInfo item level = %s   <- what the TOOLTIP shows (%d lines)"):format(
+        tostring(found), #lines))
+
+    -- Cost: is this affordable across a full bank + warband bank?
+    if debugprofilestop then
+        local t0 = debugprofilestop()
+        for _ = 1, 50 do pcall(C_TooltipInfo.GetHyperlink, link) end
+        local per = (debugprofilestop() - t0) / 50
+        print(("   cost = %.3f ms/call  ->  ~%.1f ms for 200 slots"):format(per, per * 200))
+    end
+end
+
+----------------------------------------------------------------
+--  Slash commands
+----------------------------------------------------------------
 SLASH_VERITASUI_QOL1 = "/qol"
 SLASH_VERITASUI_QOL2 = "/qualityoflife"
-SlashCmdList["VERITASUI_QOL"] = function()
+SlashCmdList["VERITASUI_QOL"] = function(msg)
+    local arg = (msg and strtrim(msg)) or ""
+    if arg:lower():match("^ilvl") then
+        -- Accept a shift-clicked item link, matching /ah check's pattern.
+        DumpIlvlDiag(arg:match("(|c%x+|H.-|h.-|h|r)") or arg:match("(|H.-|h)"))
+        return
+    end
     -- Guard against nil (options init not yet run, or failed) — same
     -- "still loading" pattern as PriorityRotation / ZoneQuests / AH.
     if settingsCategoryID then

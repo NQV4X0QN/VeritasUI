@@ -2,6 +2,36 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.9.16] - 2026-07-28
+
+Four item-level display faults turned out to be one defect. Numbers appearing over empty bank slots, numbers rendering white instead of the item's rarity colour, item levels on grey junk that was supposed to be excluded, and — separately — a meaningless `1` on cosmetic gear at vendors. The first three all trace to the cold-cache retry added in v1.8.0 to make bank overlays appear on the first open of a session, which predates the recent audit and matches where this was first noticed.
+
+That retry waits for an item's record to load and then paints the overlay. It guarded against the button being reused in the meantime with a token, but the token was only cleared deep inside the paint routine, and the three early exits above it — no item, grey item, quest-reward button — all returned before reaching it. So a bank button that had been emptied or reassigned kept its retry armed, and when the record finally arrived it stamped an item level onto a slot that was now empty. The cancel now lives in the one routine every one of those exits already calls, which retires the whole class rather than the three known instances, and the retry additionally re-checks what the button is holding before it paints, because whether the game always notifies us about a slot it empties is not something that could be established by reading the code.
+
+The white numbers and the junk numbers were the same retry replaying a *quality* of nil. On a cold cache the game passes no quality, and nil silently defeated both consumers: the grey-item filter is written as "not nil and equal to zero", so nil skipped it entirely, and the colour lookup falls back to Common — which is white. Quality is no longer captured and replayed; it is re-read from the item at paint time, by which point the record is loaded by definition. The existing grey filter then starts working for the first time on that path.
+
+The cosmetic `1` is unrelated and simpler: cosmetic gear genuinely has an item level of 1, and the filter only rejects zero and below. Deliberately not fixed by raising that cutoff — a real low-level character's gear legitimately sits in single digits, so a threshold would have hidden numbers that are correct. It now tests whether the item is cosmetic.
+
+Vendor item levels are unchanged and stay. A recollection that they had been removed turned out to be crossed wires: it was *quest reward* item levels that were removed, back in v1.1.0, and the stated reason was a base-versus-effective item level mismatch — which is exactly the remaining open symptom below.
+
+Still open, deliberately: item levels that disagree with the tooltip in scaled content, such as a Timewalking item whose tooltip reads 120 while the icon reads 78. A plausible cause was identified and then **falsified by testing** — the theory that the retry path loses the item link and falls back to a base-only value does not reproduce, because the button resolves its own link successfully. Rather than ship a second guess, this release adds a diagnostic that measures where the number comes from. The two are different questions: the API in use reports what an item's level *is*, while the tooltip reports what it is *for you, right now*, and those coincide for ordinary current-content gear, which is why those numbers have always looked right.
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **item levels no longer appear over empty bank and warband bank slots.** The cold-cache retry's reuse token was only cleared inside the paint routine, which the three early exits above it never reach; it is now cleared in the shared hide routine that all of them call, so a stale retry is unreachable from every path at once instead of from three patched ones. The retry also verifies the button still holds the same item before painting, and distinguishes "this slot is now empty" from "I cannot identify this button", so merchant buttons — whose link is supplied rather than derived — keep working. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **item levels render in the item's rarity colour instead of white.** The retry captured the quality argument and replayed it, but the game supplies no quality while an item's record is cold, and the colour lookup treats a missing quality as Common, which is white. Quality is now re-read from the item when the overlay is painted. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **grey junk no longer shows an item level.** It was always meant to be excluded, but the filter reads "quality is not nil and quality is zero", so the nil quality described above skipped it silently. Re-reading quality makes the existing filter effective on that path. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **cosmetic items no longer show an item level of `1`** at vendors or anywhere else. Cosmetic gear has a genuine item level of 1, which passed a filter that only rejects zero and below. Fixed with a cosmetic test rather than a higher cutoff, so a genuine low-level character's single-digit gear still shows. Conservative: only a definite yes hides the number, so a missing API or an unloaded record shows the item rather than hiding a legitimate one. (`QualityOfLife.lua`)
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **`/qol ilvl`, then shift-click an item** — a diagnostic that reports every available item-level source for that item side by side: the value in use, the base-only value, the value the tooltip itself reports, the cosmetic flag, quality, class and subclass, and the cost of the tooltip lookup projected across a full bank. Added to settle the scaled-content mismatch by measurement instead of argument, after the leading theory was falsified by testing. Temporary, and will be removed once that decision is made. (`QualityOfLife.lua`)
+
+### Notes
+
+- The button link resolver used by the item-level hook was extracted so the retry can reuse it. Its fall-through order is preserved exactly: each accessor is tried only while no link has been found, because returning on the first merely-callable accessor would quietly downgrade some buttons to a bare item ID and with it to a base-only item level. That regression was introduced during this change and caught before release.
+- All four fixes are covered by a regression suite that drives the real file headlessly against a simulated cold cache. It was checked against the previous version first, where it reproduces all four reported symptoms including the exact values seen in game, so the tests are known to test something.
+
 ## [1.9.15] - 2026-07-28
 
 A blocked-action popup naming `VeritasUI_AuctionHouse` appeared while sending a housing decor item to the vault, nowhere near an auction house. The cause is not known and is not fixed here. What is fixed is that the addon was in no position to ever find out: the one datum that would identify the offending call — the function name — is handed to us exactly once, in an event that vanishes with the session, and nothing was listening. The popup was dismissed, a reload cleared it, and the evidence went with it.

@@ -64,10 +64,11 @@ read_globals = {
     "MenuResponse", "MenuUtil",
     -- Tooltips
     "GameTooltip", "ItemRefTooltip", "TooltipDataProcessor", "TooltipUtil",
+    "C_TooltipInfo", "ITEM_LEVEL",
     "BattlePetTooltip", "FloatingBattlePetTooltip", "BattlePetToolTip_Show",
     "FloatingBattlePet_Toggle",
     -- Item / container / inventory
-    "C_Item", "C_Container", "ItemLocation", "GetInventoryItemLink",
+    "C_Item", "C_Container", "ItemLocation", "Item", "GetInventoryItemLink",
     "GetItemInfoInstant", "GetDetailedItemLevelInfo",
     "ITEM_QUALITY_COLORS", "BAG_ITEM_QUALITY_COLORS", "NUM_BAG_SLOTS",
     "C_TradeSkillUI", "C_Texture",
