@@ -1076,12 +1076,35 @@ local afkOverlay          -- the fullscreen frame (created once, reused)
 local afkClockTicker      -- 30s timer for real-world clock refresh
 local afkActive = false   -- guard against re-entry
 
+local AFK_REVEAL_POLL_RATE = 0.2   -- 5 Hz, AFK-only
+-- Strata the overlay drops to while something is revealed. Panels are MEDIUM and
+-- up, and the overlay sits at FULLSCREEN_DIALOG, so a revealed panel would render
+-- BEHIND it. We lower the overlay rather than raise the panel: setting strata on a
+-- UIPanel-managed frame fights the panel manager, which owns strata and produces
+-- drift and flicker (documented landmine). BACKGROUND is chosen as the safest
+-- floor — it is above WorldFrame (strata WORLD), so the overlay still covers the
+-- 3D scene, and below every panel regardless of that panel's own strata. Nothing
+-- is lost by being under the rest of the UI because the rest of the UI is at
+-- alpha 0 and does not render at all.
+local AFK_OVERLAY_STRATA     = "FULLSCREEN_DIALOG"
+local AFK_OVERLAY_LOW_STRATA = "BACKGROUND"
+
+-- Frames not registered in UIPanelWindows, so not covered by that enumeration.
+local AFK_EXTRA_FRAMES = {
+    "ContainerFrameCombinedBags",
+    "GameMenuFrame",
+    "ChatFrame1EditBox",
+}
+for i = 1, 13 do
+    AFK_EXTRA_FRAMES[#AFK_EXTRA_FRAMES + 1] = "ContainerFrame" .. i
+end
+
 local function AFK_CreateOverlay()
     if afkOverlay then return afkOverlay end
 
     local f = CreateFrame("Frame", "VeritasUI_AFKScreen", UIParent)
     f:SetAllPoints(UIParent)
-    f:SetFrameStrata("FULLSCREEN_DIALOG")
+    f:SetFrameStrata(AFK_OVERLAY_STRATA)
     f:SetFrameLevel(500)
     f:SetIgnoreParentAlpha(true)
     -- Keyboard is deliberately NOT captured (no EnableKeyboard). Dismissal is
@@ -1234,6 +1257,124 @@ local function AFK_RefreshInfo()
     afkOverlay._clockText:SetText(date("%I:%M %p"))
 end
 
+-- ── AFK panel reveal ─────────────────────────────────────────
+-- Let the player actually USE the UI while the AFK screen is up, without
+-- dropping the screen and without capturing a single keystroke.
+--
+-- The whole feature is a visibility problem, not an input problem. AFK_Enter
+-- hides the UI with UIParent:SetAlpha(0), and alpha 0 leaves children fully
+-- FUNCTIONAL — so pressing C already opens the character sheet, B already opens
+-- the bags and Enter already focuses chat. They are simply transparent. Making
+-- one visible is the same lever the overlay uses on itself: SetIgnoreParentAlpha.
+--
+-- ⚠ Deliberately NO keyboard capture. EnableKeyboard / SetPropagateKeyboardInput
+-- on a fullscreen insecure overlay is combat-protected and was removed in v1.9.2
+-- for breaking the player's ability to move (see the AFK_CreateOverlay comment
+-- and the matching landmine). Nothing here reintroduces it: we only observe
+-- frames, never input.
+--
+-- Detection is a poll rather than per-frame hooks. Hooks would need separate
+-- coverage for UIPanel frames, the container frames, the chat edit box and the
+-- Escape menu, and would still miss anything new; the poll needs no maintenance
+-- and self-corrects. Same reasoning as VUI.HookHoverFade. It runs ONLY while the
+-- AFK screen is up, and SetIgnoreParentAlpha is called only on a transition.
+--
+-- NOTE on interaction with CleanSolo: SetIgnoreParentAlpha bypasses the PARENT's
+-- alpha, not the frame's own. A chat tab CleanSolo has faded to alpha 0 stays
+-- invisible, which is correct — we are undoing our own UIParent blanket, not
+-- overriding another feature's deliberate choice.
+local afkRevealed = {}     -- [frame] = true while we are overriding its alpha
+local afkRevealTicker
+
+local function AFK_Reveal(f)
+    if not (f and f.SetIgnoreParentAlpha) or afkRevealed[f] then return end
+    afkRevealed[f] = true
+    pcall(f.SetIgnoreParentAlpha, f, true)
+end
+
+local function AFK_Unreveal(f)
+    if not (f and afkRevealed[f]) then return end
+    afkRevealed[f] = nil
+    pcall(f.SetIgnoreParentAlpha, f, false)
+end
+
+-- Revert every override. MUST run on AFK exit: leaving SetIgnoreParentAlpha(true)
+-- on a Blizzard frame would make it ignore future alpha changes entirely, which
+-- would silently break the next AFK session and CleanSolo's fades.
+local function AFK_UnrevealAll()
+    for f in pairs(afkRevealed) do
+        pcall(f.SetIgnoreParentAlpha, f, false)
+        afkRevealed[f] = nil   -- clearing an existing key mid-pairs is legal
+    end
+end
+
+local function AFK_SyncOverlayStrata()
+    if not afkOverlay then return end
+    if next(afkRevealed) ~= nil then
+        if afkOverlay._afkLowered then return end
+        afkOverlay._afkLowered = true
+        afkOverlay:SetFrameStrata(AFK_OVERLAY_LOW_STRATA)
+    elseif afkOverlay._afkLowered then
+        afkOverlay._afkLowered = nil
+        afkOverlay:SetFrameStrata(AFK_OVERLAY_STRATA)
+    end
+end
+
+local function AFK_ScanPanels()
+    if not afkActive then return end
+
+    -- Every UIPanel-managed frame. Enumerated from Blizzard's own registry so
+    -- Character, Spellbook, Collections, Map, Bank, Merchant — and VeritasUI's own
+    -- Priority Rotation / Advanced Options windows — are all covered with no list
+    -- to maintain here.
+    if UIPanelWindows then
+        for name in pairs(UIPanelWindows) do
+            local f = _G[name]
+            if f and f.IsShown then
+                if f:IsShown() then AFK_Reveal(f) else AFK_Unreveal(f) end
+            end
+        end
+    end
+
+    for _, name in ipairs(AFK_EXTRA_FRAMES) do
+        local f = _G[name]
+        if f and f.IsShown then
+            if f:IsShown() then AFK_Reveal(f) else AFK_Unreveal(f) end
+        end
+    end
+
+    -- Chat is driven by the EDIT BOX, not by the chat windows' own state: the
+    -- windows are always shown, so keying off IsShown would reveal them for the
+    -- entire AFK session. Pressing Enter opens the edit box and brings the
+    -- conversation with it; sending (or Escape) closes the edit box and both go
+    -- away again on the next tick.
+    local eb = _G.ChatFrame1EditBox
+    local typing = eb and eb.IsShown and eb:IsShown() and true or false
+    for i = 1, (NUM_CHAT_WINDOWS or 10) do
+        local cf = _G["ChatFrame" .. i]
+        if cf and cf.IsShown then
+            if typing and cf:IsShown() then AFK_Reveal(cf) else AFK_Unreveal(cf) end
+        end
+    end
+
+    AFK_SyncOverlayStrata()
+end
+
+local function AFK_StartReveal()
+    if afkRevealTicker then return end
+    AFK_ScanPanels()   -- immediate first pass, so an already-open panel appears at once
+    afkRevealTicker = C_Timer.NewTicker(AFK_REVEAL_POLL_RATE, AFK_ScanPanels)
+end
+
+local function AFK_StopReveal()
+    if afkRevealTicker then afkRevealTicker:Cancel(); afkRevealTicker = nil end
+    AFK_UnrevealAll()
+    if afkOverlay and afkOverlay._afkLowered then
+        afkOverlay._afkLowered = nil
+        afkOverlay:SetFrameStrata(AFK_OVERLAY_STRATA)
+    end
+end
+
 local function AFK_Enter()
     if afkActive then return end
     if not db or not db.afkScreen then return end
@@ -1264,6 +1405,10 @@ local function AFK_Enter()
     -- Start slow camera orbit (pcall-guarded: may fail in cinematics or vehicle sequences).
     pcall(MoveViewRightStart, 0.03)
 
+    -- Watch for panels the player opens while the screen is up, so they become
+    -- visible instead of being invisible-but-functional. See AFK_ScanPanels.
+    AFK_StartReveal()
+
     -- Clock refresh every 30s
     if afkClockTicker then afkClockTicker:Cancel() end
     afkClockTicker = C_Timer.NewTicker(30, function()
@@ -1279,6 +1424,12 @@ local function AFK_Exit()
 
     -- Stop camera orbit
     pcall(MoveViewRightStop)
+
+    -- Drop every SetIgnoreParentAlpha override first. Ordered before the alpha
+    -- restore deliberately: an override left in place would make that frame ignore
+    -- alpha changes for the rest of the session, breaking the next AFK screen and
+    -- CleanSolo's fades.
+    AFK_StopReveal()
 
     -- Restore UI; only show MinimapCluster if it was visible before AFK started.
     UIParent:SetAlpha(1)

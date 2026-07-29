@@ -2,6 +2,31 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.10.0] - 2026-07-28
+
+The AFK screen is no longer all-or-nothing. Open your character sheet, your bags, the map, the Escape menu or anything else and it appears over the AFK screen; close it and the screen is clean again. Press Enter and the chat window comes up with the typing box so you can read and answer; send the message, or press Escape, and both disappear.
+
+Nothing new is captured from the keyboard, and that is the point. The AFK screen hides the interface by making it transparent rather than by closing it, so every panel was already opening and closing correctly the whole time — pressing C really did open the character sheet, it was simply invisible. This release makes what you open visible, using the same mechanism the AFK screen already uses to keep itself visible over everything else. An earlier version of this feature did capture keystrokes and was removed a while back for breaking movement when a mob attacked you; none of that comes back here, because the screen only watches which windows are open and never touches input.
+
+The chat window is deliberately tied to the typing box rather than to itself. Chat windows are always technically open, so following their own state would have left the conversation on screen for the entire AFK session. Following the typing box instead means the conversation appears exactly when you start typing and leaves when you stop, which is what was asked for.
+
+Windows are found by asking the game for its own list of registered panels, so every standard window is covered without maintaining a list, including this addon's own Priority Rotation and Advanced Options windows. Bags, the chat box and the Escape menu are named explicitly because they are not on that list.
+
+One thing to watch on first use: opening windows does not clear your away status, but *sending* a chat message may well do, and if it does the AFK screen will dismiss itself the moment you send, because it follows your real away status. Reading and typing without sending should be unaffected. That is a guess about the game's behaviour rather than something measured, so treat the first message you send as the test.
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **windows you open during the AFK screen are now visible.** Character sheet, bags, map, Escape menu, collections, spellbook and everything else registered as a panel, plus this addon's own windows. Opening reveals, closing hides, with no new setting — if you open nothing the screen looks exactly as it did. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **press Enter during the AFK screen to read and reply to chat.** The chat window and the typing box appear together and both disappear when the typing box closes, whether you send the message or cancel it. (`QualityOfLife.lua`)
+
+### Notes
+
+- No keyboard capture was added. The panels were always functional under the AFK screen because it hides the interface with transparency rather than by closing anything; this only changes what is drawn. The removed keyboard-capture approach stays removed.
+- Open windows are detected by polling while the AFK screen is up, roughly five times a second, rather than by hooking each window. Hooking would need separate handling for panels, bags, chat and the Escape menu and would still miss anything new. The poll runs only while the screen is up and only acts when something actually changes.
+- While a window is open the AFK screen drops behind it, and returns to the front when the last one closes. Lowering the screen is deliberate rather than raising the window: window layering is owned by the game's panel manager, and fighting it causes drift and flicker. Nothing is lost by the screen sitting behind the rest of the interface, because the rest of the interface is transparent.
+- Leaving the AFK screen reverts every visibility override, in that order. An override left behind would make that window ignore transparency for the rest of the session, which would break the next AFK screen and CleanSolo's fading.
+- Covered by nineteen automated checks driving the real file. One of them initially failed on the layering behaviour; the code turned out to be correct and the test harness was at fault — it made every unset internal flag read as set, which defeated exactly the kind of guard being tested. Fixed in the harness, and worth knowing because it would have silently weakened other checks too.
+
 ## [1.9.17] - 2026-07-28
 
 Item levels shown on icons now match the tooltip on scaling gear. A Timewalking crossbow whose tooltip read 78 was showing 522 on its icon; three items in the same bag were similarly inflated. The cause was the API the overlay has always used, `GetDetailedItemLevelInfo`, which on a level-scaling item returns the scaling **ceiling** rather than the item's level as it stands. `GetItemInfo`'s item level field returns the same number the tooltip does, so that is now the source.
