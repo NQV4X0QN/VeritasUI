@@ -37,7 +37,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.12.2"
+VUI.VERSION = "1.12.3"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -326,13 +326,16 @@ local FADE_IN_TIME     = 0.20
 local FADE_OUT_TIME    = 0.50
 local FADE_OUT_DELAY   = 0.50
 local HEALTH_IDLE_TIME = 3.0
-local PLAYER_FRAME_HOVER_POLL_RATE  = 0.20
+-- 10 Hz, matching HOVER_FADE_POLL_RATE. Was 0.20 and ran ONLY while the frame was
+-- visible, with OnEnter waking it; now always-on, so it must be responsive enough to
+-- replace that hook without the fade-in feeling laggy.
+local PLAYER_FRAME_HOVER_POLL_RATE  = 0.10
 
 function VUI.HookPlayerFrameFade(frame, inCombatRef)
     if not frame then return end
     frame:SetAlpha(0)
 
-    local delayTimer, pollTicker, healthTimer
+    local delayTimer, healthTimer
     local wasShowing   = false
     local healthActive = false
 
@@ -351,16 +354,12 @@ function VUI.HookPlayerFrameFade(frame, inCombatRef)
         return inCombatRef() or healthActive or IsHovered()
     end
 
-    local function StopPoll()
-        if pollTicker then pollTicker:Cancel(); pollTicker = nil end
-    end
 
     local function DoFadeOut()
         delayTimer = nil
         if not ShouldShow() then
             SmoothFade(frame, FADE_OUT_TIME, 0)
             wasShowing = false
-            StopPoll()
         end
     end
 
@@ -370,11 +369,6 @@ function VUI.HookPlayerFrameFade(frame, inCombatRef)
             if not wasShowing then
                 SmoothFade(frame, FADE_IN_TIME, 1)
                 wasShowing = true
-            end
-            if not pollTicker then
-                pollTicker = C_Timer.NewTicker(PLAYER_FRAME_HOVER_POLL_RATE, function()
-                    if not ShouldShow() then Evaluate() end
-                end)
             end
         elseif wasShowing and not delayTimer then
             delayTimer = C_Timer.NewTimer(FADE_OUT_DELAY, DoFadeOut)
@@ -394,8 +388,28 @@ function VUI.HookPlayerFrameFade(frame, inCombatRef)
         end)
     end
 
-    frame:HookScript("OnEnter", Evaluate)
-    frame:HookScript("OnLeave", function() C_Timer.After(0.05, Evaluate) end)
+    -- ⚠ DO NOT HookScript this frame. Until v1.12.3 hover was driven by
+    -- HookScript("OnEnter"/"OnLeave") on the frame itself, with the poll running only
+    -- while it was visible. That is the one place in this suite that hooked a secure
+    -- Blizzard frame's mouse scripts, and it is the same shape as the documented
+    -- ActionButton trap: hooking a secure frame's OnEnter taints its execution
+    -- context, and Blizzard's own code on that frame then runs tainted. HookHoverFade
+    -- polls instead of hooking child ActionButtons for exactly this reason —
+    -- PlayerFrame was the inconsistency, and it is the single most
+    -- targeting-sensitive frame in the game: its own code calls protected targeting
+    -- functions.
+    --
+    -- Motivating evidence (NOT proof — recorded honestly): on 2026-07-28 a
+    -- ADDON_ACTION_FORBIDDEN naming VeritasUI_Lib fired for ClearTarget() during
+    -- ordinary mounted travel. Nothing in this suite calls ClearTarget, so it was
+    -- taint propagation, and of every Blizzard frame Lib touches, PlayerFrame is the
+    -- ONLY one whose own code does targeting.
+    --
+    -- The poll is now ALWAYS ON, because the OnEnter hook was load-bearing: the old
+    -- ticker only ran while the frame was already visible, so with the hook removed
+    -- and the old gating kept, a faded frame would never have come back on hover.
+    -- No handle kept: this runs for the session, exactly like HookHoverFade's poll.
+    C_Timer.NewTicker(PLAYER_FRAME_HOVER_POLL_RATE, Evaluate)
 
     return Evaluate, HealthPing
 end
@@ -889,6 +903,21 @@ local function RecordTaintEvent(event, addonName, funcName)
         ctx.ahui = (C_AddOns and C_AddOns.IsAddOnLoaded
             and C_AddOns.IsAddOnLoaded("Blizzard_AuctionHouseUI")) and true or false
     end)
+    -- Frame under the cursor, and whether a target existed. Added after the
+    -- 2026-07-28 ClearTarget() report, where the missing datum was WHICH frame's
+    -- code was running: if a future occurrence names a unit frame here, that is
+    -- close to conclusive. Best-effort — the cursor may have moved between the
+    -- blocked call and this event.
+    pcall(function()
+        local f = GetMouseFocus and GetMouseFocus()
+        if f and f.GetName then
+            local ok, n = pcall(f.GetName, f)
+            ctx.focus = (ok and n) or "<unnamed>"
+        end
+    end)
+    pcall(function()
+        ctx.hadTarget = (UnitExists and UnitExists("target")) and true or false
+    end)
     db.taintLog[key] = {
         event   = event,
         addon   = tostring(addonName),
@@ -942,6 +971,8 @@ local function DumpTaintLog()
         print(format("   vui %s | char %s | zone %s | combat %s | ah-ui-loaded %s",
             e.version or "?", c.player or "?", c.zone or "?",
             tostring(c.combat), tostring(c.ahui)))
+        print(format("   cursor-over %s | had-target %s",
+            tostring(c.focus), tostring(c.hadTarget)))
     end
     if (db.taintLogDropped or 0) > 0 then
         print(format("   (%d further distinct signature(s) dropped — log caps at %d)",

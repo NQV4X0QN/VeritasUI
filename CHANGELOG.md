@@ -2,6 +2,32 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.3] - 2026-07-28
+
+A blocked-action warning naming this addon's shared library appeared during ordinary mounted travel, with nothing being interacted with. The recorded detail — the first time that detail has been available, and the reason the recorder was added — named the blocked call as the game's own clear-target function.
+
+This addon does not call that function anywhere. So the game's own code was reached while carrying this addon's taint, rather than this addon calling something it may not. Of every game frame the shared library touches, exactly one has its own code that does targeting: the player's unit frame, which the fading-player-frame feature attaches to. Everything else it touches — bag bar, micro menu, action bars, chat buttons, the options window — has no targeting behaviour at all.
+
+That frame was also the one remaining place in this addon that attached mouse handlers to one of the game's secure frames. The action bar fading deliberately does not do that, and has not since 2026-05, because attaching to a secure frame's mouse handlers makes the game's own code on that frame run tainted — which is exactly the shape of what was observed. The player frame was the inconsistency, on the single most targeting-sensitive frame in the game.
+
+So those two handlers are gone, and hover is detected the same way the action bars already detect it. **This is not a proven fix.** The connection is reasoning from elimination plus a rule this addon already follows everywhere else, on a fault seen exactly once. It is worth doing regardless — it removes an inconsistency and the only plausible route — but it should not be treated as settled until a good while passes without recurrence.
+
+Practical impact of the original warning was nil: the call that was blocked was the game clearing your target, so a target did not clear, once.
+
+### Changed
+
+- `VeritasUI_Lib` — **the fading player frame no longer attaches mouse handlers to the player's unit frame.** Hover is detected by the same polling the action bars use. Behaviour is unchanged: it still appears on hover, in combat, and while your health is not full, and still fades when idle. (`Lib.lua`)
+
+### Added
+
+- `VeritasUI_Lib` — **the blocked-action log now also records what the cursor was over and whether you had a target.** The datum missing this time was which frame's code was running; if this recurs and names a unit frame there, it is close to conclusive. (`Lib.lua`)
+
+### Notes
+
+- The removed handlers were load-bearing, not redundant: the old hover poll only ran while the frame was already visible, and the handler was what woke it. The poll is now always running, at the same rate the action bars use, so hover response is unchanged.
+- Two pieces of code left dead by the change — an unused timer handle and a routine that became empty — were removed rather than left as no-ops.
+- Six checks cover the player frame's fading, including an explicit assertion that no handlers are attached to it. Run against the previous version first, where that assertion fails and names the two handlers, so the check is known to detect the thing it is about.
+
 ## [1.12.2] - 2026-07-28
 
 Advanced Options no longer appears in Options → AddOns. Its entry there was empty, and had been from the start: the code registered a category with no controls in it purely so the module could be found in that list. A blank panel reads as something broken rather than as a way to discover a feature, so it is gone. Every setting the module has is in its own window, opened with `/ao` or from the AddOn button menu, and nothing has moved.
