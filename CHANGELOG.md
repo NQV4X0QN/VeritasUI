@@ -2,6 +2,28 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.1] - 2026-07-28
+
+The character list for copying settings now opens in the same place every time, directly beneath the control, instead of appearing wherever you happened to click. The previous version used a right-click style menu, and those anchor to the mouse pointer by design, so clicking the left of the button opened it further left.
+
+Copy From… is now a dropdown rather than a plain button. That is what fixes it: a dropdown's list is attached to the control itself, so its position cannot drift. The same widget is already used elsewhere in this addon, so the placement is guaranteed by how the widget works rather than by a setting that could behave differently on another version of the game.
+
+To be clear about an apparent contradiction: the previous release deliberately avoided a dropdown here. That concern was specifically about a dropdown tied to a *saved* setting, because the game re-applies saved dropdown choices whenever the interface loads — which would have re-copied your main over the destination character on every reload. This dropdown saves nothing; its entries are actions, and the copy is still confirmed before anything is overwritten. There is no saved choice to be re-applied.
+
+If the dropdown widget is ever unavailable, it silently falls back to the previous button and cursor-anchored menu — worse placement, same functionality.
+
+### Fixed
+
+- `VeritasUI_Lib` — **the copy-settings character list opens in a fixed position** under the Copy From… control rather than following the mouse. (`Lib.lua`)
+
+### Changed
+
+- `VeritasUI_Lib` — **Copy From… is a dropdown**, sharing one menu definition with the fallback path so the two cannot drift apart. Its label stays fixed rather than showing the last character clicked, since the entries are actions and not a saved selection. (`Lib.lua`)
+
+### Notes
+
+- The probe of this client's menu system showed each cursor-anchored menu function paired with a non-cursor counterpart, which implies the plain variants attach to the control. That is an inference from a naming pattern rather than something measured, and it is deliberately not what this fix depends on — the dropdown route was chosen because it is already proven in this addon.
+
 ## [1.12.0] - 2026-07-28
 
 You can now copy one character's settings onto another, which completes the per-character work started in the previous release. Open the options window on the character you want to change, pick any VeritasUI section, and a **Copy From…** button appears beside the existing Reload UI button. It lists your other characters; choose one, confirm, and that character's settings are applied to the one you are on.

@@ -37,7 +37,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.12.0"
+VUI.VERSION = "1.12.1"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -602,38 +602,55 @@ StaticPopupDialogs["VERITASUI_UNDO_COPY"] = {
     end,
 }
 
--- Open the source-character menu on `owner`.
+VUI.COPY_BUTTON_LABEL = "Copy From…"
+
+-- Shared menu generator, used by the dropdown (primary) and the context-menu
+-- fallback. Rebuilt on every open, so the character list and the undo entry are
+-- always current.
+local function BuildCopyMenu(_, root)
+    -- WoWUIBugs #783 workaround: an addon menu opened first in a session otherwise
+    -- assigns a tainted nil to the shared menu frame's minimumWidth, which then
+    -- surfaces as Secret Value errors in unrelated Blizzard code. One line, defuses
+    -- it. Remove when #783 is fixed.
+    root:SetMinimumWidth(180)
+    root:CreateTitle("Copy settings from")
+    local sources = VUI.ListCopySources()
+    if #sources == 0 then
+        local none = root:CreateButton("No other characters yet", function() end)
+        if none and none.SetEnabled then none:SetEnabled(false) end
+    else
+        for _, key in ipairs(sources) do
+            root:CreateButton(key, function()
+                StaticPopup_Show("VERITASUI_COPY_SETTINGS", key, VUI.CharKey() or "?", key)
+            end)
+        end
+    end
+    local last = VUI.GetUndoableCopy()
+    if last then
+        root:CreateDivider()
+        root:CreateButton("Undo copy from " .. tostring(last.source), function()
+            StaticPopup_Show("VERITASUI_UNDO_COPY", tostring(last.source))
+        end)
+    end
+end
+VUI._BuildCopyMenu = BuildCopyMenu
+
+-- Cursor-anchored FALLBACK, used only if the dropdown template is unavailable.
+-- The dropdown is preferred because its menu anchors to the widget itself, which is
+-- the behaviour asked for; a context menu follows the cursor by design and so opens
+-- in a different place depending on where in the button you clicked.
+--
+-- MenuUtil on this client (probed 2026-07-28) pairs each "...ContextMenu" with a
+-- non-Context "...Menu" — CreateButtonContextMenu/CreateButtonMenu,
+-- CreateCheckboxContextMenu/CreateCheckboxMenu — and the naming implies the plain
+-- variants anchor to the owner. That is an INFERENCE from a naming pattern, not a
+-- measured fact, so it is deliberately not what the shipped path relies on.
 function VUI.ShowCopyMenu(owner)
     if not (MenuUtil and MenuUtil.CreateContextMenu) then
         VUI.Print("VeritasUI", "|cFFFF4444Menu API unavailable|r — use |cFFFFFF00/vui copy|r instead.")
         return
     end
-    MenuUtil.CreateContextMenu(owner, function(_, root)
-        -- WoWUIBugs #783 workaround: an addon menu opened first in a session
-        -- otherwise assigns a tainted nil to the shared menu frame's minimumWidth,
-        -- which then surfaces as Secret Value errors in unrelated Blizzard code.
-        -- One line, defuses it. Remove when #783 is fixed.
-        root:SetMinimumWidth(180)
-        root:CreateTitle("Copy settings from")
-        local sources = VUI.ListCopySources()
-        if #sources == 0 then
-            local none = root:CreateButton("No other characters yet", function() end)
-            if none and none.SetEnabled then none:SetEnabled(false) end
-        else
-            for _, key in ipairs(sources) do
-                root:CreateButton(key, function()
-                    StaticPopup_Show("VERITASUI_COPY_SETTINGS", key, VUI.CharKey() or "?", key)
-                end)
-            end
-        end
-        local last = VUI.GetUndoableCopy()
-        if last then
-            root:CreateDivider()
-            root:CreateButton("Undo copy from " .. tostring(last.source), function()
-                StaticPopup_Show("VERITASUI_UNDO_COPY", tostring(last.source))
-            end)
-        end
-    end)
+    MenuUtil.CreateContextMenu(owner, BuildCopyMenu)
 end
 
 VUI._settingsLabels = {}
@@ -704,14 +721,47 @@ function VUI._InitReloadButton()
         end
         reloadBtn:Hide()
 
-        -- "Copy From…" sits to the left of Reload UI, same mechanism and same
-        -- visibility rule. A button rather than a dropdown, on purpose — see the
-        -- copy-settings UI header.
-        copyBtn = CreateFrame("Button", nil, SettingsPanel, "UIPanelButtonTemplate")
-        copyBtn:SetText("Copy From…")
-        copyBtn:SetWidth(110)
-        copyBtn:SetPoint("RIGHT", reloadBtn, "LEFT", -4, 0)
-        copyBtn:SetScript("OnClick", function(self) VUI.ShowCopyMenu(self) end)
+        -- "Copy From…" sits to the left of Reload UI, same visibility rule.
+        --
+        -- A DROPDOWN widget rather than a plain button, so the menu opens directly
+        -- beneath it every time. A cursor-anchored context menu drifted with the
+        -- click position, which is what prompted this. WowStyle1DropdownTemplate
+        -- anchors its menu to itself by construction and is already proven in this
+        -- suite (PriorityRotation's spec switcher), so the placement is structural
+        -- rather than dependent on an API default.
+        --
+        -- ⚠ This does NOT reopen the dropdown objection from the copy-settings UI
+        -- header. That objection is specific to a dropdown backed by a PERSISTED
+        -- Settings value, which Blizzard's framework replays on load. This widget
+        -- persists nothing — the entries are plain menu buttons and the copy is still
+        -- gated by a confirmation — so there is no value to replay.
+        local okDD
+        okDD, copyBtn = pcall(CreateFrame, "DropdownButton", nil, SettingsPanel,
+                              "WowStyle1DropdownTemplate")
+        if okDD and copyBtn and copyBtn.SetupMenu then
+            copyBtn:SetWidth(150)
+            copyBtn:SetPoint("RIGHT", reloadBtn, "LEFT", -4, 0)
+            if copyBtn.SetDefaultText then copyBtn:SetDefaultText(VUI.COPY_BUTTON_LABEL) end
+            copyBtn:SetupMenu(VUI._BuildCopyMenu)
+            -- Keep the label fixed. A DropdownButton normally shows the last thing
+            -- clicked, and this widget is an action list, not a selection — a
+            -- character name left in the label would read like a persisted choice.
+            -- OverrideText is required rather than SetDefaultText: the default only
+            -- applies until something has been clicked (see the dropdown landmine).
+            if copyBtn.HookScript then
+                copyBtn:HookScript("OnHide", function(self)
+                    if self.OverrideText then self:OverrideText(VUI.COPY_BUTTON_LABEL) end
+                end)
+            end
+        else
+            -- Template unavailable: fall back to a plain button + cursor menu, which
+            -- is the pre-1.12.1 behaviour. Positioning is worse, the feature works.
+            copyBtn = CreateFrame("Button", nil, SettingsPanel, "UIPanelButtonTemplate")
+            copyBtn:SetText(VUI.COPY_BUTTON_LABEL)
+            copyBtn:SetWidth(110)
+            copyBtn:SetPoint("RIGHT", reloadBtn, "LEFT", -4, 0)
+            copyBtn:SetScript("OnClick", function(self) VUI.ShowCopyMenu(self) end)
+        end
         copyBtn:Hide()
     end)
 
