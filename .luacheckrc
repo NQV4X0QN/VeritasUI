@@ -18,6 +18,7 @@ globals = {
     -- Blizzard tables the suite legitimately WRITES to (RegisterManagedPanel):
     -- UIPanelWindows[name] = {...} and table.insert(UISpecialFrames, name).
     "UIPanelWindows", "UISpecialFrames",
+    "StaticPopupDialogs",   -- copy-settings confirmations (Lib)
     -- SavedVariables (declared in each .toc; WoW injects/reads these as globals)
     "VeritasUI_AdvancedOptionsDB",
     "VeritasUI_AuctionHouseDB",
@@ -51,6 +52,7 @@ read_globals = {
     "CreateFrame", "UIParent", "C_Timer", "hooksecurefunc", "InCombatLockdown",
     "issecretvalue", "debugprofilestop", "GetTime", "time", "date",
     "ReloadUI", "C_AddOns", "IsAddOnLoaded", "GetBuildInfo",
+    "StaticPopup_Show", "ACCEPT", "CANCEL",
     -- Strings / math helpers WoW exposes globally
     "strtrim", "strsplit", "strjoin", "strlower", "strfind",
     "CreateColor", "CreateVector2D", "C_ClassColor",

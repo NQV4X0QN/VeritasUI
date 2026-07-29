@@ -2,6 +2,30 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.0] - 2026-07-28
+
+You can now copy one character's settings onto another, which completes the per-character work started in the previous release. Open the options window on the character you want to change, pick any VeritasUI section, and a **Copy From…** button appears beside the existing Reload UI button. It lists your other characters; choose one, confirm, and that character's settings are applied to the one you are on.
+
+It can be undone. The current settings are saved before anything is overwritten, and an **Undo copy** entry appears in the same menu afterwards, so a copy onto the wrong character costs one click to reverse rather than reconfiguring by hand. The saved state belongs to the character it was taken from, so it will not offer to undo somebody else's copy.
+
+Two things are copied only if the source character actually has them: a module the source has never touched is left alone rather than reset, and any individual setting the source never expressed is filled from the normal default rather than left blank.
+
+Priority Rotation and Auction House are not included. Rotations are stored per specialization as well as per character, so they cannot meaningfully transfer between characters of different classes, and the Auction House holds shared price data rather than per-character preferences.
+
+The trigger is a button rather than a dropdown, deliberately. Blizzard's settings framework re-applies a saved dropdown choice every time the interface loads, which this addon has been bitten by before — a dropdown here would silently re-copy the source character over the destination on every reload and quietly destroy exactly the independence the last release added.
+
+### Added
+
+- `VeritasUI_Lib` — **Copy From… button** in the options window, beside Reload UI and visible on the same terms. Lists your other characters, confirms before overwriting, and offers a reload afterwards, since some settings only take effect after one. (`Lib.lua`)
+- `VeritasUI_Lib` — **undo for the last copy.** The destination's settings are captured before being overwritten, and an Undo entry appears in the same menu. Scoped to the character the copy was made on. (`Lib.lua`)
+- `VeritasUI_Lib` — **`/vui copy` and `/vui undocopy`** as text equivalents. These exist because the button is positioned by locating a Blizzard button by its label, which has a fallback but is not guaranteed; without them a failure there would leave the feature unreachable. (`Lib.lua`)
+
+### Notes
+
+- Which modules take part is determined by the modules themselves rather than by a list, so a module added to per-character storage in future is included automatically and cannot be forgotten. Priority Rotation and Auction House are excluded by not taking part at all, rather than by being named.
+- Settings tables are rewritten in place rather than replaced. Each module and Blizzard's settings framework both hold those tables by reference, so replacing them would leave both reading something nobody writes to — the options window would appear to work while editing a discarded copy.
+- Forty-one automated checks cover this: the copy itself, the undo, isolation between characters, that a copy cannot be triggered without confirming, that accepting offers a reload, that the undo entry only appears when there is something to undo and only on the right character, and that the feature degrades to a message rather than an error if the menu system is unavailable.
+
 ## [1.11.0] - 2026-07-28
 
 Settings are now per character. Fade Action Bars, Repair Funding and everything else in CleanSolo, Quality of Life, Zone Quests and Advanced Options are stored separately for each character, so a caster and a melee character no longer have to share one configuration, and a character who is not in a guild no longer inherits guild repair settings.

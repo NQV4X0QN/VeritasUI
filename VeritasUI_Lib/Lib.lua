@@ -37,7 +37,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.11.0"
+VUI.VERSION = "1.12.0"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -553,8 +553,92 @@ end
 --  requires /reload to apply, and clicking a button is faster
 --  than typing the command repeatedly.
 ----------------------------------------------------------------
+----------------------------------------------------------------
+--  Copy-settings UI (Settings panel button -> context menu -> confirm)
+--
+--  Shape chosen to use only components already proven in this suite: a
+--  UIPanelButtonTemplate anchored into SettingsPanel (the Reload UI button's
+--  mechanism), a MenuUtil context menu, and a StaticPopup confirmation.
+--
+--  ⚠ The TRIGGER IS A BUTTON, NEVER A DROPDOWN. Blizzard's Settings framework
+--  REPLAYS a persisted dropdown value on load — proven in this codebase: v1.6.10
+--  added a guard against that replay, silently broke CleanSolo's bar selection and
+--  was reverted in v1.6.11. A copy-on-select dropdown would therefore re-copy the
+--  source character over this one on every /reload, destroying any divergence. Do
+--  not "improve" this into a dropdown.
+----------------------------------------------------------------
+StaticPopupDialogs = StaticPopupDialogs or {}
+
+StaticPopupDialogs["VERITASUI_COPY_SETTINGS"] = {
+    text = "Copy all VeritasUI settings from |cFFFFFF00%s|r onto |cFFFFFF00%s|r?"
+        .. "\n\nThis character's current settings will be overwritten. You can undo it afterwards.",
+    button1 = ACCEPT or "Accept",
+    button2 = CANCEL or "Cancel",
+    timeout = 0, whileDead = 1, hideOnEscape = 1, showAlert = 1,
+    OnAccept = function(_, data)
+        local ok, msg = VUI.CopyCharSettings(data)
+        VUI.Print("VeritasUI", (ok and "" or "|cFFFF4444") .. msg .. (ok and "" or "|r"))
+        if ok then StaticPopup_Show("VERITASUI_COPY_RELOAD") end
+    end,
+}
+
+StaticPopupDialogs["VERITASUI_COPY_RELOAD"] = {
+    text = "Settings copied. Some of them only take effect after a reload.",
+    button1 = "Reload Now",
+    button2 = "Later",
+    timeout = 0, whileDead = 1, hideOnEscape = 1,
+    OnAccept = ReloadUI,
+}
+
+StaticPopupDialogs["VERITASUI_UNDO_COPY"] = {
+    text = "Undo the settings copy from |cFFFFFF00%s|r and restore this character's previous settings?",
+    button1 = ACCEPT or "Accept",
+    button2 = CANCEL or "Cancel",
+    timeout = 0, whileDead = 1, hideOnEscape = 1, showAlert = 1,
+    OnAccept = function()
+        local ok, msg = VUI.UndoCharSettingsCopy()
+        VUI.Print("VeritasUI", (ok and "" or "|cFFFF4444") .. msg .. (ok and "" or "|r"))
+        if ok then StaticPopup_Show("VERITASUI_COPY_RELOAD") end
+    end,
+}
+
+-- Open the source-character menu on `owner`.
+function VUI.ShowCopyMenu(owner)
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then
+        VUI.Print("VeritasUI", "|cFFFF4444Menu API unavailable|r — use |cFFFFFF00/vui copy|r instead.")
+        return
+    end
+    MenuUtil.CreateContextMenu(owner, function(_, root)
+        -- WoWUIBugs #783 workaround: an addon menu opened first in a session
+        -- otherwise assigns a tainted nil to the shared menu frame's minimumWidth,
+        -- which then surfaces as Secret Value errors in unrelated Blizzard code.
+        -- One line, defuses it. Remove when #783 is fixed.
+        root:SetMinimumWidth(180)
+        root:CreateTitle("Copy settings from")
+        local sources = VUI.ListCopySources()
+        if #sources == 0 then
+            local none = root:CreateButton("No other characters yet", function() end)
+            if none and none.SetEnabled then none:SetEnabled(false) end
+        else
+            for _, key in ipairs(sources) do
+                root:CreateButton(key, function()
+                    StaticPopup_Show("VERITASUI_COPY_SETTINGS", key, VUI.CharKey() or "?", key)
+                end)
+            end
+        end
+        local last = VUI.GetUndoableCopy()
+        if last then
+            root:CreateDivider()
+            root:CreateButton("Undo copy from " .. tostring(last.source), function()
+                StaticPopup_Show("VERITASUI_UNDO_COPY", tostring(last.source))
+            end)
+        end
+    end)
+end
+
 VUI._settingsLabels = {}
 local reloadBtn
+local copyBtn
 
 function VUI.RegisterSettingsLabel(label)
     VUI._settingsLabels[label] = true
@@ -619,6 +703,16 @@ function VUI._InitReloadButton()
             reloadBtn:SetPoint("TOPRIGHT", SettingsPanel, "TOPRIGHT", -200, -58)
         end
         reloadBtn:Hide()
+
+        -- "Copy From…" sits to the left of Reload UI, same mechanism and same
+        -- visibility rule. A button rather than a dropdown, on purpose — see the
+        -- copy-settings UI header.
+        copyBtn = CreateFrame("Button", nil, SettingsPanel, "UIPanelButtonTemplate")
+        copyBtn:SetText("Copy From…")
+        copyBtn:SetWidth(110)
+        copyBtn:SetPoint("RIGHT", reloadBtn, "LEFT", -4, 0)
+        copyBtn:SetScript("OnClick", function(self) VUI.ShowCopyMenu(self) end)
+        copyBtn:Hide()
     end)
 
     -- Poll every 0.25s to show the button only when a VUI category is active.
@@ -639,10 +733,12 @@ function VUI._InitReloadButton()
             end
         end
         reloadBtn:SetShown(show)
+        if copyBtn then copyBtn:SetShown(show) end
     end)
 
     SettingsPanel:HookScript("OnHide", function()
         if reloadBtn then reloadBtn:Hide() end
+        if copyBtn then copyBtn:Hide() end
     end)
 end
 
@@ -880,9 +976,17 @@ function VUI.CharKey()
     return realm .. "-" .. name
 end
 
+-- Registry of per-character saved variables, populated BY BindCharDB itself so the
+-- copy feature's module list cannot drift from the set of modules that actually use
+-- per-character storage. Adding a module to the scheme automatically enrols it.
+-- Value carries the module's defaults table, needed to re-seed keys the copy source
+-- happens not to have.
+VUI._charDBs = VUI._charDBs or {}
+
 -- Bind (or re-bind) this character's settings slot inside `globalName`.
 -- Returns the slot, or the legacy root if the key is not yet resolvable.
 function VUI.BindCharDB(globalName, defaults)
+    VUI._charDBs[globalName] = { defaults = defaults }
     local root = _G[globalName]
     if type(root) ~= "table" then root = {}; _G[globalName] = root end
     if type(root.chars) ~= "table" then root.chars = {} end
@@ -923,6 +1027,124 @@ function VUI.ListCharKeys(globalName)
     for k in pairs(root.chars) do out[#out + 1] = k end
     table.sort(out)
     return out
+end
+
+----------------------------------------------------------------
+--  Copy settings between characters
+--
+--  Copies every registered per-character settings table from another character
+--  onto this one, snapshotting this character's current values first so a single
+--  undo can restore them.
+--
+--  ⚠ Slots are rewritten IN PLACE rather than replaced. Each module holds its slot
+--  in a file-local `db`, and Blizzard's Settings framework holds the same table by
+--  reference (see the BindCharDB header). Swapping in a new table would leave both
+--  pointing at an orphan: the options panel would edit a table nobody reads, and
+--  every module read would return pre-copy values until a reload. Keeping table
+--  identity means the copy is live for anything that re-reads, and only CleanSolo's
+--  hook-based features need the reload they already require by policy.
+--
+--  Deliberately excluded: PriorityRotation (its rotations are keyed per character
+--  AND per specialization, so they cannot map onto a different class) and
+--  AuctionHouse (account-wide market data, nothing character-specific). Neither
+--  registers with BindCharDB, so both are excluded automatically rather than by a
+--  list that could rot.
+----------------------------------------------------------------
+
+-- Characters that have a slot in ANY registered module, excluding this one.
+function VUI.ListCopySources()
+    local here, seen, out = VUI.CharKey(), {}, {}
+    for globalName in pairs(VUI._charDBs) do
+        for _, key in ipairs(VUI.ListCharKeys(globalName)) do
+            if key ~= here and not seen[key] then
+                seen[key] = true
+                out[#out + 1] = key
+            end
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+local function LibDB()
+    if type(_G.VeritasUI_LibDB) ~= "table" then _G.VeritasUI_LibDB = {} end
+    return _G.VeritasUI_LibDB
+end
+
+-- Rewrite `slot` in place to hold exactly `values`, then re-seed anything missing
+-- from `defaults`. Table identity is preserved; see the section header.
+local function OverwriteSlot(slot, values, defaults)
+    for k in pairs(slot) do slot[k] = nil end
+    for k, v in pairs(values) do slot[k] = VUI.DeepCopy(v) end
+    if defaults then
+        for k, v in pairs(defaults) do
+            if slot[k] == nil then slot[k] = VUI.DeepCopy(v) end
+        end
+    end
+end
+
+-- Returns ok, message.
+function VUI.CopyCharSettings(sourceKey)
+    local destKey = VUI.CharKey()
+    if not destKey then return false, "This character is not identified yet." end
+    if not sourceKey or sourceKey == "" then return false, "No source character given." end
+    if sourceKey == destKey then return false, "That is this character." end
+
+    local snapshot, copied = {}, 0
+    for globalName, info in pairs(VUI._charDBs) do
+        local root = _G[globalName]
+        local src  = root and root.chars and root.chars[sourceKey]
+        local dest = root and root.chars and root.chars[destKey]
+        -- A module the SOURCE has never populated is skipped rather than reset to
+        -- defaults: the user asked to copy a character's settings, not to wipe
+        -- settings that character never expressed an opinion about.
+        if src and dest then
+            snapshot[globalName] = VUI.DeepCopy(dest)
+            OverwriteSlot(dest, src, info and info.defaults)
+            copied = copied + 1
+        end
+    end
+
+    if copied == 0 then
+        return false, "Nothing to copy from " .. sourceKey .. "."
+    end
+
+    LibDB().lastCopy = {
+        source = sourceKey,
+        dest   = destKey,
+        when   = time(),
+        snapshot = snapshot,
+    }
+    return true, ("Copied settings from |cFFFFFF00%s|r (%d module%s)."):format(
+        sourceKey, copied, copied == 1 and "" or "s")
+end
+
+-- Is there an undoable copy for THIS character?
+function VUI.GetUndoableCopy()
+    local last = LibDB().lastCopy
+    if type(last) ~= "table" then return nil end
+    if last.dest ~= VUI.CharKey() then return nil end
+    return last
+end
+
+-- Returns ok, message.
+function VUI.UndoCharSettingsCopy()
+    local last = VUI.GetUndoableCopy()
+    if not last then return false, "Nothing to undo on this character." end
+    local restored = 0
+    for globalName, values in pairs(last.snapshot or {}) do
+        local root = _G[globalName]
+        local dest = root and root.chars and root.chars[last.dest]
+        if dest then
+            local info = VUI._charDBs[globalName]
+            OverwriteSlot(dest, values, info and info.defaults)
+            restored = restored + 1
+        end
+    end
+    LibDB().lastCopy = nil
+    if restored == 0 then return false, "Nothing could be restored." end
+    return true, ("Restored this character's settings from before the copy (%d module%s)."):format(
+        restored, restored == 1 and "" or "s")
 end
 
 ----------------------------------------------------------------
@@ -998,10 +1220,38 @@ SlashCmdList["VERITASUI"] = function(msg)
         VUI.Print("VeritasUI", "Blocked-action log cleared.")
     elseif cmd == "hover" then
         VUI.ProbeHoverChain()
+    elseif cmd == "copy" or cmd:match("^copy%s") then
+        -- Text fallback for the Settings-panel button. The button is anchored by
+        -- searching for Blizzard's "Defaults" button, which has a fallback anchor but
+        -- is not guaranteed to be found; without this there would be no way to reach
+        -- the feature if that search ever failed.
+        local target = (msg or ""):match("^%s*[Cc][Oo][Pp][Yy]%s+(.-)%s*$")
+        if not target or target == "" then
+            local sources = VUI.ListCopySources()
+            if #sources == 0 then
+                VUI.Print("VeritasUI", "No other characters have saved settings yet.")
+            else
+                VUI.Print("VeritasUI", "Copy settings from which character?")
+                for _, key in ipairs(sources) do
+                    print(("   /vui copy %s"):format(key))
+                end
+            end
+        else
+            StaticPopup_Show("VERITASUI_COPY_SETTINGS", target, VUI.CharKey() or "?", target)
+        end
+    elseif cmd == "undocopy" then
+        local last = VUI.GetUndoableCopy()
+        if not last then
+            VUI.Print("VeritasUI", "Nothing to undo on this character.")
+        else
+            StaticPopup_Show("VERITASUI_UNDO_COPY", tostring(last.source))
+        end
     else
         VUI.Print("VeritasUI", "Version " .. VUI.VERSION .. " loaded.")
         VUI.Print("VeritasUI", "|cFFFFFF00/vui taint|r — show recorded blocked-action events.")
         VUI.Print("VeritasUI", "|cFFFFFF00/vui taint clear|r — reset that log.")
         VUI.Print("VeritasUI", "|cFFFFFF00/vui hover|r — dump the parent chain under the cursor (5s delay).")
+        VUI.Print("VeritasUI", "|cFFFFFF00/vui copy|r — copy another character's settings onto this one.")
+        VUI.Print("VeritasUI", "|cFFFFFF00/vui undocopy|r — undo the last copy on this character.")
     end
 end
