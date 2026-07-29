@@ -2,6 +2,31 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.9.17] - 2026-07-28
+
+Item levels shown on icons now match the tooltip on scaling gear. A Timewalking crossbow whose tooltip read 78 was showing 522 on its icon; three items in the same bag were similarly inflated. The cause was the API the overlay has always used, `GetDetailedItemLevelInfo`, which on a level-scaling item returns the scaling **ceiling** rather than the item's level as it stands. `GetItemInfo`'s item level field returns the same number the tooltip does, so that is now the source.
+
+This was changed on measurement, not on reasoning. Both candidate sources were dumped side by side for two items: the scaling crossbow, where the old source returned 522 against a tooltip of 78, and — the case that actually mattered — an upgrade-track epic on a max-level character with a base level of 44 and an effective level of 276. The specific risk of this change was that the new source would report base levels and quietly wreck every upgraded piece on a geared character. It reads 276 there, matching both the tooltip and the old source, so it is upgrade-aware and that risk is disproven. The old source is only wrong in the scaling case.
+
+Reading the tooltip's own data was also measured and rejected. It returns the correct answer, but costs between 11 and 22 ms across a full bank depending on the item — more than a whole frame at 60 fps — and would require parsing translated text. There is no reason to pay that for a number a plain numeric call already gets right.
+
+This is very likely the same problem that removed quest reward item levels back in v1.1.0, whose stated reason was a base-versus-effective item level mismatch. Restoring them is now plausible, but is not attempted here and would need its own testing.
+
+Unrelated and still unverified: the bank and warband bank fixes shipped in v1.9.16 have not yet been confirmed in game. A screenshot taken as confirmation turned out to show backpack bags, a surface that never had the problem, and that reading was withdrawn.
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **item levels on the icon now match the tooltip for level-scaling gear** such as Timewalking rewards, heirlooms and other scaled loot. The overlay read the scaling ceiling instead of the item's current level, so a crossbow whose tooltip said 78 displayed 522. It now reads the same field the tooltip does. Verified against an upgrade-track epic as well, where the previous source was already correct, so geared characters are unaffected. (`QualityOfLife.lua`)
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **`/qol ilvl` is now a permanent diagnostic** rather than a temporary one. It was added to decide this fix and has done so, but "this number looks wrong" recurs in this feature by nature — the correct source is only knowable by comparing against the tooltip — and the suite already keeps equivalent permanent probes for the Auction House. It reads state and changes nothing. Its labels now point at the source actually in use. (`QualityOfLife.lua`)
+
+### Notes
+
+- Deliberately not done: `GetDetailedItemLevelInfo` was **not** kept as a fallback for when the new source returns nothing. Nothing returned means the item's record is not cached yet, which the existing retry already handles, whereas a fallback would put the wrong number back on precisely the items this fixes. The reasoning and the measured values are recorded in the code and in the project's probe reference.
+- Two regression tests were added for this, and checked against both previous releases first, where they reproduce the reported value exactly. A second test covers the upgraded case that was already working, so the change is known not to trade one fault for another.
+
 ## [1.9.16] - 2026-07-28
 
 Four item-level display faults turned out to be one defect. Numbers appearing over empty bank slots, numbers rendering white instead of the item's rarity colour, item levels on grey junk that was supposed to be excluded, and — separately — a meaningless `1` on cosmetic gear at vendors. The first three all trace to the cold-cache retry added in v1.8.0 to make bank overlays appear on the first open of a session, which predates the recent audit and matches where this was first noticed.

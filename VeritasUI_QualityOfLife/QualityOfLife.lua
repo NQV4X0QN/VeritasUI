@@ -655,7 +655,36 @@ local function SetupItemLevels()
         if not equippable then HideOverlay(btn); return end
         if rawID and SKIP_ITEMS[rawID] then HideOverlay(btn); return end
         if IsCosmetic(itemIDOrLink) then HideOverlay(btn); return end
-        local ok, ilvl = pcall(C_Item.GetDetailedItemLevelInfo, itemIDOrLink)
+        -- ITEM LEVEL SOURCE — GetItemInfo's index 4, NOT
+        -- C_Item.GetDetailedItemLevelInfo. Changed in v1.9.17 on measurement, not
+        -- reasoning; the numbers are recorded in PROBE_LIBRARY_AND_REFERENCE.md §2
+        -- under /qol ilvl, dated 2026-07-28.
+        --
+        -- GetDetailedItemLevelInfo is WRONG on LEVEL-SCALING items: it returns the
+        -- scaling CEILING. A Timewalking crossbow (226167) whose tooltip read 78
+        -- returned 522. That was the reported "icon disagrees with the tooltip"
+        -- bug, and it also appears to be the same class of problem that got quest
+        -- reward item levels removed in v1.1.0 ("base vs. effective ilvl
+        -- mismatch", CHANGELOG entry for 1.1.0).
+        --
+        -- Index 4 matched the tooltip on BOTH measured cases, including the hard
+        -- one: an upgrade-track epic (250032) with a base of 44 and an effective
+        -- 276 read 276, so index 4 is upgrade-aware rather than a naive base read.
+        -- That was the specific risk of this change and it is disproven —
+        -- GetDetailedItemLevelInfo's whole purpose is reporting upgraded levels,
+        -- so it agrees there too; it is only the scaling case that diverges.
+        --
+        -- ⚠ Do NOT "restore" GetDetailedItemLevelInfo here, and do NOT add it as a
+        -- fallback when index 4 is nil: nil means the record is not cached, which
+        -- the retry below already handles correctly, whereas a fallback would
+        -- reintroduce the 522 on exactly the items this fixes.
+        --
+        -- The C_TooltipInfo route (reading the tooltip's own data) was measured and
+        -- REJECTED: it returns the same answer but costs 0.055–0.110 ms/call,
+        -- i.e. ~11–22 ms per 200 bank slots, over a full frame at 60 fps, and it
+        -- would need localized string parsing. No reason to pay that for a value a
+        -- plain numeric call already gets right.
+        local ok, _, _, _, ilvl = pcall(C_Item.GetItemInfo, itemIDOrLink)
         if not ok or not ilvl then
             -- nil ilvl on equippable gear = cold item-data cache, not "no ilvl".
             -- Hide for now; re-run this button once when the record loads. noRetry
@@ -1537,8 +1566,11 @@ end)
 --  So this dumps both, side by side, plus C_TooltipInfo's answer (the modern
 --  structured tooltip-data API — reading the tooltip without showing one) and
 --  the cost of that call, since it would have to run across ~200 bank slots.
---  Nothing here changes behaviour; it exists to decide the follow-up on evidence.
---  Remove once that decision is made (probe-then-remove, per module practice).
+--  RETAINED as a permanent diagnostic (v1.9.17), not removed after answering its
+--  original question. Two reasons: "this number looks wrong" recurs in this
+--  feature by nature, since the correct source is only knowable by comparison
+--  against the tooltip; and the suite already keeps equivalent permanent probes
+--  (/ah check, /ah find, /ah diag). It reads nothing and changes nothing.
 ----------------------------------------------------------------
 local function DumpIlvlDiag(link)
     local TAG = "Quality of Life"
@@ -1560,7 +1592,7 @@ local function DumpIlvlDiag(link)
 
     -- The comparison that matters: link (effective) vs bare itemID (base).
     local okL, byLink = pcall(C_Item.GetDetailedItemLevelInfo, link)
-    print(("   GetDetailedItemLevelInfo(link)   = %s   <- what the overlay uses"):format(
+    print(("   GetDetailedItemLevelInfo(link)   = %s   <- WRONG on scaling items (ceiling)"):format(
         tostring(okL and byLink)))
     if okI and itemID then
         local okD, byID = pcall(C_Item.GetDetailedItemLevelInfo, itemID)
@@ -1568,7 +1600,8 @@ local function DumpIlvlDiag(link)
             tostring(okD and byID)))
     end
     local okG, _, _, _, giLvl = pcall(C_Item.GetItemInfo, link)
-    print(("   GetItemInfo ilvl (index 4)       = %s"):format(tostring(okG and giLvl)))
+    print(("   GetItemInfo ilvl (index 4)       = %s   <- what the overlay uses"):format(
+        tostring(okG and giLvl)))
 
     print(("   IsCosmeticItem = %s   (API present: %s)"):format(
         tostring(C_Item and C_Item.IsCosmeticItem
