@@ -37,7 +37,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.10.1"
+VUI.VERSION = "1.11.0"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -829,6 +829,101 @@ taintFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
         end
     end
 end)
+
+----------------------------------------------------------------
+--  Per-character settings storage
+--
+--  Settings live in the ACCOUNT-WIDE saved variable, keyed by "Realm-Character",
+--  with each character reading and writing only its own slot:
+--
+--      VeritasUI_<Module>DB = {
+--          chars = { ["Hyjal-Khalthazar"] = { ...settings... }, ... },
+--          <legacy top-level keys>        -- pre-1.11 account-wide layout, RETAINED
+--      }
+--
+--  ⚠ Deliberately NOT `SavedVariablesPerCharacter`. Those files are only loaded
+--  for the character you are logged into, so no character could ever read
+--  another's settings — which makes copying settings between characters
+--  impossible by construction. Account-wide-keyed is the only shape that supports
+--  it. Do not "simplify" this to SavedVariablesPerCharacter.
+--
+--  ⚠ TIMING: the key needs UnitName("player"), whose availability at
+--  ADDON_LOADED is NOT established. PriorityRotation — the one module already
+--  per-character — sidesteps this by never resolving its key at ADDON_LOADED
+--  (PR:InitDB only creates the profiles table) and first resolving at
+--  PLAYER_LOGIN. This follows that proven pattern: BindCharDB returns the LEGACY
+--  ROOT when no key is available, so a caller may bind at ADDON_LOADED for
+--  continuity and MUST re-bind at PLAYER_LOGIN to land on the real slot.
+--
+--  ⚠ Settings.RegisterAddOnSetting takes the TABLE as its 4th argument, so the
+--  Settings framework holds a direct reference. A module registering settings
+--  must do so AFTER its PLAYER_LOGIN re-bind and must pass the SLOT, not the
+--  root — otherwise every change made in the options panel writes to the
+--  account-wide root and per-character storage silently does nothing.
+--  AuctionHouse already registered at PLAYER_LOGIN; that is the precedent.
+----------------------------------------------------------------
+function VUI.DeepCopy(t)
+    if type(t) ~= "table" then return t end
+    local c = {}
+    for k, v in pairs(t) do
+        c[k] = (type(v) == "table") and VUI.DeepCopy(v) or v
+    end
+    return c
+end
+
+-- "Realm-Character", or nil if the player's identity is not available yet.
+function VUI.CharKey()
+    local name  = UnitName and UnitName("player")
+    local realm = GetRealmName and GetRealmName()
+    if type(name) ~= "string" or name == "" then return nil end
+    if type(realm) ~= "string" or realm == "" then return nil end
+    return realm .. "-" .. name
+end
+
+-- Bind (or re-bind) this character's settings slot inside `globalName`.
+-- Returns the slot, or the legacy root if the key is not yet resolvable.
+function VUI.BindCharDB(globalName, defaults)
+    local root = _G[globalName]
+    if type(root) ~= "table" then root = {}; _G[globalName] = root end
+    if type(root.chars) ~= "table" then root.chars = {} end
+
+    local key = VUI.CharKey()
+    if not key then return root end
+
+    local slot = root.chars[key]
+    if not slot then
+        -- First bind for this character. Seed from the LEGACY top-level keys so it
+        -- inherits whatever account-wide setup was in effect rather than bare
+        -- defaults — without this, every character resets on upgrade.
+        --
+        -- The legacy block is deliberately NOT deleted: it remains the seed for
+        -- characters that have not logged in since the change. Cost is a few
+        -- hundred bytes; the alternative is those characters silently resetting.
+        slot = {}
+        for k, v in pairs(root) do
+            if k ~= "chars" then slot[k] = VUI.DeepCopy(v) end
+        end
+        root.chars[key] = slot
+    end
+
+    if defaults then
+        for k, v in pairs(defaults) do
+            if slot[k] == nil then slot[k] = VUI.DeepCopy(v) end
+        end
+    end
+    return slot
+end
+
+-- Characters that have a saved slot in `globalName`, sorted. Used by the
+-- copy-settings feature; also handy for diagnostics.
+function VUI.ListCharKeys(globalName)
+    local root = _G[globalName]
+    local out = {}
+    if type(root) ~= "table" or type(root.chars) ~= "table" then return out end
+    for k in pairs(root.chars) do out[#out + 1] = k end
+    table.sort(out)
+    return out
+end
 
 ----------------------------------------------------------------
 --  /vui hover — mouse-focus parent-chain dump (diagnostic)

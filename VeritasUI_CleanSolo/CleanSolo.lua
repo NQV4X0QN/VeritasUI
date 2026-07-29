@@ -508,7 +508,7 @@ local function InitializeOptions()
             category,
             ADDON_NAME .. "_" .. opt.key,
             opt.key,
-            VeritasUI_CleanSoloDB,
+            db,                      -- the per-character SLOT (see VUI.BindCharDB)
             type(defaults[opt.key]),
             opt.name,
             defaults[opt.key]
@@ -541,7 +541,7 @@ local function InitializeOptions()
         category,
         ADDON_NAME .. "_fadeActionBars",
         "fadeActionBarsLabel",
-        VeritasUI_CleanSoloDB,
+        db,                          -- the per-character SLOT (see VUI.BindCharDB)
         "string",
         "Fade Action Bars",
         "None"
@@ -622,11 +622,24 @@ frame:SetScript("OnEvent", function(self, event, arg1)
                 VeritasUI_CleanSoloDB[k] = (type(v) == "table") and DeepCopy(v) or v
             end
         end
+        -- Bind the legacy ROOT here so nothing in the ADDON_LOADED -> PLAYER_LOGIN
+        -- window sees a nil db (today's behaviour, unchanged). The real
+        -- per-character slot is bound at PLAYER_LOGIN, once UnitName("player") is
+        -- reliably available -- see the TIMING note on VUI.BindCharDB.
         db = VeritasUI_CleanSoloDB
-        InitializeOptions()
+        -- InitializeOptions deliberately does NOT run here any more:
+        -- Settings.RegisterAddOnSetting captures the TABLE it is given, so it must
+        -- receive the per-character slot, which does not exist until PLAYER_LOGIN.
+        -- Registering here would point every checkbox at the account-wide root and
+        -- per-character settings would silently not work.
         self:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
+        -- Re-bind to this character's slot now that the identity is available, then
+        -- register the options panel against that slot. Order matters: every read
+        -- below and every Settings control must see the same table.
+        db = VUI.BindCharDB("VeritasUI_CleanSoloDB", defaults)
+        InitializeOptions()
         if db.hideSocialButton    then HideSocialButton()    end
         if db.fadeChatTabs        then SetupChatTabFading()  end
         if db.transparentChatBG   then SetupTransparentChatBG() end

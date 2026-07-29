@@ -2,6 +2,29 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.11.0] - 2026-07-28
+
+Settings are now per character. Fade Action Bars, Repair Funding and everything else in CleanSolo, Quality of Life, Zone Quests and Advanced Options are stored separately for each character, so a caster and a melee character no longer have to share one configuration, and a character who is not in a guild no longer inherits guild repair settings.
+
+Nothing resets. Each character, on its first login after updating, inherits whatever account-wide configuration was in effect, so the change is invisible until you deliberately set something differently on one character. The old account-wide values are kept rather than deleted, because they are the starting point for any character you have not logged into yet — without that, those characters would silently drop to defaults the next time you played them.
+
+Two modules were left alone on purpose. Priority Rotation has always been per character *and* per specialization through its profile keys, so converting it would change nothing and risk stranding rotations. The Auction House saved file is 3.6 MB of scanned price data — market information rather than a preference — and making that per character would either duplicate it for every character or force each one to run its own full scan.
+
+This is the first half of the work. The second half is a way to copy one character's settings onto another, which is why the storage is account-wide-keyed rather than using the game's per-character files: those are only loaded for the character you are playing, so no character could ever read another's settings and copying would be impossible. That half comes next, once this is confirmed working.
+
+One visible timing change: the four modules' options panels are now created a moment later in the login sequence, at the same point the Auction House module has always created its own. This is required — Blizzard's settings framework holds a direct reference to whichever table it is given, so it has to be handed the character's own settings rather than the shared ones, and the character's identity is not reliably known any earlier.
+
+### Changed
+
+- `VeritasUI_CleanSolo` / `VeritasUI_QualityOfLife` / `VeritasUI_ZoneQuests` / `VeritasUI_AdvancedOptions` — **settings are stored per character.** Each character reads and writes its own set; changing one no longer changes the others. (`CleanSolo.lua`, `QualityOfLife.lua`, `ZoneQuests.lua`, `Core.lua`)
+- `VeritasUI_Lib` — **new shared storage helper** used by all four, so they cannot drift apart in how they resolve, migrate or seed a character's settings. (`Lib.lua`)
+
+### Notes
+
+- `VeritasUI_PriorityRotation` and `VeritasUI_AuctionHouse` are deliberately unchanged, for the reasons above.
+- The three modules that use Blizzard's settings framework now register their panels after the character's settings exist, and hand it those settings. Registering earlier, against the shared table, would have let every checkbox write to the shared copy — the feature would have appeared to work while doing nothing. All twenty-three registrations across those modules are checked automatically for this.
+- Verified by eighteen checks on the storage itself and eleven driving the real modules through a login, covering inheritance on first login, independence between characters, repeated binding, and that a character's changes never leak into another's or into the built-in defaults.
+
 ## [1.10.1] - 2026-07-28
 
 Fading action bars no longer vanish while you are using a flyout. Buttons that open a set of sub-abilities — Pet Utility, mage teleports, profession tools, warlock demons — put those sub-abilities in a panel that opens above the bar. Moving the cursor off the button and into that panel counted as leaving the bar entirely, so the bar faded a fraction of a second later and took the sub-abilities with it, leaving a tooltip floating over nothing.

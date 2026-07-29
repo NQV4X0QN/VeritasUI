@@ -48,7 +48,12 @@ local db
 
 function AO:InitDB()
     VeritasUI_AdvancedOptionsDB = VeritasUI_AdvancedOptionsDB or {}
-    db = VeritasUI_AdvancedOptionsDB
+    -- Called twice: at ADDON_LOADED (binds the legacy root, so nothing sees a nil
+    -- db) and again at PLAYER_LOGIN (binds this character's slot, once
+    -- UnitName("player") is reliably available). BindCharDB returns the root when
+    -- the key is unresolvable, so the first call is a no-op equivalent to the old
+    -- behaviour and the second lands on the slot. Idempotent by design.
+    db = VUI.BindCharDB("VeritasUI_AdvancedOptionsDB", defaults)
     for k, v in pairs(defaults) do
         if db[k] == nil then
             -- Shallow-copy table defaults so the shared `defaults` table above is
@@ -215,6 +220,13 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         ef:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
+        -- Re-bind to this character's slot now that the identity is available. AO
+        -- does NOT use the Blizzard Settings framework for its values (its own
+        -- window reads `db` at call time), so unlike the other three modules there
+        -- is no captured-table constraint here -- only the re-bind. InitDB has
+        -- already seeded defaults into the legacy root, which BindCharDB then uses
+        -- as this character's seed.
+        AO:InitDB()
         VUI.Print("Advanced Options",
             format("v%s loaded — |cFFFFFF00/ao|r", AO.VERSION))
         ef:UnregisterEvent("PLAYER_LOGIN")

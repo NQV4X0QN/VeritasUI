@@ -1474,7 +1474,7 @@ local function InitializeOptions()
     local function AddCheckbox(key, name, tip, onChange)
         local setting = Settings.RegisterAddOnSetting(
             category, ADDON_NAME .. "_" .. key, key,
-            VeritasUI_QualityOfLifeDB, type(defaults[key]), name, defaults[key])
+            db, type(defaults[key]), name, defaults[key])   -- per-character SLOT
         setting:SetValueChangedCallback(function(_, value)
             -- Live variant: every QoL toggle applies mid-session (v1.6.28
             -- pattern) — the old PrintOnOff instructed a needless /reload.
@@ -1527,7 +1527,7 @@ local function InitializeOptions()
         category,
         ADDON_NAME .. "_repairFunding",
         "repairFunding",
-        VeritasUI_QualityOfLifeDB,
+        db,                                -- per-character SLOT (see VUI.BindCharDB)
         type(defaults.repairFunding),
         "Repair Funding",
         defaults.repairFunding
@@ -1573,11 +1573,19 @@ frame:SetScript("OnEvent", function(self, event, arg1)
                 VeritasUI_QualityOfLifeDB[k] = v
             end
         end
+        -- Legacy ROOT bound here so nothing in the ADDON_LOADED -> PLAYER_LOGIN
+        -- window sees a nil db (unchanged behaviour). The per-character slot is
+        -- bound at PLAYER_LOGIN -- see the TIMING note on VUI.BindCharDB.
         db = VeritasUI_QualityOfLifeDB
-        InitializeOptions()
+        -- InitializeOptions moved to PLAYER_LOGIN: Settings.RegisterAddOnSetting
+        -- captures the table it is handed, so it must receive the per-character
+        -- slot, which does not exist yet here.
         self:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
+        -- Re-bind to this character's slot, then register options against it.
+        db = VUI.BindCharDB("VeritasUI_QualityOfLifeDB", defaults)
+        InitializeOptions()
         -- Belt-and-suspenders: if we crashed or disconnected while the AFK
         -- screen was up, UIParent alpha and MinimapCluster are left hidden.
         -- Gated on the persisted dirty flag rather than run unconditionally:

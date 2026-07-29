@@ -307,7 +307,7 @@ local function InitializeOptions()
         category,
         ADDON_NAME .. "_enabled",
         "enabled",
-        VeritasUI_ZoneQuestsDB,
+        db,                                -- per-character SLOT (see VUI.BindCharDB)
         type(DEFAULTS.enabled),
         "Enable Zone Filtering",
         DEFAULTS.enabled
@@ -349,7 +349,7 @@ local function InitializeOptions()
             category,
             ADDON_NAME .. "_" .. opt.key,
             opt.key,
-            VeritasUI_ZoneQuestsDB,
+            db,                                -- per-character SLOT (see VUI.BindCharDB)
             type(DEFAULTS[opt.key]),
             opt.name,
             DEFAULTS[opt.key]
@@ -415,8 +415,13 @@ ef:SetScript("OnEvent", function(_, event, arg1)
                 VeritasUI_ZoneQuestsDB.manualWatched = {}
             end
         end
+        -- Legacy ROOT bound here so nothing in the ADDON_LOADED -> PLAYER_LOGIN
+        -- window sees a nil db (unchanged behaviour). The per-character slot is
+        -- bound at PLAYER_LOGIN -- see the TIMING note on VUI.BindCharDB.
         db = VeritasUI_ZoneQuestsDB
-        InitializeOptions()
+        -- InitializeOptions moved to PLAYER_LOGIN: Settings.RegisterAddOnSetting
+        -- captures the table it is handed, so it must receive the per-character
+        -- slot, which does not exist yet here.
         ef:UnregisterEvent("ADDON_LOADED")
         return
     end
@@ -424,6 +429,9 @@ ef:SetScript("OnEvent", function(_, event, arg1)
     if not db then return end
 
     if event == "PLAYER_LOGIN" then
+        -- Re-bind to this character's slot, then register options against it.
+        db = VUI.BindCharDB("VeritasUI_ZoneQuestsDB", DEFAULTS)
+        InitializeOptions()
         C_Timer.After(2.0, function()
             SnapshotWatched()
             SyncTracking(false)
