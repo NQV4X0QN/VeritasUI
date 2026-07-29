@@ -242,15 +242,13 @@ SLASH_VERITASUI_AO2 = "/advancedoptions"
 SlashCmdList["VERITASUI_AO"] = function(msg)
     local cmd = strtrim(msg or ""):lower()
 
-    if cmd == "settings" then
-        if AO.settingsCategoryID then
-            Settings.OpenToCategory(AO.settingsCategoryID)
-        end
-
-    elseif cmd == "help" then
+    -- No "settings" subcommand: this module has no Options -> AddOns entry (see the
+    -- header in Settings.lua). "/ao settings" therefore falls through to the else
+    -- branch and toggles the window, which is where the settings actually are --
+    -- deliberately graceful rather than a dead command.
+    if cmd == "help" then
         VUI.Print("Advanced Options", "Commands:")
         VUI.Print("Advanced Options", "  |cFFFFFF00/ao|r           — toggle window")
-        VUI.Print("Advanced Options", "  |cFFFFFF00/ao settings|r  — open settings panel")
         VUI.Print("Advanced Options", "  |cFFFFFF00/ao help|r      — show this help")
 
     else

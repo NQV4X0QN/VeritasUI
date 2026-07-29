@@ -2,6 +2,28 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.2] - 2026-07-28
+
+Advanced Options no longer appears in Options → AddOns. Its entry there was empty, and had been from the start: the code registered a category with no controls in it purely so the module could be found in that list. A blank panel reads as something broken rather than as a way to discover a feature, so it is gone. Every setting the module has is in its own window, opened with `/ao` or from the AddOn button menu, and nothing has moved.
+
+`/ao settings` no longer has anything to open, so it now opens the window instead of doing nothing, and it is no longer listed in `/ao help`.
+
+Five modules still appear in Options → AddOns, so the Copy From… control added in the last two releases is reachable in the same places it was before.
+
+### Removed
+
+- `VeritasUI_AdvancedOptions` — **the empty Options → AddOns entry.** It contained no settings and existed only to be listed. (`Settings.lua`, `Core.lua`)
+
+### Changed
+
+- `VeritasUI_AdvancedOptions` — **`/ao settings` opens the window** rather than an options page that no longer exists, and is dropped from the help text. (`Core.lua`)
+
+### Notes
+
+- The AddOn button menu was already opening the window rather than the options page, so it is unaffected.
+- If an entry there is ever wanted again, it should have real content — at minimum a button that opens the window — rather than an empty category. That is written into the file so the stub is not simply reinstated.
+- Priority Rotation keeps its entry: sparse, but it holds a working Enable toggle, so it is not blank. Left untouched deliberately — that module carries outsized regression risk and there was no defect to fix.
+
 ## [1.12.1] - 2026-07-28
 
 The character list for copying settings now opens in the same place every time, directly beneath the control, instead of appearing wherever you happened to click. The previous version used a right-click style menu, and those anchor to the mouse pointer by design, so clicking the left of the button opened it further left.

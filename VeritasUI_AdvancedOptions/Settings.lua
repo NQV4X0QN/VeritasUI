@@ -1,11 +1,18 @@
 -- VeritasUI_AdvancedOptions / Settings.lua
--- Main window (PortraitFrameTemplate + tabs) + native Blizzard Settings entry.
+-- Main window (PortraitFrameTemplate + tabs).
+--
+-- This module deliberately has NO entry in Options -> AddOns. It used to register
+-- an empty category purely so the module could be "discovered" there, but a blank
+-- panel reads as broken rather than as discovery, which is worse than no panel at
+-- all (owner-reported 2026-07-28). Every setting this module has lives in its own
+-- window; there is nothing a Settings category could usefully show.
+--
+-- If an entry is ever wanted again, give it real content -- at minimum a button
+-- that opens the window -- rather than reinstating an empty category.
 
 local _, AO = ...
 local VUI = _G.VeritasUI
 if not VUI then return end
-
-local SETTINGS_LABEL = "Advanced Options"
 
 local PNL_W     = 520
 local PNL_H     = 660
@@ -135,24 +142,6 @@ local function BuildMainWindow()
 end
 
 ----------------------------------------------------------------
---  Native Blizzard Settings Panel
---
---  Registers a simple category in Options → AddOns so users
---  can discover the module exists. The actual UI is the custom
---  PortraitFrame window opened via /ao.
-----------------------------------------------------------------
-local function BuildNativeSettingsPanel()
-    local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
-
-    -- No toggleable settings yet — the panel just exists as a
-    -- discovery mechanism. We can add global on/off toggles later.
-
-    Settings.RegisterAddOnCategory(category)
-    AO.settingsCategoryID = category:GetID()
-    VUI.RegisterSettingsLabel(SETTINGS_LABEL)
-end
-
-----------------------------------------------------------------
 --  Startup
 ----------------------------------------------------------------
 local initFrame = CreateFrame("Frame")
@@ -162,12 +151,6 @@ initFrame:SetScript("OnEvent", function()
     if not ok1 then
         VUI.Print("Advanced Options",
             "|cFFFF4444Window error:|r " .. tostring(err1))
-    end
-
-    local ok2, err2 = pcall(BuildNativeSettingsPanel)
-    if not ok2 then
-        VUI.Print("Advanced Options",
-            "|cFFFF4444Settings error:|r " .. tostring(err2))
     end
 
     initFrame:UnregisterAllEvents()
