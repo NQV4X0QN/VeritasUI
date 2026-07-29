@@ -2,6 +2,27 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.10.1] - 2026-07-28
+
+Fading action bars no longer vanish while you are using a flyout. Buttons that open a set of sub-abilities — Pet Utility, mage teleports, profession tools, warlock demons — put those sub-abilities in a panel that opens above the bar. Moving the cursor off the button and into that panel counted as leaving the bar entirely, so the bar faded a fraction of a second later and took the sub-abilities with it, leaving a tooltip floating over nothing.
+
+The visibility check only ever looked at the bar itself and the buttons directly on it. It now also recognises anything belonging to the bar however deeply nested, and separately recognises an open flyout by name. Both are included on purpose rather than picking one: which of them applies depends on how the game attaches a flyout to the button that opened it, and that was not established before shipping, so neither is depended on alone. If both somehow miss, a new command reports the actual structure under the cursor so the gap can be closed by measurement instead of another guess.
+
+The extra checks only run while a bar is already visible. A flyout cannot be opened without first hovering the bar, so on the idle path — which is most of the time — the cost is unchanged.
+
+### Fixed
+
+- `VeritasUI_Lib` / `VeritasUI_CleanSolo` — **a fading action bar stays visible while the cursor is inside one of its flyouts.** Previously the bar faded mid-interaction because the flyout is not one of the bar's own buttons, hiding the sub-abilities the player was reaching for. Applies to every fading bar and to every kind of flyout. (`Lib.lua`)
+
+### Added
+
+- `VeritasUI_Lib` — **`/vui hover`** reports the element under the cursor and its full chain of parents, plus whether a flyout is currently open. Sampling is delayed five seconds, because running a command necessarily puts the cursor in the chat box; move onto the element and hold still. Added so that "the bar still faded on this thing" is one measurement rather than a guessing exercise. (`Lib.lua`)
+
+### Notes
+
+- Two internal flags had to be declared earlier in the file than before, because the visibility check now reads one of them. A local declared after a function that references it is silently treated as a missing global, which is the same trap that broke the waypoint command once before; it is called out in place so it is not undone.
+- Eight automated checks cover this, including the case where the flyout is attached to the button and the case where it is not, and a check that the idle path still does not consult the cursor. They were run against the previous release first, where the three flyout checks fail with the bar fully faded — the reported behaviour — while the unrelated fade-in and fade-out checks pass on both, so the change is known not to trade one fault for another.
+
 ## [1.10.0] - 2026-07-28
 
 The AFK screen is no longer all-or-nothing. Open your character sheet, your bags, the map, the Escape menu or anything else and it appears over the AFK screen; close it and the screen is clean again. Press Enter and the chat window comes up with the typing box so you can read and answer; send the message, or press Escape, and both disappear.

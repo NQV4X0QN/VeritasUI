@@ -37,7 +37,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.10.0"
+VUI.VERSION = "1.10.1"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -174,6 +174,28 @@ local HOVER_FADE_OUT  = 0.5
 local HOVER_FADE_POLL_RATE = 0.1    -- ~10 Hz always
 local HOVER_LEAVE_GRACE = 0.15 -- seconds after last "not over" before fading
 
+-- Widgets that belong to a bar but are NOT direct children of it.
+--
+-- Spell flyouts — Pet Utility, mage teleports, profession tools, warlock demons —
+-- open ABOVE the button that spawned them. Neither the bar nor its direct children
+-- report the mouse while the cursor is inside one, so the grace period expired and
+-- the bar faded mid-interaction, taking the flyout's icons with it (they inherit
+-- the bar's alpha). Reported 2026-07-28 against Pet Utility.
+--
+-- Handled TWO ways on purpose. Which one applies depends on whether Blizzard
+-- parents the flyout onto the spawning button or onto UIParent, and that was not
+-- verified before shipping, so neither is relied on alone:
+--   1. IsMouseOverDescendant — walks the parent chain of whatever is under the
+--      cursor. Catches a descendant at any depth with no frame name to get wrong,
+--      and covers future nested widgets for free.
+--   2. IsMouseOverFlyout — tests the flyout by global name, for the case where it
+--      is parented outside the bar. Existence-guarded, so a wrong or renamed
+--      global does nothing instead of erroring.
+-- If BOTH miss, `/vui hover` dumps the real parent chain so the gap is one
+-- measurement away rather than another guess.
+local HOVER_FLYOUT_GLOBALS = { "SpellFlyout", "PetActionBarFlyout" }
+local HOVER_WALK_MAX_DEPTH = 8   -- flyoutButton → flyout → actionButton → bar is 4
+
 function VUI.HookHoverFade(target, shouldStayVisible)
     if not target then return end
     target:SetAlpha(0)
@@ -194,17 +216,53 @@ function VUI.HookHoverFade(target, shouldStayVisible)
         childCache = { target:GetChildren() }
     end
 
+    -- Declared ABOVE IsMouseOverAny because that closure reads `hovered`. A local
+    -- declared BELOW a closure that references it is captured as a nil GLOBAL at
+    -- closure-creation time — the trap that silently broke /way. Do not move these
+    -- back down.
+    local hovered    = false
+    local graceSince = nil
+
+    local function IsMouseOverDescendant()
+        local f = GetMouseFocus and GetMouseFocus()
+        local depth = 0
+        while f and depth < HOVER_WALK_MAX_DEPTH do
+            if f == target then return true end
+            if not f.GetParent then return false end
+            local ok, parent = pcall(f.GetParent, f)
+            if not ok then return false end
+            f = parent
+            depth = depth + 1
+        end
+        return false
+    end
+
+    local function IsMouseOverFlyout()
+        for i = 1, #HOVER_FLYOUT_GLOBALS do
+            local fo = _G[HOVER_FLYOUT_GLOBALS[i]]
+            if fo and fo.IsShown and fo.IsMouseOver
+               and fo:IsShown() and fo:IsMouseOver() then
+                return true
+            end
+        end
+        return false
+    end
+
     local function IsMouseOverAny()
         if target:IsMouseOver() then return true end
         for i = 1, #childCache do
             local child = childCache[i]
             if child:IsVisible() and child:IsMouseOver() then return true end
         end
-        return false
+        -- Extended-widget checks run ONLY while the bar is already visible. A
+        -- flyout cannot be opened without first hovering the bar, so on the faded
+        -- path these could only burn work — and GetMouseFoci allocates a table per
+        -- call, which is exactly the per-tick churn the child cache above exists to
+        -- avoid. This keeps the idle cost identical to before.
+        if not hovered then return false end
+        return IsMouseOverDescendant() or IsMouseOverFlyout()
     end
 
-    local hovered    = false
-    local graceSince = nil
     local poll       = CreateFrame("Frame")
 
     local function FadeOut()
@@ -773,6 +831,61 @@ taintFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
 end)
 
 ----------------------------------------------------------------
+--  /vui hover — mouse-focus parent-chain dump (diagnostic)
+--
+--  Answers "why did the bar fade while I was hovering that?" with the real
+--  frame hierarchy instead of a guess. HookHoverFade keeps a bar visible when the
+--  cursor is over the bar, a direct child, a DESCENDANT at any depth, or a known
+--  flyout global; if a widget satisfies none of those, this names it and its whole
+--  parent chain so the gap can be closed by measurement.
+--
+--  Sampling is DELAYED because a slash command necessarily leaves the cursor in
+--  the chat box — there is no way to run it while hovering the thing in question.
+----------------------------------------------------------------
+local HOVER_PROBE_DELAY = 5
+
+local function DumpHoverChain()
+    local f = GetMouseFocus and GetMouseFocus()
+    if not f then
+        VUI.Print("VeritasUI", "Nothing under the cursor when sampled.")
+        return
+    end
+    VUI.Print("VeritasUI", "Mouse-focus parent chain:")
+    -- Raw print for copy-paste fidelity (suite print-split policy).
+    local depth = 0
+    while f and depth < 12 do
+        local name = "<unnamed>"
+        if f.GetName then
+            local ok, n = pcall(f.GetName, f)
+            if ok and n then name = n end
+        end
+        local kind = "?"
+        if f.GetObjectType then
+            local ok, t = pcall(f.GetObjectType, f)
+            if ok and t then kind = t end
+        end
+        print(("   %d) %s  (%s)"):format(depth, name, kind))
+        if not f.GetParent then break end
+        local ok, parent = pcall(f.GetParent, f)
+        if not ok then break end
+        f = parent
+        depth = depth + 1
+    end
+    for i = 1, #HOVER_FLYOUT_GLOBALS do
+        local name = HOVER_FLYOUT_GLOBALS[i]
+        local fo = _G[name]
+        print(("   flyout global %s: %s"):format(name,
+            fo and (fo.IsShown and fo:IsShown() and "SHOWN" or "hidden") or "absent"))
+    end
+end
+
+function VUI.ProbeHoverChain()
+    VUI.Print("VeritasUI", ("Move the cursor onto the element and hold still — sampling in %ds."):format(
+        HOVER_PROBE_DELAY))
+    C_Timer.After(HOVER_PROBE_DELAY, DumpHoverChain)
+end
+
+----------------------------------------------------------------
 --  /veritasui slash command
 ----------------------------------------------------------------
 SLASH_VERITASUI1 = "/veritasui"
@@ -788,9 +901,12 @@ SlashCmdList["VERITASUI"] = function(msg)
             db.taintLogDropped = nil
         end
         VUI.Print("VeritasUI", "Blocked-action log cleared.")
+    elseif cmd == "hover" then
+        VUI.ProbeHoverChain()
     else
         VUI.Print("VeritasUI", "Version " .. VUI.VERSION .. " loaded.")
         VUI.Print("VeritasUI", "|cFFFFFF00/vui taint|r — show recorded blocked-action events.")
         VUI.Print("VeritasUI", "|cFFFFFF00/vui taint clear|r — reset that log.")
+        VUI.Print("VeritasUI", "|cFFFFFF00/vui hover|r — dump the parent chain under the cursor (5s delay).")
     end
 end
