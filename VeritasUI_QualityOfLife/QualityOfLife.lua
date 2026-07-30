@@ -704,6 +704,12 @@ local function SetupItemLevels()
     ----------------------------------------------------------------
     --  SetItemButtonQuality hook
     ----------------------------------------------------------------
+    -- Name-based quest-reward exclusion. As of 2026-07-29 this is BELT AND BRACES,
+    -- not the real defence: the supported-button gate in the hook below excludes
+    -- every non-container button structurally, which subsumes these two patterns.
+    -- Kept because it is cached and nearly free, and because it documents the v1.1.0
+    -- policy explicitly. ⚠ Do NOT treat it as the exclusion that matters, and do NOT
+    -- extend it with more frame names when a new bad surface appears -- fix the gate.
     local questBtnCache = {}
     local function IsQuestRewardButton(btn)
         local name = btn.GetName and btn:GetName()
@@ -735,15 +741,45 @@ local function SetupItemLevels()
         if quality ~= nil and quality == 0 then HideOverlay(btn); return end
         if IsQuestRewardButton(btn) then HideOverlay(btn); return end
 
-        -- Resolve a full item link for accurate ilvl (effective vs base).
-        -- The passed itemIDOrLink may be a numeric ID; a full link gives
-        -- GetDetailedItemLevelInfo the effective (upgraded) ilvl. The
-        -- button-accessor chain lives in ResolveButtonLink so the cold-cache
-        -- retry can reuse it.
-        local link = type(itemIDOrLink) == "string" and itemIDOrLink or nil
-        if not link then
-            link = ResolveButtonLink(btn)
-        end
+        -- ⚠ SUPPORTED-BUTTON GATE. Resolve the button FIRST and bail if we cannot
+        -- identify which container slot it represents.
+        --
+        -- This is now the PRIMARY exclusion, replacing name matching. `knowable` is
+        -- true only when one of ResolveButtonLink's container accessors was actually
+        -- callable -- bag, bank, warband bank or character slot. A button satisfying
+        -- none of them is not an inventory button at all, and an item level on it is
+        -- always wrong.
+        --
+        -- Motivating defect (2026-07-29, owner-confirmed by disabling all addons): a
+        -- World Quest reward in a map tooltip showed 26 against a tooltip reading
+        -- 151. World Quest rewards are scaled BY THE QUEST, so asking the item for
+        -- its level yields a meaningless template value -- there is no better API to
+        -- reach for, which is exactly why quest reward item levels were removed
+        -- wholesale in v1.1.0 ("base vs. effective ilvl mismatch makes reliable
+        -- display impractical"). That removal named two frame patterns
+        -- (QuestInfoItem, QuestInfoRewardsFrame); the World Quest tooltip uses
+        -- EmbeddedItemTooltip under GameTooltip and matched neither, and
+        -- IsQuestRewardButton additionally returned false for any UNNAMED button.
+        --
+        -- ⚠ Do NOT replace this with another frame-name list. A name list is what
+        -- rotted: it can only exclude surfaces someone already thought of, whereas
+        -- this excludes everything that is not a container slot, including surfaces
+        -- that do not exist yet.
+        --
+        -- Cost: up to five pcall'd accessor calls per fire, where a passed-in link
+        -- previously short-circuited them -- roughly 2 ms across a ~200-slot bank
+        -- open, once. Accepted deliberately over caching the answer on the button,
+        -- which would be faster but adds state for a saving that does not matter.
+        --
+        -- Merchants are unaffected: that path calls ProcessItem directly from
+        -- UpdateMerchantItems, because SetItemButtonQuality does not fire for
+        -- merchant buttons at all.
+        local resolved, knowable = ResolveButtonLink(btn)
+        if not knowable then HideOverlay(btn); return end
+
+        -- Prefer a passed-in full link over the resolved one: both give the effective
+        -- item level, and the caller's is authoritative for this fire.
+        local link = (type(itemIDOrLink) == "string" and itemIDOrLink) or resolved
 
         -- Delegate to ProcessItem for equippability, skip, ilvl, and overlay.
         ProcessItem(btn, link or itemIDOrLink, quality)

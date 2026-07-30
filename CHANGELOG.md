@@ -2,6 +2,31 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.4] - 2026-07-29
+
+Item levels no longer appear on World Quest rewards. A fishing World Quest offering a trinket showed 26 on the reward icon while the tooltip beside it read 151.
+
+Neither number was recoverable from the other. A World Quest reward is scaled by the quest, not by the item, so asking the item what level it is returns a meaningless template value. There is no better source to reach for — which is precisely why quest reward item levels were removed outright back in v1.1.0, the stated reason being that base-versus-actual mismatch made them impossible to display reliably.
+
+That removal worked by naming two specific frames. World Quest rewards live in a different frame entirely, inside the map tooltip, so they matched neither — and the check also gave up immediately on any unnamed element, which those are.
+
+Rather than add a third name to that list, the addon now decides the other way round: it only draws on something it can identify as an actual inventory slot — a bag, bank, warband bank or equipped slot. Anything else gets nothing. A list of names can only exclude the surfaces someone already thought of, which is exactly how this was missed; this excludes everything that isn't a real item slot, including places that don't exist yet.
+
+Bags, bank, warband bank, character panel and vendor windows are unaffected, and there are now automated checks holding each of those in place, since a rule like this fails by being too strict rather than too loose.
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **item levels no longer appear on World Quest rewards**, or on any other element that isn't a real inventory slot. The number shown there could never have been right, because those rewards are scaled by the quest rather than by the item. (`QualityOfLife.lua`)
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **the exclusion is now based on what a button actually is**, rather than on a list of frame names. The old name-based check is kept as a backstop and is marked as such, so it is neither removed as redundant nor mistaken for the real safeguard. (`QualityOfLife.lua`)
+
+### Notes
+
+- Slightly more work is done per item button, since identifying the slot now happens even when the game already supplied enough information to skip it. Around two milliseconds across a full bank opening, once. Caching it would have been faster but adds state for a saving that does not matter.
+- Five new checks: two that the bad surfaces get nothing, three that bags, bank and the character panel still do. Run against the previous version first, where the World Quest case fails and the rest pass — so the check is known to detect this specific thing, and the surfaces that already worked are known not to have been broken.
+
 ## [1.12.3] - 2026-07-28
 
 A blocked-action warning naming this addon's shared library appeared during ordinary mounted travel, with nothing being interacted with. The recorded detail — the first time that detail has been available, and the reason the recorder was added — named the blocked call as the game's own clear-target function.
