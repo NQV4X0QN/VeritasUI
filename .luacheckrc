@@ -15,10 +15,25 @@ std = "lua51"
 -- saved-variable tables). These are writes luacheck must not flag as leaks.
 globals = {
     "VeritasUI",                       -- the single shared namespace (Lib.lua)
-    -- Blizzard tables the suite legitimately WRITES to (RegisterManagedPanel):
-    -- UIPanelWindows[name] = {...} and table.insert(UISpecialFrames, name).
-    "UIPanelWindows", "UISpecialFrames",
-    "StaticPopupDialogs",   -- copy-settings confirmations (Lib)
+    -- ⚠ A Blizzard-owned global belongs in THIS list only if the suite must assign
+    -- the global ITSELF. Assigning one taints its variable slot, and every Blizzard
+    -- read of it then taints the reading execution. v1.12.0 shipped
+    -- `StaticPopupDialogs = StaticPopupDialogs or {}`, and a blanket
+    -- "StaticPopupDialogs" entry in this list is what silenced the warning that
+    -- would have caught it; the result was a real in-game ADDON_ACTION_FORBIDDEN
+    -- for EndBoundTradeable() (fixed v1.12.5). If the suite only writes KEYS, put
+    -- the global in read_globals and allowlist the keys here as dotted names.
+    --
+    -- UIPanelWindows has to stay writable: RegisterManagedPanel writes
+    -- UIPanelWindows[frameName] with a runtime key, and luacheck cannot express
+    -- "global read-only, any field writable" — a read_globals entry reports
+    -- `setting read-only field '?'` instead. Measured 2026-07-29, not assumed.
+    "UIPanelWindows",
+    -- The three StaticPopup definitions Lib owns, declared as KEYS so that both
+    -- assigning the global and adding an undeclared fourth key are warnings.
+    "StaticPopupDialogs.VERITASUI_COPY_SETTINGS",
+    "StaticPopupDialogs.VERITASUI_COPY_RELOAD",
+    "StaticPopupDialogs.VERITASUI_UNDO_COPY",
     -- SavedVariables (declared in each .toc; WoW injects/reads these as globals)
     "VeritasUI_AdvancedOptionsDB",
     "VeritasUI_AuctionHouseDB",
@@ -48,6 +63,11 @@ globals = {
 -- fine; assigning to them would (correctly) still warn. Kept to what the code uses
 -- rather than the entire client API, so a genuine typo in an API name still surfaces.
 read_globals = {
+    -- Blizzard globals the suite reads, or writes only the KEYS of. Listing them
+    -- here is what makes assigning the global itself a warning (see the note in
+    -- `globals` above). UISpecialFrames qualifies because table.insert APPENDS to
+    -- it and never assigns it.
+    "StaticPopupDialogs", "UISpecialFrames",
     -- Core frame / system
     "CreateFrame", "UIParent", "C_Timer", "hooksecurefunc", "InCombatLockdown",
     "issecretvalue", "debugprofilestop", "GetTime", "time", "date",
@@ -135,8 +155,16 @@ exclude_files = {
 }
 
 -- Per-file relaxations -------------------------------------------------------
-files["**/*.lua"] = {
-    -- WoW addon files share no module scope; each gets (name, tbl) via "...".
-    -- Treat that as expected rather than flagging an unused vararg.
-    allow_defined_top = true,
-}
+--
+-- ⚠ Deliberately EMPTY. This block carried `allow_defined_top = true` from the
+-- config's introduction (v1.7.13) until v1.12.5, described as tolerating the
+-- `...` vararg every addon file receives. That description was wrong:
+-- allow_defined_top governs IMPLICITLY DEFINED GLOBALS, and what it actually did
+-- was suppress "setting read-only global variable" for any top-level assignment —
+-- so the Blizzard-global write that caused the v1.12.5 taint bug could not be
+-- reported even once StaticPopupDialogs was correctly declared read-only.
+-- Removing it was measured to cost nothing: 27 warnings / 0 errors either way,
+-- because every global this suite sets is declared in `globals` above, and the
+-- unused-implicitly-defined case is already handled by ignore = { "131" }.
+-- Do not restore it. If a file ever genuinely needs to define a new global,
+-- declare that global by name instead.

@@ -2,6 +2,36 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.5] - 2026-07-29
+
+A blocked-action error naming VeritasUI_Lib appeared when learning a pet, and the cause was a single line added the day before.
+
+Yesterday's copy-settings feature opened with a defensive line that created Blizzard's shared dialog table if it happened to be missing. Assigning one of the game's own global variables from an addon is the classic way to contaminate it: from that moment on, every time the game reads that variable it treats whatever it is doing as coming from the addon rather than from itself. The game reaches every one of its confirmation dialogs through exactly that variable.
+
+The visible result was that any dialog which then needed to do something only the game is permitted to do was refused. Learning a caged pet that is still tradeable raises such a dialog, so clicking Accept did nothing except produce the error. Nothing was damaged, but the pet was not learned.
+
+The defensive line was worthless on top of being harmful: the game builds that table unconditionally, long before any addon is allowed to load, so it can never have been missing. Only the three entries the addon adds remain, which is both safe and ordinary — the game looks entries up individually and never walks the table, so the addon's entries cannot affect the game's own.
+
+Two things in the project's own tooling had hidden this. The linter that exists to catch precisely this mistake had been told the table was ours to write, and a second setting was suppressing the warning for any line of this shape anywhere in the suite. That setting had been carrying an explanation of what it did that was simply incorrect. Both are corrected, and reintroducing the mistake is now reported rather than passed over.
+
+**Still outstanding.** A separate error appeared minutes earlier, while mounting after leaving the Auction House, pointing at the game's casting bar and also naming VeritasUI_Lib. That one is not explained, and this release does not claim to fix it. It occurred before the dialog was ever clicked, so it is not a consequence of that click. Contamination does spread from one place to another, so it may share this cause and stop here — or it may not, in which case it is a separate fault and the next occurrence is the evidence needed. Please report either error recurring.
+
+### Fixed
+
+- `VeritasUI_Lib` — **the copy-settings feature no longer assigns Blizzard's global dialog table**, which was contaminating it and causing the game to refuse permitted actions in unrelated confirmation dialogs. Observed in game as a blocked-action error for `EndBoundTradeable()` when learning a still-tradeable caged pet. Only the three dialog entries the addon owns are written now. (`Lib.lua`)
+
+### Changed
+
+- **The linter now reports this mistake instead of allowing it.** Blizzard's dialog table is declared read-only with the addon's own three entries listed individually, so both assigning the table and adding an undeclared fourth entry are flagged. (`.luacheckrc`)
+- **Removed a linter setting that was silently suppressing the warning class** for every file in the suite. Its stated purpose was unrelated to what it actually did. Removing it was measured to change nothing else: identical output before and after, because every global the suite defines is already declared by name. (`.luacheckrc`)
+
+### Notes
+
+- The stale warning in the copy-settings header, which told a future reader the control must never be a dropdown, is corrected. It has been a dropdown since v1.12.1, and the rule it was reaching for is narrower: the control must never store its selection.
+- Fourteen new checks covering both the code and the tooling, since a safeguard that can be switched off without anyone noticing is not a safeguard. Run against the previous version first, where seven fail — including naming both settings that had disabled the linter.
+- Eight existing test suites broke the moment the offending line was removed, because the test harness had never supplied that table itself and had been relying on the addon's own defect to create it. The harness now models the game instead. A test setup that leans on a bug cannot report that bug.
+- `ao_removal_test`, written for v1.12.2, was never listed in the test runner and so had never executed once. It is wired in and passing. A test that never runs is worse than no test, because it reads as coverage.
+
 ## [1.12.4] - 2026-07-29
 
 Item levels no longer appear on World Quest rewards. A fishing World Quest offering a trinket showed 26 on the reward icon while the tooltip beside it read 151.

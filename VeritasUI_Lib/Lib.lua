@@ -37,7 +37,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.12.4"
+VUI.VERSION = "1.12.5"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -568,20 +568,42 @@ end
 --  than typing the command repeatedly.
 ----------------------------------------------------------------
 ----------------------------------------------------------------
---  Copy-settings UI (Settings panel button -> context menu -> confirm)
+--  Copy-settings UI (Settings panel control -> menu -> confirm)
 --
---  Shape chosen to use only components already proven in this suite: a
---  UIPanelButtonTemplate anchored into SettingsPanel (the Reload UI button's
---  mechanism), a MenuUtil context menu, and a StaticPopup confirmation.
+--  Shape chosen to use only components already proven in this suite: a widget
+--  anchored into SettingsPanel (the Reload UI button's mechanism), a MenuUtil
+--  menu, and a StaticPopup confirmation.
 --
---  ⚠ The TRIGGER IS A BUTTON, NEVER A DROPDOWN. Blizzard's Settings framework
---  REPLAYS a persisted dropdown value on load — proven in this codebase: v1.6.10
+--  ⚠ NEVER BACK THIS TRIGGER WITH A PERSISTED Settings VALUE. Blizzard's Settings
+--  framework REPLAYS a persisted value on load — proven in this codebase: v1.6.10
 --  added a guard against that replay, silently broke CleanSolo's bar selection and
---  was reverted in v1.6.11. A copy-on-select dropdown would therefore re-copy the
---  source character over this one on every /reload, destroying any divergence. Do
---  not "improve" this into a dropdown.
+--  was reverted in v1.6.11. A copy-on-select control whose choice is persisted
+--  would re-copy the source character onto this one on every /reload, destroying
+--  any divergence. The trigger IS a dropdown as of v1.12.1 — it anchors to itself,
+--  where a cursor-anchored menu drifted with the click — and that is safe only
+--  because it persists nothing: the entries are plain menu buttons and the copy is
+--  confirmation-gated. This header read "never a dropdown" until v1.12.5, which
+--  contradicted the code and mis-stated the actual rule.
+--
+--  ⚠ DO NOT ASSIGN THE GLOBAL StaticPopupDialogs — write only its KEYS.
+--  The line `StaticPopupDialogs = StaticPopupDialogs or {}` stood here from v1.12.0
+--  until v1.12.5 and was a live taint source. Assigning a Blizzard-owned global from
+--  addon code taints that global's variable slot, and Blizzard reaches every dialog
+--  through it (StaticPopup.lua indexes this table at sixteen sites), so each read
+--  tainted the reading execution and any protected call made by the dispatched
+--  handler was then refused. Observed in game 2026-07-29: ADDON_ACTION_FORBIDDEN
+--  naming VeritasUI_Lib for EndBoundTradeable(), whose only caller is Blizzard's
+--  END_BOUND_TRADEABLE dialog — raised by learning a still-trade-eligible caged pet.
+--  The guard was worthless regardless: Blizzard_StaticPopup creates the table
+--  unconditionally, long before any addon loads, so it can never be nil.
+--
+--  Adding KEYS is safe and is what every addon does: Blizzard only ever indexes this
+--  table by key and never iterates it, so our keys cannot taint a sibling read.
+--  StaticPopup_AddDefinition(which, def) is the sanctioned equivalent if some future
+--  change wants it; direct key writes are kept because they are what is proven in
+--  game today, and keeping the v1.12.5 diff to one line of behaviour makes the next
+--  observation interpretable.
 ----------------------------------------------------------------
-StaticPopupDialogs = StaticPopupDialogs or {}
 
 StaticPopupDialogs["VERITASUI_COPY_SETTINGS"] = {
     text = "Copy all VeritasUI settings from |cFFFFFF00%s|r onto |cFFFFFF00%s|r?"
