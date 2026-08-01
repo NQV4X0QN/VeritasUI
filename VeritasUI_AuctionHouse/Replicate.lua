@@ -53,8 +53,8 @@ local REPLICATE_STALL_TIMEOUT = 60      -- seconds of total silence after which 
                                         -- 2026-07-11 and 26.0s on 2026-07-24): at the old 10s this tripped on
                                         -- EVERY healthy scan. At 60s, one request producing zero events inside
                                         -- the window is an unambiguous loss. This does NOT abort the scan (see
-                                        -- the no-timeout rule above) — it only stops re-firing and tells the
-                                        -- user the one recovery that works. See ArmStallDetector.
+                                        -- the no-timeout rule above) — it only reports, and reports nothing
+                                        -- about the cause beyond the recorded facts. See ArmStallDetector.
 local LINK_RETRY_WAIT       = 3         -- seconds between link retry passes (lets queued
                                         -- item-record loads stream in; cold-cache coverage fix)
 local LINK_RETRY_BUDGET     = 45        -- hard cap (seconds) on the whole retry phase. Records
@@ -62,16 +62,82 @@ local LINK_RETRY_BUDGET     = 45        -- hard cap (seconds) on the whole retry
                                         -- rows need ~45s worst case. The phase also self-stops
                                         -- on the first pass that resolves nothing (quiescence),
                                         -- so the cap only binds while progress is still being made.
+
+----------------------------------------------------------------
+--  Throttled-message instrumentation (v1.12.6)
+--
+--  WHY THIS EXISTS — read before deleting it as noise.
+--
+--  ⚠ MEASURED RESULT (2026-07-31, Mac 12.0.7) — READ BEFORE TRUSTING THIS LINE.
+--  On a FULLY SUCCESSFUL scan (275,455 rows, first data 32.8s after fire, 106,926
+--  pulses) the log came back EMPTY: not one of the six events fired anywhere in the
+--  32.8s request->data window. So `ReplicateItems()` is NOT instrumented by the
+--  throttled-message family at all, and a blank log during a HANG proves nothing.
+--  The discriminator described below does not work. Do not rebuild a retry policy
+--  on it, and do not re-derive the idea — it is measured, not argued (probe ref §5).
+--
+--  That also corrects the reasoning that produced this code: Throttle.lua (v1.6.46,
+--  deleted v1.7.0) and the design doc's "retry on _DROPPED" mandate governed
+--  SendBrowseQuery, which IS in the throttled system. Replicate never was. Cutting
+--  Throttle.lua with the Shopping tab lost nothing this path could have used.
+--
+--  KEPT ANYWAY, for one narrow reason: the null baseline is now established, so a
+--  NON-blank log at failure time is decisive where before it was ambiguous. Blank
+--  tells us nothing; anything at all is a signal. Cost is six registrations and one
+--  table lookup per event. Delete it only if that trade stops being worth it.
+--
+--  ── original rationale, retained for the history ──
+--
+--  Two DIFFERENT failures both present as "ReplicateItems() fired, zero event
+--  pulses, identical [FIRE STATE]", and they need OPPOSITE responses:
+--
+--    (a) the request was DROPPED by Blizzard's throttled-message system
+--        -> a re-fire is the correct recovery (a lost packet, not a refusal)
+--    (b) the server is RATE-LIMITING replicate for this account
+--        -> re-firing is futile and plausibly re-arms the window
+--
+--  We have never been able to tell them apart, and the whole history of this bug
+--  is guesses about which regime we are in — each of which works for one and
+--  fails the other:
+--    v1.9.5  "always retry, forever"  -> right for (a); 4h/240 re-fires answered
+--                                        nothing in (b), 2026-07-24
+--    v1.9.14 "never retry"            -> right for (b); removed the thing that
+--                                        DID rescue (a) (probe ref §5 2026-06-27:
+--                                        "first request dropped and rescued by the
+--                                        v1.7.9 retry", and again 2026-07-11)
+--
+--  Both observations are real, which is only consistent with both regimes existing.
+--  That inference still stands; only the proposed instrument for telling them apart
+--  was falsified.
+--
+--  ALWAYS-ON, deliberately not gated on VUI.debug: this reproduces once a day at
+--  most and cannot be summoned, so the flag would be off exactly when it mattered
+--  (the same reasoning as the v1.9.5 scan trace).
+--
+--  Names are pcall-registered individually: an invalid name would otherwise throw
+--  at load and take the whole module with it. All six registered cleanly on 12.0.7.
+----------------------------------------------------------------
+local THROTTLE_EVENTS = {
+    -- short label                     -- event name
+    DROPPED  = "AUCTION_HOUSE_THROTTLED_MESSAGE_DROPPED",
+    QUEUED   = "AUCTION_HOUSE_THROTTLED_MESSAGE_QUEUED",
+    SENT     = "AUCTION_HOUSE_THROTTLED_MESSAGE_SENT",
+    RESPONSE = "AUCTION_HOUSE_THROTTLED_MESSAGE_RESPONSE_RECEIVED",
+    READY    = "AUCTION_HOUSE_THROTTLED_SYSTEM_READY",
+    BROWSEFAIL = "AUCTION_HOUSE_BROWSE_FAILURE",
+}
+-- Bound the per-scan log. _SENT/_QUEUED/_READY also fire for Blizzard's own AH
+-- queries, so a long session could otherwise grow this without limit. 40 is far
+-- more than the handful the dead window produces, and overflow is counted rather
+-- than dropped silently.
+local THROTTLE_LOG_CAP = 40
+
 local scanning   = false   -- a scan coroutine is in progress
 local co                    -- the active coroutine
 local driver               -- OnUpdate ticker frame
 local finder               -- OnUpdate ticker frame for /ah find, reused across calls
 local progress   = 0        -- 0..1
 local stallTimer            -- C_Timer handle watching for a lost ReplicateItems()
-local sessionRequestLost    -- true once a request in THIS AH session was declared lost.
-                            -- A poisoned AH session never yields a snapshot again, no
-                            -- matter how many times we ask (measured: 4 HOURS of re-fires,
-                            -- 2026-07-24). Cleared on AH_OPEN — a fresh session is clean.
 local fireTime              -- GetTime() at the moment ReplicateItems() was issued
 local finalizeResolved      -- live counters for the gear-residue retry phase;
 local finalizeTotal         -- nil outside the phase (backs FinalizeStatus())
@@ -91,6 +157,8 @@ local trace                 -- ALWAYS-ON diagnostic record of the current/most-r
                             --   pulses            REPLICATE_ITEM_LIST_UPDATE events seen
                             --   firstEventLatency GetTime()-firedAt at the first pulse
                             --   firstEventAttempt which attempt the first pulse followed
+                            --   throttle          ordered list of throttled-family events seen
+                            --                     while the scan was in flight (see THROTTLE_EVENTS)
                             --   outcome           "requesting" | "processing" | "complete"
                             --                     | "failed" | "aborted"
                             --   committed, rows, totalTime   set on completion
@@ -694,39 +762,46 @@ local function CancelStallDetector()
 end
 
 ----------------------------------------------------------------
---  ArmStallDetector — detect a lost request; DO NOT re-fire (v1.9.14)
+--  ArmStallDetector — detect a lost request; decide nothing (v1.12.6)
 --
---  Replaces the v1.9.5 persistent re-fire chain, which could not work.
+--  Reports a request that produced no data, and stops. It does not re-fire, and
+--  as of v1.12.6 it no longer claims to know the recovery, because we don't yet.
 --
---  THE MEASUREMENT THAT KILLED IT (2026-07-24, owner's Windows client): a hung
---  scan was left re-firing every 60s for FOUR HOURS. Not one of those requests
---  was ever answered. Re-asking inside a poisoned AH session is futile at any
---  duration — the v1.9.5 header's "keep asking until the server says yes" is
---  false, and its supporting 2026-07-11 episode (a re-fire succeeding ~12min
---  in) could not be reproduced and is not trusted.
+--  ⚠ THE v1.9.14 MODEL THIS REPLACES WAS WRONG IN BOTH DIRECTIONS. It is quoted
+--  here so the same two mistakes are not made a third time:
 --
---  WHAT ACTUALLY RECOVERS IT: close the AH and reopen it. The owner's standing
---  practice — wait 60s, close, reopen IMMEDIATELY, scan — has always worked
---  (single exception 2026-07-24). No waiting is involved, which also rules out
---  any time-based server cooldown: an immediate new session succeeds. The
---  failure is bound to the AH SESSION, not to the clock.
+--    1. "Re-asking is futile at any duration." Drawn from one measurement — 4h of
+--       60s re-fires answering nothing (2026-07-24). But the probe library records
+--       the opposite twice: §5 2026-06-27, "first request dropped and rescued by
+--       the v1.7.9 retry", and again 2026-07-11. v1.9.14 dismissed the 2026-07-11
+--       episode as untrusted; it should have treated two contradictory results as
+--       evidence of two different failures, not as one bad datum.
 --
---  Corroborating evidence that the fault is neither ours nor the connection's:
---    * [FIRE STATE] is byte-identical at a failing fire and the succeeding one
---      (2026-07-02, 2026-07-11, 2026-07-24) — no client-side signal predicts it.
---    * Search / buy / sell all work normally during a hang, so only the bulk
---      replicate request is being refused.
---    * event pulses: 0 at every hang — the snapshot is never even started, so
---      this is not our guard dropping a delivered event.
+--    2. "Close and reopen recovers it; no waiting is involved, which rules out any
+--       time-based server cooldown." The procedure it cites as proof begins "wait
+--       60s". It concluded waiting was irrelevant from a recipe containing a wait.
+--       Falsified outright by the owner on 2026-07-31: close/reopen fails, /reload
+--       fails, and only elapsed time works. Note also that what closing the AH
+--       really did pre-v1.9.14 was cancel the re-fire chain (AH_CLOSED cancels it)
+--       — it stopped the hammering, which is not the same as a fresh session.
 --
---  So: one request per AH session. On silence, say so in PLAIN SIGHT (the old
---  re-fire notice was debug-gated, which is why a spinning addon looked frozen
---  and drove 400s waits and reload cycles) and name the fix.
+--  What survives from that investigation and is still believed:
+--    * [FIRE STATE] is byte-identical at a failing fire and a succeeding one
+--      (2026-07-02, 2026-07-11, 2026-07-24) — no client-side signal predicts it,
+--      so pre-fire readiness gates cannot work (three were tried and falsified).
+--    * Search / buy / sell work normally during a hang: only bulk replicate fails.
+--    * event pulses: 0 at every hang — the snapshot never starts, so this is not
+--      our guard dropping a delivered event.
+--
+--  The open question is which of the two regimes in THROTTLE_EVENTS we are in, and
+--  the throttled-family log now answers it from a single real occurrence. Until
+--  then this handler deliberately prescribes nothing except "wait for the floor"
+--  and "send me the trace".
 --
 --  Deliberately does NOT abort the scan: `scanning` stays true and the event
---  handler stays live, so a late snapshot is still processed (the no-timeout
---  rule above). AH_CLOSED does the teardown — and closing is exactly what the
---  user is being told to do.
+--  handler stays live, so a late snapshot is still processed (the no-timeout rule
+--  above). That matters more now than it did: if we are in the dropped-packet
+--  regime, late delivery is exactly what we would be throwing away.
 ----------------------------------------------------------------
 local function ArmStallDetector()
     CancelStallDetector()
@@ -735,13 +810,15 @@ local function ArmStallDetector()
         -- Only report if: AH still open, scan flag still set, but the coroutine
         -- never started. co ~= nil means data arrived and we're processing.
         if not AH.isOpen or not scanning or co then return end
-        -- Poison the session: further fires here cannot succeed, so Start()
-        -- refuses them and points at the reopen instead of burning another 60s.
-        sessionRequestLost = true
+        local wait = AH.Replicate.SecondsUntilReady()
         VUI.Print(AH.TAG, format(
-            "|cFFFF4444No response after %ds — the scan request was lost.|r "
-            .. "|cFFFFFF00Close the Auction House and reopen it, then press Scan again.|r "
-            .. "It works straight away; there is no need to wait.", REPLICATE_STALL_TIMEOUT))
+            "|cFFFF4444No response after %ds — the request was lost.|r "
+            .. "Next attempt allowed in |cFFFFFF00%d:%02d|r. Reopening the Auction "
+            .. "House does not reset that, and neither does /reload.",
+            REPLICATE_STALL_TIMEOUT, floor(wait / 60), wait % 60))
+        VUI.Print(AH.TAG, "Please run |cFFFFFF00/ah diag|r and report the "
+            .. "|cFFFFFF00throttle:|r line — it identifies whether the request was "
+            .. "dropped (a retry would fix it) or refused (we must back off).")
     end)
 end
 
@@ -781,6 +858,34 @@ local function DoFire()
             tostring(safe(function() return C.GetNumOwnedAuctions and C.GetNumOwnedAuctions() end))
         ))
     end
+    -- Start the floor on the ATTEMPT, not on success (v1.12.6).
+    --
+    -- This is what Auctionator does — FullScan/Mixins/Frame.lua:19-35 stamps
+    -- `TimeOfLastReplicateScan = time()` immediately before ReplicateItems(),
+    -- unconditionally, into an account-wide saved variable, and CanInitiate()
+    -- refuses for 15 minutes from that stamp. It has no success path and no reset:
+    -- Auctionator structurally cannot issue a second replicate request inside 15
+    -- minutes, on any path, across /reload or logout.
+    --
+    -- We stamped only on success (the two SetLastScanTime calls in ProcessAllRows
+    -- and the driver, both downstream of data arriving), so a LOST request cost
+    -- nothing and SecondsUntilReady() immediately returned 0 — we permitted
+    -- unlimited back-to-back requests exactly when the server was least willing to
+    -- answer. This file already assumed the hazard: see the SetLastScanTime call in
+    -- ProcessAllRows, whose comment warns that a missing cooldown would "invite an
+    -- immediate re-scan straight into the server's own replicate throttle". That
+    -- guarded the abort-mid-finalize case and never guarded request-lost.
+    --
+    -- v1.9.14 considered and rejected this, on the grounds that it "would have
+    -- BLOCKED the immediate reopen-and-rescan that is the only known fix". That
+    -- premise is falsified: reopening does not recover it (owner, 2026-07-31 —
+    -- close/reopen AND /reload both fail; only elapsed time works), so the
+    -- justification for leaving failures unstamped is gone.
+    --
+    -- Deliberately does NOT replace the two success-path stamps. They fire later,
+    -- so they only ever push the floor further out; the success path is unchanged
+    -- by design and this stamp is load-bearing solely when no data ever arrives.
+    SetLastScanTime(time())
     C_AuctionHouse.ReplicateItems()
     -- Phase marker for the progress UI: the request has gone out, so the bar can
     -- leave "Connecting…" and enter the snapshot wait (ScanProgress listens).
@@ -821,13 +926,6 @@ function AH.Replicate.Start()
     if not (C_AuctionHouse and C_AuctionHouse.ReplicateItems) then
         return false, "C_AuctionHouse.ReplicateItems unavailable."
     end
-    -- A request already went missing in THIS AH session, so the session is spent:
-    -- re-firing here is futile (4h of re-fires answered nothing, 2026-07-24). Send
-    -- the user to the only recovery that works rather than costing them another 60s.
-    if sessionRequestLost then
-        return false, "This Auction House session can no longer scan — "
-            .. "close it and reopen it, then press Scan again."
-    end
     if scanning then
         if co then
             return false, "A scan is already processing."
@@ -859,7 +957,54 @@ AH.Replicate.StartManual = AH.Replicate.Start
 ----------------------------------------------------------------
 local ef = CreateFrame("Frame")
 ef:RegisterEvent("REPLICATE_ITEM_LIST_UPDATE")
+
+-- Throttled-family registration (see THROTTLE_EVENTS for why). Per-name pcall so
+-- one renamed event cannot take the module down at load; anything that fails to
+-- register is reported by /ah diag rather than failing silently.
+local throttleRegistered, throttleInvalid = {}, {}
+for label, evName in pairs(THROTTLE_EVENTS) do
+    if pcall(ef.RegisterEvent, ef, evName) then
+        throttleRegistered[evName] = label
+    else
+        throttleInvalid[#throttleInvalid + 1] = label
+    end
+end
+
+-- Reports any throttled-family event name that failed to register, so /ah diag can
+-- say "the throttle line is unreliable" instead of letting a renamed event read as
+-- a meaningful silence — which is the exact misreading this instrumentation exists
+-- to prevent. Returns nil when all names registered.
+function AH.Replicate.ThrottleUnregistered()
+    if #throttleInvalid == 0 then return nil end
+    return table.concat(throttleInvalid, ", ")
+end
+
+-- Record a throttled-family event against the in-flight scan.
+--
+-- Only records while a request is actually outstanding (scanning and no coroutine
+-- yet): that fire -> first-data window is the one we need classified, and it keeps
+-- Blizzard's own AH query traffic out of the log. Never prints — _SENT/_QUEUED can
+-- fire repeatedly and a print here would bury the line that matters.
+local function RecordThrottleEvent(label)
+    if not trace or not scanning or co then return end
+    local list = trace.throttle
+    if not list then list = {}; trace.throttle = list end
+    if #list >= THROTTLE_LOG_CAP then
+        trace.throttleOverflow = (trace.throttleOverflow or 0) + 1
+        return
+    end
+    list[#list + 1] = {
+        label = label,
+        at    = trace.firedAt and (GetTime() - trace.firedAt) or -1,
+    }
+end
+
 ef:SetScript("OnEvent", function(_, event)
+    local throttleLabel = throttleRegistered[event]
+    if throttleLabel then
+        RecordThrottleEvent(throttleLabel)
+        return
+    end
     if event == "REPLICATE_ITEM_LIST_UPDATE" then
         -- DEBUG TRACE (permanent, debug-gated): logs the FIRST snapshot-ready pulse of
         -- each scan only, BEFORE the guard. Blizzard streams the snapshot in chunks and
@@ -931,8 +1076,6 @@ end)
 --  Scan button (UI/ScanButton.lua, hardware-event fire path) or /ah scan.
 ----------------------------------------------------------------
 AH.Events.On("AH_OPEN", function()
-    -- Fresh AH session => fresh replicate allowance (see ArmStallDetector).
-    sessionRequestLost = false
     -- Stuck-flag guard (v1.7.5 — the correct fix that replaces the old watchdog): a
     -- scan only lives within one AH session. If a prior session ended with
     -- `scanning` still true (event genuinely never delivered, no AH_CLOSED seen),

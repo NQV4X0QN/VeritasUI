@@ -2,6 +2,40 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.6] - 2026-07-31
+
+The Auction House scan failed the first time each day and then refused to recover, and the message it printed sent you round a loop that could not work.
+
+The scan asks the server for a full snapshot of the auction house. That request sometimes produces nothing at all: no data, no error. Until now, a request that produced nothing cost the addon nothing either, so the addon would happily let you ask again straight away, over and over, at whatever pace you clicked. Auctionator — which does the same job reliably on the same account — behaves differently in exactly one respect: it records the time of every attempt, successful or not, and refuses to ask again for fifteen minutes. It has no path that skips this, and reloading or reopening the auction house does not clear it.
+
+This release adopts that rule. A scan attempt now starts the fifteen-minute cooldown at the moment it is sent, rather than only when data comes back. The practical effect is that a failed scan now locks the button for fifteen minutes instead of letting you retry immediately. That is deliberate: the evidence is that asking again quickly is at best useless and may be prolonging the problem.
+
+The advice the addon printed on failure — close the auction house, reopen it, and scan again, because "it works straight away; there is no need to wait" — was wrong, and has been removed. Reopening does not recover it, and neither does reloading. Only elapsed time does. The message now tells you when the next attempt is allowed and asks for a diagnostic line instead of prescribing a fix nobody has verified.
+
+The underlying reason the first request of the day goes missing is still unknown, and this release does not claim to fix it. What it does is stop the addon making the situation worse and stop it giving confident advice that does not hold.
+
+### Changed
+
+- `VeritasUI_AuctionHouse` — **The 15-minute scan floor now starts on the attempt, not on success.** `SetLastScanTime` is called immediately before `C_AuctionHouse.ReplicateItems()`, matching Auctionator's `FullScan/Mixins/Frame.lua` exactly. Previously both stamp sites sat downstream of data arriving, so a lost request left no cooldown and `SecondsUntilReady()` returned 0 — the addon permitted unlimited back-to-back requests precisely when the server was least willing to answer. The two success-path stamps are deliberately unchanged: they fire later and only push the floor further out, so the success path is bit-for-bit identical and this stamp is load-bearing solely when no data ever arrives. (`Replicate.lua`)
+- `VeritasUI_AuctionHouse` — **The lost-request message no longer prescribes a recovery that does not work.** It now reports when the next attempt is allowed, states plainly that reopening the Auction House and `/reload` do not reset it, and asks for the `/ah diag` throttle line. (`Replicate.lua`)
+
+### Removed
+
+- `VeritasUI_AuctionHouse` — **`sessionRequestLost` and its `Start()` refusal.** It marked an AH session unscannable and directed the user to close and reopen, which forced a fresh request per cycle and re-armed the problem by hand. With a real cooldown in place the floor does the refusing, and the refusal now reads "Next scan available in 14:32" instead of an instruction that fails. (`Replicate.lua`)
+
+### Added
+
+- `VeritasUI_AuctionHouse` — **Throttled-message instrumentation in `/ah diag`.** Records any of Blizzard's six `AUCTION_HOUSE_THROTTLED_*` / `AUCTION_HOUSE_BROWSE_FAILURE` events that fire while a scan request is outstanding, with offsets from the fire, on a new `throttle:` line. Always on, never prints on the event, capped at 40 entries with overflow counted, and each name registered under its own `pcall` so a rename reports itself rather than reading as a meaningful silence. (`Replicate.lua`, `Core.lua`)
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **Two source comments taught falsified theories as settled fact.** `ArmStallDetector`'s header asserted that re-asking is futile at any duration and that closing and reopening recovers the scan; the first came from a single measurement contradicted twice elsewhere in the record, and the second concluded that waiting was irrelevant from a recovery procedure beginning "wait 60s". Both are now recorded as errors with the evidence against them, so the reasoning is visible rather than the conclusion. (`Replicate.lua`)
+
+### Notes
+
+- **The throttled-message events do not fire for `ReplicateItems`.** Measured on a fully successful scan: 275,455 rows, first data 32.8s after the request, 106,926 pulses, and not one throttled-message event in the entire request-to-data window. The instrumentation above therefore cannot distinguish a dropped request from a refused one, which was its original purpose; it is kept only because the null baseline is now established, so a non-blank line during a failure becomes meaningful where before it was ambiguous. This also corrects an assumption made while investigating: `Throttle.lua`, deleted at v1.12.5's ancestor v1.7.0, governed browse queries and never covered the replicate path, so its removal cost the scan nothing.
+- **Root cause of the initial failure remains unknown.** The next step is a side-by-side against Auctionator on the same account and realm at the moment of a failure, which is the only remaining way to establish whether the server is refusing the account or whether something about this addon's request differs.
+
 ## [1.12.5] - 2026-07-29
 
 A blocked-action error naming VeritasUI_Lib appeared when learning a pet, and the cause was a single line added the day before.

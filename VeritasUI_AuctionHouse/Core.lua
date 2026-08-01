@@ -291,6 +291,34 @@ local function PrintDiag()
                         tr.firstEventLatency, tr.firstEventAttempt or 1)
                     or "|cFFFF4444never arrived|r",
                 tr.pulses or 0))
+            -- Throttled-message timeline — THE line that classifies a lost request.
+            -- DROPPED present => Blizzard's throttle system ate the request, so a
+            -- retry is the right recovery. Nothing at all => the request went out
+            -- and was refused, so backing off is. See Replicate.lua THROTTLE_EVENTS
+            -- for why these are indistinguishable without this. Its own line so it
+            -- survives a copy-paste.
+            local thr = tr.throttle
+            if thr and #thr > 0 then
+                local parts = {}
+                for i = 1, #thr do
+                    parts[i] = format("%s@%.1fs", thr[i].label, thr[i].at or -1)
+                end
+                VUI.Print(AH.TAG, format("  throttle:     %s%s",
+                    table.concat(parts, " "),
+                    tr.throttleOverflow
+                        and format(" (+%d more)", tr.throttleOverflow) or ""))
+            else
+                VUI.Print(AH.TAG,
+                    "  throttle:     |cFFFFFF00(no throttled-message events seen)|r")
+            end
+            if AH.Replicate.ThrottleUnregistered then
+                local bad = AH.Replicate.ThrottleUnregistered()
+                if bad then
+                    VUI.Print(AH.TAG, format(
+                        "  throttle reg: |cFFFF4444FAILED for %s|r "
+                        .. "(renamed in this client — the line above is unreliable)", bad))
+                end
+            end
         end
     end
 
