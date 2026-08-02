@@ -19,26 +19,35 @@ local pairs                = pairs
 
 AH.Tooltip = {}
 
--- Defaults for the tooltip toggles. Seeded into db.settings on first run; all on.
-local TT_DEFAULTS = {
+-- Defaults for this module's user toggles. Seeded into db.settings on first run;
+-- all on. Renamed from TT_DEFAULTS in v1.12.8: it is no longer tooltip-only, and
+-- Settings.lua already documents SeedDefaults as the SINGLE seeding authority, so
+-- new toggles belong here rather than in a second table that could drift out of
+-- sync with the settings panel.
+local SETTING_DEFAULTS = {
     ttShowPrice = true,   -- show "AH:" market price line
     ttShowAge   = true,   -- annotate stale prices with their age in days
     ttShowQty   = true,   -- show last-seen quantity
+    -- UI/CraftingOrder.lua — "Reagents Value:" on the Place Crafting Order form
+    craftShowReagentValue = true,
 }
 
 local function S(key)
     local s = AH.db and AH.db.settings
-    if not s then return TT_DEFAULTS[key] end
-    if s[key] == nil then return TT_DEFAULTS[key] end
+    if not s then return SETTING_DEFAULTS[key] end
+    if s[key] == nil then return SETTING_DEFAULTS[key] end
     return s[key]
 end
 AH.Tooltip.Setting = S
+-- Canonical module-wide accessor. AH.Tooltip.Setting is kept as the original name
+-- so existing call sites are untouched; new files should read AH.Setting.
+AH.Setting = S
 
 -- Seed missing toggle defaults (called once, after AH.db exists).
 function AH.Tooltip.SeedDefaults()
     if not AH.db then return end
     AH.db.settings = AH.db.settings or {}
-    for k, v in pairs(TT_DEFAULTS) do
+    for k, v in pairs(SETTING_DEFAULTS) do
         if AH.db.settings[k] == nil then
             AH.db.settings[k] = v
         end

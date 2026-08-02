@@ -2,6 +2,30 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.8] - 2026-08-03
+
+Adds a Reagents Value line to Blizzard's Place Crafting Order window, showing what a recipe's reagents are worth at your last-scanned auction prices.
+
+The line sits under the reagent list, where the form already leaves a gap. Reagents you have allocated are priced at the quality you actually chose; slots you have not filled are priced at their cheapest quality for the amount still required, which is why a recipe with everything at 0/N still shows a figure. Optional and finishing slots cost nothing until you allocate them.
+
+It reads only the stored price database, so it works away from an auction house and never sends a query. There is a checkbox for it in the Auction House settings, on by default.
+
+Two deliberate differences from how Auctionator does the same job. It prices each reagent at the vendor price when one exists, falling back to the auction price; this uses auction prices only, which is the question being answered — what these are worth on the auction house — but it means the figure is a sale value and not the cheapest way to source the materials. And where Auctionator silently counts a reagent it has no price for as costing nothing, making a partly-unknown recipe look cheap rather than unknown, this appends the number of unpriced reagents instead, or says so outright when nothing is known.
+
+### Added
+
+- `VeritasUI_AuctionHouse` — **"Reagents Value:" line on the Place Crafting Order form.** Totals the recipe's reagents from the stored price database, mounted on `ProfessionsCustomerOrdersFrame.Form` when the crafting-order interaction opens. Allocated reagents priced at the chosen quality via the form's transaction allocations; unallocated basic slots at their cheapest quality for the remaining quantity; optional and finishing slots excluded until allocated. Unpriced reagents are counted and reported rather than treated as free. Every profession API call is `pcall`-guarded, so a Blizzard restructure costs the line rather than throwing. New "Show Reagents Value on Crafting Orders" checkbox, default on. (`UI/CraftingOrder.lua`, new; `Settings.lua`, `Core.lua`)
+
+### Changed
+
+- `VeritasUI_AuctionHouse` — **`TT_DEFAULTS` renamed to `SETTING_DEFAULTS`, and `AH.Setting` added as the canonical accessor.** The table is no longer tooltip-only, and `Settings.lua` already documents `SeedDefaults` as the single seeding authority — a crafting toggle living in a table named for tooltips would mislead the next reader, and a second defaults table would drift from the settings panel. `AH.Tooltip.Setting` is kept so existing call sites are untouched. (`Tooltip.lua`)
+
+### Notes
+
+- The reagent cost model was reimplemented from Auctionator's `Source_Mainline/CraftingInfo`, not guessed. Cross-checked on one recipe: 3,136g 88s against Auctionator's 3,266g 24s on the same recipe from a different scan — the same ballpark, which is evidence the model matches rather than merely being self-consistent.
+- The amount renders in white through the same probe-verified coin-atlas builder the tooltip price uses, so the two agree and the atlas constants exist in one place. The label stays in Blizzard's gold label font. Inline texture markup is not tinted by a colour code, which is what allows a single fontstring to carry both.
+- Two facts were recorded during development and are worth knowing beyond this feature: `OnUpdate` does not fire on a hidden frame, so a frame whose own `OnUpdate` reveals it must never start hidden; and the verified frame path for this window, including its sibling keys, so a future Blizzard rename is detectable rather than a guessing exercise.
+
 ## [1.12.7] - 2026-08-03
 
 Reverts the fifteen-minute lockout added three days ago, because the comparison that justified it turned out to have tested a different part of the auction house API — and that mistake led to the most useful finding so far.

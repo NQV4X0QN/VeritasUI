@@ -50,6 +50,13 @@ local function BuildNativeSettingsPanel()
         AddCheckbox("ttShowAge", true, "Show Price Age",
             "Annotates how many days old the stored price is when it isn't from today's scan.")
 
+        AddCheckbox("craftShowReagentValue", true, "Show Reagents Value on Crafting Orders",
+            "Adds a |cFFFFFF00Reagents Value:|r line under the reagent list on Blizzard's "
+            .. "Place Crafting Order form, totalling what the recipe's reagents are worth at "
+            .. "the last-scanned auction price. Allocated reagents are priced at the quality "
+            .. "chosen; unfilled basic slots at their cheapest quality. Auction prices only — "
+            .. "it does not consider vendor cost, so it is a sale value, not a sourcing cost.")
+
         -- Auto-scan on AH open: REMOVED (2026-07-02). Scans are user-initiated via
         -- the Scan button (UI/ScanButton.lua) or /ah scan. The auto-fire-on-open
         -- path was the locus of the first-open-of-session replicate hang; Core's

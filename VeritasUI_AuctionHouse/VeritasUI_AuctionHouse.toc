@@ -1,7 +1,7 @@
 ## Interface: 120007
 ## Title: VeritasUI — Auction House
 ## Notes: Auction House price database, tooltip prices, and a sellable-items strip on the native Sell tab. |cFF888888by NQV4X0QN|r
-## Version: 1.12.7
+## Version: 1.12.8
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
 ## SavedVariables: VeritasUI_AuctionHouseDB
@@ -14,4 +14,5 @@ Tooltip.lua
 UI\SellStrip.lua
 UI\ScanProgress.lua
 UI\ScanButton.lua
+UI\CraftingOrder.lua
 Settings.lua
