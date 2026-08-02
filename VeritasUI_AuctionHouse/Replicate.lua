@@ -1,7 +1,35 @@
 -- VeritasUI_AuctionHouse / Replicate.lua
--- Full-scan driver. The ONLY sanctioned whole-AH snapshot is
--- C_AuctionHouse.ReplicateItems() (design §2.2 — SendSearchQuery is capped at
--- 100/min and must NOT be used to scan).
+-- Full-scan driver, built on C_AuctionHouse.ReplicateItems().
+--
+-- ⚠ FINDING (2026-08-03) — ReplicateItems IS NOT THE ONLY WHOLE-AH SCAN, AND IT MAY BE
+-- THE WRONG ONE. This header used to state that it is "the ONLY sanctioned whole-AH
+-- snapshot (design §2.2 — SendSearchQuery is capped at 100/min and must NOT be used to
+-- scan)". That conflates two different APIs and is the belief that kept this module tied
+-- to a flaky endpoint for months:
+--   * C_AuctionHouse.SendSearchQuery   — item-specific search, rate-capped. Correctly
+--                                        rejected for scanning. Design §2.2 is right here.
+--   * C_AuctionHouse.SendBrowseQuery   — NOT the same call, NOT the same cap. An EMPTY
+--                                        browse query plus RequestMoreBrowseResults()
+--                                        pagination enumerates the whole AH as per-item
+--                                        summaries (minPrice + totalQuantity).
+--
+-- Auctionator ships BOTH scans and defaults to the browse one: Source/Config/Main.lua has
+-- REPLICATE_SCAN = false, its single Full Scan button branches on that option
+-- (Tabs/Auctionator/Mixins/ScanButton.lua), and replicate is opt-in via an Advanced
+-- checkbox (Config/Mixins/Advanced.lua). The replicate code is maintained, not dead — it
+-- buys per-auction detail a summary cannot — but it is not what their users run.
+--
+-- MEASURED, owner's PC: with our replicate scan freshly failed ("request was lost", zero
+-- event pulses), Auctionator's browse scan succeeded seconds later on the same character,
+-- realm and session — 20,056 items, comparable to our usual 19-25k. So the browse path
+-- works at the exact moment this one is dead. That is the strongest lead we have ever had
+-- on the first-scan-of-the-day hang, and it is an ENDPOINT difference, not a timing,
+-- taint, readiness, fire-context or rate-limit difference — all five of which were
+-- investigated and falsified (see ArmStallDetector and the SKILL landmines).
+--
+-- Root cause of the replicate failure is still UNKNOWN and is no longer the priority:
+-- the plan is to add the browse-summary scan rather than keep trying to repair this one.
+-- ⚠ Do not "simplify" that away as duplication if both paths end up present.
 --
 -- Flow:
 --   ReplicateItems() -> REPLICATE_ITEM_LIST_UPDATE -> read GetNumReplicateItems()
@@ -81,10 +109,12 @@ local LINK_RETRY_BUDGET     = 45        -- hard cap (seconds) on the whole retry
 --  SendBrowseQuery, which IS in the throttled system. Replicate never was. Cutting
 --  Throttle.lua with the Shopping tab lost nothing this path could have used.
 --
---  KEPT ANYWAY, for one narrow reason: the null baseline is now established, so a
---  NON-blank log at failure time is decisive where before it was ambiguous. Blank
---  tells us nothing; anything at all is a signal. Cost is six registrations and one
---  table lookup per event. Delete it only if that trade stops being worth it.
+--  KEPT, and as of v1.12.7 it has a real future use rather than just a null baseline:
+--  the browse-query scan path (see the FINDING block at the top of this file) DOES run
+--  inside the throttled-message system — Auctionator routes every SendBrowseQuery and
+--  RequestMoreBrowseResults through a queue for exactly that reason. So these events go
+--  from inert to load-bearing the moment that path lands. Until then, the null baseline
+--  still makes a NON-blank log decisive where it was previously ambiguous.
 --
 --  ── original rationale, retained for the history ──
 --
@@ -810,15 +840,14 @@ local function ArmStallDetector()
         -- Only report if: AH still open, scan flag still set, but the coroutine
         -- never started. co ~= nil means data arrived and we're processing.
         if not AH.isOpen or not scanning or co then return end
-        local wait = AH.Replicate.SecondsUntilReady()
+        -- Says only what is known. It does NOT quote a cooldown (v1.12.6 did, and the
+        -- attempt-stamp behind it was reverted in v1.12.7 — see DoFire), and it does
+        -- NOT prescribe a recovery: reopening and /reload are both confirmed useless,
+        -- and no client-side signal distinguishes this from a slow-but-coming scan.
         VUI.Print(AH.TAG, format(
             "|cFFFF4444No response after %ds — the request was lost.|r "
-            .. "Next attempt allowed in |cFFFFFF00%d:%02d|r. Reopening the Auction "
-            .. "House does not reset that, and neither does /reload.",
-            REPLICATE_STALL_TIMEOUT, floor(wait / 60), wait % 60))
-        VUI.Print(AH.TAG, "Please run |cFFFFFF00/ah diag|r and report the "
-            .. "|cFFFFFF00throttle:|r line — it identifies whether the request was "
-            .. "dropped (a retry would fix it) or refused (we must back off).")
+            .. "You can press |cFFFFFF00Scan|r again. Reopening the Auction House "
+            .. "makes no difference, and neither does /reload.", REPLICATE_STALL_TIMEOUT))
     end)
 end
 
@@ -858,34 +887,29 @@ local function DoFire()
             tostring(safe(function() return C.GetNumOwnedAuctions and C.GetNumOwnedAuctions() end))
         ))
     end
-    -- Start the floor on the ATTEMPT, not on success (v1.12.6).
+    -- ⚠ DO NOT stamp the scan floor here. v1.12.6 did, and it was REVERTED in
+    -- v1.12.7 after the premise collapsed.
     --
-    -- This is what Auctionator does — FullScan/Mixins/Frame.lua:19-35 stamps
-    -- `TimeOfLastReplicateScan = time()` immediately before ReplicateItems(),
-    -- unconditionally, into an account-wide saved variable, and CanInitiate()
-    -- refuses for 15 minutes from that stamp. It has no success path and no reset:
-    -- Auctionator structurally cannot issue a second replicate request inside 15
-    -- minutes, on any path, across /reload or logout.
+    -- The idea was Auctionator parity: its FullScan stamps TimeOfLastReplicateScan
+    -- on every ATTEMPT, before the call, so it can never re-ask inside 15 minutes.
+    -- The reasoning was that a lost request means the server is rate-limiting us and
+    -- we were hammering it.
     --
-    -- We stamped only on success (the two SetLastScanTime calls in ProcessAllRows
-    -- and the driver, both downstream of data arriving), so a LOST request cost
-    -- nothing and SecondsUntilReady() immediately returned 0 — we permitted
-    -- unlimited back-to-back requests exactly when the server was least willing to
-    -- answer. This file already assumed the hazard: see the SetLastScanTime call in
-    -- ProcessAllRows, whose comment warns that a missing cooldown would "invite an
-    -- immediate re-scan straight into the server's own replicate throttle". That
-    -- guarded the abort-mid-finalize case and never guarded request-lost.
+    -- WHAT KILLED IT (measured 2026-08-03, owner's PC): with our replicate scan
+    -- freshly failed, Auctionator's full scan succeeded seconds later — 20,056 items.
+    -- But it ran in "summary mode", i.e. IncrementalScan, which does NOT call
+    -- ReplicateItems at all: it sends an empty SendBrowseQuery and paginates. So the
+    -- comparison never tested this endpoint, and the floor was copied from the half
+    -- of the reference implementation Auctionator ships DISABLED
+    -- (Source/Config/Main.lua: REPLICATE_SCAN = false, opt-in under Advanced).
     --
-    -- v1.9.14 considered and rejected this, on the grounds that it "would have
-    -- BLOCKED the immediate reopen-and-rescan that is the only known fix". That
-    -- premise is falsified: reopening does not recover it (owner, 2026-07-31 —
-    -- close/reopen AND /reload both fail; only elapsed time works), so the
-    -- justification for leaving failures unstamped is gone.
+    -- With no evidence of an account-level replicate quota, a 15-minute lockout after
+    -- a failure cost the user a quarter of an hour and bought nothing. The evidence
+    -- for "re-asking is harmful" remains one 4-hour measurement contradicted twice in
+    -- the probe library, which is not enough to spend the user's time on.
     --
-    -- Deliberately does NOT replace the two success-path stamps. They fire later,
-    -- so they only ever push the floor further out; the success path is unchanged
-    -- by design and this stamp is load-bearing solely when no data ever arrives.
-    SetLastScanTime(time())
+    -- The floor stays SUCCESS-ONLY (the two SetLastScanTime calls in ProcessAllRows
+    -- and the driver), which is how it worked from v1.6.47 to v1.12.5.
     C_AuctionHouse.ReplicateItems()
     -- Phase marker for the progress UI: the request has gone out, so the bar can
     -- leave "Connecting…" and enter the snapshot wait (ScanProgress listens).

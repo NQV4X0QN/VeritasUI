@@ -2,6 +2,33 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.7] - 2026-08-03
+
+Reverts the fifteen-minute lockout added three days ago, because the comparison that justified it turned out to have tested a different part of the auction house API — and that mistake led to the most useful finding so far.
+
+Version 1.12.6 made a failed scan start the fifteen-minute cooldown, so a scan that produced nothing locked the button for a quarter of an hour. The reasoning was that Auctionator, which scans reliably on the same account, records every attempt rather than every success, and that our willingness to retry immediately was aggravating the server.
+
+Testing that on a real failure showed something different. Our scan failed as usual, Auctionator's full scan succeeded moments later — but its own chat line said "summary mode", and that is a separate implementation which never calls the function ours depends on. It sends an empty browse search and pages through the results instead. Auctionator ships with the function we use switched off; the single Full Scan button chooses between the two based on a checkbox in its Advanced settings that is off by default.
+
+So the lockout was copied from the half of Auctionator that its own users do not run, and there is no evidence it protected anything. It has been removed. A failed scan leaves no cooldown, exactly as before 1.12.6, and you can press Scan again immediately.
+
+The finding that matters is that the browse-search path completed successfully at the moment ours was dead, on the same character and realm, seconds apart. That is a working alternative rather than another theory, and adding it is the next piece of work. The cause of the original failure is still unknown and is no longer the thing being chased.
+
+### Changed
+
+- `VeritasUI_AuctionHouse` — **A failed scan no longer starts the 15-minute floor.** The v1.12.6 attempt-stamp is removed and the floor is success-only again, as it was from v1.6.47 to v1.12.5. Pressing Scan after a loss re-fires immediately. (`Replicate.lua`)
+- `VeritasUI_AuctionHouse` — **The lost-request message no longer quotes a cooldown.** It states that the request was lost, that Scan can be pressed again, and that reopening the Auction House and `/reload` make no difference — and stops asking for a diagnostic line now known to be blank on this code path. (`Replicate.lua`)
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **The file header claimed `ReplicateItems` is the only sanctioned whole-AH scan.** It conflated two different APIs: `SendSearchQuery`, an item-specific search that is rate-capped and correctly rejected for scanning, and `SendBrowseQuery`, which is neither the same call nor subject to the same cap and enumerates the whole auction house as per-item summaries when paginated. That single conflation is what kept this module tied to one endpoint for months, so the header now records both APIs, Auctionator's default, and the measurement. (`Replicate.lua`)
+
+### Notes
+
+- **Measured:** with our replicate scan freshly failed (zero event pulses, no data), Auctionator's browse scan returned 20,056 items seconds later on the same character, realm and session — comparable to our usual 19,000-25,000. The failure is an endpoint difference, not a timing, taint, readiness, fire-context or rate-limit difference; all five of those were investigated and falsified.
+- **The throttled-message instrumentation added in v1.12.6 is retained and now has a purpose.** It is inert for replicate, which was measured, but browse queries do run inside the throttled-message system — Auctionator routes every one through a queue for that reason — so it becomes load-bearing when the browse path lands.
+- **Next:** add the browse-summary scan. It carries a real trade to settle first, namely that browse returns a minimum price and total quantity per item rather than the per-auction distribution this database currently records.
+
 ## [1.12.6] - 2026-07-31
 
 The Auction House scan failed the first time each day and then refused to recover, and the message it printed sent you round a loop that could not work.
