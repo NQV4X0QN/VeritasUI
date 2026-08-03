@@ -2,6 +2,31 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.11] - 2026-08-04
+
+Reverts the default scan engine to replicate. The browse engine introduced two releases ago reports prices that are not the lowest price available, and it should not have been made the default.
+
+The evidence is a single reading that admits no other interpretation. For one commodity, at one moment: the game's own sell listing, sorted cheapest first, showed the lowest available price as 2 gold 98 silver. The browse engine reported 2 gold 75 silver. A lowest price cannot be below the cheapest thing on sale. The same reading showed the quantity matching the game's figure almost exactly, so the engine is looking at the right set of auctions and only its price is wrong.
+
+The practical effect was that a tooltip advertised 2 gold 11 silver for an item selling at 2 gold 98 silver. Anyone pricing against that number loses money, which makes it unfit as a default regardless of the engine's other merits.
+
+The likeliest explanation is that the figure is a cached summary that lags behind the live market, which would match on items whose price is steady and read low on items whose price is climbing. That is consistent with the comparison run before the switch, which showed near-total agreement on most items alongside a two-to-one bias toward reading low on the rest — a bias that was noticed at the time and wrongly dismissed as ordinary market movement. It has not been confirmed, and the revert does not depend on confirming it.
+
+Browse remains selectable and is still the faster engine with better coverage — 22,540 items in fifteen seconds against 15,828 in fifty-six, and it never abandons gear the way replicate does. It is not deprecated. But it will not be the default again until the price discrepancy is understood rather than averaged away.
+
+### Changed
+
+- `VeritasUI_AuctionHouse` — **Default scan engine reverted to replicate.** Browse's reported minimum price was measured below the cheapest existing listing for the same item at the same moment, so it cannot be used as a price source. The revert deliberately does not wait on an explanation: a confidently wrong price is worse than replicate's known problem, which produces stale prices that the tooltip's age line discloses. (`Tooltip.lua`, `Browse.lua`)
+
+### Added
+
+- `VeritasUI_AuctionHouse` — **`/ah browseprobe`, now permanent.** Shift-click an item at the auction house and it runs a browse scan that writes nothing, then reports exactly what the game returned for that item: price, quantity, item level, derived key, and whether the result was used or skipped. Compare the reported price against the sell tab's cheapest listing at the same moment. This is the tool that found the discrepancy, and it is the tool that would have to clear browse before it could be default again, so it is kept rather than removed. (`Browse.lua`, `Core.lua`)
+
+### Notes
+
+- Both engines now have a documented, distinct defect, and neither is a clean baseline. Replicate abandons gear rows and therefore serves stale gear prices, which the age line at least discloses. Browse reports prices below the market minimum, which nothing discloses. The second is worse, which is the whole reason for the revert.
+- The comparison tool's own headline figure — 98.2% agreement on commodities — is an average over a population dominated by items whose price had not moved, and it concealed the failure on the items that had. It should not be used on its own to justify promoting an engine again.
+
 ## [1.12.10] - 2026-08-04
 
 Retracts a cause stated in the previous release that turned out to be invented, and adds the measurement that should have come first.

@@ -345,6 +345,10 @@ local function ReportComparison()
 end
 
 AH.Events.On("AH_SCAN_COMPLETE", function()
+    if AH.browseProbePending then
+        AH.browseProbePending = false
+        if AH.Browse and AH.Browse.ReportWatch then AH.Browse.ReportWatch() end
+    end
     if AH.comparePending then
         AH.comparePending = false
         ReportComparison()
@@ -635,6 +639,36 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             VUI.Print(AH.TAG, format("Scan engine set to |cFFFFFF00%s|r.", want))
         else
             VUI.Print(AH.TAG, "Usage: /ah engine browse | replicate")
+        end
+
+    elseif cmd == "browseprobe" then
+        -- PERMANENT diagnostic: watch ONE item through a live dry browse scan and report
+        -- the raw API values, to separate "browse priced it wrong" from "browse never
+        -- returned it" from "the market moved". Kept because it is the only tool that
+        -- can validate the browse engine against the game's own listing.
+        local link = rawRest and rawRest:match("|H.-|h.-|h")
+        if not link then
+            VUI.Print(AH.TAG, "Usage: |cFFFFFF00/ah browseprobe|r then shift-click an item link "
+                .. "(do it at the Auction House).")
+            return
+        end
+        local key = AH.DB and AH.DB.MakeKey(link)
+        if not key then
+            VUI.Print(AH.TAG, "Could not derive a price key from that link.")
+            return
+        end
+        if not (AH.Browse and AH.Browse.SetWatch) then
+            VUI.Print(AH.TAG, "Browse engine not loaded.")
+            return
+        end
+        AH.Browse.SetWatch(key)
+        AH.browseProbePending = true
+        local okP, reasonP = AH.Browse.Start({ dry = true })
+        if not okP then
+            AH.browseProbePending = false
+            VUI.Print(AH.TAG, reasonP or "Probe could not start.")
+        else
+            VUI.Print(AH.TAG, format("Watching |cFFFFFF00%s|r through a dry browse scan…", key))
         end
 
     elseif cmd == "compare" then

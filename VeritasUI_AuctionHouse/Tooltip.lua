@@ -32,31 +32,36 @@ local SETTING_DEFAULTS = {
     craftShowReagentValue = true,
     -- Which whole-AH scan engine the Scan button drives: "replicate" (Replicate.lua,
     -- C_AuctionHouse.ReplicateItems) or "browse" (Browse.lua, empty SendBrowseQuery).
-    -- ⚠ DEFAULT IS BROWSE as of v1.12.9, on measurement, not preference.
+    -- ⚠⚠ DEFAULT IS REPLICATE. v1.12.9 made it "browse" and v1.12.11 REVERTED that on a
+    -- direct measurement: browse's minPrice is NOT the live lowest unit buyout.
     --
-    -- /ah compare against a replicate-built database on a live realm (2026-08-04):
-    --   commodity  11,459 in both -> 11,256 IDENTICAL (98.2%), median ratio 1.000
-    --   pet           915 in both ->    915 IDENTICAL (100%),  median ratio 1.000
-    --   gear        8,778 in both ->  6,883 identical (78.4%), median ratio 1.000
-    -- Near-total agreement on commodities and pets kills the one open objection --
-    -- that browse's minPrice might include BIDS, which replicate deliberately skips.
-    -- Pricing bids could not produce 98-100% copper-exact agreement.
+    -- MEASURED 2026-08-04, owner's PC, item 242639 (Practically Pork), one moment:
+    --   Blizzard's own Sell-tab list, sorted ascending: lowest unit price 29800 (2g98s)
+    --   browse minPrice:                                              27500 (2g75s)
+    -- A minimum cannot be BELOW the cheapest listing that exists, so minPrice is not a
+    -- live minimum. Same result reports qty=79681 against the tab's 79606 Available, so
+    -- browse aggregates the right POPULATION -- only the price is wrong. Key derivation
+    -- was correct too (i:242639).
     --
-    -- Gear disagreeing is EXPECTED and is replicate's fault, not browse's: replicate
-    -- can only key gear from a loaded link, and its retry phase abandoned 6,139 of
-    -- 16,304 gear rows on 2026-08-03 and 10,609 of 15,894 on 2026-08-04 (38% then
-    -- 67%). An abandoned row gets no Record() call, so it refreshes neither price nor
-    -- `seen` -- stored gear is genuinely old. Browse takes itemLevel straight from the
-    -- browse result's itemKey, so it has no deferred pile and nothing to drop.
+    -- The tooltip consequently advertised 2g11s on an item selling at 2g98s. Undercutting
+    -- to that number loses real gold, which makes this unfit as the default price source
+    -- regardless of browse's other advantages.
     --
-    -- Coverage, same session: browse 22,540 items in 15s vs replicate 15,828 in 55.9s,
-    -- finding 1,388 gear items the database did not have.
+    -- LIKELY (not verified): minPrice is a server-side cached aggregate that LAGS. It
+    -- would then match on stable items and read low on moving ones -- which is exactly
+    -- what /ah compare showed and what I wrongly dismissed as churn: 1,400 browse-lower
+    -- against 774 higher, a 2:1 one-sided skew, alongside 98.2% agreement on the stable
+    -- majority. ⚠ Do NOT restore browse as the default on the strength of that 98.2%
+    -- figure; it is an average over a population dominated by items whose price had not
+    -- moved, and it conceals the failure on the ones that had.
     --
-    -- ⚠ Replicate is KEPT (/ah engine replicate) and is not deprecated: it is the only
-    -- engine that sees per-auction detail, and it is the fallback if a realm ever
-    -- refuses browse. But its gear coverage is unreliable -- see the quiescence note on
-    -- LINK_RETRY_BUDGET in Replicate.lua before trusting a replicate gear price.
-    scanEngine = "browse",
+    -- Browse remains SELECTABLE (/ah engine browse) and is still the better engine for
+    -- COVERAGE -- 22,540 items in 15s vs 15,828 in 55.9s, and no gear dropped. If it is
+    -- ever promoted again, the lag must be understood and corrected first, not assumed
+    -- away. Replicate's own defect (abandoning gear rows) is documented on
+    -- LINK_RETRY_BUDGET; it produces STALE prices that the age line discloses, which is a
+    -- lesser evil than confidently wrong ones.
+    scanEngine = "replicate",
 }
 
 local function S(key)

@@ -42,8 +42,22 @@
 -- naming-pattern note in SKILL.md). `/ah compare` exists to settle it against real
 -- data before this becomes the default engine.
 --
--- ⚠ Default engine is REPLICATE. This is opt-in until `/ah compare` comes back clean:
--- a live price database is not the place to find out.
+-- ⚠⚠ NOT THE DEFAULT ENGINE, AND NOT FIT TO BE ONE YET. minPrice is measurably NOT the
+-- live lowest unit buyout: on 2026-08-04, item 242639, browse returned minPrice=27500
+-- while Blizzard's own ascending Sell-tab list showed 29800 as the cheapest listing in
+-- existence. A minimum below the cheapest listing is not a minimum. The same result
+-- reported qty=79681 against the tab's 79606 Available, so the POPULATION is right and
+-- only the PRICE is wrong -- suggesting a server-side cached aggregate that LAGS, though
+-- that is unverified.
+--
+-- ⚠ Do not re-promote this on the strength of "/ah compare showed 98.2% commodity
+-- agreement". That average is dominated by items whose price had not moved; the same
+-- report also showed a 2:1 skew (1,400 lower vs 774 higher) which is the lag showing
+-- through, and which was wrongly dismissed as churn. Understand the lag first.
+--
+-- Still the better engine for COVERAGE and speed -- 22,540 items in 15s vs replicate's
+-- 15,828 in 55.9s, with no gear abandoned -- which is why it is kept and selectable.
+
 
 local _, AH = ...
 local VUI = _G.VeritasUI
@@ -149,16 +163,20 @@ local function AddPrices(results)
             -- ⚠ EVERY skip is counted. A silent skip on the default scan engine is
             -- indistinguishable from correct behaviour, which is exactly the hole this
             -- engine shipped with in v1.12.9.
+            local _watch = AH.Browse._WatchResult
             if not (type(qty) == "number" and qty > 0) then
+                if _watch then _watch(r, AH.DB.MakeKeyFromItemKey(r.itemKey), "SKIPPED: nothing for sale") end
                 -- Legitimate: a listing with nothing actually available. Auctionator
                 -- skips these too.
                 skipNoQty = skipNoQty + 1
             elseif not (type(unit) == "number" and unit > 0) then
+                if _watch then _watch(r, AH.DB.MakeKeyFromItemKey(r.itemKey), "SKIPPED: no buyout price") end
                 -- Legitimate: bid-only, or no buyout. Replicate skips these as well, so
                 -- both engines agree here.
                 skipNoPrice = skipNoPrice + 1
             else
                 local key = AH.DB.MakeKeyFromItemKey(r.itemKey)
+                if _watch then _watch(r, key, key and "FOLDED" or "SKIPPED: unkeyable") end
                 if not key then
                     -- ⚠ NOT legitimate — this is real data loss. Reachable when a gear
                     -- itemKey carries no usable itemLevel (MakeKeyFromItemKey refuses to
@@ -407,7 +425,76 @@ AH.Events.On("AH_CLOSED", function()
     end
 end)
 
+----------------------------------------------------------------
+--  /ah browseprobe — watch ONE item through a live browse scan
+--
+--  PERMANENT (promoted from a temporary probe in v1.12.11), for the same reason
+--  /ah check and /qol ilvl are permanent: the question it answers recurs and cannot be
+--  summoned on demand. A stored price disagreeing with the native AH has at least three
+--  causes that are identical from outside -- browse priced it wrong; browse never
+--  returned the item so the stored value is older; or the market moved -- and only the
+--  raw API return separates them. This probe is ALSO the verification tool if browse is
+--  ever considered for default again: it is what caught minPrice reading BELOW the
+--  cheapest listing in existence (2026-08-04, item 242639, 27500 vs 29800).
+--
+--  Runs a DRY browse (writes nothing) and reports every browse result whose key matches
+--  the watched item: raw minPrice, raw totalQuantity, the derived key, and whether the
+--  result was skipped and why. Compare the reported minPrice against the lowest Unit
+--  Price the native Sell tab is showing at that moment.
+----------------------------------------------------------------
+local watchKey, watchHits
+
+function AH.Browse.SetWatch(key)
+    watchKey, watchHits = key, {}
+end
+
+-- Called from AddPrices for every result, before any skip decision.
+local function WatchResult(r, key, verdict)
+    if not (watchKey and watchHits) then return end
+    if key ~= watchKey then
+        -- Also catch the case where the item is present but keys DIFFERENTLY than the
+        -- tooltip does — which would be a key-derivation bug, not a price bug, and would
+        -- otherwise look exactly like "browse never returned it".
+        local id = type(r.itemKey) == "table" and r.itemKey.itemID
+        local wantID = watchKey:match("^i:(%d+)")
+        if not (wantID and id and tostring(id) == wantID) then return end
+    end
+    if #watchHits >= 8 then return end
+    watchHits[#watchHits + 1] = format(
+        "key=%s minPrice=%s qty=%s ilvl=%s species=%s -> %s",
+        tostring(key),
+        tostring(r.minPrice), tostring(r.totalQuantity),
+        tostring(type(r.itemKey) == "table" and r.itemKey.itemLevel),
+        tostring(type(r.itemKey) == "table" and r.itemKey.battlePetSpeciesID),
+        verdict)
+end
+
+function AH.Browse.ReportWatch()
+    if not watchKey then return end
+    VUI.Print(AH.TAG, format("browseprobe for |cFFFFFF00%s|r:", watchKey))
+    if not watchHits or #watchHits == 0 then
+        VUI.Print(AH.TAG, "  |cFFFF4444browse returned NO result for this item.|r "
+            .. "The stored price is therefore from an OLDER scan, not from this one — "
+            .. "this is a COVERAGE gap, not a pricing error.")
+    else
+        for _, line in ipairs(watchHits) do
+            VUI.Print(AH.TAG, "  " .. line)
+        end
+        VUI.Print(AH.TAG, "  Compare minPrice above against the lowest Unit Price the "
+            .. "Sell tab is showing right now. If they differ, browse's minPrice is not "
+            .. "the lowest unit buyout and the engine is wrong.")
+    end
+    local stored = AH.DB and AH.DB.GetMarketPrice(watchKey)
+    VUI.Print(AH.TAG, format("  stored now: %s (age %s days)",
+        stored and (AH.Money and AH.Money.Format(stored) or stored) or "none",
+        tostring(AH.DB and AH.DB.GetPriceAge(watchKey))))
+    watchKey, watchHits = nil, nil
+end
+
 -- Exposed for the headless suite.
 AH.Browse._AddPrices = AddPrices
 AH.Browse._Skips     = function() return skipNoQty, skipNoPrice, skipNoKey end
 AH.Browse._QueueLen  = function() return #queue end
+
+-- PROBE wiring: assigned after WatchResult exists so AddPrices resolves it at call time.
+AH.Browse._WatchResult = WatchResult
