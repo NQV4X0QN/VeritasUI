@@ -32,36 +32,45 @@ local SETTING_DEFAULTS = {
     craftShowReagentValue = true,
     -- Which whole-AH scan engine the Scan button drives: "replicate" (Replicate.lua,
     -- C_AuctionHouse.ReplicateItems) or "browse" (Browse.lua, empty SendBrowseQuery).
-    -- ⚠⚠ DEFAULT IS REPLICATE. v1.12.9 made it "browse" and v1.12.11 REVERTED that on a
-    -- direct measurement: browse's minPrice is NOT the live lowest unit buyout.
+    -- DEFAULT IS BROWSE (v1.12.12, owner decision after the arithmetic below).
     --
-    -- MEASURED 2026-08-04, owner's PC, item 242639 (Practically Pork), one moment:
-    --   Blizzard's own Sell-tab list, sorted ascending: lowest unit price 29800 (2g98s)
-    --   browse minPrice:                                              27500 (2g75s)
-    -- A minimum cannot be BELOW the cheapest listing that exists, so minPrice is not a
-    -- live minimum. Same result reports qty=79681 against the tab's 79606 Available, so
-    -- browse aggregates the right POPULATION -- only the price is wrong. Key derivation
-    -- was correct too (i:242639).
+    -- ⚠ THE DEFAULT HAS MOVED THREE TIMES. Read this whole block before moving it again;
+    -- the two previous flips were each made on a number that had not been decomposed.
     --
-    -- The tooltip consequently advertised 2g11s on an item selling at 2g98s. Undercutting
-    -- to that number loses real gold, which makes this unfit as the default price source
-    -- regardless of browse's other advantages.
+    -- KNOWN DEFECT, NOT A REASON TO REVERT ON ITS OWN: browse's minPrice is not the live
+    -- lowest unit buyout. Measured 2026-08-04 (item 242639, one moment, /ah browseprobe):
+    -- Blizzard's ascending Sell-tab list showed the cheapest listing at 29800; browse
+    -- returned 27500. A minimum cannot sit below the cheapest thing on sale, so this is
+    -- real. Quantity (79681 vs the tab's 79606) and the derived key were both correct, so
+    -- browse reads the right POPULATION and only the PRICE lags. Probably a server-side
+    -- cached aggregate; unverified.
     --
-    -- LIKELY (not verified): minPrice is a server-side cached aggregate that LAGS. It
-    -- would then match on stable items and read low on moving ones -- which is exactly
-    -- what /ah compare showed and what I wrongly dismissed as churn: 1,400 browse-lower
-    -- against 774 higher, a 2:1 one-sided skew, alongside 98.2% agreement on the stable
-    -- majority. ⚠ Do NOT restore browse as the default on the strength of that 98.2%
-    -- figure; it is an average over a population dominated by items whose price had not
-    -- moved, and it conceals the failure on the ones that had.
+    -- ⚠ THE DECOMPOSITION THAT MATTERS, and the reason v1.12.11's revert was an
+    -- over-correction:
+    --      stored 2g11s vs market 2g64s (owner's first report)  = 20% gap
+    --      stored 2g11s vs market 2g98s (minutes later)         = 29% gap
+    --      browse minPrice vs market, SAME MOMENT               =  7.7% gap
+    -- Only the 7.7% is attributable to browse. The 20-29% the user actually experienced is
+    -- SCAN STALENESS -- the market moved 41% in minutes -- and REPLICATE WOULD SHOW THE
+    -- SAME GAP, because every scan-based price goes stale the instant the market moves.
+    -- v1.12.11 reverted the engine that fixed the first-scan hang on the strength of the
+    -- conflated 20-29% figure. Do not repeat that: separate lag from staleness first.
     --
-    -- Browse remains SELECTABLE (/ah engine browse) and is still the better engine for
-    -- COVERAGE -- 22,540 items in 15s vs 15,828 in 55.9s, and no gear dropped. If it is
-    -- ever promoted again, the lag must be understood and corrected first, not assumed
-    -- away. Replicate's own defect (abandoning gear rows) is documented on
-    -- LINK_RETRY_BUDGET; it produces STALE prices that the age line discloses, which is a
-    -- lesser evil than confidently wrong ones.
-    scanEngine = "replicate",
+    -- WHY BROWSE ANYWAY: replicate fails the first scan of most days -- the original
+    -- complaint, unsolved for months, five hypotheses falsified. Browse completed in 10-15s
+    -- every attempt, priced 22,540 items against replicate's 15,828 in 55.9s, and abandons
+    -- no gear (replicate abandoned 38-67% of gear rows on two measured scans, which
+    -- silently froze both the price AND the age of those items). A reliable scan that reads
+    -- a few percent low on fast-moving commodities beats an exact scan that will not run.
+    --
+    -- ⚠ Deliberately NOT paired with a minutes-granularity age line. That was proposed and
+    -- REJECTED by the owner: he reads the age line to decide whether to rescan, and
+    -- per-minute noise on every tooltip is clutter, not signal. `seen` stays day-grained.
+    --
+    -- Escape hatch if prices feel wrong in use: /ah engine replicate. Spot-check any single
+    -- item with /ah browseprobe, which compares browse's raw return against the game's own
+    -- listing at the same moment.
+    scanEngine = "browse",
 }
 
 local function S(key)

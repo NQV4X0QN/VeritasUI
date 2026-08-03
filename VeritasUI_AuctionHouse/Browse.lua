@@ -42,21 +42,30 @@
 -- naming-pattern note in SKILL.md). `/ah compare` exists to settle it against real
 -- data before this becomes the default engine.
 --
--- ⚠⚠ NOT THE DEFAULT ENGINE, AND NOT FIT TO BE ONE YET. minPrice is measurably NOT the
--- live lowest unit buyout: on 2026-08-04, item 242639, browse returned minPrice=27500
--- while Blizzard's own ascending Sell-tab list showed 29800 as the cheapest listing in
--- existence. A minimum below the cheapest listing is not a minimum. The same result
--- reported qty=79681 against the tab's 79606 Available, so the POPULATION is right and
--- only the PRICE is wrong -- suggesting a server-side cached aggregate that LAGS, though
--- that is unverified.
+-- THE DEFAULT ENGINE (v1.12.12). Chosen because replicate fails the first scan of most
+-- days -- the original complaint, unsolved for months -- while this path completed in
+-- 10-15s on every attempt, priced 22,540 items against replicate's 15,828 in 55.9s, and
+-- abandons no gear (replicate dropped 38-67% of gear rows on two measured scans).
 --
--- ⚠ Do not re-promote this on the strength of "/ah compare showed 98.2% commodity
--- agreement". That average is dominated by items whose price had not moved; the same
--- report also showed a 2:1 skew (1,400 lower vs 774 higher) which is the lag showing
--- through, and which was wrongly dismissed as churn. Understand the lag first.
+-- ⚠ KNOWN DEFECT, shipped knowingly: minPrice is NOT the live lowest unit buyout. Measured
+-- 2026-08-04, item 242639, one moment: Blizzard's ascending Sell-tab list showed the
+-- cheapest listing at 29800; browse returned 27500. A minimum cannot sit below the cheapest
+-- thing on sale. totalQuantity (79681 vs the tab's 79606) and the key were both right, so
+-- the POPULATION is correct and only the PRICE lags -- probably a server-side cached
+-- aggregate, unverified.
 --
--- Still the better engine for COVERAGE and speed -- 22,540 items in 15s vs replicate's
--- 15,828 in 55.9s, with no gear abandoned -- which is why it is kept and selectable.
+-- ⚠ SIZE IT BEFORE ACTING ON IT. The gap attributable to browse is ~7.7%. The 20-29% gaps
+-- reported in use were mostly SCAN STALENESS (that commodity moved 41% in minutes) and
+-- replicate would show the same. v1.12.11 reverted this engine on the conflated figure and
+-- that was an over-correction; see the block above scanEngine in Tooltip.lua.
+--
+-- ⚠ Do not cite "/ah compare showed 98.2% commodity agreement" as evidence either way. It
+-- is an average over a population dominated by items whose price had not moved, and it
+-- concealed the failures on the ones that had -- the same report carried a 2:1 skew (1,400
+-- lower vs 774 higher) that was the lag showing through and was dismissed as churn.
+--
+-- Use /ah browseprobe to check any single item against the game's own listing at the same
+-- moment. That is the only tool that separates lag from staleness.
 
 
 local _, AH = ...

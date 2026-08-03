@@ -2,6 +2,25 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.12] - 2026-08-04
+
+Makes the browse engine the default again, for a trial period, after decomposing the numbers that prompted the previous release to revert it.
+
+The revert in 1.12.11 was an over-correction. The price discrepancy that triggered it was real but smaller than it appeared, because two different problems were being added together. A stored price of 2 gold 11 silver was compared against a market price of 2 gold 98 silver, a gap of 29%. Almost all of that was simply the market moving — that commodity climbed 41% over the course of a few minutes — and any engine's stored price goes stale the moment the market moves. Measured at a single instant, against the game's own cheapest listing, the browse engine reads about 8% low. That is the part actually attributable to the engine.
+
+An 8% understatement on fast-moving commodities is a genuine defect and it is documented rather than dismissed. But it is not worse than an engine that fails the first scan of most days, which is the problem this whole line of work set out to solve and which remains unsolved after five falsified explanations. The browse engine completed in ten to fifteen seconds on every attempt, priced 22,540 items where the older engine managed 15,828 in nearly a minute, and does not abandon gear — the older engine dropped between 38% and 67% of all gear rows on two measured scans, freezing both the price and the recorded age of those items.
+
+So this ships as the default on the basis that a scan that works and reads slightly low is more useful than an exact one that cannot be relied upon to run. It is a trial: if prices feel wrong in daily use, `/ah engine replicate` switches back, and `/ah browseprobe` will show what the game returned for any single item at the moment of asking.
+
+### Changed
+
+- `VeritasUI_AuctionHouse` — **Default scan engine is browse again.** The reasoning, and the arithmetic separating the engine's ~8% lag from ordinary scan staleness, is recorded in full beside the setting so a future change has to engage with it rather than repeat the same conflation. This is the third time the default has moved; the note says so. (`Tooltip.lua`, `Browse.lua`)
+
+### Notes
+
+- A minutes-granularity price-age line was proposed as a way to make staleness visible, and **declined**: the age line exists to answer "should I rescan", and per-minute detail on every tooltip is noise rather than signal. Price age stays day-grained, and a test now guards that decision so it is not quietly "improved" later.
+- Neither engine is clean. Browse reports prices below the market minimum, which nothing discloses. Replicate abandons gear rows and serves stale gear prices, which the age line does disclose. Both defects are documented where a reader will meet them.
+
 ## [1.12.11] - 2026-08-04
 
 Reverts the default scan engine to replicate. The browse engine introduced two releases ago reports prices that are not the lowest price available, and it should not have been made the default.
