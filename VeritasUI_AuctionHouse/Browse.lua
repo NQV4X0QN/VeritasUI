@@ -78,6 +78,13 @@ local progress   = 0       -- 0..1
 local agg                  -- [key] = { unit = minPrice, qty = totalQuantity }
 local seenCount  = 0       -- browse results folded this scan
 local pageCount  = 0       -- pages requested
+-- SKIP ACCOUNTING (v1.12.10). AddPrices used to drop three classes of result silently,
+-- which meant this engine had NO coverage evidence at all — it replaced replicate's
+-- MEASURED loss ("dropped: 10609", printed) with an unmeasured one. Two of these classes
+-- are legitimate (nothing for sale / no buyout price); `noKey` is NOT, and is the one that
+-- would represent real data loss on the default scan path.
+local skipNoQty, skipNoPrice, skipNoKey = 0, 0, 0
+local noKeyExamples        -- up to 5 itemIDs we could not key, for diagnosis
 local dryRun               -- when true, results are NOT written to the DB (/ah compare)
 local dryResult            -- captured aggregate for the dry run
 local startedAt
@@ -139,12 +146,34 @@ local function AddPrices(results)
         if type(r) == "table" then
             local qty = r.totalQuantity
             local unit = r.minPrice
-            -- Zero-quantity rows are listings with nothing actually available;
-            -- Auctionator skips them too. Zero/absent price is not a price.
-            if type(qty) == "number" and qty > 0
-               and type(unit) == "number" and unit > 0 then
+            -- ⚠ EVERY skip is counted. A silent skip on the default scan engine is
+            -- indistinguishable from correct behaviour, which is exactly the hole this
+            -- engine shipped with in v1.12.9.
+            if not (type(qty) == "number" and qty > 0) then
+                -- Legitimate: a listing with nothing actually available. Auctionator
+                -- skips these too.
+                skipNoQty = skipNoQty + 1
+            elseif not (type(unit) == "number" and unit > 0) then
+                -- Legitimate: bid-only, or no buyout. Replicate skips these as well, so
+                -- both engines agree here.
+                skipNoPrice = skipNoPrice + 1
+            else
                 local key = AH.DB.MakeKeyFromItemKey(r.itemKey)
-                if key then
+                if not key then
+                    -- ⚠ NOT legitimate — this is real data loss. Reachable when a gear
+                    -- itemKey carries no usable itemLevel (MakeKeyFromItemKey refuses to
+                    -- mint a bare i:<itemID> for gear, which design §2.4 forbids by
+                    -- name), or when the itemKey is malformed. Capture examples so the
+                    -- next step is a lookup, not a guess.
+                    skipNoKey = skipNoKey + 1
+                    if not noKeyExamples then noKeyExamples = {} end
+                    if #noKeyExamples < 5 then
+                        local id = type(r.itemKey) == "table" and r.itemKey.itemID
+                        local lvl = type(r.itemKey) == "table" and r.itemKey.itemLevel
+                        noKeyExamples[#noKeyExamples + 1] =
+                            format("%s(ilvl %s)", tostring(id), tostring(lvl))
+                    end
+                else
                     local a = agg[key]
                     if not a then
                         agg[key] = { unit = unit, qty = qty }
@@ -183,6 +212,27 @@ local function Finish()
     scanning, progress = false, 1
     agg = nil
     ClearQueue()
+
+    -- COVERAGE REPORT. Always printed, not debug-gated: this is the evidence that the
+    -- default scan engine is not losing items, and it is worthless if it only appears
+    -- when someone thought to enable logging. Two lines only when there is nothing
+    -- alarming to say.
+    local skipped = skipNoQty + skipNoPrice + skipNoKey
+    if skipped > 0 then
+        VUI.Print(AH.TAG, format(
+            "  coverage: %d priced, %d skipped (%d nothing-for-sale, %d no-buyout, "
+            .. "|cFF%s%d unkeyable|r)",
+            seenCount, skipped, skipNoQty, skipNoPrice,
+            skipNoKey > 0 and "FF4444" or "808080", skipNoKey))
+    end
+    if skipNoKey > 0 then
+        -- Loud on purpose: an unkeyable result IS lost data, and this is the number that
+        -- answers "is browse silently dropping items?" with evidence instead of a claim.
+        VUI.Print(AH.TAG, format(
+            "  |cFFFF4444%d result(s) could not be keyed and were NOT recorded.|r %s",
+            skipNoKey,
+            noKeyExamples and ("Examples: " .. table.concat(noKeyExamples, ", ")) or ""))
+    end
 
     local elapsed = startedAt and (GetTime() - startedAt) or 0
     if dryRun then
@@ -281,6 +331,8 @@ function AH.Browse.Start(opts)
     agg       = {}
     seenCount = 0
     pageCount = 0
+    skipNoQty, skipNoPrice, skipNoKey = 0, 0, 0
+    noKeyExamples = nil
     startedAt = GetTime()
 
     AH.Events.Fire("AH_SCAN_START")
@@ -357,4 +409,5 @@ end)
 
 -- Exposed for the headless suite.
 AH.Browse._AddPrices = AddPrices
+AH.Browse._Skips     = function() return skipNoQty, skipNoPrice, skipNoKey end
 AH.Browse._QueueLen  = function() return #queue end

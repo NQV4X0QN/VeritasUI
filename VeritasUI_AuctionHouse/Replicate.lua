@@ -114,16 +114,38 @@ local LINK_RETRY_BUDGET     = 120       -- hard cap (seconds) on the whole retry
                                         -- scan and the quiescence break on the next; concluding
                                         -- "the cap is the problem" from a single sample was wrong.
                                         --
-                                        -- ⚠ LIKELY ROOT CAUSE, recorded but NOT fixed: this loop
-                                        -- PASSIVELY re-polls GetReplicateItemLink and hopes the
-                                        -- data arrives. Auctionator's equivalent actively calls
-                                        -- C_Item.RequestLoadItemDataByID for every pending item
-                                        -- (Source_ModernAH/FullScan/Mixins/Frame.lua, LoadItemData).
-                                        -- With nothing requesting the load, the trickle dries up and
-                                        -- quiescence fires early. Deliberately left alone: browse is
-                                        -- now the default engine and has no deferred pile at all, so
-                                        -- hardening this path is work that would be deleted. If
-                                        -- replicate is ever promoted back, fix it THERE, not here.
+                                        -- ⚠ CAUSE UNKNOWN. Do not fill this gap with a guess; two
+                                        -- have already been wrong.
+                                        --
+                                        -- RETRACTED (v1.12.10): v1.12.9 asserted here, in the
+                                        -- CHANGELOG and in a SKILL landmine that the cause was this
+                                        -- loop "passively re-polling instead of requesting item
+                                        -- data". That is FALSE and was written without reading the
+                                        -- loop. We request at deferral time (see the
+                                        -- RequestLoadItemDataByID call beside `requestedIDs`) AND
+                                        -- re-request every pass for any row still cold (see the
+                                        -- `elseif ent.id` branch in the retry loop). Auctionator's
+                                        -- LoadItemData does the same thing on a 0.4s ticker; we do it
+                                        -- on a LINK_RETRY_WAIT ticker. The mechanism claimed missing
+                                        -- is present in both places.
+                                        --
+                                        -- WHAT IS ACTUALLY KNOWN: on 2026-08-03 fifteen passes
+                                        -- resolved 10,165 rows and hit this cap; on 2026-08-04 four
+                                        -- passes resolved 5,285 and exited on QUIESCENCE with 10,609
+                                        -- outstanding. So the machinery demonstrably works and then
+                                        -- demonstrably stops, and the difference between the two runs
+                                        -- is unexplained. Candidates, all UNMEASURED: item-data
+                                        -- requests being throttled after a burst of ~16k; rows whose
+                                        -- itemID never calibrated, which are polled forever because
+                                        -- the re-request is gated on `ent.id`; and a quiescence break
+                                        -- that concludes the stream is dry after a SINGLE empty 3s
+                                        -- pass. The scan-end diagnostics added in v1.12.10 (id-less
+                                        -- row count, consecutive dry passes) exist to separate these.
+                                        --
+                                        -- Browse.lua is the default engine and has no deferred pile,
+                                        -- so this path is not on the critical path — but replicate is
+                                        -- KEPT as the fallback, and a fallback with an unexplained
+                                        -- data loss is not a fallback. Finish the measurement.
                                         --
                                         -- ⚠ This is a BAND-AID, not the fix. Browse.lua gets the
                                         -- item level from the browse result's itemKey, so it has
@@ -211,6 +233,8 @@ local stallTimer            -- C_Timer handle watching for a lost ReplicateItems
 local fireTime              -- GetTime() at the moment ReplicateItems() was issued
 local finalizeResolved      -- live counters for the gear-residue retry phase;
 local finalizeTotal         -- nil outside the phase (backs FinalizeStatus())
+local noIDRows              -- deferred rows with no resolvable itemID (can never be re-requested)
+local dryPasses             -- consecutive retry passes that resolved NOTHING
 local firstEventLogged      -- per-scan guard: trace only the FIRST event pulse, not every chunk
 local trace                 -- ALWAYS-ON diagnostic record of the current/most-recent scan
                             -- attempt chain (v1.9.5). The 2026-07-11 hang went dark because
@@ -538,6 +562,13 @@ local function ProcessAllRows()
                         else
                             local id = (type(rowItemID) == "number") and rowItemID or nil
                             deferred[#deferred + 1] = { row = i, id = id }
+                            -- ⚠ A deferred row with NO itemID can never be re-requested:
+                            -- the nudge in the retry loop is gated on `ent.id`. Such rows
+                            -- are polled forever and resolve only by luck. Counted so
+                            -- "the server stopped answering" can be told apart from
+                            -- "we never asked for these" — one of the three unmeasured
+                            -- candidates behind the early-quiescence exit.
+                            if not id then noIDRows = noIDRows + 1 end
                             if id and not requestedIDs[id]
                                and C_Item and C_Item.RequestLoadItemDataByID then
                                 requestedIDs[id] = true
@@ -716,14 +747,39 @@ local function ProcessAllRows()
                 CommitKeys(lateTouched)   -- durable immediately, upsert-safe
             end
             if passTouched == 0 then
-                -- Quiescent pass: not one row left the pile, so the loader
-                -- stream really is dry. Previously this tested the FOLD count,
-                -- which abandoned the remaining pile whenever a pass resolved
-                -- only skip-worthy rows — ordinary for a small bid-only tail,
-                -- while the stream was demonstrably still delivering.
+                -- Quiescent pass: not one row left the pile. Previously this tested the
+                -- FOLD count, which abandoned the remaining pile whenever a pass resolved
+                -- only skip-worthy rows — ordinary for a small bid-only tail, while the
+                -- stream was demonstrably still delivering.
+                --
+                -- ⚠ COUNTED, not acted on. Breaking here is still the behaviour; the
+                -- counter exists because ONE empty 3s window is thin evidence that
+                -- asynchronous item data has stopped arriving, and that is one of the
+                -- three unmeasured candidates for the 2026-08-04 early exit. If real
+                -- scans show the break firing at dryPasses == 1 while rows remain, the
+                -- fix is to require consecutive dry passes — but that is a change to make
+                -- ON EVIDENCE, after two wrong guesses, not before it.
+                dryPasses = (dryPasses or 0) + 1
                 break
+            else
+                dryPasses = 0
             end
         end
+    end
+
+    -- Diagnostic tail: report WHY the retry phase ended, with the numbers that separate
+    -- the candidate causes. Always printed when rows were abandoned — an unexplained loss
+    -- that only shows under a debug flag is an unexplained loss nobody will ever explain.
+    if deferredTotal and deferredTotal > 0 and #deferred > 0 then
+        VUI.Print(AH.TAG, format(
+            "  |cFFFF4444%d of %d gear rows abandoned.|r ended=%s  passes=%d  "
+            .. "no-itemID rows=%d (never re-requestable)",
+            #deferred, deferredTotal,
+            ((dryPasses or 0) > 0) and "quiescence (a pass resolved nothing)"
+                or "budget exhausted",
+            retryPasses or 0, noIDRows or 0))
+        VUI.Print(AH.TAG, "  Those rows updated neither price nor age. "
+            .. "|cFFFFFF00/ah engine browse|r has no deferred pile.")
     end
 
     finalizeResolved, finalizeTotal = nil, nil   -- phase over; FinalizeStatus() goes dark
@@ -895,6 +951,10 @@ local function DoFire()
     scanning = true          -- set ONLY here, at the real fire moment
     fireTime = GetTime()     -- stamp for first-event / total-scan latency measurement
     firstEventLogged = false -- re-arm the one-line-per-scan trace for this attempt
+    -- Retry-phase diagnostics, reset per attempt. Initialised to 0 rather than left nil
+    -- because both are incremented, not assigned, at their use sites.
+    noIDRows  = 0
+    dryPasses = 0
     mainCommit = nil         -- no durable commit yet for THIS attempt
     -- Trace chain continuity: a manual Retry click on a still-hung request
     -- (outcome "requesting" — no data ever arrived) CONTINUES the existing

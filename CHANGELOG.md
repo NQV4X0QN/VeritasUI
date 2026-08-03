@@ -2,6 +2,30 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.10] - 2026-08-04
+
+Retracts a cause stated in the previous release that turned out to be invented, and adds the measurement that should have come first.
+
+Version 1.12.9 introduced the browse scan engine and made it the default. It also claimed, in this changelog and in the source, that the older replicate engine loses gear because it waits passively for item data instead of asking for it. That was written without reading the code it described. Replicate does ask, both when a row is first set aside and again on every subsequent attempt. The claim was wrong, and it was the second wrong explanation offered for the same problem — the first being that the retry deadline was too short, which a later scan disproved by stopping well before that deadline.
+
+The cause is therefore unknown, and this release says so rather than offering a third guess. What is known is that the machinery worked on one scan and stopped early on the next, and the difference is unexplained. Three candidates are recorded and none of them is asserted.
+
+The more serious omission was on the new engine. Browse discards a result in three situations and, as shipped, reported none of them. That replaced a loss the old engine printed in plain view with a loss nothing recorded at all. Two of those situations are legitimate — a listing with nothing available, and a listing with no buyout price, both of which the old engine also skips. The third is not: a result that cannot be identified is lost data, and it is now counted, reported prominently, and accompanied by examples so the next step is a lookup rather than an inference.
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **Browse no longer discards results silently.** Every skipped result is counted by reason and reported at the end of a scan; results that could not be keyed are called out separately with example item IDs, because those are real data loss rather than a legitimate skip. A scan with nothing skipped stays quiet. This is the evidence that the default scan engine is not losing items, and it is deliberately not hidden behind a debug flag. (`Browse.lua`)
+- `VeritasUI_AuctionHouse` — **Retracted the invented explanation for replicate's gear loss.** The source, and the previous release notes, asserted a cause that reading the code disproves. The comment now records what is actually known, names the three unmeasured candidates, and instructs against filling the gap with another guess. (`Replicate.lua`)
+
+### Added
+
+- `VeritasUI_AuctionHouse` — **Replicate now reports why its retry phase ended.** When gear rows are abandoned it prints the count, whether it ran out of time or concluded the data stream had dried up, how many attempts it made, and how many rows could never have been retried because their item identity was never established. Those three numbers separate the candidate causes. Always printed when rows are lost — an unexplained loss visible only under a debug flag is one nobody will explain. (`Replicate.lua`)
+
+### Notes
+
+- The quiescence check that ends the retry phase does so after a **single** attempt that resolves nothing. With attempts three seconds apart and item data arriving asynchronously, one empty window is thin evidence the stream has stopped, and this is one of the three candidates. It is counted but deliberately **not** changed: after two wrong guesses, that is a change to make on evidence.
+- Browse remains the default and has no deferred rows, so none of this affects the normal path. Replicate is kept as the fallback, and a fallback with an unexplained data loss is not a fallback — hence finishing the measurement rather than moving on.
+
 ## [1.12.9] - 2026-08-04
 
 Adds a second Auction House scan engine and makes it the default, because the one this addon was built on has never worked reliably and the alternative measurably does.
