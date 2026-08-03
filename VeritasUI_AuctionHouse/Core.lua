@@ -214,6 +214,217 @@ AH.Events.On("AH_SCAN_FAILED", function(err)
     end
 end)
 
+-- Coin formatter shared by /ah check and /ah compare.
+--
+-- ⚠ Declared HERE, above its first consumer. It previously sat further down, next to
+-- /ah check, and adding /ah compare above it silently turned every reference in the
+-- reporter into a nil GLOBAL lookup -- Lua binds a bare identifier at closure-creation
+-- time, so a `local function` declared below a closure that calls it is not visible to
+-- it. That is the same trap that broke /way (v1.6.33) and it fails at RUN time, not
+-- load time. Keep this above every caller.
+--
+-- /ah check and /ah compare both run when something is already wrong, so neither may
+-- error if a sibling module failed to load. The TOC loads Core.lua BEFORE Money.lua, so
+-- unlike Tooltip.lua this file has no load-order guarantee to lean on. Falling back to
+-- raw copper keeps the report readable; folding the nil case into the "never recorded"
+-- string would report a missing module as a missing price.
+local function MoneyStr(copper)
+    return AH.Money and AH.Money.Format(copper) or tostring(copper)
+end
+
+----------------------------------------------------------------
+--  /ah compare reporter (v1.12.9)
+--
+--  Diffs a dry-run BROWSE aggregate against the stored price database. On a database
+--  built by replicate scans that is a direct engine-vs-engine comparison, and it exists
+--  to answer ONE question with data instead of inference: is browse's minPrice
+--  buyout-only, or does it include BIDS? Replicate deliberately skips bid-only
+--  auctions, so if browse were pricing bids it would read systematically LOWER.
+--
+--  Auctionator reading `bidAmount` as a separate field suggests minPrice is buyout, but
+--  that is a naming pattern, not a measurement — the same class of reasoning this
+--  project has already been burned by. Hence this.
+--
+--  Reports coverage both ways too, because "browse missed items replicate had" would be
+--  a disqualifying finding on its own.
+----------------------------------------------------------------
+-- Gear keys carry an item level ("i:<id>:<ilvl>"); commodities do not ("i:<id>"); pets
+-- are "p:<species>". The split matters: replicate can only key gear via a loaded link,
+-- so gear is exactly the population its retry budget abandons — which means a
+-- discrepancy concentrated in gear supports "stored gear is stale", while one spread
+-- evenly across commodities would point at browse pricing something different.
+local function KeyClass(key)
+    if key:byte(1) == 112 then return "pet" end            -- "p:"
+    return key:find(":%d+:%d+$") and "gear" or "commodity"
+end
+
+local function Median(t)
+    if #t == 0 then return 0 end
+    table.sort(t)
+    local mid = floor(#t / 2)
+    if #t % 2 == 1 then return t[mid + 1] end
+    return (t[mid] + t[mid + 1]) / 2
+end
+
+local function ReportComparison()
+    local browse = AH.Browse and AH.Browse.TakeDryResult()
+    if not browse then
+        VUI.Print(AH.TAG, "Comparison produced no data.")
+        return
+    end
+
+    -- Per-class tallies, so the gear-staleness explanation is tested rather than told.
+    local cls = {}
+    local function C(k)
+        cls[k] = cls[k] or { both = 0, lower = 0, higher = 0, same = 0,
+                             browseOnly = 0, ratios = {} }
+        return cls[k]
+    end
+
+    for key, a in pairs(browse) do
+        local c = C(KeyClass(key))
+        local stored = AH.DB and AH.DB.GetMarketPrice(key)
+        if stored and stored > 0 then
+            c.both = c.both + 1
+            c.ratios[#c.ratios + 1] = a.unit / stored
+            if a.unit < stored then c.lower = c.lower + 1
+            elseif a.unit > stored then c.higher = c.higher + 1
+            else c.same = c.same + 1 end
+        else
+            c.browseOnly = c.browseOnly + 1
+        end
+    end
+
+    -- Coverage the other way. ⚠ Split by FRESHNESS: the price store keeps 14 days, so a
+    -- stored key browse did not return is usually just an expired listing, not a browse
+    -- gap. Only a key the MOST RECENT scan touched (age 0) is a real gap — conflating
+    -- the two is what made the first run's "browse missed 6028" uninterpretable.
+    local gapToday, staleOnly = 0, 0
+    local gapExamples = {}
+    if AH.db and AH.db.prices then
+        for key in pairs(AH.db.prices) do
+            if not browse[key] then
+                local age = AH.DB.GetPriceAge(key)
+                if age == 0 then
+                    gapToday = gapToday + 1
+                    if #gapExamples < 5 then gapExamples[#gapExamples + 1] = key end
+                else
+                    staleOnly = staleOnly + 1
+                end
+            end
+        end
+    end
+
+    VUI.Print(AH.TAG, "Engine comparison (browse vs stored):")
+    for _, name in ipairs({ "commodity", "gear", "pet" }) do
+        local c = cls[name]
+        if c and (c.both > 0 or c.browseOnly > 0) then
+            VUI.Print(AH.TAG, format("  %-9s in both %d  identical %d (%.1f%%)  lower %d  higher %d  browse-only %d",
+                name, c.both, c.same,
+                c.both > 0 and (c.same / c.both * 100) or 0,
+                c.lower, c.higher, c.browseOnly))
+            if c.both > 0 then
+                -- MEDIAN, not mean. A mean of ratios is outlier-dominated: one item
+                -- stored at 1c and browsed at 100g contributes a ratio of 10,000,000.
+                -- The first run reported a mean of 26.9 alongside 89.7% IDENTICAL
+                -- prices, which is arithmetically consistent and completely useless.
+                VUI.Print(AH.TAG, format("            median ratio %.3f  (1.000 = agreement)",
+                    Median(c.ratios)))
+            end
+        end
+    end
+    VUI.Print(AH.TAG, format("  stored but not returned by browse: |cFFFFFF00%d from the latest scan|r "
+        .. "(real gap) + %d older (expired listings, expected)", gapToday, staleOnly))
+    if #gapExamples > 0 then
+        VUI.Print(AH.TAG, "    real-gap examples: " .. table.concat(gapExamples, ", "))
+    end
+    VUI.Print(AH.TAG, "  |cFFFFFF00Reading:|r commodities should be near-identical — both engines take "
+        .. "the min of the same listings. Gear mismatches are EXPECTED while replicate is "
+        .. "the engine, because its retry budget abandons gear rows so stored gear is old. "
+        .. "A real problem would be commodities disagreeing, or a nonzero real gap.")
+end
+
+AH.Events.On("AH_SCAN_COMPLETE", function()
+    if AH.comparePending then
+        AH.comparePending = false
+        ReportComparison()
+    end
+end)
+AH.Events.On("AH_SCAN_FAILED", function()
+    if AH.comparePending then
+        AH.comparePending = false
+        VUI.Print(AH.TAG, "Comparison aborted — the browse scan did not complete.")
+    end
+end)
+
+----------------------------------------------------------------
+--  Scan engine facade (v1.12.9)
+--
+--  There are now TWO whole-AH scan engines:
+--    Replicate.lua — C_AuctionHouse.ReplicateItems(). Per-auction rows. The original,
+--                    and the one that fails the first scan of most days.
+--    Browse.lua    — an empty SendBrowseQuery + pagination. Per-item summaries.
+--                    Measured working at the exact moment replicate was dead.
+--
+--  Both expose the same four functions, so this facade dispatches on the scanEngine
+--  setting and every caller stays engine-agnostic. That matters most for
+--  UI/ScanButton.lua, whose header states it is a pure VIEW over a PUBLIC scan api and
+--  must not reach into internals — pointing it here keeps that true while making the
+--  engine swappable.
+--
+--  Dispatch is at CALL time, not load time: Core.lua loads before both engines.
+----------------------------------------------------------------
+AH.Scan = {}
+
+-- "browse" only when explicitly selected; anything else (including a nil setting on a
+-- database that predates it) means replicate. Fail-safe toward the engine whose
+-- behaviour is fully characterised.
+local function Engine()
+    local which = AH.Setting and AH.Setting("scanEngine") or "replicate"
+    if which == "browse" and AH.Browse then return AH.Browse end
+    return AH.Replicate
+end
+AH.Scan.Engine = Engine
+
+function AH.Scan.EngineName()
+    return (Engine() == AH.Browse) and "browse" or "replicate"
+end
+
+function AH.Scan.Start(...)
+    local e = Engine()
+    if not (e and e.Start) then return false, "No scan engine loaded." end
+    return e.Start(...)
+end
+-- Back-compat alias: ScanButton historically called StartManual().
+AH.Scan.StartManual = AH.Scan.Start
+
+function AH.Scan.IsScanning()
+    -- Report EITHER engine as busy, not just the selected one. Switching the setting
+    -- mid-scan must not make a running scan invisible to the button and the bar.
+    local r = AH.Replicate and AH.Replicate.IsScanning and AH.Replicate.IsScanning()
+    local b = AH.Browse    and AH.Browse.IsScanning    and AH.Browse.IsScanning()
+    return (r or b) and true or false
+end
+
+function AH.Scan.Progress()
+    if AH.Replicate and AH.Replicate.IsScanning and AH.Replicate.IsScanning() then
+        return AH.Replicate.Progress()
+    end
+    if AH.Browse and AH.Browse.IsScanning and AH.Browse.IsScanning() then
+        return AH.Browse.Progress()
+    end
+    return 0
+end
+
+function AH.Scan.SecondsUntilReady()
+    -- The floor is SHARED (one auction house, one sensible cadence) and both engines
+    -- read/write AH.db.lastScan, so either accessor answers. Replicate owns the
+    -- canonical implementation.
+    local e = Engine()
+    if e and e.SecondsUntilReady then return e.SecondsUntilReady() end
+    return 0
+end
+
 ----------------------------------------------------------------
 --  Slash Commands
 --
@@ -254,10 +465,10 @@ local function PrintDiag()
 
     -- Scan state.
     if AH.Replicate then
-        local wait = AH.Replicate.SecondsUntilReady()
+        local wait = AH.Scan.SecondsUntilReady()
         local readyText
-        if AH.Replicate.IsScanning() then
-            readyText = format("|cFFFFFF00scanning %d%%|r", floor(AH.Replicate.Progress() * 100))
+        if AH.Scan.IsScanning() then
+            readyText = format("|cFFFFFF00scanning %d%%|r", floor(AH.Scan.Progress() * 100))
         elseif wait > 0 then
             readyText = format("cooldown %d:%02d", floor(wait / 60), wait % 60)
         else
@@ -338,15 +549,6 @@ end
 --  dropped; see design §2.2). Also prints the derived key so a key mismatch
 --  between the scanned link and the tooltip link would be visible.
 ----------------------------------------------------------------
--- /ah check runs when something is already wrong, so it must not itself error if a sibling
--- module failed to load. The TOC loads Core.lua BEFORE Money.lua, so unlike Tooltip.lua this
--- file has no load-order guarantee to lean on. Falling back to raw copper keeps the rest of
--- the report readable; folding the nil case into the "never recorded" string would report a
--- missing module as a missing price.
-local function MoneyStr(copper)
-    return AH.Money and AH.Money.Format(copper) or tostring(copper)
-end
-
 local function PrintCheck(rawArg)
     if not AH.DB then
         VUI.Print(AH.TAG, "DB not loaded.")
@@ -405,13 +607,54 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
         end
 
     elseif cmd == "scan" then
-        if not AH.Replicate then
+        -- Routed through the facade so /ah scan and the Scan button always use the
+        -- SAME engine. Two entry points that could disagree is how a comparison gets
+        -- silently invalidated.
+        if not (AH.Scan and AH.Scan.Start) then
             VUI.Print(AH.TAG, "Scanner not loaded.")
             return
         end
-        local ok, reason = AH.Replicate.Start()
+        local ok, reason = AH.Scan.Start()
         if not ok then
             VUI.Print(AH.TAG, reason or "Scan could not start.")
+        end
+
+    elseif cmd == "engine" then
+        local want = strtrim(rest)   -- `rest` is already lowercased above
+        if want == "" then
+            VUI.Print(AH.TAG, format("Scan engine: |cFFFFFF00%s|r  (/ah engine browse | replicate)",
+                AH.Scan and AH.Scan.EngineName() or "?"))
+            VUI.Print(AH.TAG, "  |cFFFFFF00replicate|r — per-auction rows; fails the first scan most days.")
+            VUI.Print(AH.TAG, "  |cFFFFFF00browse|r — per-item summaries; the endpoint Auctionator defaults to.")
+        elseif want == "browse" or want == "replicate" then
+            if not (AH.db and AH.db.settings) then
+                VUI.Print(AH.TAG, "Settings not loaded.")
+                return
+            end
+            AH.db.settings.scanEngine = want
+            VUI.Print(AH.TAG, format("Scan engine set to |cFFFFFF00%s|r.", want))
+        else
+            VUI.Print(AH.TAG, "Usage: /ah engine browse | replicate")
+        end
+
+    elseif cmd == "compare" then
+        -- Runs a BROWSE scan in dry-run mode (nothing written) and diffs its prices
+        -- against what is already stored, which on a replicate-scanned database is a
+        -- direct engine-vs-engine comparison. This is what settles whether browse's
+        -- minPrice is buyout-only: if browse reads systematically LOWER, it is
+        -- including bids, which replicate deliberately skips.
+        if not (AH.Browse and AH.Browse.Start) then
+            VUI.Print(AH.TAG, "Browse engine not loaded.")
+            return
+        end
+        AH.comparePending = true
+        local ok, reason = AH.Browse.Start({ dry = true })
+        if not ok then
+            AH.comparePending = false
+            VUI.Print(AH.TAG, reason or "Comparison could not start.")
+        else
+            VUI.Print(AH.TAG, "Comparing browse prices against the stored database "
+                .. "(dry run — nothing will be written)…")
         end
 
     elseif cmd == "wipe" then

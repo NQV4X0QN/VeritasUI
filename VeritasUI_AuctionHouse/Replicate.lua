@@ -85,11 +85,51 @@ local REPLICATE_STALL_TIMEOUT = 60      -- seconds of total silence after which 
                                         -- about the cause beyond the recorded facts. See ArmStallDetector.
 local LINK_RETRY_WAIT       = 3         -- seconds between link retry passes (lets queued
                                         -- item-record loads stream in; cold-cache coverage fix)
-local LINK_RETRY_BUDGET     = 45        -- hard cap (seconds) on the whole retry phase. Records
-                                        -- stream at ~1k/3s (measured 2026-07-02), so ~15k gear
-                                        -- rows need ~45s worst case. The phase also self-stops
-                                        -- on the first pass that resolves nothing (quiescence),
-                                        -- so the cap only binds while progress is still being made.
+local LINK_RETRY_BUDGET     = 120       -- hard cap (seconds) on the whole retry phase.
+                                        --
+                                        -- ⚠ RAISED 45 -> 120 in v1.12.9 because 45 was MEASURABLY
+                                        -- too small and was silently costing data. Owner's scan
+                                        -- 2026-08-03: "link-retried: 10165 of 16304 resolved over
+                                        -- 15 pass(es); dropped: 6139" — 15 passes x LINK_RETRY_WAIT
+                                        -- (3s) = 45s exactly, i.e. the cap, with 38% of gear rows
+                                        -- still unresolved and therefore ABANDONED. An abandoned
+                                        -- row gets no AH.DB.Record() call, so it updates neither
+                                        -- the price NOR `seen` — those items keep an old price and
+                                        -- an old age immediately after a successful scan, and
+                                        -- rescanning drops them again. The old figure assumed
+                                        -- ~1k records/3s and ~15k gear rows; the measured stream
+                                        -- ran ~677/pass against 16.3k rows, so the assumption was
+                                        -- wrong in both terms.
+                                        --
+                                        -- Raising this does NOT lengthen healthy scans: the phase
+                                        -- breaks on the first pass that resolves nothing
+                                        -- (quiescence, see passTouched below), so the cap only
+                                        -- binds while progress is still being made.
+                                        --
+                                        -- ⚠ AND RAISING IT DID NOT HELP. The very next scan
+                                        -- (2026-08-04) ran only 4 passes = 12s, nowhere near this
+                                        -- cap, exiting on QUIESCENCE with 10,609 of 15,894 gear
+                                        -- rows unresolved — worse than the 6,139 that motivated the
+                                        -- raise. So the budget was the binding constraint on ONE
+                                        -- scan and the quiescence break on the next; concluding
+                                        -- "the cap is the problem" from a single sample was wrong.
+                                        --
+                                        -- ⚠ LIKELY ROOT CAUSE, recorded but NOT fixed: this loop
+                                        -- PASSIVELY re-polls GetReplicateItemLink and hopes the
+                                        -- data arrives. Auctionator's equivalent actively calls
+                                        -- C_Item.RequestLoadItemDataByID for every pending item
+                                        -- (Source_ModernAH/FullScan/Mixins/Frame.lua, LoadItemData).
+                                        -- With nothing requesting the load, the trickle dries up and
+                                        -- quiescence fires early. Deliberately left alone: browse is
+                                        -- now the default engine and has no deferred pile at all, so
+                                        -- hardening this path is work that would be deleted. If
+                                        -- replicate is ever promoted back, fix it THERE, not here.
+                                        --
+                                        -- ⚠ This is a BAND-AID, not the fix. Browse.lua gets the
+                                        -- item level from the browse result's itemKey, so it has
+                                        -- no deferred pile, no budget and nothing to drop. When
+                                        -- browse becomes the default engine this constant stops
+                                        -- mattering; do not tune it further, switch engine.
 
 ----------------------------------------------------------------
 --  Throttled-message instrumentation (v1.12.6)

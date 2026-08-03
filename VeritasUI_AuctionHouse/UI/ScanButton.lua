@@ -3,7 +3,9 @@
 -- removed: an unattended scan fired at every AH open had nobody to retry it when
 -- the server dropped the request, and no way to show that it had).
 --
--- FIRE PATH: OnClick calls AH.Replicate.StartManual() (alias of Start())
+-- FIRE PATH: OnClick calls AH.Scan.StartManual(), the engine facade in Core.lua, which
+-- dispatches to Replicate.lua or Browse.lua per the scanEngine setting. This file stays
+-- engine-agnostic on purpose -- see the facade's header.
 -- SYNCHRONOUSLY — no timer, no event defer, no gate.
 --
 -- ⚠ v1.8.0 believed that synchronous fire was WHY manual scanning worked: that the
@@ -23,7 +25,7 @@
 -- so this is the impatient path, no longer the only one.
 --
 -- ISOLATION (suite rule #4: one module never edits another)
---   Pure VIEW + controller over Replicate's PUBLIC api: AH.Replicate.StartManual(),
+--   Pure VIEW + controller over the SCAN FACADE's public api: AH.Scan.StartManual(),
 --   .IsScanning(), .SecondsUntilReady(). Subscribes to the AH.Events bus only. No edits
 --   to Replicate.lua internals, Core.lua, or any sibling UI file.
 --
@@ -150,8 +152,8 @@ end
 local function RefreshLabel()
     local btn = state.btn
     if not btn then return end
-    if AH.Replicate and AH.Replicate.IsScanning and AH.Replicate.IsScanning() then
-        local p = (AH.Replicate.Progress and AH.Replicate.Progress()) or 0
+    if AH.Scan and AH.Scan.IsScanning and AH.Scan.IsScanning() then
+        local p = (AH.Scan.Progress and AH.Scan.Progress()) or 0
         if p > 0 then
             -- Rows are actually draining — a real scan is in flight; hands off.
             btn:SetText("Scanning…")
@@ -166,8 +168,8 @@ local function RefreshLabel()
         end
         return
     end
-    local wait = (AH.Replicate and AH.Replicate.SecondsUntilReady
-        and AH.Replicate.SecondsUntilReady()) or 0
+    local wait = (AH.Scan and AH.Scan.SecondsUntilReady
+        and AH.Scan.SecondsUntilReady()) or 0
     if wait and wait > 0 then
         btn:SetText(string.format("%d:%02d", math.floor(wait / 60), wait % 60))
         btn:Disable()
@@ -181,7 +183,7 @@ end
 --  OnClick — fires the scan directly (see the FIRE PATH note in the header)
 ----------------------------------------------------------------
 local function OnClick()
-    if not (AH.Replicate and AH.Replicate.StartManual) then
+    if not (AH.Scan and AH.Scan.StartManual) then
         VUI.Print(AH.TAG, "Scanner not loaded.")
         return
     end
@@ -190,7 +192,7 @@ local function OnClick()
     -- v1.9.5 falsified that premise (see the header note) — the drop window is
     -- server-side and fire-path independent. Left synchronous because nothing here
     -- needs to wait, NOT because a defer is known to break the request.
-    local ok, reason = AH.Replicate.StartManual()
+    local ok, reason = AH.Scan.StartManual()
     if not ok then
         VUI.Print(AH.TAG, reason or "Scan could not start.")
     end

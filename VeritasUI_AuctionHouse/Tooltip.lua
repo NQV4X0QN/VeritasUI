@@ -30,6 +30,33 @@ local SETTING_DEFAULTS = {
     ttShowQty   = true,   -- show last-seen quantity
     -- UI/CraftingOrder.lua — "Reagents Value:" on the Place Crafting Order form
     craftShowReagentValue = true,
+    -- Which whole-AH scan engine the Scan button drives: "replicate" (Replicate.lua,
+    -- C_AuctionHouse.ReplicateItems) or "browse" (Browse.lua, empty SendBrowseQuery).
+    -- ⚠ DEFAULT IS BROWSE as of v1.12.9, on measurement, not preference.
+    --
+    -- /ah compare against a replicate-built database on a live realm (2026-08-04):
+    --   commodity  11,459 in both -> 11,256 IDENTICAL (98.2%), median ratio 1.000
+    --   pet           915 in both ->    915 IDENTICAL (100%),  median ratio 1.000
+    --   gear        8,778 in both ->  6,883 identical (78.4%), median ratio 1.000
+    -- Near-total agreement on commodities and pets kills the one open objection --
+    -- that browse's minPrice might include BIDS, which replicate deliberately skips.
+    -- Pricing bids could not produce 98-100% copper-exact agreement.
+    --
+    -- Gear disagreeing is EXPECTED and is replicate's fault, not browse's: replicate
+    -- can only key gear from a loaded link, and its retry phase abandoned 6,139 of
+    -- 16,304 gear rows on 2026-08-03 and 10,609 of 15,894 on 2026-08-04 (38% then
+    -- 67%). An abandoned row gets no Record() call, so it refreshes neither price nor
+    -- `seen` -- stored gear is genuinely old. Browse takes itemLevel straight from the
+    -- browse result's itemKey, so it has no deferred pile and nothing to drop.
+    --
+    -- Coverage, same session: browse 22,540 items in 15s vs replicate 15,828 in 55.9s,
+    -- finding 1,388 gear items the database did not have.
+    --
+    -- ⚠ Replicate is KEPT (/ah engine replicate) and is not deprecated: it is the only
+    -- engine that sees per-auction detail, and it is the fallback if a realm ever
+    -- refuses browse. But its gear coverage is unreliable -- see the quiescence note on
+    -- LINK_RETRY_BUDGET in Replicate.lua before trusting a replicate gear price.
+    scanEngine = "browse",
 }
 
 local function S(key)

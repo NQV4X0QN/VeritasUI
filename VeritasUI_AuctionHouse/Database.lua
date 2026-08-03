@@ -75,8 +75,9 @@ function AH.DB.MakeKey(link)
 
     -- Equippable gear → append item level so different-ilvl drops don't collapse.
     --
-    -- ⚠ This three-line predicate is duplicated verbatim in MakeKeyFromItemID and the
-    -- two MUST agree. They are deliberately not extracted into a shared helper: the
+    -- ⚠ This three-line predicate is duplicated verbatim in MakeKeyFromItemID AND in
+    -- MakeKeyFromItemKey (added v1.12.9 for the browse-summary scan). All THREE MUST
+    -- agree. They are deliberately not extracted into a shared helper: the
     -- predicate is not the duplication that matters, the opposite-polarity gear
     -- handling is. This branch appends the ilvl; the other refuses gear outright so the
     -- caller defers it. Loosen one predicate without the other and gear slips through
@@ -131,6 +132,55 @@ function AH.DB.MakeKeyFromItemID(itemID)
     local isGear = equipLoc and equipLoc ~= "" and equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE"
                    and not equipLoc:find("BAG", 1, true)
     if isGear then return nil end
+    return "i:" .. itemID
+end
+
+----------------------------------------------------------------
+--  Key derivation from a BROWSE RESULT's itemKey (v1.12.9)
+--
+--  The browse-summary scan (Browse.lua) receives an AuctionHouseItemKey per result:
+--  { itemID, itemLevel, itemSuffix, battlePetSpeciesID }. This is strictly BETTER
+--  input than a replicate row: the pet species and the gear item level arrive in the
+--  result itself, so neither a loaded link nor GetDetailedItemLevelInfo is needed.
+--  That is what makes the cold-cache retry machinery — and the rows it still drops at
+--  the LINK_RETRY_BUDGET cap — unnecessary on the browse path.
+--
+--  Produces byte-identical keys to MakeKey so both engines write the SAME records and
+--  can be compared item-for-item. Do not "improve" the shape here.
+--
+--  ⚠ The gear predicate below is the THIRD copy (MakeKey, MakeKeyFromItemID, here) and
+--  all three must agree — see the note in MakeKey for what breaks silently if they
+--  diverge. This one appends the ilvl like MakeKey rather than refusing gear like
+--  MakeKeyFromItemID, because unlike that function it HAS an item level.
+--
+--  Returns nil when the key cannot be formed honestly: no itemID, or gear whose
+--  itemKey carries no usable itemLevel. A bare i:<itemID> for gear is the one shape
+--  design §2.4 forbids by name.
+----------------------------------------------------------------
+function AH.DB.MakeKeyFromItemKey(itemKey)
+    if type(itemKey) ~= "table" then return nil end
+
+    -- Battle pets first: a caged pet's itemID is the generic cage, so the species is
+    -- the only meaningful identity. Matches MakeKey's battlepet branch.
+    local species = itemKey.battlePetSpeciesID
+    if type(species) == "number" and species > 0 then
+        return "p:" .. species
+    end
+
+    local itemID = itemKey.itemID
+    if type(itemID) ~= "number" or itemID <= 0 then return nil end
+
+    local _, _, _, equipLoc = GetItemInfoInstant(itemID)
+    local isGear = equipLoc and equipLoc ~= "" and equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE"
+                   and not equipLoc:find("BAG", 1, true)
+    if isGear then
+        local ilvl = itemKey.itemLevel
+        if type(ilvl) == "number" and ilvl > 0 then
+            return "i:" .. itemID .. ":" .. ilvl
+        end
+        return nil
+    end
+
     return "i:" .. itemID
 end
 

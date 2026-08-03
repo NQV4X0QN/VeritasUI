@@ -2,6 +2,34 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.9] - 2026-08-04
+
+Adds a second Auction House scan engine and makes it the default, because the one this addon was built on has never worked reliably and the alternative measurably does.
+
+The scan asks the server for every auction and folds the results into a price database. That request — replicate — fails the first scan of most days, and months of work established only what the cause is not: not taint, not the way the request is fired, not readiness, not pacing, not an account rate limit. Each was investigated and ruled out.
+
+The answer turned out to be that there was a second way to do the job. Auctionator, which scans the same account reliably, does not use replicate at all in its default configuration; it sends an empty search and pages through the results, and ships the replicate path switched off behind an advanced option. That is a different server endpoint, and on a live test it completed in fifteen seconds at the exact moment ours had just failed.
+
+Both engines are now present and either can be selected. Browse is the default. Comparing the two on a live realm found near-total agreement where agreement was expected — 98.2% of commodities and 100% of pets priced identically to the copper — which settled the one open question about the new engine, namely whether its prices might reflect bids rather than buyouts. They do not.
+
+Gear is the exception, and it is the old engine at fault. Replicate cannot identify a piece of gear without loading its full item data, and when that data does not arrive in time it abandons the row. On two measured scans it abandoned 38% and then 67% of all gear. An abandoned row updates neither its price nor its date, so gear prices could be days old immediately after a successful scan, and scanning again dropped them again. The new engine receives the item level as part of each result, so there is nothing to load, nothing to defer, and nothing to drop. It also found 1,388 gear items the database did not have at all.
+
+### Added
+
+- `VeritasUI_AuctionHouse` — **Browse-summary scan engine.** An empty `C_AuctionHouse.SendBrowseQuery` paginated via `RequestMoreBrowseResults` until `HasFullBrowseResults`, folding per-item summaries the same way the replicate path folds rows: minimum unit price and summed quantity. Restores the throttled-message send queue the design specified in Phase 1 and v1.7.0 removed — browse queries, unlike replicate, genuinely run inside that system. No timeout, matching the replicate rule: delivery time is unbounded and a watchdog can only kill a slow success. (`Browse.lua`, new)
+- `VeritasUI_AuctionHouse` — **`AH.DB.MakeKeyFromItemKey`.** Derives a price key from a browse result's `itemKey`, taking gear item level and battle-pet species directly from the result rather than from a loaded link. Produces keys byte-identical to `MakeKey`, so both engines write the same records and can be compared item for item. Third copy of this file's gear predicate; all three are now cross-referenced. (`Database.lua`)
+- `VeritasUI_AuctionHouse` — **`AH.Scan` engine façade, `/ah engine`, and `/ah compare`.** The façade dispatches to either engine so callers stay engine-agnostic; `UI/ScanButton.lua` no longer references either engine directly, preserving its stated role as a pure view over a public API. `/ah compare` runs a browse scan in dry-run mode, writing nothing and consuming no cooldown, and diffs its prices against the stored database by item class with median ratios and a freshness-scoped coverage split. (`Core.lua`, `UI/ScanButton.lua`)
+
+### Changed
+
+- `VeritasUI_AuctionHouse` — **Default scan engine is now browse.** Replicate remains fully selectable via `/ah engine replicate` and is not deprecated: it is the only engine that sees per-auction detail, and the fallback if a realm ever refuses browse. Its gear coverage is unreliable, and `Replicate.lua` now says so where a reader will find it. (`Tooltip.lua`)
+- `VeritasUI_AuctionHouse` — **Gear-retry budget raised from 45 to 120 seconds.** This was a stop-gap for the abandoned-gear problem and it did not work: the next scan exited after four passes on its quiescence check, nowhere near the cap, with more gear unresolved than before. Kept because it bounds the case where the cap genuinely binds, and annotated with what actually happened so the next reader does not repeat the reasoning. The likely root cause is recorded and deliberately not fixed — the retry loop polls for item data rather than requesting it, and the browse engine makes that path unnecessary. (`Replicate.lua`)
+
+### Notes
+
+- **Known, unresolved:** the comparison found 209 items from the most recent replicate scan that browse did not return — 0.9%, including a few commodities. Most plausibly auctions that sold or expired in the minute between the two scans, but that is an explanation and not a measurement. Net coverage still favours browse decisively: 1,388 items found against 209 missed, versus 10,609 gear rows abandoned by replicate on the same scan. To settle it, run `/ah compare` twice in succession — churn gives a different set each time, a structural gap gives the same one.
+- The file header claiming replicate is the only sanctioned whole-AH scan was corrected in v1.12.7. It conflated `SendSearchQuery`, which is genuinely rate-capped and unsuitable, with `SendBrowseQuery`, which is neither. That conflation is why this module stayed on one endpoint for months.
+
 ## [1.12.8] - 2026-08-03
 
 Adds a Reagents Value line to Blizzard's Place Crafting Order window, showing what a recipe's reagents are worth at your last-scanned auction prices.
