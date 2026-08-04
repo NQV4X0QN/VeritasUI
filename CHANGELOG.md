@@ -2,6 +2,22 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.13] - 2026-08-04
+
+Fixes the reason the v1.12.12 browse trial never actually ran, and makes which scan engine is active visible in the three places that should already have said so.
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **the scan-engine default was unreachable, so v1.12.12's browse trial silently ran on replicate for its entire duration.** `scanEngine` was seeded into saved variables like an ordinary toggle, which writes a concrete engine name on the first login of any release. From that moment on, changing the default in `Tooltip.lua` could not change behaviour for anyone who had already logged in. The default moved browse to replicate to browse across v1.12.9, v1.12.11 and v1.12.12 and **every one of those flips was inert**; the owner's saved variables read `["scanEngine"] = "replicate"` while v1.12.12 shipped announcing browse as the default. A setting whose default is under active evaluation is now exempt from seeding, so absence means "follow the default" and the default is live. A previously-seeded value is cleared once, announced at login, because a seeded value and a deliberate pin are indistinguishable in the stored data — there was never a flag recording which wrote it. (`Tooltip.lua`, `Core.lua`)
+- `VeritasUI_AuctionHouse` — **`/ah help` never listed `engine`, `compare` or `browseprobe`.** All three shipped as working branches in v1.12.9 and were advertised nowhere, so for four releases the only way to find the command that selects the scan engine was to read the source. The `Surface:` comment above the slash handler already warned a reader to keep the branch list, that comment and `PrintHelp` in step by hand — and it did not survive one feature. The headless suite now asserts the three agree, scoped to `PrintHelp`'s body, because that is the only form of this rule that cannot be forgotten. (`Core.lua`)
+- `VeritasUI_AuctionHouse` — **a browse pin fell back to replicate silently when `Browse.lua` was absent.** Falling back is right, since a scan beats no scan, but doing it without a word is not: the user asked for one engine and would get the other engine's failure modes with no explanation. Warned once per session. (`Core.lua`)
+- `VeritasUI_AuctionHouse` — corrected the comment on the engine resolver, which claimed a nil setting meant replicate. It does not; an absent key reads as the current default. The `or "replicate"` beside it is a load-order guard, not a policy, and read as deliberate intent while the real policy lived in `SETTING_DEFAULTS`. (`Core.lua`)
+
+### Added
+
+- `VeritasUI_AuctionHouse` — **the active scan engine is now named in three places: the scan-start line, `/ah diag`, and `/ah engine`.** The module has shipped two engines with materially different failure modes since v1.12.9 and named neither. The only reason the wrong engine was ever noticed is that replicate's 60-second "request was lost" message happens to be engine-specific — the system was diagnosed by luck, not by observability. `/ah diag` and `/ah engine` also distinguish a deliberate pin from the default. (`Core.lua`)
+- `VeritasUI_AuctionHouse` — **`/ah engine default`**, which clears a pin and returns to following the default. Without it, pinning was a one-way door that could only be undone by editing saved variables. (`Core.lua`)
+
 ## [1.12.12] - 2026-08-04
 
 Makes the browse engine the default again, for a trial period, after decomposing the numbers that prompted the previous release to revert it.
