@@ -2,6 +2,30 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.17] - 2026-08-04
+
+Makes the Delve Nemesis count actually work. It did not function in v1.12.15 or v1.12.16 — both of those shipped on an unverified assumption about where Blizzard keeps the number.
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **the Delve Nemesis count never appeared, for a reason neither previous release identified.** The count is read from the **spell description**, not from the widget's tooltip string. Measured on a live Delve: `spellInfo.tooltip` and `spellInfo.text` are both empty on all three icons, so v1.12.15 had nothing to parse. Blizzard's own `UIWidgetBaseSpellTemplateMixin:OnEnter` explains it — when the widget string is empty it falls back to `EmbeddedItemTooltip:SetSpellByID`, so the "Enemy groups remaining: N / M" line is the spell's description, filled in by the server. Now read via `C_Spell.GetSpellDescription`, with the widget string still preferred if Blizzard ever supplies it, and a data-load request when the description is not yet cached.
+- `VeritasUI_QualityOfLife` — **v1.12.16's diagnosis was wrong and its fix addressed a non-bug.** The probe showed `StageBlock ... hasSpellContainer=YES`, so the original container path was correct all along. The search-by-shape discovery introduced there is kept because it is genuinely more robust to Blizzard moving the widget, but it was not the defect and should not have been released as a fix.
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **the count is coloured by how many groups remain**, so the plaque reads at a glance without reading the digit: 4 red, 3–2 orange, 1 yellow, 0 green. Uses Blizzard's own `RED_FONT_COLOR` / `ORANGE_FONT_COLOR` / `YELLOW_FONT_COLOR` / `GREEN_FONT_COLOR` objects rather than invented RGB, so it matches the client and follows any restyle. A count above the observed maximum of four clamps to red rather than losing its colour, since that total is a single observation.
+- `VeritasUI_QualityOfLife` — **`/qol delvenudge <n>`**, a live, persisted vertical offset for the count. Larger is lower, negative overlaps up into the icon, and it applies within half a second with no reload. Added because dialling a cosmetic offset through screenshot round-trips is slow and cannot be measured — captures arrive at different crops and scales, so each adjustment was guesswork. The shipped default of `-1` is the value settled on in game, not a calculation.
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — the count's font is now one point below Blizzard's `StackCount`, read back through `GetFont` so the font file and its `OUTLINE` flag are preserved rather than re-specified by hand.
+
+### Internal
+
+- Process correction: v1.12.15 and v1.12.16 were both tagged and released before any in-game verification, against live UI behaviour that had never been read. The established loop — sync to the live AddOns folder, confirm in game, *then* commit and release — was followed for this release, and every change in it is confirmed working.
+- The suite's stub previously modelled the table *path* the production code assumed, and later failed to model fonts at all, so both the wrong-source and the font-resize code were silent no-ops under test while passing. It now models a real frame tree, spell descriptions, fonts and colours. 74 checks, failing against v1.12.16.
+- Removed a test that froze a cosmetic offset as an invariant; it failed on correct code the moment the offset was tuned. Replaced with the real invariants — the anchor point, and that the offset tracks the stored setting.
+
 ## [1.12.16] - 2026-08-04
 
 Fixes the Delve Nemesis count not appearing: it was being looked for in the wrong one of Blizzard's three widget containers.

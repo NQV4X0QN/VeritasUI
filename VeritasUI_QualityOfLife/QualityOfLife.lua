@@ -48,6 +48,12 @@ local defaults = {
     -- Paints the Nemesis groups-remaining count under the Delve plaque icon
     -- that otherwise only reveals it on hover.
     delveNemesisCount = true,
+    -- Vertical offset of the Delve count under the icon, in pixels DOWN from the
+    -- icon's bottom edge. Persisted and live-nudgeable via /qol delvenudge, because
+    -- dialling a cosmetic pixel offset through screenshot round-trips is slow and
+    -- imprecise -- the captures arrive at different crops and scales, so they cannot
+    -- be measured against each other.
+    delveCountOffsetY = -1,
     -- Set while the AFK overlay has the UI hidden, cleared when it restores it.
     -- Persisted so a crash or disconnect during AFK can be recovered at the next
     -- PLAYER_LOGIN without force-restoring the UI on every ordinary login.
@@ -1545,13 +1551,73 @@ end
 -- and AFK pollers.
 local DELVE_POLL_RATE = 0.5
 
--- THE tuning knob for vertical placement, in pixels below the icon (larger =
--- lower). Cosmetic only. Same role as CraftingOrder's LINE_GAP_Y; if the number
--- clips the plaque's lower border, this is the single line to change.
-local DELVE_COUNT_GAP_Y = 1
+-- THE tuning knob for vertical placement: pixels below the icon's bottom edge.
+-- NEGATIVE raises the number, overlapping it up into the icon. Cosmetic only, same
+-- role as CraftingOrder's LINE_GAP_Y.
+--
+-- Settled against the live client, not computed: +1 sat BELOW the plaque's lower
+-- border (owner-reported), so it is pulled up into the icon's lower edge instead.
+-- Screenshot arithmetic was avoided deliberately -- the captures come at different
+-- scales, so pixel math across them would be false precision.
+-- Fallback only; the live value is db.delveCountOffsetY (see /qol delvenudge).
+--
+-- -1 is the value the owner settled on with /qol delvenudge against the live plaque at
+-- the final font size, after +1, -6, -5 and +2 were each wrong by eye. Recorded as the
+-- outcome of a measurement, not a calculation.
+--
+-- ⚠ Unlike AuctionHouse's scanEngine, this default IS seeded into saved variables and
+-- that is correct: it is a user-tunable position (like a window offset), not a policy
+-- default under evaluation, so a stored value SHOULD win over a later default change.
+-- Do not "fix" it by adding it to a seed exemption.
+local DELVE_COUNT_GAP_Y = -1
+
+-- Points to shave off Blizzard's own number font. The copied StackCount font is sized
+-- for a stack badge sitting inside the icon; under the icon it reads a shade large
+-- next to the plaque's other text. Applied as a DELTA rather than an absolute size so
+-- the number still tracks the client's font if Blizzard restyles it.
+local DELVE_COUNT_FONT_DELTA = -1
+
+-- Colour by how many groups are LEFT, so the plaque reads at a glance without
+-- reading the digit: red while untouched, green once cleared. Owner's mapping.
+--
+-- Blizzard's own font-colour globals rather than invented RGB, so it matches the
+-- client and tracks any restyle -- all four are used by Blizzard's own
+-- spellBorderColorFromTintValue table in Blizzard_UIWidgetTemplateBase.lua, which is
+-- where they were confirmed to exist rather than assumed.
+--
+-- ⚠ Keys are ABSOLUTE remaining counts, per the owner's spec, NOT a proportion of
+-- the total. Anything at or above DELVE_COUNT_MAX_KEY falls through to red, so a
+-- delve with more than four groups still reads "plenty left" instead of losing its
+-- colour. The observed total is 4; that is a single sample, hence the fallback.
+local DELVE_COUNT_MAX_KEY = 4
+local DELVE_COUNT_COLORS = {
+    [0] = { g = "GREEN_FONT_COLOR",  r = 0.10, gr = 1.00, b = 0.10 },
+    [1] = { g = "YELLOW_FONT_COLOR", r = 1.00, gr = 0.82, b = 0.00 },
+    [2] = { g = "ORANGE_FONT_COLOR", r = 1.00, gr = 0.50, b = 0.25 },
+    [3] = { g = "ORANGE_FONT_COLOR", r = 1.00, gr = 0.50, b = 0.25 },
+    [4] = { g = "RED_FONT_COLOR",    r = 1.00, gr = 0.13, b = 0.13 },
+}
+
+-- Resolve to Blizzard's colour object when present, falling back to the literal RGB
+-- above. The fallback is not decoration: a missing global would otherwise leave the
+-- number its default colour with no hint why.
+local function DelveCountColor(n)
+    local key = n
+    if type(key) ~= "number" then key = DELVE_COUNT_MAX_KEY end
+    if key > DELVE_COUNT_MAX_KEY then key = DELVE_COUNT_MAX_KEY end
+    local spec = DELVE_COUNT_COLORS[key] or DELVE_COUNT_COLORS[DELVE_COUNT_MAX_KEY]
+    local obj = _G[spec.g]
+    if type(obj) == "table" and obj.r and obj.g and obj.b then
+        return obj.r, obj.g, obj.b
+    end
+    return spec.r, spec.gr, spec.b
+end
 
 local delveTicker
 local delveWarnedNoFont = false
+-- Forward-declared: DelveCountString references it, and a local declared BELOW a
+-- referencing function binds as a nil global (the /way trap).
+local DelveAnchorCount
 
 -- Locate the live Delve plaque's icon frames. Every level is guarded: this is a
 -- Blizzard layout we do not own, and a restructure must cost us the feature
@@ -1643,6 +1709,39 @@ end
 -- trailing line. Anchoring to the first match would silently report a number
 -- lifted out of a sentence. Neither choice is provably right, so this takes the
 -- one that fails more gracefully -- and says so rather than looking deliberate.
+-- Where the count text actually lives.
+--
+-- ⚠ MEASURED, NOT ASSUMED (/qol delve on a live Delve, 2026-08-04):
+-- spellInfo.tooltip is EMPTY ("") on all three icons, and so is spellInfo.text.
+-- v1.12.15 read spellInfo.tooltip and therefore had nothing to parse. Blizzard's
+-- own UIWidgetBaseSpellTemplateMixin:OnEnter explains why:
+--     local shouldUseSpellOrLootObjectTooltip = not self.tooltip or self.tooltip == "";
+--     ... EmbeddedItemTooltip:SetSpellByID(self.spellID, false, true);
+-- i.e. when the widget string is empty the tooltip is rendered FROM THE SPELL, so
+-- the "Enemy groups remaining: N / M" line is the spell's DESCRIPTION, which the
+-- server fills with the live value.
+--
+-- The widget string is still preferred when present: Blizzard prefers it too, and a
+-- future patch could start supplying it.
+local function DelveCountText(info)
+    if type(info) ~= "table" then return nil end
+    if type(info.tooltip) == "string" and info.tooltip ~= "" then
+        return info.tooltip
+    end
+    local id = info.spellID
+    if type(id) ~= "number" or not C_Spell then return nil end
+
+    -- A description can be empty until the spell's data is cached. Ask once and let
+    -- the next poll tick pick it up -- no event plumbing needed, because we are
+    -- already polling.
+    if C_Spell.GetSpellDescription then
+        local ok, desc = pcall(C_Spell.GetSpellDescription, id)
+        if ok and type(desc) == "string" and desc ~= "" then return desc end
+    end
+    if C_Spell.RequestLoadSpellData then pcall(C_Spell.RequestLoadSpellData, id) end
+    return nil
+end
+
 local function DelveParseRemaining(tooltip)
     if type(tooltip) ~= "string" then return nil end
     local last
@@ -1654,6 +1753,18 @@ end
 -- Setup pass while stackDisplay is 0, so writing to it would be a fight we lose
 -- on the next widget update -- and would also destroy the native path if
 -- Blizzard ever does populate the field.
+-- Re-anchor only when the offset actually changed, so the 0.5s poll is not calling
+-- SetPoint on every tick. ClearAllPoints first: SetPoint ADDS a point rather than
+-- replacing one, so re-anchoring without clearing would leave the old point fighting
+-- the new one.
+DelveAnchorCount = function(fs, anchor)
+    local y = (db and tonumber(db.delveCountOffsetY)) or DELVE_COUNT_GAP_Y
+    if fs._vuiOffsetY == y then return end
+    fs._vuiOffsetY = y
+    fs:ClearAllPoints()
+    fs:SetPoint("TOP", anchor, "BOTTOM", 0, -y)
+end
+
 local function DelveCountString(spellFrame)
     if spellFrame._vuiNemesisCount then return spellFrame._vuiNemesisCount end
     local anchor = spellFrame.Icon or spellFrame
@@ -1675,13 +1786,24 @@ local function DelveCountString(spellFrame)
         VUI.Print("Quality of Life",
             "Delve count: no usable number font found; the count may be invisible.")
     end
+    -- Nudge the size down from whatever the copied font object specifies. Read back
+    -- through GetFont so the file and flags are preserved exactly -- re-specifying
+    -- them by hand would silently drop the outline. Guarded: a font object that
+    -- cannot report its size keeps the object's own sizing rather than erroring.
+    if DELVE_COUNT_FONT_DELTA ~= 0 then
+        local okf, file, size, flags = pcall(fs.GetFont, fs)
+        if okf and file and type(size) == "number"
+           and size + DELVE_COUNT_FONT_DELTA > 1 then
+            pcall(fs.SetFont, fs, file, size + DELVE_COUNT_FONT_DELTA, flags)
+        end
+    end
+
     -- Drop shadow, no backdrop: the plaque art behind the icons is busy and
     -- light in places. Matches how the map coordinates stay readable.
     fs:SetShadowColor(0, 0, 0, 1)
     fs:SetShadowOffset(1, -1)
-    fs:SetPoint("TOP", anchor, "BOTTOM", 0, -DELVE_COUNT_GAP_Y)
-
     spellFrame._vuiNemesisCount = fs
+    DelveAnchorCount(fs, anchor)
     return fs
 end
 
@@ -1692,7 +1814,7 @@ local function DelveUpdate()
         local f    = spells[i]
         local info = f and f.spellInfo
         local fs   = f and f._vuiNemesisCount
-        local left = info and DelveParseRemaining(info.tooltip)
+        local left = info and DelveParseRemaining(DelveCountText(info))
 
         -- Prefer the numeric field the moment Blizzard ever populates it, and
         -- stand down entirely in that case: their StackCount is then already
@@ -1701,8 +1823,11 @@ local function DelveUpdate()
                             and info.stackDisplay > 0
 
         if left and not nativeShows then
-            DelveCountString(f):SetText(left)
-            DelveCountString(f):Show()
+            local fsOut = DelveCountString(f)
+            DelveAnchorCount(fsOut, f.Icon or f)   -- picks up a /qol delvenudge live
+            fsOut:SetText(left)
+            fsOut:SetTextColor(DelveCountColor(left))
+            fsOut:Show()
         elseif fs then
             fs:Hide()
         end
@@ -1780,11 +1905,18 @@ local function DumpDelveProbe()
         if not info then
             print(("   [%d] no spellInfo on the frame"):format(i))
         else
+            local desc = ""
+            if C_Spell and C_Spell.GetSpellDescription and type(info.spellID) == "number" then
+                local okd, d = pcall(C_Spell.GetSpellDescription, info.spellID)
+                if okd and type(d) == "string" then desc = d end
+            end
             print(("   [%d] spellID=%s stackDisplay=%s text=%q parsed=%s")
                 :format(i, tostring(info.spellID), tostring(info.stackDisplay),
                         tostring(info.text or ""),
-                        tostring(DelveParseRemaining(info.tooltip))))
-            print(("        tooltip=%q"):format(tostring(info.tooltip or ""):sub(1, 160)))
+                        tostring(DelveParseRemaining(DelveCountText(info)))))
+            print(("        tooltip=%q"):format(tostring(info.tooltip or ""):sub(1, 120)))
+            -- The field the count actually comes from; see DelveCountText.
+            print(("        spellDesc=%q"):format(desc:gsub("\n", " | "):sub(1, 200)))
         end
     end
 end
@@ -2147,6 +2279,23 @@ SLASH_VERITASUI_QOL1 = "/qol"
 SLASH_VERITASUI_QOL2 = "/qualityoflife"
 SlashCmdList["VERITASUI_QOL"] = function(msg)
     local arg = (msg and strtrim(msg)) or ""
+    local nudge = arg:lower():match("^delvenudge%s*(-?%d*)")
+    if nudge then
+        if nudge == "" then
+            VUI.Print("Quality of Life", format(
+                "Delve count offset is |cFFFFFF00%d|r px below the icon. "
+                .. "|cFFFFFF00/qol delvenudge <n>|r to change it (larger = lower, "
+                .. "negative overlaps the icon).",
+                (db and tonumber(db.delveCountOffsetY)) or 0))
+        else
+            db.delveCountOffsetY = tonumber(nudge)
+            -- Applies on the next poll tick (<=0.5s) with no reload: the anchor
+            -- helper re-anchors as soon as it sees a different value.
+            VUI.Print("Quality of Life", format(
+                "Delve count offset set to |cFFFFFF00%d|r px.", db.delveCountOffsetY))
+        end
+        return
+    end
     if arg:lower():match("^delve") then
         DumpDelveProbe()
         return

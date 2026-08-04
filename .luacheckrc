@@ -98,6 +98,9 @@ read_globals = {
     "C_Map", "C_Navigation", "C_SuperTrack", "C_QuestLog",
     -- Delves (QualityOfLife: Nemesis groups-remaining count on the Delve plaque)
     "C_DelvesUI",
+    -- Blizzard font colour objects (QoL: Delve count colouring). Confirmed present
+    -- in Blizzard_UIWidgetTemplateBase.lua's spellBorderColorFromTintValue table.
+    "RED_FONT_COLOR", "ORANGE_FONT_COLOR", "YELLOW_FONT_COLOR", "GREEN_FONT_COLOR",
     "UiMapPoint", "GetRealZoneText", "GetZoneText", "GetSubZoneText",
     "Enum",
     -- Action bars / macros / spells / specs (PriorityRotation)
