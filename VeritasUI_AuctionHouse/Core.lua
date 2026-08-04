@@ -172,8 +172,30 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         ef:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
+        -- Seed first, then report. SeedDefaults is idempotent and is deliberately
+        -- called from every path that needs the keys to exist (Tooltip.lua and
+        -- Settings.lua already do); calling it here as well is what makes the notice
+        -- below reliable, because cross-frame PLAYER_LOGIN dispatch order is not
+        -- guaranteed and a notice printed before the seeding ran would never fire.
+        if AH.Tooltip and AH.Tooltip.SeedDefaults then
+            AH.Tooltip.SeedDefaults()
+        end
+
         VUI.Print(AH.TAG,
             format("v%s loaded — |cFFFFFF00/ah|r", AH.VERSION))
+
+        -- One-time, once ever: the engine setting was cleared so the default applies
+        -- again. Announced rather than done quietly -- it discards a stored value, and
+        -- if that value WAS a deliberate choice the user needs to know to re-pin it.
+        if AH.engineSettingWasReset then
+            AH.engineSettingWasReset = nil
+            VUI.Print(AH.TAG, format(
+                "Scan engine reset to the default (|cFFFFFF00%s|r). The stored value was "
+                .. "written by a defaulting bug that made every default change inert. "
+                .. "Use |cFFFFFF00/ah engine|r to pin a different one.",
+                AH.Scan.EngineName()))
+        end
+
         ef:UnregisterEvent("PLAYER_LOGIN")
 
     elseif event == "AUCTION_HOUSE_SHOW" then
@@ -195,7 +217,17 @@ end)
 ----------------------------------------------------------------
 AH.Events.On("AH_SCAN_START", function()
     -- Auto-scan removed (2026-07-02): all scans are user-initiated, one wording.
-    VUI.Print(AH.TAG, "Full scan started…")
+    --
+    -- ⚠ THE ENGINE NAME IS PART OF THE MESSAGE, DELIBERATELY. Until v1.12.13 this
+    -- read "Full scan started…" with no engine, and there were TWO engines with
+    -- materially different failure modes. The owner's v1.12.12 browse trial silently
+    -- ran on replicate for its whole duration, and the only reason he noticed was
+    -- that he recognised replicate's 60s "request was lost" line -- i.e. the system
+    -- was diagnosed by a failure message that happens to be engine-specific, which
+    -- is luck, not observability. An unobservable engine selection is
+    -- indistinguishable from the right one (same rule as the counted browse skips).
+    VUI.Print(AH.TAG, format("Full scan started… |cFF888888(%s)|r",
+        AH.Scan.EngineName()))
 end)
 
 AH.Events.On("AH_SCAN_COMPLETE", function(committed, rows)
@@ -380,18 +412,45 @@ end)
 ----------------------------------------------------------------
 AH.Scan = {}
 
--- "browse" only when explicitly selected; anything else (including a nil setting on a
--- database that predates it) means replicate. Fail-safe toward the engine whose
--- behaviour is fully characterised.
+-- Resolve the active engine. The stored setting is a deliberate `/ah engine` pin and
+-- is ABSENT unless the user made one (see SEED_EXEMPT in Tooltip.lua for why seeding
+-- it broke the v1.12.12 trial); AH.Setting returns the current default for an absent
+-- key, so the default is live.
+--
+-- ⚠ The `or "replicate"` is a LOAD-ORDER guard, not a policy. Core.lua loads before
+-- Tooltip.lua, which defines AH.Setting, so a caller reaching here before Tooltip.lua
+-- has run gets replicate. It is unreachable in practice (every caller runs after
+-- PLAYER_LOGIN). It previously carried a comment claiming a nil SETTING also meant
+-- replicate -- false, and it read as deliberate policy while the real policy lived in
+-- SETTING_DEFAULTS.
+local warnedBrowseMissing = false
 local function Engine()
     local which = AH.Setting and AH.Setting("scanEngine") or "replicate"
-    if which == "browse" and AH.Browse then return AH.Browse end
+    if which == "browse" then
+        if AH.Browse then return AH.Browse end
+        -- Falling back is right (a scan beats no scan) but doing it SILENTLY is not:
+        -- the user asked for browse and would get replicate's failure modes with no
+        -- explanation. Once per session, not per scan.
+        if not warnedBrowseMissing then
+            warnedBrowseMissing = true
+            VUI.Print(AH.TAG, "|cFFFF4444Browse engine did not load|r — using replicate instead.")
+        end
+    end
     return AH.Replicate
 end
 AH.Scan.Engine = Engine
 
 function AH.Scan.EngineName()
     return (Engine() == AH.Browse) and "browse" or "replicate"
+end
+
+-- True when the active engine came from a `/ah engine` pin rather than the default.
+-- Read only by the diagnostics, so the state dump can distinguish "browse because
+-- that is the default" from "browse because you asked for it" -- the exact question
+-- nobody could answer during the v1.12.12 trial.
+function AH.Scan.EngineIsPinned()
+    local s = AH.db and AH.db.settings
+    return (s and s.scanEngine ~= nil) and true or false
 end
 
 function AH.Scan.Start(...)
@@ -432,10 +491,20 @@ end
 ----------------------------------------------------------------
 --  Slash Commands
 --
---  Surface: help / scan / diag / check / find / wipe / blocked / settings / debug.
+--  Surface: help / scan / engine / compare / browseprobe / diag / check / find /
+--  wipe / blocked / settings / debug.
 --  This list, the `cmd ==` branches below, and PrintHelp are meant to stay
 --  one-for-one — the list had drifted, silently gaining four commands it never
 --  learned about, so check all three together when adding or removing one.
+--
+--  ⚠ IT DRIFTED AGAIN, THE SAME WAY, DESPITE THE WARNING ABOVE. v1.12.9 added
+--  engine / compare / browseprobe as working branches and updated neither this
+--  list nor PrintHelp, so for four releases the only way to discover the command
+--  that selects the scan engine was to read the source. The owner hit exactly
+--  that and asked where the command was. A comment telling a future reader to
+--  check three places by hand did not survive one feature; the headless suite now
+--  asserts the three agree, because that is the only version of this rule that
+--  cannot be forgotten.
 ----------------------------------------------------------------
 SLASH_VERITASUI_AH1 = "/ah"
 SLASH_VERITASUI_AH2 = "/auctionhouse"
@@ -444,6 +513,9 @@ local function PrintHelp()
     VUI.Print(AH.TAG, "Commands:")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah|r              — show this help")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah scan|r         — full price scan (AH open; 15-min cooldown)")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah engine|r       — show or set the scan engine (browse | replicate)")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah compare|r      — scan with browse, diff against the stored prices")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah browseprobe|r  — check one shift-clicked item against the live listing")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah diag|r         — diagnostic / state dump")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah check|r        — show stored price for a shift-clicked item")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah find|r         — search the last scan's raw data for a shift-clicked item")
@@ -466,6 +538,14 @@ local function PrintDiag()
     -- Session state.
     VUI.Print(AH.TAG, format("  AH open:      %s", AH.isOpen and "|cFF00FF00yes|r" or "no"))
     VUI.Print(AH.TAG, format("  AH disabled:  %s", AH.disabled and "|cFFFF4444yes|r" or "no"))
+
+    -- Which of the two scan engines is live, and WHY. Added v1.12.13: the module has
+    -- shipped two engines since v1.12.9 and the state dump never named either, so a
+    -- scan running on the wrong one was invisible in the one place built to answer
+    -- "what is this module actually doing".
+    VUI.Print(AH.TAG, format("  engine:       |cFFFFFF00%s|r (%s)",
+        AH.Scan.EngineName(),
+        AH.Scan.EngineIsPinned() and "pinned via /ah engine" or "default"))
 
     -- Scan state.
     if AH.Replicate then
@@ -626,19 +706,34 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
     elseif cmd == "engine" then
         local want = strtrim(rest)   -- `rest` is already lowercased above
         if want == "" then
-            VUI.Print(AH.TAG, format("Scan engine: |cFFFFFF00%s|r  (/ah engine browse | replicate)",
-                AH.Scan and AH.Scan.EngineName() or "?"))
+            VUI.Print(AH.TAG, format("Scan engine: |cFFFFFF00%s|r (%s)  (/ah engine browse | replicate)",
+                AH.Scan and AH.Scan.EngineName() or "?",
+                AH.Scan and AH.Scan.EngineIsPinned() and "pinned" or "default"))
             VUI.Print(AH.TAG, "  |cFFFFFF00replicate|r — per-auction rows; fails the first scan most days.")
             VUI.Print(AH.TAG, "  |cFFFFFF00browse|r — per-item summaries; the endpoint Auctionator defaults to.")
+            VUI.Print(AH.TAG, "  |cFF888888A pin persists and overrides future default changes; "
+                .. "/ah engine default clears it.|r")
+        elseif want == "default" then
+            -- Deliberately reachable: pinning is now permanent (that is the point of
+            -- the pin), so there has to be a way back to "follow the default" other
+            -- than editing saved variables. Clearing the key IS the unpinned state --
+            -- see SEED_EXEMPT in Tooltip.lua.
+            if not (AH.db and AH.db.settings) then
+                VUI.Print(AH.TAG, "Settings not loaded.")
+                return
+            end
+            AH.db.settings.scanEngine = nil
+            VUI.Print(AH.TAG, format("Scan engine pin cleared — now following the default (|cFFFFFF00%s|r).",
+                AH.Scan.EngineName()))
         elseif want == "browse" or want == "replicate" then
             if not (AH.db and AH.db.settings) then
                 VUI.Print(AH.TAG, "Settings not loaded.")
                 return
             end
             AH.db.settings.scanEngine = want
-            VUI.Print(AH.TAG, format("Scan engine set to |cFFFFFF00%s|r.", want))
+            VUI.Print(AH.TAG, format("Scan engine pinned to |cFFFFFF00%s|r.", want))
         else
-            VUI.Print(AH.TAG, "Usage: /ah engine browse | replicate")
+            VUI.Print(AH.TAG, "Usage: /ah engine browse | replicate | default")
         end
 
     elseif cmd == "browseprobe" then

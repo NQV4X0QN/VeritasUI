@@ -84,12 +84,53 @@ AH.Tooltip.Setting = S
 -- so existing call sites are untouched; new files should read AH.Setting.
 AH.Setting = S
 
+-- Keys that must NEVER be written into saved variables by seeding.
+--
+-- ⚠ THIS IS WHY v1.12.12's BROWSE TRIAL NEVER RAN. `scanEngine` was seeded like any
+-- other toggle, so the first login on ANY release wrote a concrete engine name into
+-- the saved variables permanently. From that moment on, changing the DEFAULT in this
+-- file could not change behaviour for anyone who had already logged in -- which is
+-- everyone. The default moved browse -> replicate -> browse across v1.12.9/11/12 and
+-- every one of those flips was inert; the owner's confirmed saved variables read
+-- `["scanEngine"] = "replicate"` while v1.12.12 shipped claiming browse was the
+-- default, and the trial he agreed to silently ran on the other engine.
+--
+-- So: a setting whose default we intend to be able to CHANGE must not be pre-seeded.
+-- Absence is meaningful -- it means "no explicit choice, follow the default" -- and
+-- S() below already returns SETTING_DEFAULTS[key] for an absent key, so the default
+-- becomes live with no other machinery. Only `/ah engine` writes this key, and that
+-- write is a deliberate pin that correctly survives future default changes.
+--
+-- ⚠ Do not "tidy" this by folding scanEngine back into the seed loop for symmetry
+-- with the tooltip toggles. The tooltip toggles are booleans the user drives from a
+-- checkbox and whose defaults we have no intention of ever flipping; this one is a
+-- policy default under active evaluation. The asymmetry is the point.
+local SEED_EXEMPT = {
+    scanEngine = true,
+}
+
 -- Seed missing toggle defaults (called once, after AH.db exists).
 function AH.Tooltip.SeedDefaults()
     if not AH.db then return end
     AH.db.settings = AH.db.settings or {}
+
+    -- One-time repair of the value the old seeding wrote (see SEED_EXEMPT above).
+    -- Gated on a db flag so it runs exactly once ever, and so the second call in the
+    -- same login (Settings.lua also calls SeedDefaults) neither re-clears nor
+    -- re-prints. Destructive of one key, and announced, because a seeded value and a
+    -- deliberate `/ah engine` pick are INDISTINGUISHABLE in the stored data -- there
+    -- is no flag recording which wrote it. Rather than guess, clear it once and say
+    -- so, naming the command that re-pins a real preference.
+    if not AH.db.engineSettingUnseeded then
+        AH.db.engineSettingUnseeded = true
+        if AH.db.settings.scanEngine ~= nil then
+            AH.db.settings.scanEngine = nil
+            AH.engineSettingWasReset = true   -- Core.lua prints this at PLAYER_LOGIN
+        end
+    end
+
     for k, v in pairs(SETTING_DEFAULTS) do
-        if AH.db.settings[k] == nil then
+        if AH.db.settings[k] == nil and not SEED_EXEMPT[k] then
             AH.db.settings[k] = v
         end
     end
