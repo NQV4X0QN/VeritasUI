@@ -1556,22 +1556,76 @@ local delveWarnedNoFont = false
 -- Locate the live Delve plaque's icon frames. Every level is guarded: this is a
 -- Blizzard layout we do not own, and a restructure must cost us the feature
 -- rather than throw inside their tracker's update.
-local function DelveSpellFrames()
-    local tracker = _G.ScenarioObjectiveTracker
-    local stage   = tracker and tracker.StageBlock
-    local wc      = stage and stage.WidgetContainer
-    if not wc or not wc.GetChildren then return nil end
+--
+-- ⚠ SEARCHED BY SHAPE, NOT BY PATH -- and that is a CORRECTION, not a flourish.
+-- v1.12.15 looked only in ScenarioObjectiveTracker.StageBlock.WidgetContainer and
+-- found nothing, because Blizzard's XML declares THREE sibling widget containers
+-- (StageBlock.WidgetContainer, TopWidgetContainerBlock.WidgetContainer and
+-- BottomWidgetContainerBlock.WidgetContainer) and the Delve header lives in one of
+-- the others. I picked one of three by inference and shipped it.
+--
+-- Rather than swap in a different hardcoded path -- a one-in-three guess again --
+-- this walks the tracker's descendants for the SHAPE the plaque actually has: a
+-- frame with a `SpellContainer` whose children carry `spellInfo`. That is
+-- self-validating (the thing we search for is the thing we need) and it survives
+-- Blizzard moving the widget between containers, which is exactly what caught us.
+local DELVE_SEARCH_DEPTH = 6
+local delveCachedWidget
 
-    -- Walk the container's children rather than reading the widget pool: the
-    -- pool is private to the widget mixin, whereas SpellContainer is a documented
-    -- parentKey. Also survives more than one widget being registered here.
-    local kids = { wc:GetChildren() }
+local function DelveSpellsFromWidget(w)
+    if type(w) ~= "table" then return nil end
+    -- A widget Blizzard has hidden or released back to its pool is not a plaque.
+    -- Without this the cache can outlive the Delve: the frames still answer
+    -- GetChildren after release, so a stale widget would keep validating.
+    if w.IsShown and not w:IsShown() then return nil end
+    local sc = w.SpellContainer
+    if not (sc and sc.GetChildren) then return nil end
+    local spells = { sc:GetChildren() }
+    if #spells == 0 then return nil end
+    -- Require the spellInfo shape: a SpellContainer alone could belong to another
+    -- scenario header, and labelling someone else's icons would be worse than
+    -- showing nothing.
+    for i = 1, #spells do
+        if spells[i] and spells[i].spellInfo then return spells end
+    end
+    return nil
+end
+
+-- Parameter is `node`, not `frame`: `frame` is this file's module-wide event frame
+-- and shadowing it inside a recursive walk is exactly the kind of confusion that
+-- reads fine and then bites during a later edit.
+local function DelveFindWidget(node, depth)
+    if not node or depth > DELVE_SEARCH_DEPTH or not node.GetChildren then return nil end
+    if DelveSpellsFromWidget(node) then return node end
+    local kids = { node:GetChildren() }
     for i = 1, #kids do
-        local w = kids[i]
-        local sc = w and w.SpellContainer
-        if sc and sc.GetChildren then
-            local spells = { sc:GetChildren() }
-            if #spells > 0 then return spells end
+        local found = DelveFindWidget(kids[i], depth + 1)
+        if found then return found end
+    end
+    return nil
+end
+
+local function DelveSpellFrames()
+    -- The tracker itself going away (leaving the Delve, a UI reload of the module)
+    -- invalidates any cached widget outright -- checked BEFORE the fast path, so a
+    -- released frame that still answers GetChildren cannot keep the cache alive.
+    local root = _G.ScenarioObjectiveTracker or _G.ObjectiveTrackerFrame
+    if not root then delveCachedWidget = nil; return nil end
+
+    -- Fast path: re-validate the cached widget instead of re-walking every tick.
+    local spells = delveCachedWidget and DelveSpellsFromWidget(delveCachedWidget)
+    if spells then return spells end
+
+    delveCachedWidget = nil
+    -- Roots tried in order. The scenario module is where the plaque lives today;
+    -- the manager frame is a cheap hedge against Blizzard reparenting it, and
+    -- costs one nil check when absent.
+    local roots = { _G.ScenarioObjectiveTracker, _G.ObjectiveTrackerFrame }
+    for i = 1, #roots do
+        local w = DelveFindWidget(roots[i], 1)
+        if w then
+            delveCachedWidget = w
+            return DelveSpellsFromWidget(w)
         end
     end
     return nil
@@ -1692,9 +1746,32 @@ local function DumpDelveProbe()
         print("  C_DelvesUI.HasActiveDelve: absent")
     end
 
+    -- Report ALL THREE widget containers by name. v1.12.15 searched only the
+    -- StageBlock's and silently found nothing; had the probe printed this, the
+    -- wrong-container bug would have been one photo instead of a release.
+    if tracker then
+        for _, path in ipairs({ "StageBlock", "TopWidgetContainerBlock", "BottomWidgetContainerBlock" }) do
+            local blk = tracker[path]
+            local wc  = blk and blk.WidgetContainer
+            local n   = 0
+            local hit = "no"
+            if wc and wc.GetChildren then
+                local kids = { wc:GetChildren() }
+                n = #kids
+                for i = 1, #kids do
+                    if kids[i] and kids[i].SpellContainer then hit = "YES" end
+                end
+            end
+            print(("  %-26s block=%s container=%s children=%d hasSpellContainer=%s")
+                :format(path, tostring(blk ~= nil), tostring(wc ~= nil), n, hit))
+        end
+    end
+    print("  cached widget: " .. tostring(delveCachedWidget ~= nil))
+
     local spells = DelveSpellFrames()
     if not spells then
         print("  No Delve plaque icons found — run this while inside a Delve.")
+        print("  If you ARE in a Delve, the three lines above say which container holds it.")
         return
     end
     print(("  icons found: %d"):format(#spells))

@@ -2,6 +2,22 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.16] - 2026-08-04
+
+Fixes the Delve Nemesis count not appearing: it was being looked for in the wrong one of Blizzard's three widget containers.
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **the Delve Nemesis count never appeared.** v1.12.15 looked for the plaque in `ScenarioObjectiveTracker.StageBlock.WidgetContainer`, but Blizzard's XML declares **three** sibling widget containers — `StageBlock`, `TopWidgetContainerBlock` and `BottomWidgetContainerBlock` — and the Delve header lives in one of the others. One of three was picked by inference and shipped.
+  - Fixed by **searching for the plaque's shape rather than its path**: a bounded walk of the tracker's descendants looking for a frame with a `SpellContainer` whose children carry `spellInfo`. Deliberately not another hardcoded path, which would have been the same one-in-three guess. This is self-validating — the thing searched for is the thing needed — and it survives Blizzard moving the widget between containers, which is precisely what went wrong.
+  - The found widget is cached, and the cache is invalidated both when the tracker goes away and when the widget reports hidden. A released widget still answers `GetChildren`, so a cache keyed only on "this validated last time" could outlive the Delve.
+  - `/qol delve` now reports **all three containers by name**, with child counts and whether each holds a `SpellContainer`. Had it printed that in v1.12.15, this would have been one screenshot instead of a release.
+
+### Internal
+
+- The headless suite's stub modelled the *path* the production code assumed rather than a real frame tree, so it could not have caught this — a stub that mirrors the code's assumption can only confirm that assumption. It now builds `tracker → three blocks → WidgetContainer → widget → SpellContainer` with `GetChildren` at every level, takes the hosting container as a parameter, and asserts the count appears for **all three** placements. 42 checks, failing against v1.12.15.
+- Renamed a recursive walk's parameter that shadowed the module's event `frame` upvalue.
+
 ## [1.12.15] - 2026-08-04
 
 Shows the Delve Nemesis groups-remaining count under the plaque icon, instead of only revealing it on hover.
