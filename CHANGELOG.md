@@ -2,6 +2,20 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.15] - 2026-08-04
+
+Shows the Delve Nemesis groups-remaining count under the plaque icon, instead of only revealing it on hover.
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Show Delve Nemesis Count.** The Delve plaque's middle circular icon holds the number of Nemesis enemy groups you still have to clear, but only inside its tooltip, so checking it mid-run means stopping to hover. The count is now painted permanently just below that icon as a bare countdown (4, 3, 2, 1, 0). On by default; toggle in Quality of Life settings.
+  - Structure verified from Blizzard's own source rather than guessed: the plaque is a **single** `ScenarioHeaderDelves` widget under `ScenarioObjectiveTracker.StageBlock.WidgetContainer`, and the three icons are its `spells` table driving a pool of `UIWidgetBaseSpellTemplate` frames under `SpellContainer`, each carrying its own `spellInfo`.
+  - The count is parsed from the tooltip because **no numeric field carries it**. `spellInfo.stackDisplay` would be the obvious source, but Blizzard's spell template draws its `StackCount` fontstring unconditionally whenever `stackDisplay > 0` — and no number is drawn on any of the three icons, so all three are zero. If Blizzard ever populates that field, the overlay hides itself and defers to the native one.
+  - The icon is identified by **which tooltip contains an "N / M" pair**, not by being second in the row. Position rests on a single observation and Blizzard owns the ordering, whereas the pattern that identifies the icon is the number itself — so the wrong icon can never be labelled with a real count.
+  - Uses its own fontstring with the font copied live off Blizzard's `StackCount`, so it matches the client's number styling without fighting Blizzard's show/hide logic on every widget rebuild.
+  - Driven by a 0.5s poll rather than a hook: frames built from a mixin get the methods copied onto them, so hooking the mixin table afterwards would miss every existing frame. The poll body early-outs unless a Delve plaque is on screen.
+- `VeritasUI_QualityOfLife` — **`/qol delve`**, a permanent diagnostic dumping the live plaque's icons with each one's `spellID`, `stackDisplay`, `text`, tooltip and what the parser extracted. Kept shipped for the same reason as `/ah check` and `/qol ilvl`: the whole design rests on where Blizzard keeps this number, and that is only knowable by reading the live widget.
+
 ## [1.12.14] - 2026-08-04
 
 Stops the scan-completion line from reporting an auction count the browse engine never had.

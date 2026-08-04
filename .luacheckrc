@@ -96,6 +96,8 @@ read_globals = {
     "C_TradeSkillUI", "C_Texture",
     -- Map / navigation / quests
     "C_Map", "C_Navigation", "C_SuperTrack", "C_QuestLog",
+    -- Delves (QualityOfLife: Nemesis groups-remaining count on the Delve plaque)
+    "C_DelvesUI",
     "UiMapPoint", "GetRealZoneText", "GetZoneText", "GetSubZoneText",
     "Enum",
     -- Action bars / macros / spells / specs (PriorityRotation)

@@ -45,6 +45,9 @@ local defaults = {
     showItemLevels = true,
     showMapCoords  = true,
     afkScreen      = true,
+    -- Paints the Nemesis groups-remaining count under the Delve plaque icon
+    -- that otherwise only reveals it on hover.
+    delveNemesisCount = true,
     -- Set while the AFK overlay has the UI hidden, cleared when it restores it.
     -- Persisted so a crash or disconnect during AFK can be recovered at the next
     -- PLAYER_LOGIN without force-restoring the UI on every ordinary login.
@@ -1503,6 +1506,212 @@ local function AFK_StartPoll()
     end)
 end
 
+----------------------------------------------------------------
+--  Delve — show the Nemesis Strongbox groups-remaining count
+--
+--  Blizzard puts the remaining Nemesis enemy-group count in the TOOLTIP of the
+--  middle circular icon on the Delve plaque, so it is only readable by hovering
+--  mid-run. This paints the number permanently under that icon.
+--
+--  ── VERIFIED FROM BLIZZARD SOURCE (wow-ui-source live, 2026-08-04) ──
+--  The plaque is ONE widget, not three. It is the ScenarioHeaderDelves widget
+--  (Blizzard_UIWidgetTemplateScenarioHeaderDelves.lua) living in
+--  ScenarioObjectiveTracker.StageBlock.WidgetContainer -- the StageBlock whose
+--  texture kit is "delves-scenario" (Blizzard_ScenarioObjectiveTracker.lua). Its
+--  `spells` table drives a pool of UIWidgetBaseSpellTemplate frames parented to
+--  `SpellContainer`, one per icon, each carrying its own `spellInfo` table with
+--  `spellID`, `tooltip`, `text` and `stackDisplay`.
+--
+--  ⚠ WHY THE NUMBER IS PARSED FROM A STRING RATHER THAN READ FROM A FIELD.
+--  `spellInfo.stackDisplay` is a number and would be the obvious source -- but
+--  UIWidgetBaseSpellTemplateMixin:Setup shows its StackCount fontstring
+--  UNCONDITIONALLY whenever `stackDisplay > 0`. The owner's screenshot shows no
+--  number on any of the three icons, so every one of them has stackDisplay == 0.
+--  That is a deduction from Blizzard's own code plus the observed UI, not a
+--  guess: if the count were in stackDisplay, Blizzard would already be drawing
+--  it and this feature would not be needed. The count exists only in the
+--  tooltip text. `/qol delve` dumps the live fields so this can be re-checked if
+--  Blizzard ever populates the numeric field -- at which point PREFER it.
+--
+--  ⚠ IDENTIFIED BY PATTERN, NOT BY INDEX. The nemesis icon is the middle one
+--  today, but "index 2" rests on a single screenshot and Blizzard owns the
+--  ordering. Matching the icon whose tooltip contains an "N / M" pair is
+--  self-validating: the thing that identifies the icon IS the number we want,
+--  so we can never label the wrong icon with a real count.
+----------------------------------------------------------------
+
+-- 0.5s: kill credit is not frame-critical and the poll only runs while a Delve
+-- plaque with a matching icon is on screen. Deliberately slower than the hover
+-- and AFK pollers.
+local DELVE_POLL_RATE = 0.5
+
+-- THE tuning knob for vertical placement, in pixels below the icon (larger =
+-- lower). Cosmetic only. Same role as CraftingOrder's LINE_GAP_Y; if the number
+-- clips the plaque's lower border, this is the single line to change.
+local DELVE_COUNT_GAP_Y = 1
+
+local delveTicker
+local delveWarnedNoFont = false
+
+-- Locate the live Delve plaque's icon frames. Every level is guarded: this is a
+-- Blizzard layout we do not own, and a restructure must cost us the feature
+-- rather than throw inside their tracker's update.
+local function DelveSpellFrames()
+    local tracker = _G.ScenarioObjectiveTracker
+    local stage   = tracker and tracker.StageBlock
+    local wc      = stage and stage.WidgetContainer
+    if not wc or not wc.GetChildren then return nil end
+
+    -- Walk the container's children rather than reading the widget pool: the
+    -- pool is private to the widget mixin, whereas SpellContainer is a documented
+    -- parentKey. Also survives more than one widget being registered here.
+    local kids = { wc:GetChildren() }
+    for i = 1, #kids do
+        local w = kids[i]
+        local sc = w and w.SpellContainer
+        if sc and sc.GetChildren then
+            local spells = { sc:GetChildren() }
+            if #spells > 0 then return spells end
+        end
+    end
+    return nil
+end
+
+-- Pull the REMAINING count out a tooltip carrying an "N / M" pair.
+-- Returns nil when the tooltip has no such pair, which is how non-nemesis icons
+-- are rejected. Only the first number is used -- the owner asked for a bare
+-- countdown (4, 3, 2, 1, 0), not a fraction.
+--
+-- ⚠ Takes the LAST pair, not the first. The observed tooltip contains exactly
+-- one ("Enemy groups remaining: 4 / 4"), but that is a SINGLE sample of a
+-- localized, server-authored string: the prose paragraphs above it could
+-- legitimately contain another fraction, and a counter is conventionally the
+-- trailing line. Anchoring to the first match would silently report a number
+-- lifted out of a sentence. Neither choice is provably right, so this takes the
+-- one that fails more gracefully -- and says so rather than looking deliberate.
+local function DelveParseRemaining(tooltip)
+    if type(tooltip) ~= "string" then return nil end
+    local last
+    for n in tooltip:gmatch("(%d+)%s*/%s*%d+") do last = n end
+    return last and tonumber(last) or nil
+end
+
+-- Our own fontstring, never Blizzard's StackCount. StackCount is hidden on every
+-- Setup pass while stackDisplay is 0, so writing to it would be a fight we lose
+-- on the next widget update -- and would also destroy the native path if
+-- Blizzard ever does populate the field.
+local function DelveCountString(spellFrame)
+    if spellFrame._vuiNemesisCount then return spellFrame._vuiNemesisCount end
+    local anchor = spellFrame.Icon or spellFrame
+    local fs = spellFrame:CreateFontString(nil, "OVERLAY")
+
+    -- Copy the live font off Blizzard's own StackCount so the number matches the
+    -- client's number styling and tracks any future restyle -- the same
+    -- copy-don't-pin approach the AH tooltip coin line uses. NumberFontNormal is
+    -- the fallback, and a missing font object is reported once rather than
+    -- leaving an invisible fontstring to look like a broken feature.
+    local src = spellFrame.StackCount and spellFrame.StackCount.GetFontObject
+                and spellFrame.StackCount:GetFontObject()
+    if src then
+        fs:SetFontObject(src)
+    elseif _G.NumberFontNormal then
+        fs:SetFontObject(_G.NumberFontNormal)
+    elseif not delveWarnedNoFont then
+        delveWarnedNoFont = true
+        VUI.Print("Quality of Life",
+            "Delve count: no usable number font found; the count may be invisible.")
+    end
+    -- Drop shadow, no backdrop: the plaque art behind the icons is busy and
+    -- light in places. Matches how the map coordinates stay readable.
+    fs:SetShadowColor(0, 0, 0, 1)
+    fs:SetShadowOffset(1, -1)
+    fs:SetPoint("TOP", anchor, "BOTTOM", 0, -DELVE_COUNT_GAP_Y)
+
+    spellFrame._vuiNemesisCount = fs
+    return fs
+end
+
+local function DelveUpdate()
+    local spells = DelveSpellFrames()
+    if not spells then return end
+    for i = 1, #spells do
+        local f    = spells[i]
+        local info = f and f.spellInfo
+        local fs   = f and f._vuiNemesisCount
+        local left = info and DelveParseRemaining(info.tooltip)
+
+        -- Prefer the numeric field the moment Blizzard ever populates it, and
+        -- stand down entirely in that case: their StackCount is then already
+        -- drawing the number and a second copy would be clutter.
+        local nativeShows = info and type(info.stackDisplay) == "number"
+                            and info.stackDisplay > 0
+
+        if left and not nativeShows then
+            DelveCountString(f):SetText(left)
+            DelveCountString(f):Show()
+        elseif fs then
+            fs:Hide()
+        end
+    end
+end
+
+local function DelveStopCount()
+    if delveTicker then delveTicker:Cancel(); delveTicker = nil end
+    local spells = DelveSpellFrames()
+    if not spells then return end
+    for i = 1, #spells do
+        local fs = spells[i] and spells[i]._vuiNemesisCount
+        if fs then fs:Hide() end
+    end
+end
+
+local function DelveStartCount()
+    if delveTicker then return end
+    delveTicker = C_Timer.NewTicker(DELVE_POLL_RATE, function()
+        if not (db and db.delveNemesisCount) then return end
+        DelveUpdate()
+    end)
+end
+
+-- PERMANENT diagnostic. The whole feature rests on where Blizzard keeps this
+-- number, and that is only knowable by reading the live widget -- so the tool
+-- that reads it stays shipped, exactly like /ah check and /qol ilvl.
+local function DumpDelveProbe()
+    local tracker = _G.ScenarioObjectiveTracker
+    print("|cFF00CCFF[VeritasUI Delve probe]|r")
+    print(("  ScenarioObjectiveTracker: %s   StageBlock: %s   WidgetContainer: %s")
+        :format(tostring(tracker ~= nil),
+                tostring(tracker and tracker.StageBlock ~= nil),
+                tostring(tracker and tracker.StageBlock
+                         and tracker.StageBlock.WidgetContainer ~= nil)))
+    local hasDelve = C_DelvesUI and C_DelvesUI.HasActiveDelve
+    if hasDelve then
+        local ok, active = pcall(C_DelvesUI.HasActiveDelve)
+        print("  C_DelvesUI.HasActiveDelve: " .. (ok and tostring(active) or "error"))
+    else
+        print("  C_DelvesUI.HasActiveDelve: absent")
+    end
+
+    local spells = DelveSpellFrames()
+    if not spells then
+        print("  No Delve plaque icons found — run this while inside a Delve.")
+        return
+    end
+    print(("  icons found: %d"):format(#spells))
+    for i = 1, #spells do
+        local info = spells[i] and spells[i].spellInfo
+        if not info then
+            print(("   [%d] no spellInfo on the frame"):format(i))
+        else
+            print(("   [%d] spellID=%s stackDisplay=%s text=%q parsed=%s")
+                :format(i, tostring(info.spellID), tostring(info.stackDisplay),
+                        tostring(info.text or ""),
+                        tostring(DelveParseRemaining(info.tooltip))))
+            print(("        tooltip=%q"):format(tostring(info.tooltip or ""):sub(1, 160)))
+        end
+    end
+end
+
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
@@ -1587,6 +1796,12 @@ local function InitializeOptions()
             if value then AFK_StartPoll() end
         end)
 
+    AddCheckbox("delveNemesisCount", "Show Delve Nemesis Count",
+        "Shows how many Nemesis enemy groups are left directly under the icon on the Delve plaque, instead of only revealing it when you hover the icon. Displays a plain countdown (4, 3, 2, 1, 0).",
+        function(value)
+            if value then DelveStartCount() else DelveStopCount() end
+        end)
+
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
     VUI.RegisterSettingsLabel(SETTINGS_LABEL)
@@ -1644,6 +1859,11 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         end
 
         if db.afkScreen then AFK_StartPoll() end
+
+        -- Starts unconditionally when enabled: the ticker's own body is cheap and
+        -- early-outs unless a Delve plaque is on screen, so there is nothing to
+        -- register or unregister on zone changes.
+        if db.delveNemesisCount then DelveStartCount() end
 
         -- Register /way only if TomTom is absent; both addons claim this command.
         if not (_G.TomTom or (IsAddOnLoaded and IsAddOnLoaded("TomTom"))) then
@@ -1850,6 +2070,10 @@ SLASH_VERITASUI_QOL1 = "/qol"
 SLASH_VERITASUI_QOL2 = "/qualityoflife"
 SlashCmdList["VERITASUI_QOL"] = function(msg)
     local arg = (msg and strtrim(msg)) or ""
+    if arg:lower():match("^delve") then
+        DumpDelveProbe()
+        return
+    end
     if arg:lower():match("^ilvl") then
         -- Accept a shift-clicked item link, matching /ah check's pattern.
         DumpIlvlDiag(arg:match("(|c%x+|H.-|h.-|h|r)") or arg:match("(|H.-|h)"))
