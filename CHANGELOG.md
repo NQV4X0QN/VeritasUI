@@ -2,6 +2,18 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.14] - 2026-08-04
+
+Stops the scan-completion line from reporting an auction count the browse engine never had.
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **the scan-completion line claimed an auction count that browse does not measure.** The wording was hardcoded to "N items priced from M auctions" for both engines, which is true of replicate — it walks individual auction rows, so M is genuinely informative (15,828 priced from 272,220). Browse returns one summary per item and never sees an auction count, so M was just the item count restated: the first browse scan after v1.12.13 printed "22702 items priced from 22702 auctions", repeating one number under two labels while understating the real auction count by orders of magnitude. The source noun is now supplied by the firing engine, so browse omits the clause instead of inventing a figure, and replicate keeps it. Passed in rather than derived from the engine name at the print site, so `Core.lua` keeps owning the user-facing wording while staying engine-agnostic. (`Core.lua`, `Replicate.lua`)
+
+### Internal
+
+- The headless suite now asserts, by source, that every `AH_SCAN_COMPLETE` fire site agrees with the handler's contract — a site that forgets the noun would otherwise degrade silently to the shorter sentence. It also covers the login-notice guard across four simulated logins, confirming the one-time scan-engine reset notice is once-ever rather than once-per-login.
+
 ## [1.12.13] - 2026-08-04
 
 Fixes the reason the v1.12.12 browse trial never actually ran, and makes which scan engine is active visible in the three places that should already have said so.

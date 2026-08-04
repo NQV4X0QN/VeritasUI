@@ -828,7 +828,7 @@ local function EnsureDriver()
                     VUI.Print(AH.TAG, "|cFFFF8800Finalize-phase error|r "
                         .. "(main results already committed): " .. tostring(a))
                 end
-                AH.Events.Fire("AH_SCAN_COMPLETE", mainCommit.kept, mainCommit.rows)
+                AH.Events.Fire("AH_SCAN_COMPLETE", mainCommit.kept, mainCommit.rows, "auctions")
             else
                 if trace then trace.outcome = "failed" end
                 if VUI.debug then
@@ -851,7 +851,10 @@ local function EnsureDriver()
                 trace.rows      = b or 0
                 trace.totalTime = fireTime and (GetTime() - fireTime) or nil
             end
-            AH.Events.Fire("AH_SCAN_COMPLETE", a or 0, b or 0)
+            -- "auctions" is accurate here and nowhere else: this engine walks individual
+            -- auction rows. Browse deliberately passes no noun (see the handler in
+            -- Core.lua) because it only ever sees per-item summaries.
+            AH.Events.Fire("AH_SCAN_COMPLETE", a or 0, b or 0, "auctions")
             -- DEBUG (debug-gated): total scan time = fire -> drain complete. Pairs with
             -- the time-to-first-event trace in the event handler. Together they separate
             -- "slow to start" (server/readiness) from "slow to drain" (dataset size), so

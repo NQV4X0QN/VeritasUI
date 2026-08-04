@@ -230,10 +230,30 @@ AH.Events.On("AH_SCAN_START", function()
         AH.Scan.EngineName()))
 end)
 
-AH.Events.On("AH_SCAN_COMPLETE", function(committed, rows)
-    VUI.Print(AH.TAG, format(
-        "Scan complete — |cFF00FF00%d|r items priced from |cFFFFFF00%d|r auctions.",
-        committed or 0, rows or 0))
+-- `sourceUnit` is the noun for the second number, supplied by the firing engine, or
+-- nil when the engine has no meaningful source count to report.
+--
+-- ⚠ THE HARDCODED "auctions" WAS A FALSE CLAIM ON BROWSE. Replicate walks individual
+-- auction rows, so "N items priced from M auctions" is true there and M is genuinely
+-- informative (e.g. 15,828 from 272,220). Browse returns one SUMMARY per item and never
+-- sees an auction count at all, so M was simply the item count again -- the owner's
+-- v1.12.13 scan read "22702 items priced from 22702 auctions", which both repeats one
+-- number under two labels and understates the real auction count by orders of
+-- magnitude. Browse now omits the clause rather than inventing a figure; its coverage
+-- and skip counts are reported separately by Browse.lua.
+--
+-- The noun is passed IN rather than derived from AH.Scan.EngineName() here, so Core
+-- keeps owning the user-facing wording while staying engine-agnostic -- the same split
+-- that lets the scanners stay UI-agnostic.
+AH.Events.On("AH_SCAN_COMPLETE", function(committed, rows, sourceUnit)
+    if sourceUnit and rows and rows > 0 then
+        VUI.Print(AH.TAG, format(
+            "Scan complete — |cFF00FF00%d|r items priced from |cFFFFFF00%d|r %s.",
+            committed or 0, rows, sourceUnit))
+    else
+        VUI.Print(AH.TAG, format(
+            "Scan complete — |cFF00FF00%d|r items priced.", committed or 0))
+    end
 end)
 
 AH.Events.On("AH_SCAN_FAILED", function(err)
