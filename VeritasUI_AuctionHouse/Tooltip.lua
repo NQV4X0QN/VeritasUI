@@ -1,9 +1,19 @@
 -- VeritasUI_AuctionHouse / Tooltip.lua
 -- Append the stored market price to item AND battle-pet tooltips.
 --
--- Pure DB READ — no live AH query, works offline (away from the AH), and is
--- read-only so it carries no taint risk. Two distinct mechanisms (verified 12.0.5):
+-- Pure DB READ — no live AH query, works offline (away from the AH).
+--
+-- ⚠ "Read-only, therefore no taint risk" USED TO BE ASSERTED HERE AND IS FALSE. Reading the
+--   DB is harmless, but this file also MUTATES a shared secure Blizzard frame: it adds an
+--   owned coin FontString to GameTooltip (see GetCoinFontString), and until v1.12.18 it also
+--   HookScript'd GameTooltip's OnTooltipCleared. An ADDON_ACTION_FORBIDDEN on
+--   UseContainerItem() attributed to this module (2026-08-04) is what disproved the claim.
+--   Do not re-add a blanket no-taint statement to this file.
+--
+-- Three mechanisms:
 --   * Items: TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item).
+--   * All tooltip types: an AllTypes post-call that hides our coins, plus a poll backstop
+--     for legacy tooltips — see the "Hiding the owned coin fontstring" block for why both.
 --   * Battle pets: hooksecurefunc("BattlePetToolTip_Show", fn) — pets do NOT use
 --     TooltipDataProcessor; the global is called with speciesID as arg 1, and the
 --     frame shown is the custom BattlePetTooltip (not a GameTooltip).
@@ -226,6 +236,10 @@ local PRICE_PREFIX = "Auction:"
 local SELL_PREFIX          = (SELL_PRICE or "Sell Price") .. ": " -- string we measure live
 local COIN_COLUMN_FALLBACK = 59  -- used ONLY if the live measure returns nil (px)
 local COIN_COLUMN_NUDGE    = 0   -- manual fine-tune added after auto-measure (px; + = right)
+-- Backstop poll rate for hiding our owned coins on LEGACY (non-data-pipeline) tooltips.
+-- ⚠ Must stay declared ABOVE WatchCoins: a local below a referencing closure binds as a nil
+-- global (the /way trap, and v1.10.0's AFK_OVERLAY_STRATA), which would pass nil to NewTicker.
+local COIN_WATCH_RATE      = 0.1 -- seconds; ticker exists ONLY while our coins are shown
 
 -- Inline atlas coin markup, matched EXACTLY to the native "Sell Price:" line via raw-
 -- markup probe (12.0.7): |A:coin-gold:14:14:2:0|a. The :14:14 is the icon size (an
@@ -290,18 +304,75 @@ local function GetCoinFontString(tooltip)
     fs = tooltip:CreateFontString(nil, "OVERLAY", "GameTooltipText")
     fs:SetTextColor(1, 1, 1)
     coinFS[tooltip] = fs
-    -- Our fontstring is parented to the tooltip and PERSISTS across hovers. The Item
-    -- post-call (OnItemTooltip) only fires for ITEM tooltips, so when GameTooltip is
-    -- repopulated as a UNIT/spell/etc. tooltip our hide-logic never runs and the stale
-    -- coins from the last item leak onto it (the reported bug: a player unit tooltip
-    -- showing the previous item's price). OnTooltipCleared fires whenever the tooltip is
-    -- cleared BEFORE any repopulation, regardless of the next content type, so hide our
-    -- coins there. For a priced ITEM the Item post-call re-Shows them in the same
-    -- synchronous SetItem rebuild (clear → set data → post-call), so there's no flicker.
-    if tooltip.HookScript then
-        tooltip:HookScript("OnTooltipCleared", function() fs:Hide() end)
-    end
+    -- Our fontstring is parented to the tooltip and PERSISTS across hovers (there is no
+    -- API to destroy a FontString, which is the whole reason a stale-coin problem exists).
+    -- The Item post-call only fires for ITEM tooltips, so hiding it has to be driven from
+    -- somewhere that also sees UNIT/spell/legacy tooltips — see OnAnyTooltip + WatchCoins.
     return fs
+end
+
+----------------------------------------------------------------
+--  Hiding the owned coin fontstring
+--
+--  Two drivers, covering disjoint cases. Between them they reproduce exactly what the
+--  old OnTooltipCleared HookScript did:
+--
+--    1. OnAnyTooltip  — an AllTypes tooltip post-call. Instant, and covers every tooltip
+--       built through the data pipeline (item → unit/spell/mount/… repopulation, i.e. the
+--       coin-leak bug fixed in v1.7.8).
+--    2. WatchCoins    — a poll, alive ONLY while our coins are shown. Covers the residue
+--       the post-call cannot see: tooltips built the legacy way (SetOwner + AddLine, no
+--       ProcessInfo → no post-call of any type fires). Our own Scan button tooltip is one,
+--       as are the AdvancedOptions / PriorityRotation / QualityOfLife text tooltips.
+--
+--  ⚠ WHY NOT tooltip:HookScript("OnTooltipCleared", …) — the mechanism this REPLACES.
+--    That injected a tainted closure straight into GameTooltip's script dispatch with no
+--    insulation. Blizzard insulates tooltip post-calls on purpose: TooltipDataHandler's
+--    AddCall wraps an insecure registrant in forceinsecure() and every call is made via
+--    securecallfunction (ProcessInfo is itself securecallfunction'd). A HookScript gets
+--    none of that. Hooking a secure Blizzard frame's scripts is the same pattern removed
+--    from PlayerFrame in v1.12.3; THIS instance survived that sweep only because the claim
+--    was written as "the last place hooking a secure frame's MOUSE scripts", and
+--    OnTooltipCleared is not a mouse script.
+--    Surfaced by an ADDON_ACTION_FORBIDDEN on UseContainerItem() attributed to this module
+--    (2026-08-04) which blocked using a quest-reward crafting-knowledge item until /reload.
+--    ⚠ NOT PROVEN to have been the cause — the CreateFontString above also mutates a
+--    secure frame from tainted code and the two armed together, so no observation could
+--    separate them. This change removes the one that is a pattern we had already banned.
+--
+--  ⚠ Do NOT "simplify" this back to a single driver: the post-call alone leaves stale
+--    coins on legacy tooltips, and the poll alone shows them for up to one tick.
+----------------------------------------------------------------
+local watcher   -- C_Timer ticker, created on demand, cancelled when nothing is shown
+
+-- True while the tooltip still legitimately displays the item we drew coins for. A legacy
+-- text tooltip displays no item at all, which is what makes this a sufficient predicate:
+-- item→item transitions are already handled synchronously by OnItemTooltip.
+local function StillShowingAnItem(tooltip)
+    if not tooltip:IsShown() then return false end
+    if not (TooltipUtil and TooltipUtil.GetDisplayedItem) then return true end
+    local ok, _, link = pcall(TooltipUtil.GetDisplayedItem, tooltip)
+    return ok and link ~= nil
+end
+
+local function WatchCoins()
+    if watcher then return end
+    watcher = C_Timer.NewTicker(COIN_WATCH_RATE, function()
+        local anyShown = false
+        for tooltip, fs in pairs(coinFS) do
+            if fs:IsShown() then
+                if StillShowingAnItem(tooltip) then
+                    anyShown = true
+                else
+                    fs:Hide()
+                end
+            end
+        end
+        if not anyShown and watcher then
+            watcher:Cancel()
+            watcher = nil
+        end
+    end)
 end
 
 -- Measure the rendered px width of the native "Sell Price: " prefix in the SAME font the
@@ -362,6 +433,7 @@ local function RenderCoinLine(tooltip, price)
     local column = MeasureNativePrefix(lf, ls, lflags) or COIN_COLUMN_FALLBACK
     fs:SetPoint("LEFT", left, "LEFT", column + COIN_COLUMN_NUDGE, 0)
     fs:Show()
+    WatchCoins()
     return true
 end
 
@@ -411,6 +483,16 @@ local function OnItemTooltip(tooltip, data)
 
     -- Read-only DB lookup; pcall-guarded so a malformed link never errors a tooltip.
     pcall(AppendPrice, tooltip, link)
+end
+
+-- AllTypes tooltip post-call: hide our coins on EVERY data-pipeline tooltip build, whatever
+-- the content type. ORDERING IS VERIFIED IN BLIZZARD SOURCE (TooltipDataHandler's
+-- ProcessInsecureCalls dispatches the AllTypes list BEFORE the keyType list), so for a priced
+-- item this hide always precedes OnItemTooltip's re-Show in the same synchronous rebuild —
+-- no flicker. Scoped implicitly to tooltips we have decorated: no coinFS entry, no work.
+local function OnAnyTooltip(tooltip)
+    local fs = coinFS[tooltip]
+    if fs then fs:Hide() end
 end
 
 ----------------------------------------------------------------
@@ -472,6 +554,11 @@ local function Register()
         return
     end
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, OnItemTooltip)
+    -- Existence-guarded: if AllTypes is ever absent we still render prices correctly and
+    -- WatchCoins remains as the (one-tick-slower) hide driver, so this degrades, not breaks.
+    if TooltipDataProcessor.AllTypes then
+        TooltipDataProcessor.AddTooltipPostCall(TooltipDataProcessor.AllTypes, OnAnyTooltip)
+    end
     HookBattlePetTooltips()
 end
 
