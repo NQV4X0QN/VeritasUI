@@ -2,6 +2,24 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.18] - 2026-08-04
+
+Removes the last place in the suite that hooked a secure Blizzard frame's scripts. Surfaced by a blocked-action report that named the module and the function.
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **using an item from your bags could be refused outright until you reloaded, and the auction price tooltip was the cause.** The recorder captured `ADDON_ACTION_FORBIDDEN`, addon `VeritasUI_AuctionHouse`, `func = UseContainerItem()` while clicking a quest-reward crafting-knowledge item; the click failed and only a `/reload` restored it. Nothing in the module calls `UseContainerItem` — suite-wide it appears once, in QualityOfLife's vendor sell path, which was not running — so this was taint propagation, the same shape as the `ClearTarget` capture in v1.12.3. This is the second occurrence of the signature on a bag-item action; the first was sending a housing decor item to the vault (2026-07-28), which had been open since. The module's owned coin fontstring was hidden by `tooltip:HookScript("OnTooltipCleared", …)` on `GameTooltip`, which injects a tainted closure directly into a secure frame's script dispatch — precisely the pattern removed from `PlayerFrame` in v1.12.3. It survived that sweep only because the claim was written as "the last place hooking a secure frame's **mouse** scripts", and `OnTooltipCleared` is not a mouse script. (`Tooltip.lua`)
+- `VeritasUI_AuctionHouse` — **the file header asserted "read-only so it carries no taint risk", which is false and was contradicted by this report.** Reading the price database is harmless, but the file also mutates a shared secure Blizzard frame. The claim is replaced with a description of what it actually does, and a note not to reinstate a blanket no-taint statement. (`Tooltip.lua`)
+
+### Changed
+
+- `VeritasUI_AuctionHouse` — **the coin line is now hidden by two mechanisms that never touch Blizzard's frame**, reproducing the removed hook's behaviour exactly. An `AllTypes` tooltip post-call handles every tooltip built through Blizzard's tooltip data system; Blizzard insulates those deliberately, wrapping an insecure registrant in `forceinsecure()` and dispatching each through `securecallfunction`, which a script hook receives none of. Ordering was verified in Blizzard's source rather than assumed: `ProcessInsecureCalls` walks the `AllTypes` list before the type-specific list, so the hide always precedes the price render in the same synchronous rebuild and there is no flicker. A second driver, a poll alive only while the coins are on screen, covers tooltips built the legacy way with no data pipeline and therefore no post-call of any type — our own Scan button tooltip, and the AdvancedOptions, PriorityRotation and QualityOfLife text tooltips. Without that backstop this change would have traded a functional bug for a cosmetic one. No visual change: font, coin markup and the live-measured coin column are untouched. (`Tooltip.lua`)
+
+### Notes
+
+- **This is not proven to be the cause, and is not claimed as such.** The same lazily-created block also adds the coin fontstring onto `GameTooltip`, the other way this file mutates a secure frame, and the two arm together on the first priced-item hover — so no observation can separate them. The hook was removed because it was already a banned pattern here, which justifies the change independently of whether it was this defect. Moving the fontstring was deliberately not attempted in the same release: that is the visually risky half, with a falsified prior attempt behind it. If the signature recurs, the fontstring is the sole remaining suspect in this file.
+- Verified in game before release across the tooltip render, the item-to-unit transition, a legacy tooltip following a priced hover, an unpriced item, a caged pet, and inside a Delve — that last one because this file has a real crash history in instanced content. The bag-item action itself was also exercised cleanly, but that is a single sample against a signature seen twice in five weeks, so it is recorded as encouraging rather than as evidence.
+
 ## [1.12.17] - 2026-08-04
 
 Makes the Delve Nemesis count actually work. It did not function in v1.12.15 or v1.12.16 — both of those shipped on an unverified assumption about where Blizzard keeps the number.
