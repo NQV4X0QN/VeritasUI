@@ -1576,11 +1576,15 @@ local DELVE_POLL_RATE = 0.5
 -- reinterpreting it would be the same class of quiet wrongness as the AH scanEngine
 -- seeding bug, so this is a NEW key defaulting to a true centre and the old one is
 -- dropped at login rather than carried across in obsolete units.
--- 1 is the value the owner settled on with /qol delvenudge against the live plaque, at
--- the final font weight. Not arbitrary: a fontstring's box height is the LINE height
--- (ascent + descent), and digits do not occupy the descent, so centring the box leaves
--- the ink sitting visibly high. One pixel down corrects it. Recorded as the outcome of a
--- measurement, not a calculation.
+-- 1 is the value the owner settled on with /qol delvenudge against the live plaque, and the
+-- configuration it belongs to is the one confirmed good in game.
+--
+-- ⚠ HORIZONTAL centring IS structural (see DelveAnchorCount); VERTICAL is not, because a
+-- FontString with no height ignores justifyV, so this offset is doing real work rather than
+-- expressing taste. An attempt to make it structural by anchoring all four sides broke
+-- placement entirely -- see the warning in DelveAnchorCount. Until that is understood with
+-- a measurement, this constant is load-bearing: do not zero it on the grounds that
+-- "centring should not need a nudge".
 local DELVE_COUNT_CENTER_Y = 1
 
 -- Horizontal companion to the above. Not a symmetry nicety: the number read visibly
@@ -1825,12 +1829,20 @@ DelveAnchorCount = function(fs, anchor)
     if fs._vuiOffsetY == y and fs._vuiOffsetX == x then return end
     fs._vuiOffsetY, fs._vuiOffsetX = y, x
     fs:ClearAllPoints()
-    -- ⚠ TWO horizontal anchors, deliberately. This gives the fontstring the icon's FULL
-    -- WIDTH, so justifyH CENTER centres the glyph inside the icon no matter how wide that
-    -- glyph is. Centre-ANCHORING a width-less fontstring instead centres its bounding
-    -- box, which is the glyph's advance width -- so digits with different advances or
-    -- side bearings sit in slightly different places, and an x nudge tuned against "4"
-    -- would be wrong for "1". Structural, not tuned.
+    -- ⚠ TWO horizontal anchors. This gives the fontstring the icon's WIDTH, which is what
+    -- makes justifyH CENTER work: it centres the glyph regardless of its advance width, so
+    -- the placement is not tuned against one digit. Centre-ANCHORING instead would centre
+    -- the bounding BOX, i.e. the advance width, and an x offset settled against "4" could
+    -- then be wrong for "1".
+    --
+    -- ⚠⚠ DO NOT "COMPLETE" THIS BY ALSO ANCHORING TOP+BOTTOM. Tried 2026-08-05 on the
+    -- reasoning that giving the string a HEIGHT would make SetJustifyV("MIDDLE") meaningful
+    -- and remove the need for a vertical nudge. It does the opposite: the number rendered in
+    -- the icon's UPPER-LEFT corner, i.e. BOTH justifications stopped applying, not just the
+    -- vertical one. Owner-observed in game. The mechanism is not understood -- opposing
+    -- horizontal anchors demonstrably DO give a usable width here, so "FontStrings ignore
+    -- opposing anchors" is not the explanation either. /qol delve now dumps the justify
+    -- values and both rects so the next attempt starts from a measurement.
     fs:SetPoint("LEFT",  anchor, "LEFT",  x, -y)
     fs:SetPoint("RIGHT", anchor, "RIGHT", x, -y)
 end
@@ -1935,6 +1947,33 @@ local function DelveCheck(spellFrame)
     return tex
 end
 
+-- Last-resort typeface if no Blizzard object can be read. Friz Quadrata is the standard
+-- Midnight UI face and what the rest of the Delve plaque uses.
+local DELVE_FALLBACK_FONT_FILE = "Fonts\\FRIZQT__.TTF"
+
+-- Resolve the TYPEFACE for the count.
+--
+-- ⚠ Deliberately NOT StackCount's. StackCount is NumberFontNormal (ARIALN, a narrow
+-- stack-badge face), which made the count the only number on the plaque not in Friz
+-- Quadrata -- owner-reported 2026-08-05 as looking "weird" next to everything else.
+-- The widget's OWN Text fontstring is the authoritative source: the template declares it
+-- inherits="GameFontNormal", so reading its file gives us exactly the plaque's face and
+-- follows Blizzard if they ever restyle the standard UI font.
+--
+-- Only the FILE comes from here; the SIZE still comes from StackCount (see
+-- DelveCountString), so switching typeface changed one variable and not two.
+local function DelveNumberFontFile(spellFrame)
+    local candidates = { spellFrame.Text, _G.GameFontNormal }
+    for i = 1, #candidates do
+        local src = candidates[i]
+        if src and src.GetFont then
+            local ok, file = pcall(src.GetFont, src)
+            if ok and type(file) == "string" and file ~= "" then return file end
+        end
+    end
+    return DELVE_FALLBACK_FONT_FILE
+end
+
 -- Apply the size delta and our outline weight, from the base font captured at creation.
 --
 -- ⚠ Reads fs._vuiBaseSize, NEVER GetFont. Once we have called SetFont, GetFont reports
@@ -1958,11 +1997,11 @@ local function DelveCountString(spellFrame)
     local anchor = spellFrame.Icon or spellFrame
     local fs = spellFrame:CreateFontString(nil, "OVERLAY")
 
-    -- Copy the live font off Blizzard's own StackCount so the number matches the
-    -- client's number styling and tracks any future restyle -- the same
-    -- copy-don't-pin approach the AH tooltip coin line uses. NumberFontNormal is
-    -- the fallback, and a missing font object is reported once rather than
-    -- leaving an invisible fontstring to look like a broken feature.
+    -- Adopt Blizzard's StackCount font object first, purely to inherit its SIZE -- the
+    -- scale Blizzard chose for a number sitting inside this icon. Its TYPEFACE is then
+    -- replaced below, because StackCount is ARIALN and every other number on this plaque
+    -- is Friz Quadrata. NumberFontNormal is the fallback, and a missing font object is
+    -- reported once rather than leaving an invisible fontstring to look like a bug.
     local src = spellFrame.StackCount and spellFrame.StackCount.GetFontObject
                 and spellFrame.StackCount:GetFontObject()
     if src then
@@ -1974,27 +2013,34 @@ local function DelveCountString(spellFrame)
         VUI.Print("Quality of Life",
             "Delve count: no usable number font found; the count may be invisible.")
     end
-    -- Nudge the size down from whatever the copied font object specifies. Read back
-    -- through GetFont so the file and flags are preserved exactly -- re-specifying
-    -- them by hand would silently drop the outline. Guarded: a font object that
-    -- cannot report its size keeps the object's own sizing rather than erroring.
-    -- ⚠ Capture Blizzard's file and size ONCE, here, BEFORE any delta is applied.
+    -- ⚠ Capture the base size ONCE, here, BEFORE any delta is applied.
     -- DelveApplyFont re-reads these rather than GetFont, because after we have written to
     -- the fontstring GetFont reports OUR size -- so re-deriving the delta from it would
     -- compound the adjustment every time the knob moved.
-    local okf, file, size = pcall(fs.GetFont, fs)
-    if okf and file and type(size) == "number" then
-        fs._vuiBaseFile, fs._vuiBaseSize = file, size
+    local okf, _, size = pcall(fs.GetFont, fs)
+    if okf and type(size) == "number" then
+        -- SIZE from Blizzard's stack badge, FILE from the plaque's own typeface. The two
+        -- deliberately come from different objects: the badge is the right SCALE for a
+        -- number sitting inside a 24px icon, but the wrong FACE for this panel.
+        fs._vuiBaseSize = size
     end
+    fs._vuiBaseFile = DelveNumberFontFile(spellFrame)
     DelveApplyFont(fs)
 
-    -- Drop shadow, no backdrop: the plaque art behind the icons is busy and
-    -- light in places. Matches how the map coordinates stay readable.
+    -- Drop shadow, on the same reasoning as the map coordinates. It was briefly removed
+    -- (2026-08-05) as redundant against the scrim and as a suspected source of a perceived
+    -- off-centre bias -- the offset is (1, -1), down-right, which could make the glyph look
+    -- pushed up-left. ⚠ THAT EXPERIMENT NEVER RAN: it was bundled with the four-anchor
+    -- change above, which broke placement outright, so the shadow's effect on perceived
+    -- centring is still UNMEASURED. Restored because the configuration it belongs to is the
+    -- one confirmed good in game. Test it alone if it is ever worth testing.
     fs:SetShadowColor(0, 0, 0, 1)
     fs:SetShadowOffset(1, -1)
     -- Load-bearing, not cosmetic: DelveAnchorCount gives this fontstring the icon's full
-    -- width via LEFT+RIGHT anchors, and these two are what centre the glyph inside it.
-    -- Without them the text would sit flush left and the whole point is lost.
+    -- width via LEFT+RIGHT anchors, and justifyH is what centres the glyph inside it.
+    -- ⚠ justifyV is a KNOWN no-op here -- the string has no height -- and is kept only so
+    -- that it is already correct if the height problem is ever solved. Vertical placement is
+    -- currently the anchor point plus the user offset, NOT justification.
     fs:SetJustifyH("CENTER")
     fs:SetJustifyV("MIDDLE")
     spellFrame._vuiNemesisCount = fs
@@ -2215,6 +2261,36 @@ local function DumpDelveProbe()
                                 tostring(cfs._vuiBaseSize),
                                 (db and tonumber(db.delveFontDelta)) or 0))
                 end
+                -- Why vertical centring still needs a user offset. Anchoring the string on
+                -- all four sides to make justifyV meaningful instead pushed the number into
+                -- the icon's upper-left corner, so BOTH justifications stopped applying and
+                -- the reason is not understood. These are the numbers that would explain it:
+                -- whether the justify values are actually set, whether the string has a real
+                -- width and height, and where its rect sits relative to the icon's.
+                local function num(v)
+                    return (type(v) == "number") and ("%.1f"):format(v) or tostring(v)
+                end
+                local function rect(o, label)
+                    if not o then print(("        %s: absent"):format(label)); return end
+                    local okr, w, h, l, t = pcall(function()
+                        return o:GetWidth(), o:GetHeight(), o:GetLeft(), o:GetTop()
+                    end)
+                    if okr then
+                        print(("        %s: w=%s h=%s left=%s top=%s")
+                            :format(label, num(w), num(h), num(l), num(t)))
+                    else
+                        print(("        %s: unreadable"):format(label))
+                    end
+                end
+                local okj, jh = pcall(cfs.GetJustifyH, cfs)
+                local okv, jv = pcall(cfs.GetJustifyV, cfs)
+                print(("        justify: H=%s V=%s")
+                    :format(okj and tostring(jh) or "?", okv and tostring(jv) or "?"))
+                rect(cfs, "count rect")
+                rect(f.Icon, "icon  rect")
+                local oksh, sh = pcall(cfs.GetStringHeight, cfs)
+                print(("        stringHeight=%s  (line box; digits do not use the descent)")
+                    :format(oksh and num(sh) or "?"))
             end
         end
     end

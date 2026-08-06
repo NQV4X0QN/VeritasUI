@@ -2,6 +2,18 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.20] - 2026-08-05
+
+Corrects the Delve count's typeface, which was the only number on that plaque not in Friz Quadrata. Also records an attempt at removing the vertical offset that failed in game, so it is not retried by someone reading the code and thinking it looks unfinished.
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **the Nemesis count is now in Friz Quadrata, matching every other number on the Delve plaque.** It had been inheriting its font wholesale from Blizzard's `StackCount`, which is `NumberFontNormal` — that is ARIALN, a condensed stack-badge face, and it left the count as the only number on the panel in a different typeface. The face is now read from the widget's **own `Text` fontstring**, which the template declares `inherits="GameFontNormal"`, so it is the plaque's actual face rather than a pinned path and it follows Blizzard if they ever restyle the standard UI font. The fallback chain is `Text` → `GameFontNormal` → a literal `FRIZQT__`, none of which can land back on ARIALN. **Only the face changed:** the size still comes from `StackCount`, which is the scale Blizzard chose for a number sitting inside this icon, so switching typeface moved one variable and not two. (`QualityOfLife.lua`)
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **`/qol delve` now reports the count's justify values, its own rect, the icon's rect and its string height.** Horizontal centring is structural and digit-independent, but vertical centring still relies on the `/qol delvenudge` offset, because a fontstring with no height ignores `justifyV`. Anchoring the string on all four sides to give it a height — which should have made `justifyV` meaningful — instead pushed the number into the icon's upper-left corner, meaning *both* justifications stopped applying, and that is not explained by the reasoning behind the change. The attempt is reverted and documented in place with a regression guard in the test suite; these measurements are what a future attempt should start from rather than another hypothesis. (`QualityOfLife.lua`)
+
 ## [1.12.19] - 2026-08-05
 
 Reworks the Delve Nemesis readout from a bare number under the icon into a tinted number on it, replaced by a checkmark once the delve is cleared. Two of the three defects fixed along the way were caused by asserting a mechanism instead of reading Blizzard's source.
