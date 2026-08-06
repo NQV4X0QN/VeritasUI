@@ -45,15 +45,27 @@ local defaults = {
     showItemLevels = true,
     showMapCoords  = true,
     afkScreen      = true,
-    -- Paints the Nemesis groups-remaining count under the Delve plaque icon
-    -- that otherwise only reveals it on hover.
+    -- Paints the Nemesis groups-remaining count on the Delve plaque icon that
+    -- otherwise only reveals it on hover, and a checkmark once all groups are down.
     delveNemesisCount = true,
-    -- Vertical offset of the Delve count under the icon, in pixels DOWN from the
-    -- icon's bottom edge. Persisted and live-nudgeable via /qol delvenudge, because
-    -- dialling a cosmetic pixel offset through screenshot round-trips is slow and
-    -- imprecise -- the captures arrive at different crops and scales, so they cannot
-    -- be measured against each other.
-    delveCountOffsetY = -1,
+    -- Vertical offset of the Delve count from the icon's CENTRE, in pixels DOWN.
+    -- Persisted and live-nudgeable via /qol delvenudge, because dialling a cosmetic
+    -- pixel offset through screenshot round-trips is slow and imprecise -- the captures
+    -- arrive at different crops and scales, so they cannot be measured against each
+    -- other.
+    --
+    -- ⚠ Replaces delveCountOffsetY, which measured from the icon's BOTTOM EDGE. Same
+    -- purpose, different origin; see DELVE_COUNT_CENTER_Y for why the old key is
+    -- dropped rather than reinterpreted.
+    delveCountCenterY = 1,
+    -- Horizontal nudge from the icon's centre, in pixels RIGHT. Live via
+    -- /qol delvenudge <y> <x>.
+    delveCountCenterX = 1,
+    -- Darkness of the circular scrim behind the count, percent 0-100. Live via
+    -- /qol delvetint, for the same reason the offset is.
+    delveTintAlpha = 60,
+    -- Points added to Blizzard's number font for the count. Live via /qol delvesize.
+    delveFontDelta = 0,
     -- Set while the AFK overlay has the UI hidden, cleared when it restores it.
     -- Persisted so a crash or disconnect during AFK can be recovered at the next
     -- PLAYER_LOGIN without force-restoring the UI on every ordinary login.
@@ -1551,34 +1563,81 @@ end
 -- and AFK pollers.
 local DELVE_POLL_RATE = 0.5
 
--- THE tuning knob for vertical placement: pixels below the icon's bottom edge.
--- NEGATIVE raises the number, overlapping it up into the icon. Cosmetic only, same
--- role as CraftingOrder's LINE_GAP_Y.
---
--- Settled against the live client, not computed: +1 sat BELOW the plaque's lower
--- border (owner-reported), so it is pulled up into the icon's lower edge instead.
--- Screenshot arithmetic was avoided deliberately -- the captures come at different
--- scales, so pixel math across them would be false precision.
--- Fallback only; the live value is db.delveCountOffsetY (see /qol delvenudge).
---
--- -1 is the value the owner settled on with /qol delvenudge against the live plaque at
--- the final font size, after +1, -6, -5 and +2 were each wrong by eye. Recorded as the
--- outcome of a measurement, not a calculation.
---
--- ⚠ Unlike AuctionHouse's scanEngine, this default IS seeded into saved variables and
--- that is correct: it is a user-tunable position (like a window offset), not a policy
--- default under evaluation, so a stored value SHOULD win over a later default change.
--- Do not "fix" it by adding it to a seed exemption.
-local DELVE_COUNT_GAP_Y = -1
+-- ⚠ The seeding note that used to live here still applies to the replacement key
+-- below: unlike AuctionHouse's scanEngine, a user-tunable POSITION should be seeded,
+-- because a stored value ought to win over a later default change. Do not "fix" either
+-- offset key by adding it to a seed exemption.
 
--- Points to shave off Blizzard's own number font. The copied StackCount font is sized
--- for a stack badge sitting inside the icon; under the icon it reads a shade large
--- next to the plaque's other text. Applied as a DELTA rather than an absolute size so
+-- Vertical nudge of the number from the icon's CENTRE, in pixels. Positive = lower.
+--
+-- ⚠ NEW KEY, NEW UNITS. The number used to sit BELOW the icon and delveCountOffsetY
+-- meant "pixels below the icon's bottom edge" (settled at -1 by eye). It now sits ON
+-- the icon, so that value is expressed in an origin that no longer exists. Silently
+-- reinterpreting it would be the same class of quiet wrongness as the AH scanEngine
+-- seeding bug, so this is a NEW key defaulting to a true centre and the old one is
+-- dropped at login rather than carried across in obsolete units.
+-- 1 is the value the owner settled on with /qol delvenudge against the live plaque, at
+-- the final font weight. Not arbitrary: a fontstring's box height is the LINE height
+-- (ascent + descent), and digits do not occupy the descent, so centring the box leaves
+-- the ink sitting visibly high. One pixel down corrects it. Recorded as the outcome of a
+-- measurement, not a calculation.
+local DELVE_COUNT_CENTER_Y = 1
+
+-- Horizontal companion to the above. Not a symmetry nicety: the number read visibly
+-- left of the circle's centre in game even though the fontstring is centre-anchored to
+-- a centre-anchored icon (owner-observed 2026-08-05). Rather than invent a mechanism
+-- for that -- a width-less fontstring's box IS its text, so justifyH is a no-op here --
+-- this is a by-eye offset settled against the live client, exactly like the vertical
+-- one. If the cause is ever actually measured, fix the cause and leave this at 0.
+local DELVE_COUNT_CENTER_X = 1
+
+-- Alpha of the black circular scrim behind the number, as a PERCENT (0-100) so the
+-- stored value reads the same as the /qol delvetint argument.
+--
+-- By-eye value, therefore live-tunable rather than release-per-guess: v1.12.17 burned
+-- five reloads settling a single cosmetic offset before /qol delvenudge existed.
+local DELVE_TINT_ALPHA = 60
+
+-- Atlases, both confirmed to RESOLVE on the live client via /qol delve (2026-08-05:
+-- common-icon-checkmark 25x25, UI-Frame-IconMask 64x64) rather than trusted from
+-- Blizzard's XML. The Midnight reagent-tier markers are why: those names still existed
+-- but rendered the previous expansion's art.
+local DELVE_CHECK_ATLAS = "common-icon-checkmark"
+-- Fallback circular mask, used only if the widget carries neither of Blizzard's masks.
+-- This is the FILE the template uses for its own circular case (CircleMask), not
+-- UI-Frame-IconMask, which is the shape for the NON-circular case.
+local DELVE_CIRCLE_MASK_FILE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+
+-- Pixels the checkmark extends past the icon on each side. The owner asked for it to
+-- cover the whole icon, which is a DELIBERATE departure from Blizzard's own 16x16
+-- corner EarnedCheck on this same template.
+--
+-- ⚠ Sized by ANCHORING to the icon's bounds, never by SetSize. The template declares a
+-- 36x36 Icon but the live Delve plaque measured 24x24 -- the layout rescales it -- so
+-- any hardcoded size would be wrong on the only surface this ships to.
+local DELVE_CHECK_OUTSET = 2
+
+-- Points added to Blizzard's own number font. A DELTA rather than an absolute size, so
 -- the number still tracks the client's font if Blizzard restyles it.
-local DELVE_COUNT_FONT_DELTA = -1
+--
+-- ⚠ Now 0 (was -1). The -1 existed because the number used to sit BELOW the icon,
+-- where StackCount's size read a shade large against the plaque's other text. It sits ON
+-- the icon now -- which is precisely the placement StackCount is sized for -- so that
+-- rationale is void by its own terms and Blizzard's native size is correct.
+-- Fallback only; the live value is db.delveFontDelta (see /qol delvesize).
+local DELVE_COUNT_FONT_DELTA = 0
+
+-- Outline weight for the number. WoW has NO bold flag: SetFont's flags argument takes
+-- OUTLINE / THICKOUTLINE / MONOCHROME and combinations, never a weight, so a heavier
+-- outline is the native way to make a number read bolder. THICKOUTLINE is what Blizzard
+-- itself uses on nameplate and floating-damage numbers.
+-- Set back to "OUTLINE" if it ever reads too heavy at this size.
+local DELVE_COUNT_OUTLINE = "THICKOUTLINE"
 
 -- Colour by how many groups are LEFT, so the plaque reads at a glance without
--- reading the digit: red while untouched, green once cleared. Owner's mapping.
+-- reading the digit. Owner's mapping (revised 2026-08-05): 4 red, 3 orange, 2 yellow,
+-- 1 green. The earlier mapping doubled orange on 3 and 2 and pushed green to 0; now that
+-- 0 is drawn as a checkmark rather than a digit, green belongs on the last live number.
 --
 -- Blizzard's own font-colour globals rather than invented RGB, so it matches the
 -- client and tracks any restyle -- all four are used by Blizzard's own
@@ -1589,11 +1648,14 @@ local DELVE_COUNT_FONT_DELTA = -1
 -- the total. Anything at or above DELVE_COUNT_MAX_KEY falls through to red, so a
 -- delve with more than four groups still reads "plenty left" instead of losing its
 -- colour. The observed total is 4; that is a single sample, hence the fallback.
+--
+-- 0 is retained and green even though the checkmark normally replaces the digit: it is
+-- still reachable on the checkmark-atlas-missing fallback path.
 local DELVE_COUNT_MAX_KEY = 4
 local DELVE_COUNT_COLORS = {
     [0] = { g = "GREEN_FONT_COLOR",  r = 0.10, gr = 1.00, b = 0.10 },
-    [1] = { g = "YELLOW_FONT_COLOR", r = 1.00, gr = 0.82, b = 0.00 },
-    [2] = { g = "ORANGE_FONT_COLOR", r = 1.00, gr = 0.50, b = 0.25 },
+    [1] = { g = "GREEN_FONT_COLOR",  r = 0.10, gr = 1.00, b = 0.10 },
+    [2] = { g = "YELLOW_FONT_COLOR", r = 1.00, gr = 0.82, b = 0.00 },
     [3] = { g = "ORANGE_FONT_COLOR", r = 1.00, gr = 0.50, b = 0.25 },
     [4] = { g = "RED_FONT_COLOR",    r = 1.00, gr = 0.13, b = 0.13 },
 }
@@ -1758,11 +1820,137 @@ end
 -- replacing one, so re-anchoring without clearing would leave the old point fighting
 -- the new one.
 DelveAnchorCount = function(fs, anchor)
-    local y = (db and tonumber(db.delveCountOffsetY)) or DELVE_COUNT_GAP_Y
-    if fs._vuiOffsetY == y then return end
-    fs._vuiOffsetY = y
+    local y = (db and tonumber(db.delveCountCenterY)) or DELVE_COUNT_CENTER_Y
+    local x = (db and tonumber(db.delveCountCenterX)) or DELVE_COUNT_CENTER_X
+    if fs._vuiOffsetY == y and fs._vuiOffsetX == x then return end
+    fs._vuiOffsetY, fs._vuiOffsetX = y, x
     fs:ClearAllPoints()
-    fs:SetPoint("TOP", anchor, "BOTTOM", 0, -y)
+    -- ⚠ TWO horizontal anchors, deliberately. This gives the fontstring the icon's FULL
+    -- WIDTH, so justifyH CENTER centres the glyph inside the icon no matter how wide that
+    -- glyph is. Centre-ANCHORING a width-less fontstring instead centres its bounding
+    -- box, which is the glyph's advance width -- so digits with different advances or
+    -- side bearings sit in slightly different places, and an x nudge tuned against "4"
+    -- would be wrong for "1". Structural, not tuned.
+    fs:SetPoint("LEFT",  anchor, "LEFT",  x, -y)
+    fs:SetPoint("RIGHT", anchor, "RIGHT", x, -y)
+end
+
+-- Does an atlas actually RESOLVE on this client? SetAtlas does not report a bad name --
+-- it silently leaves the texture blank -- so a pcall around it proves nothing. This is
+-- the only way to fail loudly instead of drawing nothing.
+--
+-- ⚠ Namespace-guarded, not merely pcall'd: indexing a nil C_Texture raises before pcall
+-- can catch it (the C_Console trap).
+local function DelveAtlasExists(name)
+    local ns = _G.C_Texture
+    if not (ns and ns.GetAtlasInfo) then return false end
+    local ok, info = pcall(ns.GetAtlasInfo, name)
+    return (ok and info) and true or false
+end
+
+-- The circular scrim the number sits on. OURS, created on Blizzard's widget frame
+-- alongside the count fontstring -- same precedent, in production since v1.12.15.
+local function DelveTint(spellFrame)
+    if spellFrame._vuiNemesisTint then return spellFrame._vuiNemesisTint end
+    local icon = spellFrame.Icon
+    if not icon then return nil end
+
+    -- ARTWORK sublevel 1: above the icon art (sublevel 0) but BELOW the Border, which
+    -- the template puts on OVERLAY. Dimming the gold ring would read as a broken icon
+    -- rather than as a deliberate scrim.
+    local tex = spellFrame:CreateTexture(nil, "ARTWORK", nil, 1)
+    if not tex then return nil end
+    -- ⚠ WHITE8x8 + SetVertexColor rather than SetColorTexture. This is NOT what fixed
+    -- the square scrim (that was the wrong mask, below) -- an earlier revision claimed it
+    -- was, wrongly. It is kept because a colour texture has no real texture to sample and
+    -- its participation in the vertex-colour/mask pipeline is unverified, while WHITE8x8
+    -- is known-good there (it is the documented fix for the v1.6.17 SetGradient bug).
+    tex:SetTexture("Interface/Buttons/WHITE8x8")
+    tex:SetVertexColor(0, 0, 0)
+    tex:SetPoint("TOPLEFT", icon, "TOPLEFT", 0, 0)
+    tex:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 0, 0)
+
+    -- Circular, or not at all. A square scrim over a round icon looks like a bug, so
+    -- the ladder ends in "no tint" rather than "wrong tint".
+    --
+    -- ⚠ ATTACH TO BOTH MASKS, exactly as Blizzard's own XML lists the Icon under both.
+    -- Setup() picks one per widget update:
+    --     IconMask:SetShown(iconDisplayType ~= Circular)
+    --     CircleMask:SetShown(iconDisplayType == Circular)
+    -- so precisely one is live at any moment, and a HIDDEN MaskTexture does not mask.
+    -- Binding only to IconMask is why the scrim rendered SQUARE on the Delve plaque: its
+    -- icons are Circular, so the mask we had attached to was the one Blizzard had just
+    -- switched off. Attaching to both hands the arbitration back to Blizzard, and keeps
+    -- working if a future widget flips iconDisplayType.
+    local masked = false
+    if tex.AddMaskTexture then
+        for _, key in ipairs({ "CircleMask", "IconMask" }) do
+            local m = spellFrame[key]
+            if m and pcall(tex.AddMaskTexture, tex, m) then masked = true end
+        end
+    end
+    if not masked then
+        -- Neither Blizzard mask present: build a circular one. Deliberately the file the
+        -- template itself uses for its CIRCULAR case, not UI-Frame-IconMask, which is the
+        -- shape used when iconDisplayType is NOT circular.
+        local okm, own = pcall(function()
+            local m = spellFrame:CreateMaskTexture()
+            m:SetTexture(DELVE_CIRCLE_MASK_FILE)
+            m:SetPoint("TOPLEFT", icon, "TOPLEFT", 0, 0)
+            m:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 0, 0)
+            return m
+        end)
+        if okm and own then masked = pcall(tex.AddMaskTexture, tex, own) end
+    end
+    tex._vuiNoMask = not masked
+    tex:Hide()
+
+    spellFrame._vuiNemesisTint = tex
+    return tex
+end
+
+-- The completion checkmark.
+--
+-- ⚠ Deliberately NOT Blizzard's own EarnedCheck, even though it exists on this frame
+-- and uses this very atlas: their Setup runs SetShown(spellInfo.showAsEarned) on every
+-- widget update, so driving it ourselves is the same fight-we-lose that already rules
+-- out writing to StackCount. Owning the texture also leaves their native path intact
+-- if the server ever does set showAsEarned.
+local function DelveCheck(spellFrame)
+    if spellFrame._vuiNemesisCheck then return spellFrame._vuiNemesisCheck end
+    local icon = spellFrame.Icon
+    if not icon or not DelveAtlasExists(DELVE_CHECK_ATLAS) then return nil end
+
+    -- OVERLAY sublevel 2: above the Border ring AND above Blizzard's EarnedCheck
+    -- (sublevel 1), because this one covers the whole icon by design.
+    local tex = spellFrame:CreateTexture(nil, "OVERLAY", nil, 2)
+    if not tex then return nil end
+    if not pcall(tex.SetAtlas, tex, DELVE_CHECK_ATLAS) then return nil end
+    local o = DELVE_CHECK_OUTSET
+    tex:SetPoint("TOPLEFT", icon, "TOPLEFT", -o, o)
+    tex:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", o, -o)
+    tex:Hide()
+
+    spellFrame._vuiNemesisCheck = tex
+    return tex
+end
+
+-- Apply the size delta and our outline weight, from the base font captured at creation.
+--
+-- ⚠ Reads fs._vuiBaseSize, NEVER GetFont. Once we have called SetFont, GetFont reports
+-- the size WE wrote, so deriving the new size from it would compound the delta on every
+-- change -- one tap of /qol delvesize would keep growing the number.
+-- Re-applied only when the delta actually changed, so the 0.5s poll is not calling
+-- SetFont on every tick.
+local function DelveApplyFont(fs)
+    local d = (db and tonumber(db.delveFontDelta)) or DELVE_COUNT_FONT_DELTA
+    if fs._vuiFontDelta == d then return end
+    fs._vuiFontDelta = d
+    local file, base = fs._vuiBaseFile, fs._vuiBaseSize
+    if not (file and type(base) == "number") then return end
+    local sz = base + d
+    if sz < 1 then sz = 1 end
+    pcall(fs.SetFont, fs, file, sz, DELVE_COUNT_OUTLINE)
 end
 
 local function DelveCountString(spellFrame)
@@ -1790,18 +1978,25 @@ local function DelveCountString(spellFrame)
     -- through GetFont so the file and flags are preserved exactly -- re-specifying
     -- them by hand would silently drop the outline. Guarded: a font object that
     -- cannot report its size keeps the object's own sizing rather than erroring.
-    if DELVE_COUNT_FONT_DELTA ~= 0 then
-        local okf, file, size, flags = pcall(fs.GetFont, fs)
-        if okf and file and type(size) == "number"
-           and size + DELVE_COUNT_FONT_DELTA > 1 then
-            pcall(fs.SetFont, fs, file, size + DELVE_COUNT_FONT_DELTA, flags)
-        end
+    -- ⚠ Capture Blizzard's file and size ONCE, here, BEFORE any delta is applied.
+    -- DelveApplyFont re-reads these rather than GetFont, because after we have written to
+    -- the fontstring GetFont reports OUR size -- so re-deriving the delta from it would
+    -- compound the adjustment every time the knob moved.
+    local okf, file, size = pcall(fs.GetFont, fs)
+    if okf and file and type(size) == "number" then
+        fs._vuiBaseFile, fs._vuiBaseSize = file, size
     end
+    DelveApplyFont(fs)
 
     -- Drop shadow, no backdrop: the plaque art behind the icons is busy and
     -- light in places. Matches how the map coordinates stay readable.
     fs:SetShadowColor(0, 0, 0, 1)
     fs:SetShadowOffset(1, -1)
+    -- Load-bearing, not cosmetic: DelveAnchorCount gives this fontstring the icon's full
+    -- width via LEFT+RIGHT anchors, and these two are what centre the glyph inside it.
+    -- Without them the text would sit flush left and the whole point is lost.
+    fs:SetJustifyH("CENTER")
+    fs:SetJustifyV("MIDDLE")
     spellFrame._vuiNemesisCount = fs
     DelveAnchorCount(fs, anchor)
     return fs
@@ -1813,7 +2008,6 @@ local function DelveUpdate()
     for i = 1, #spells do
         local f    = spells[i]
         local info = f and f.spellInfo
-        local fs   = f and f._vuiNemesisCount
         local left = info and DelveParseRemaining(DelveCountText(info))
 
         -- Prefer the numeric field the moment Blizzard ever populates it, and
@@ -1822,14 +2016,45 @@ local function DelveUpdate()
         local nativeShows = info and type(info.stackDisplay) == "number"
                             and info.stackDisplay > 0
 
+        -- Three states, mutually exclusive: nothing / tinted number / checkmark.
+        local showCount, showCheck = false, false
         if left and not nativeShows then
-            local fsOut = DelveCountString(f)
-            DelveAnchorCount(fsOut, f.Icon or f)   -- picks up a /qol delvenudge live
-            fsOut:SetText(left)
-            fsOut:SetTextColor(DelveCountColor(left))
-            fsOut:Show()
-        elseif fs then
-            fs:Hide()
+            if left == 0 then showCheck = true else showCount = true end
+        end
+
+        -- Cleared: the checkmark stands alone. A number and a scrim underneath it would
+        -- muddy the art while adding no information.
+        local chk = (showCheck and DelveCheck(f)) or (f and f._vuiNemesisCheck)
+        if chk then chk:SetShown(showCheck) end
+
+        -- Atlas unavailable (DelveCheck returned nil) -- fall back to drawing the number
+        -- in green, which is what this looked like before the checkmark existed. Failing
+        -- to a working older behaviour beats failing to a blank icon.
+        if showCheck and not chk then showCount = true end
+
+        local tint = (showCount and DelveTint(f)) or (f and f._vuiNemesisTint)
+        if tint then
+            local a = ((db and tonumber(db.delveTintAlpha)) or DELVE_TINT_ALPHA) / 100
+            if tint._vuiAlpha ~= a then
+                tint._vuiAlpha = a
+                tint:SetAlpha(a)
+            end
+            -- Unmasked means the circular mask could not be established; showing a
+            -- square black block would look worse than showing no scrim at all.
+            tint:SetShown(showCount and not tint._vuiNoMask)
+        end
+
+        local fs = (showCount and DelveCountString(f)) or (f and f._vuiNemesisCount)
+        if fs then
+            if showCount then
+                DelveAnchorCount(fs, f.Icon or f)   -- picks up a /qol delvenudge live
+                DelveApplyFont(fs)                  -- and a /qol delvesize live
+                fs:SetText(left)
+                fs:SetTextColor(DelveCountColor(left))
+                fs:Show()
+            else
+                fs:Hide()
+            end
         end
     end
 end
@@ -1839,8 +2064,12 @@ local function DelveStopCount()
     local spells = DelveSpellFrames()
     if not spells then return end
     for i = 1, #spells do
-        local fs = spells[i] and spells[i]._vuiNemesisCount
-        if fs then fs:Hide() end
+        local f = spells[i]
+        if f then
+            if f._vuiNemesisCount then f._vuiNemesisCount:Hide() end
+            if f._vuiNemesisTint  then f._vuiNemesisTint:Hide()  end
+            if f._vuiNemesisCheck then f._vuiNemesisCheck:Hide() end
+        end
     end
 end
 
@@ -1900,6 +2129,23 @@ local function DumpDelveProbe()
         return
     end
     print(("  icons found: %d"):format(#spells))
+    -- Atlases any icon-overlay treatment would need. Read from the live client
+    -- rather than trusted from Blizzard's XML: the template says these exist, but
+    -- an atlas that renders old art or has been renamed is exactly the trap the
+    -- Midnight reagent-tier markers hit.
+    for _, a in ipairs({ "common-icon-checkmark", "UI-Frame-IconMask" }) do
+        -- ⚠ Namespace-guarded, NOT merely pcall'd: indexing a nil C_Texture raises
+        -- before pcall can catch it, exactly like the C_Console trap. Reached via
+        -- _G because this file does not localize C_Texture.
+        local ai
+        local ns = _G.C_Texture
+        if ns and ns.GetAtlasInfo then
+            local oka, r = pcall(ns.GetAtlasInfo, a)
+            if oka then ai = r end
+        end
+        print(("  atlas %s: %s"):format(a,
+            ai and ("%dx%d"):format(ai.width or 0, ai.height or 0) or "ABSENT"))
+    end
     for i = 1, #spells do
         local info = spells[i] and spells[i].spellInfo
         if not info then
@@ -1917,6 +2163,59 @@ local function DumpDelveProbe()
             print(("        tooltip=%q"):format(tostring(info.tooltip or ""):sub(1, 120)))
             -- The field the count actually comes from; see DelveCountText.
             print(("        spellDesc=%q"):format(desc:gsub("\n", " | "):sub(1, 200)))
+        end
+
+        -- Frame STRUCTURE, not widget data -- what an icon overlay could anchor to
+        -- and mask against. Printed for every icon including the ones we reject: a
+        -- missing parentKey means the live frames are not the template we read, and
+        -- that is the single fact worth knowing before designing against it.
+        local f = spells[i]
+        if f then
+            local iw, ih = 0, 0
+            if f.Icon then
+                local okg, w, h = pcall(function()
+                    return f.Icon:GetWidth(), f.Icon:GetHeight()
+                end)
+                if okg then iw, ih = w or 0, h or 0 end
+            end
+            print(("        Icon=%s %.0fx%.0f  IconMask=%s CircleMask=%s EarnedCheck=%s Border=%s")
+                :format(tostring(f.Icon ~= nil), iw, ih,
+                        tostring(f.IconMask ~= nil), tostring(f.CircleMask ~= nil),
+                        tostring(f.EarnedCheck ~= nil), tostring(f.Border ~= nil)))
+            -- WHICH mask is live decides whether an overlay clips circular or square:
+            -- Setup() shows exactly one, per iconDisplayType. Attaching to the hidden one
+            -- is what made the scrim render square.
+            local function shownOf(m)
+                if not m then return "absent" end
+                local oks, sh = pcall(function() return m:IsShown() end)
+                return oks and tostring(sh) or "?"
+            end
+            print(("        mask shown: IconMask=%s CircleMask=%s  (exactly one should be true)")
+                :format(shownOf(f.IconMask), shownOf(f.CircleMask)))
+            -- Digit advance widths in the LIVE font. Equal widths mean the font is tabular
+            -- and one x offset would suit every digit; unequal means it would not -- which
+            -- is why the centring is structural rather than a tuned nudge.
+            local cfs = f._vuiNemesisCount
+            if cfs and cfs.GetStringWidth then
+                local saved, widths = cfs:GetText(), {}
+                for d = 0, 4 do
+                    cfs:SetText(tostring(d))
+                    local okw, w = pcall(cfs.GetStringWidth, cfs)
+                    widths[#widths + 1] =
+                        ("%d=%s"):format(d, okw and ("%.1f"):format(w or 0) or "?")
+                end
+                cfs:SetText(saved)
+                print("        digit widths: " .. table.concat(widths, " "))
+                -- The actual rendered font, so "what size is the number" is answerable
+                -- from the client instead of inferred from the font object we copied.
+                local okg2, gfile, gsize, gflags = pcall(cfs.GetFont, cfs)
+                if okg2 then
+                    print(("        font: %s %s %s  (Blizzard base %s %+d)")
+                        :format(tostring(gfile), tostring(gsize), tostring(gflags),
+                                tostring(cfs._vuiBaseSize),
+                                (db and tonumber(db.delveFontDelta)) or 0))
+                end
+            end
         end
     end
 end
@@ -2006,7 +2305,11 @@ local function InitializeOptions()
         end)
 
     AddCheckbox("delveNemesisCount", "Show Delve Nemesis Count",
-        "Shows how many Nemesis enemy groups are left directly under the icon on the Delve plaque, instead of only revealing it when you hover the icon. Displays a plain countdown (4, 3, 2, 1, 0).",
+        "Shows how many Nemesis enemy groups are left directly on the icon on the Delve "
+        .. "plaque, instead of only revealing it when you hover the icon. The count sits "
+        .. "on a dark circular tint so it stays readable, and is replaced by a green "
+        .. "checkmark once every group is defeated. Adjust the position with "
+        .. "/qol delvenudge and the tint darkness with /qol delvetint.",
         function(value)
             if value then DelveStartCount() else DelveStopCount() end
         end)
@@ -2045,6 +2348,11 @@ frame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "PLAYER_LOGIN" then
         -- Re-bind to this character's slot, then register options against it.
         db = VUI.BindCharDB("VeritasUI_QualityOfLifeDB", defaults)
+        -- Drop the superseded Delve offset. It measured from the icon's bottom edge;
+        -- the count now measures from the icon's centre, so the stored number is in an
+        -- origin that no longer exists and keeping it would be a silent 1px lie. Same
+        -- self-clean the AH module does for its orphaned db.shopping.
+        db.delveCountOffsetY = nil
         InitializeOptions()
         -- Belt-and-suspenders: if we crashed or disconnected while the AFK
         -- screen was up, UIParent alpha and MinimapCluster are left hidden.
@@ -2279,20 +2587,71 @@ SLASH_VERITASUI_QOL1 = "/qol"
 SLASH_VERITASUI_QOL2 = "/qualityoflife"
 SlashCmdList["VERITASUI_QOL"] = function(msg)
     local arg = (msg and strtrim(msg)) or ""
-    local nudge = arg:lower():match("^delvenudge%s*(-?%d*)")
-    if nudge then
-        if nudge == "" then
+    local ntail = arg:lower():match("^delvenudge%s*(.*)$")
+    if ntail then
+        -- Guarded: these branches return before the handler's own db nil-check below,
+        -- and a /qol delvenudge typed during the login burst would otherwise index nil.
+        local ny, nx = ntail:match("^(-?%d+)%s+(-?%d+)$")
+        if not ny then ny = ntail:match("^(-?%d+)$") end
+        if not db then
+            VUI.Print("Quality of Life", "Still loading — try again in a moment.")
+        elseif not ny then
             VUI.Print("Quality of Life", format(
-                "Delve count offset is |cFFFFFF00%d|r px below the icon. "
-                .. "|cFFFFFF00/qol delvenudge <n>|r to change it (larger = lower, "
-                .. "negative overlaps the icon).",
-                (db and tonumber(db.delveCountOffsetY)) or 0))
+                "Delve count offset is |cFFFFFF00%d|r down, |cFFFFFF00%d|r right of the "
+                .. "icon's centre. |cFFFFFF00/qol delvenudge <down> [right]|r to change "
+                .. "it (negatives go up / left).",
+                tonumber(db.delveCountCenterY) or 0,
+                tonumber(db.delveCountCenterX) or 0))
         else
-            db.delveCountOffsetY = tonumber(nudge)
+            db.delveCountCenterY = tonumber(ny)
+            if nx then db.delveCountCenterX = tonumber(nx) end
             -- Applies on the next poll tick (<=0.5s) with no reload: the anchor
             -- helper re-anchors as soon as it sees a different value.
             VUI.Print("Quality of Life", format(
-                "Delve count offset set to |cFFFFFF00%d|r px.", db.delveCountOffsetY))
+                "Delve count offset set to |cFFFFFF00%d|r down, |cFFFFFF00%d|r right.",
+                db.delveCountCenterY, tonumber(db.delveCountCenterX) or 0))
+        end
+        return
+    end
+    local tint = arg:lower():match("^delvetint%s*(%d*)")
+    if tint then
+        if not db then
+            VUI.Print("Quality of Life", "Still loading — try again in a moment.")
+        elseif tint == "" then
+            VUI.Print("Quality of Life", format(
+                "Delve icon tint is |cFFFFFF00%d%%|r. "
+                .. "|cFFFFFF00/qol delvetint <0-100>|r to change it "
+                .. "(0 = no tint, 100 = solid black).",
+                tonumber(db.delveTintAlpha) or DELVE_TINT_ALPHA))
+        else
+            -- Clamped rather than rejected: an out-of-range number has an obvious
+            -- intent, and silently doing nothing would read as the command being broken.
+            local v = tonumber(tint) or DELVE_TINT_ALPHA
+            if v < 0 then v = 0 elseif v > 100 then v = 100 end
+            db.delveTintAlpha = v
+            VUI.Print("Quality of Life", format(
+                "Delve icon tint set to |cFFFFFF00%d%%|r.", v))
+        end
+        return
+    end
+    local fsize = arg:lower():match("^delvesize%s*(-?%d*)")
+    if fsize then
+        if not db then
+            VUI.Print("Quality of Life", "Still loading — try again in a moment.")
+        elseif fsize == "" then
+            VUI.Print("Quality of Life", format(
+                "Delve count font is Blizzard's size |cFFFFFF00%+d|r. "
+                .. "|cFFFFFF00/qol delvesize <n>|r to change it (0 = Blizzard's own size). "
+                .. "Run |cFFFFFF00/qol delve|r to see the resulting pixel size.",
+                tonumber(db.delveFontDelta) or 0))
+        else
+            -- Clamped to a sane band: the number has to stay inside a 24px circle, and a
+            -- huge value would render as a blob rather than look like a mistake.
+            local v = tonumber(fsize) or 0
+            if v < -6 then v = -6 elseif v > 6 then v = 6 end
+            db.delveFontDelta = v
+            VUI.Print("Quality of Life", format(
+                "Delve count font set to Blizzard's size |cFFFFFF00%+d|r.", v))
         end
         return
     end

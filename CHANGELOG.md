@@ -2,6 +2,34 @@
 
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
+## [1.12.19] - 2026-08-05
+
+Reworks the Delve Nemesis readout from a bare number under the icon into a tinted number on it, replaced by a checkmark once the delve is cleared. Two of the three defects fixed along the way were caused by asserting a mechanism instead of reading Blizzard's source.
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **the Nemesis groups-remaining count now sits on the icon over a dark circular scrim, instead of hanging below the plaque.** The scrim is masked to the icon's own circle and draws beneath the gold border ring, so it darkens the art without dimming the ring. Darkness is a live setting (`/qol delvetint`, default 60%). (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **the count is centred structurally rather than by a tuned offset, so it stays centred on every digit.** The fontstring spans the icon's full width and is centre-justified, which centres the glyph regardless of its advance width. Centre-anchoring a width-less fontstring instead centres its bounding *box*, so an offset dialled in against "4" could be visibly wrong for "1" — a latent defect the owner spotted before it shipped. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **the number is bolder.** WoW's `SetFont` has no weight flag, so the outline is thickened to `THICKOUTLINE`, which is what Blizzard uses on nameplate and floating-damage numbers. The font file and size are still copied from Blizzard's `StackCount`, so both track a future restyle; only the weight is ours. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **the count renders at Blizzard's own font size.** The previous one-point reduction existed because the number sat *below* the icon, where `StackCount`'s size read a shade large against the plaque's other text. It sits *on* the icon now, which is precisely the placement `StackCount` is sized for, so that rationale was void by its own terms. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **the colour progression is now one colour per step: 4 red, 3 orange, 2 yellow, 1 green.** Previously 3 and 2 were both orange and green was reserved for 0; now that 0 is drawn as a checkmark rather than a digit, green belongs on the last live number. 0 remains green because it is still reachable if the checkmark atlas is unavailable, and counts above 4 still fall through to red so a larger delve reads "plenty left" rather than losing its colour. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **`/qol delvenudge` takes both axes: `/qol delvenudge <down> [right]`.** A single argument still changes only the vertical offset. Both default to 1, the values settled against the live plaque; the vertical pixel is not arbitrary, as a fontstring's box height is the line height and digits do not occupy the descent, so centring the box leaves the ink sitting high. (`QualityOfLife.lua`)
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **a green checkmark replaces the number once every Nemesis group is defeated.** It uses `common-icon-checkmark`, the same atlas Blizzard's own `EarnedCheck` uses on this widget, drawn over the whole icon rather than in the corner. It is a texture of ours rather than Blizzard's `EarnedCheck`, because their `Setup` calls `SetShown(spellInfo.showAsEarned)` on every widget update — driving theirs would be a fight lost on the next update, and owning ours leaves their native path intact if the server ever sets that field. The scrim and number both hide, so the checkmark reads against the plain icon, and it clears again when a new delve reports groups remaining. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **`/qol delvetint <0-100>` and `/qol delvesize <n>`**, live and persisted, for the scrim darkness and the font size relative to Blizzard's. Both are by-eye values, and dialling one through screenshot round-trips is slow and imprecise since captures arrive at different crops and scales. Out-of-range values are clamped rather than ignored, so an obvious intent is not silently discarded. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **`/qol delve` now reports which mask is shown, the live digit widths, and the resolved font.** Each answers a question that came up during this work and would otherwise be argued rather than measured: which mask is active decides whether an overlay clips circular or square, equal digit widths decide whether one horizontal offset suits every digit, and the resolved font answers what size the number actually is. (`QualityOfLife.lua`)
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **the scrim rendered as a square protruding past the round icon.** Blizzard's `Setup` shows exactly one of two masks per widget — `IconMask` when `iconDisplayType` is not `Circular`, `CircleMask` when it is — and hides the other. Delve icons are circular, so the mask attached to was the one Blizzard had just switched off, and a hidden `MaskTexture` does not mask. The scrim now attaches to **both**, exactly as Blizzard's own XML lists the Icon under both, which hands the arbitration back to them and keeps working if a widget ever flips that field. An earlier revision of this fix attributed the square to `SetColorTexture` and said so in a code comment; that was asserted without verification and is corrected in place. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **a fresh character would have started with the count off-centre.** Settings are per-character since v1.11.0, so the hand-tuned offsets lived only on the character they were tuned on and every alt would have begun at zero. The settled values are now the shipped defaults. (`QualityOfLife.lua`)
+
+### Removed
+
+- `VeritasUI_QualityOfLife` — **the superseded `delveCountOffsetY` setting is dropped at login rather than reinterpreted.** It measured from the icon's bottom edge; the count now measures from the icon's centre, so a stored value is expressed in an origin that no longer exists. Carrying it across would have been a silent one-pixel lie. (`QualityOfLife.lua`)
+
 ## [1.12.18] - 2026-08-04
 
 Removes the last place in the suite that hooked a secure Blizzard frame's scripts. Surfaced by a blocked-action report that named the module and the function.
