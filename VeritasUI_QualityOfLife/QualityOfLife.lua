@@ -32,48 +32,53 @@ local IsAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
 ----------------------------------------------------------------
 --  Chat money output
 ----------------------------------------------------------------
--- Coin-icon pixel size for our chat money strings. THIS IS THE KNOB -- every money
--- string this file prints goes through Coins() below, so retuning is a one-number edit.
+-- Coins() is the single funnel for every money string this file prints (Auto Sell Junk
+-- and Auto Repair), so the coin-rendering decision lives in exactly one place.
 --
--- GetCoinTextureString's second argument is an absolute icon height in pixels,
--- defaulting to 14 (sourced: C_CurrencyInfo.GetCoinTextureString, fontHeight
--- Default = 14, in Blizzard_APIDocumentationGenerated/CurrencyInfoDocumentation.lua).
--- At that default our coins read slightly LARGER than the coins on Blizzard's own
--- "You gained:" money line in the same chat frame. 12 matches it. Chosen empirically
--- and owner-confirmed in game, NOT computed.
+-- Renders through Blizzard's own GetMoneyString. It emits each denomination as
+-- GOLD/SILVER/COPPER_AMOUNT_TEXTURE:format(n, 0, 0) -> "|T...:0:0|t" (sourced:
+-- Blizzard_SharedXML/FormattingUtil.lua), and in a texture escape sequence height 0
+-- AND width 0 means "size = the font's text height" (sourced: warcraft.wiki.gg, UI
+-- escape sequences). So the coin is sized by the same mechanism Blizzard's own
+-- "You gained:" money line uses -- we are not imitating it, we call it.
 --
--- ⚠ AN ABSOLUTE SIZE IS CORRECT HERE. Do not "improve" this into a font-derived or
--- self-scaling value -- that was tried and the reasoning behind it was wrong:
+-- ⚠ WHY THIS AND NOT A HARDCODED SIZE -- both work TODAY; this one keeps working.
+--   The alternative is GetCoinTextureString(copper, 12), whose second argument is an
+--   absolute icon height in pixels (default 14, sourced: CurrencyInfoDocumentation.lua,
+--   fontHeight Default = 14). At the default 14 our coins render one notch LARGER than
+--   Blizzard's; an explicit 12 matches. And a fixed 12 does NOT break when the chat
+--   font changes, because WoW's chat font-size setting scales the whole chat frame as
+--   a unit rather than just the glyphs (owner-measured at chat font 14/16/18).
 --
---   The worry was that a hardcoded 12 could only match at ONE chat font size, since
---   Blizzard's own money strings size their coins font-relatively (GetMoneyString
---   emits GOLD_AMOUNT_TEXTURE:format(n, 0, 0) -> "|T...:0:0|t", and height 0 + width 0
---   means "size = the font's text height" -- sourced: Blizzard_SharedXML/
---   FormattingUtil.lua and warcraft.wiki.gg UI escape sequences). Both sources are
---   accurate; the CONCLUSION drawn from them was not.
+--   So the fixed size is not broken -- it is just OURS. It re-derives a number that
+--   Blizzard already computes, which means any future change Blizzard makes to coin
+--   sizing or coin art silently desyncs us until someone notices and re-tunes 12 by
+--   eye. Calling GetMoneyString inherits that change for free. That is the whole
+--   argument, and it is the project's "use Blizzard's own mechanism" rule applied
+--   literally. Secondary benefit, sourced: GetMoneyString handles colorblind mode
+--   explicitly (swaps coins for GOLD/SILVER/COPPER_AMOUNT_SYMBOL when colorblindMode
+--   is set); GetCoinTextureString's behaviour in that mode is unmeasured.
 --
---   Owner-measured instead: WoW's chat font-size setting scales the whole chat frame
---   as a unit, not just the glyphs. So an absolute 12px coin scales along with the
---   text automatically. Verified in game at chat font 14, 16 and 18 -- our coins and
---   Blizzard's stayed locked together at every size, on this exact fixed-12 build.
---   A /run probe printing GetCoinTextureString(n, 12) beside GetMoneyString(n) was
---   pixel-identical in art AND size at every one of those font sizes.
+-- Owner-confirmed in game, all three separately:
+--   * GetMoneyString(n) printed beside GetCoinTextureString(n, 12) was pixel-identical
+--     in BOTH coin art and size, and both matched Blizzard's "You gained:" line.
+--   * That identity held across chat font 14, 16 and 18.
+--   * This GetMoneyString build was run in game and renders correctly.
 --
--- So GetMoneyString is a genuine drop-in, and switching to it was deliberately NOT
--- done: it buys nothing measurable, and this fixed-12 path is the one verified
--- end-to-end as our own rendered chat line rather than only at API level through a
--- probe. If it is ever revisited, GetMoneyString's one real advantage is that it
--- handles colorblind mode explicitly (it swaps coins for GOLD/SILVER/COPPER_AMOUNT_
--- SYMBOL); GetCoinTextureString's behaviour in that mode is unmeasured.
-local COIN_SIZE = 12
+-- Keeps the OLD/legacy coin art either way, which is the correct match for CHAT --
+-- Blizzard still uses it there. The modern |A:coin-*|a atlas art belongs to UI panels
+-- only; see the AuctionHouse CraftingOrder note and the AutoSell landmine.
+local COIN_SIZE_FALLBACK = 12
 
--- Single funnel for chat money output so COIN_SIZE stays the one source of truth.
--- Stays on GetCoinTextureString (the OLD/legacy coin art) deliberately: that art is
--- the correct match for CHAT, where Blizzard still uses it. The modern |A:coin-*|a
--- atlas art belongs to UI panels only -- see the AuctionHouse CraftingOrder note and
--- the AutoSell landmine.
 local function Coins(copper)
-    return GetCoinTextureString(copper, COIN_SIZE)
+    -- Resolved per call rather than localized at file top: load order is not guaranteed
+    -- to have Blizzard_SharedXML's globals in place when this file runs, and a nil
+    -- captured at load time would silently pin us to the fallback for the whole session.
+    -- This fires a handful of times per session, so the lookup costs nothing.
+    local MoneyString = _G.GetMoneyString
+    if MoneyString then return MoneyString(copper) end
+    -- Fallback only. 12 (not the API default 14) is the owner-confirmed match.
+    return GetCoinTextureString(copper, COIN_SIZE_FALLBACK)
 end
 
 local VUI = _G.VeritasUI
