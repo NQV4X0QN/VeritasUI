@@ -1673,7 +1673,9 @@ local DELVE_COUNT_INSET_X = -1
 local DELVE_COUNT_INSET_Y = -1
 
 -- Per-glyph X override, keyed by the displayed count. The digit 1 alone reads further RIGHT
--- than the others and needs pulling left; 1 (vs the global -1) is the owner's value.
+-- than the others and needs pulling left. The value below is the owner's, confirmed in
+-- game; it is deliberately NOT restated in prose here, because the previous wording
+-- named "1" and went stale the moment v1.13.4 tuned it to 3.
 --
 -- ⚠⚠ THIS SURVIVED THE MOVE TO CORNER ANCHORING, WHICH I PREDICTED IT WOULD NOT.
 -- v1.13.0 deleted the centred design's equivalent override as "made meaningless by corner
@@ -2382,12 +2384,20 @@ local function DumpDelveProbe()
                     :format(oksh and num(sh) or "?"))
                 -- Every live cosmetic knob in one place, so "what is it set to" is answered
                 -- from the client rather than from the saved-variables file.
+                -- ⚠ The shipped defaults are FORMATTED FROM THE CONSTANTS, never written as
+                -- literals. This line read "[default -1/-1, digit 1 at 1]" while the shipped
+                -- digit-1 default was 3: v1.13.4 changed the value in the two places that
+                -- affect rendering and missed this third copy, so the one tool whose whole
+                -- job is answering "what is this set to" reported a wrong default. A literal
+                -- here cannot be kept in sync by hand -- do not reintroduce one.
                 print(("        insets from icon BOTTOMRIGHT: y=%s x=%s  x(digit 1)=%s"
-                       .. "  applied=(%s,%s)   [default -1/-1, digit 1 at 1]")
+                       .. "  applied=(%s,%s)   [default %s/%s, digit 1 at %s]")
                     :format(num(db and db.delveCountInsetY),
                             num(db and db.delveCountInsetX),
                             num(db and db.delveCountInsetX1),
-                            num(cfs._vuiInsetX), num(cfs._vuiInsetY)))
+                            num(cfs._vuiInsetX), num(cfs._vuiInsetY),
+                            num(DELVE_COUNT_INSET_Y), num(DELVE_COUNT_INSET_X),
+                            num(DELVE_COUNT_INSET_X_BY_COUNT[1])))
             end
             local cchk = f._vuiNemesisCheck
             print(("        check outset: %s  applied=%s  (texture %s)")

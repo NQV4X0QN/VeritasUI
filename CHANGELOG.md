@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.13.5] - 2026-08-08
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **`/qol delve` reported a stale default for the digit `1`.** The probe printed `[default -1/-1, digit 1 at 1]` as a hardcoded literal, while the shipped digit-1 inset became `3` in v1.13.4 — so the one tool whose purpose is answering "what is this set to" from the client stated a default that was no longer true. The annotation is now formatted from `DELVE_COUNT_INSET_Y`, `DELVE_COUNT_INSET_X` and `DELVE_COUNT_INSET_X_BY_COUNT[1]`, so it cannot drift from the values it describes. Also drops an inline comment that named the old value in prose. (`QualityOfLife.lua`)
+
+### Internal
+
+- **The digit-1 drift check now covers all three copies of the value, not two.** v1.13.4 added a test asserting the `defaults` entry and the render constant agree — and it passed green while a third copy, the probe's literal, was stale. It now also asserts the probe formats its defaults rather than stating them, that no numeric literal default survives in code (comments excluded, since the fix's own comment quotes the old string as documentation), and that the format arguments are passed in `Y, X, digit-1` order. That last assertion is source-level on purpose: both inset constants are `-1`, so a swapped pair would print identically forever and reveal itself only when one is retuned. Mutation-verified against all three failures
+
 ## [1.13.4] - 2026-08-08
 
 ### Changed
