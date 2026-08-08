@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.13.1] - 2026-08-07
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **the Delve count `1` sat further right than the other digits.** Restores a per-glyph horizontal correction for that one digit, live via `/qol delveone <left>` and defaulting to `1` against the global `-1`. v1.13.0 removed the equivalent correction on the claim that corner-anchoring made it unnecessary; that was wrong. Corner-anchoring pins the advance box's right edge, which removes the width division and its per-digit pixel rounding, but it cannot move where a glyph's ink sits *inside* its own box — and that is the one cause no accessor can measure, since `GetStringWidth` and `GetUnboundedStringWidth` both report the advance. The correction is horizontal only: digits share a baseline and none has a descender, so the vertical never differs. (`QualityOfLife.lua`)
+
 ## [1.13.0] - 2026-08-07
 
 ### Changed

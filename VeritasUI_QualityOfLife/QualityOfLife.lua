@@ -60,6 +60,10 @@ local defaults = {
     -- -1/-1 is owner-confirmed in game; NEGATIVE means 1px outside the icon's corner.
     delveCountInsetX = -1,
     delveCountInsetY = -1,
+    -- Horizontal inset used ONLY when the count reads 1, overriding delveCountInsetX. Live
+    -- via /qol delveone. See DELVE_COUNT_INSET_X_BY_COUNT for why one glyph needs its own
+    -- value even though the count is corner-anchored.
+    delveCountInsetX1 = 1,
     -- Pixels the completion checkmark extends past the icon's bounds on each side.
     -- Negative insets it. Live via /qol delvecheck. 0 is owner-confirmed in game.
     delveCheckOutset = 0,
@@ -1616,6 +1620,36 @@ local DELVE_POLL_RATE = 0.5
 local DELVE_COUNT_INSET_X = -1
 local DELVE_COUNT_INSET_Y = -1
 
+-- Per-glyph X override, keyed by the displayed count. The digit 1 alone reads further RIGHT
+-- than the others and needs pulling left; 1 (vs the global -1) is the owner's value.
+--
+-- ⚠⚠ THIS SURVIVED THE MOVE TO CORNER ANCHORING, WHICH I PREDICTED IT WOULD NOT.
+-- v1.13.0 deleted the centred design's equivalent override as "made meaningless by corner
+-- anchoring", on the claim that one edge anchor makes "every digit land identically by
+-- construction". That claim was wrong, and the owner falsified it immediately: the 1 still
+-- hovered right. What corner anchoring actually fixed was the WIDTH DIVISION and its
+-- per-digit pixel rounding. It pins the advance BOX's right edge -- it cannot touch where the
+-- INK sits inside that box, and that is the one cause no accessor can measure.
+--
+-- ⚠ MECHANISM STILL UNMEASURED -- do not write it as fact anywhere. The consistent reading
+-- is that 1's ink sits right of centre within its advance box (a smaller right side bearing
+-- than the other digits), which would explain the SAME glyph needing the SAME direction of
+-- correction under two completely different anchoring schemes -- centred (v1.12.20, needed
+-- pulling left) and right-edge-anchored (v1.13.0, needs pulling left again). That
+-- cross-scheme consistency is real evidence that the cause is the GLYPH and not the
+-- construction, which is more than was known before. It is still not a measurement: nobody
+-- has read Friz Quadrata's metrics, and GetStringWidth/GetUnboundedStringWidth report the
+-- advance, not the ink. Treated as a per-glyph OPTICAL correction, which is standard
+-- typographic practice and stays correct whether or not the reading above is right.
+--
+-- ⚠ X ONLY, and that is deliberate rather than an omission: all digits share a baseline and
+-- none has a descender, so the vertical position is not glyph-dependent. If a vertical
+-- difference is ever REPORTED, that reasoning is what to re-examine first.
+--
+-- ⚠ A TABLE keyed by count, so a second exception needs no new key and no new command. An
+-- absent key means "use the global inset"; do not collapse this into a plain number.
+local DELVE_COUNT_INSET_X_BY_COUNT = { [1] = 1 }
+
 -- Atlases, both confirmed to RESOLVE on the live client via /qol delve (2026-08-05:
 -- common-icon-checkmark 25x25, UI-Frame-IconMask 64x64) rather than trusted from
 -- Blizzard's XML. The Midnight reagent-tier markers are why: those names still existed
@@ -1828,9 +1862,19 @@ end
 -- SetPoint on every tick. ClearAllPoints first: SetPoint ADDS a point rather than
 -- replacing one, so re-anchoring without clearing would leave the old point fighting
 -- the new one.
-DelveAnchorCount = function(fs, anchor)
+DelveAnchorCount = function(fs, anchor, count)
     local y = (db and tonumber(db.delveCountInsetY)) or DELVE_COUNT_INSET_Y
     local x = (db and tonumber(db.delveCountInsetX)) or DELVE_COUNT_INSET_X
+    -- Per-glyph optical correction; see DELVE_COUNT_INSET_X_BY_COUNT. Only the digit 1 has
+    -- one, and only on the X axis.
+    if count == 1 then
+        x = (db and tonumber(db.delveCountInsetX1)) or DELVE_COUNT_INSET_X_BY_COUNT[1]
+    elseif DELVE_COUNT_INSET_X_BY_COUNT[count] ~= nil then
+        x = DELVE_COUNT_INSET_X_BY_COUNT[count]
+    end
+    -- ⚠ The cache key must include the RESOLVED x, not just the stored settings, or a count
+    -- ticking 2 -> 1 would keep the previous digit's offset: the early-out would see the same
+    -- db numbers and skip the re-anchor the new glyph needs.
     if fs._vuiInsetY == y and fs._vuiInsetX == x then return end
     fs._vuiInsetY, fs._vuiInsetX = y, x
     fs:ClearAllPoints()
@@ -1840,14 +1884,19 @@ DelveAnchorCount = function(fs, anchor)
     -- bottom" and match the /qol delvenudge arguments.
     --
     -- ⚠⚠ DO NOT REINTRODUCE CENTRING. This deliberately replaced a LEFT+RIGHT span with
-    -- SetJustifyH("CENTER"), which is the construction that made placement digit-dependent
-    -- and cost three rounds of by-eye offsets without ever being exact -- the last of them
-    -- a per-glyph override for the digit 1 alone. The reason it cannot be made exact is in
-    -- DELVE_COUNT_INSET_X: centring acts on the METRICS box and no API exposes glyph ink
-    -- bounds, and halving the icon width lands on fractional pixels that round per digit.
-    -- A single corner anchor has no width division and no justify, so every digit lands
-    -- identically by construction. This is the whole point of the change -- do not "improve"
-    -- it back into a centred glyph.
+    -- SetJustifyH("CENTER"). Centring acts on the METRICS box, no API exposes glyph ink
+    -- bounds, and halving the icon width lands on fractional pixels that round per digit --
+    -- so it could not be made exact and cost three rounds of by-eye offsets. Corner
+    -- anchoring pins the box's RIGHT EDGE instead, with no width division and no justify.
+    --
+    -- ⚠⚠ WHAT THAT DOES AND DOES NOT BUY -- AN EARLIER VERSION OF THIS COMMENT OVERCLAIMED.
+    -- It said "every digit lands identically by construction". That is true of the ADVANCE
+    -- BOX and false of the visible INK: corner anchoring removes the width division and the
+    -- per-digit rounding, but a glyph whose ink sits off-centre INSIDE its own box is still
+    -- off. The owner falsified the claim on 2026-08-07 -- the digit 1 still read further
+    -- right than the others -- which is why the per-glyph override above exists in the
+    -- corner-anchored design too. Corner anchoring removed two of the three causes, not all
+    -- three, and the remaining one is exactly the one no accessor can measure.
     --
     -- ⚠ Historical, still true and still a trap: anchoring all four sides (tried 2026-08-05
     -- to give the string a height so justifyV would apply) put the number in the icon's
@@ -1967,7 +2016,9 @@ local function DelveApplyFont(fs)
     pcall(fs.SetFont, fs, file, sz, DELVE_COUNT_OUTLINE)
 end
 
-local function DelveCountString(spellFrame)
+-- `count` is forwarded to DelveAnchorCount only so the per-glyph override is right on the
+-- very first frame; nothing else here depends on the value.
+local function DelveCountString(spellFrame, count)
     if spellFrame._vuiNemesisCount then return spellFrame._vuiNemesisCount end
     local anchor = spellFrame.Icon or spellFrame
     local fs = spellFrame:CreateFontString(nil, "OVERLAY")
@@ -2019,7 +2070,7 @@ local function DelveCountString(spellFrame)
     -- read as though justification were doing work, which is how the last round of wrong
     -- assumptions started.
     spellFrame._vuiNemesisCount = fs
-    DelveAnchorCount(fs, anchor)
+    DelveAnchorCount(fs, anchor, count)
     return fs
 end
 
@@ -2057,10 +2108,12 @@ local function DelveUpdate()
         -- older behaviour beats failing to a blank icon.
         if showCheck and not chk then showCount = true end
 
-        local fs = (showCount and DelveCountString(f)) or (f and f._vuiNemesisCount)
+        local fs = (showCount and DelveCountString(f, left)) or (f and f._vuiNemesisCount)
         if fs then
             if showCount then
-                DelveAnchorCount(fs, f.Icon or f)   -- picks up a /qol delvenudge live
+                -- `left` is passed rather than read back off the fontstring: this runs BEFORE
+                -- SetText, so the string still holds the PREVIOUS count at this point.
+                DelveAnchorCount(fs, f.Icon or f, left)  -- picks up /qol delvenudge+delveone
                 DelveApplyFont(fs)                  -- and a /qol delvesize live
                 fs:SetText(left)
                 -- Set every tick rather than once at creation: DelveApplyFont can re-read
@@ -2277,10 +2330,11 @@ local function DumpDelveProbe()
                     :format(oksh and num(sh) or "?"))
                 -- Every live cosmetic knob in one place, so "what is it set to" is answered
                 -- from the client rather than from the saved-variables file.
-                print(("        insets from icon BOTTOMRIGHT: y=%s x=%s  applied=(%s,%s)"
-                       .. "   [shipped default -1/-1; Blizzard's own StackCount uses 2/2]")
+                print(("        insets from icon BOTTOMRIGHT: y=%s x=%s  x(digit 1)=%s"
+                       .. "  applied=(%s,%s)   [default -1/-1, digit 1 at 1]")
                     :format(num(db and db.delveCountInsetY),
                             num(db and db.delveCountInsetX),
+                            num(db and db.delveCountInsetX1),
                             num(cfs._vuiInsetX), num(cfs._vuiInsetY)))
             end
             local cchk = f._vuiNemesisCheck
@@ -2422,8 +2476,9 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         db = VUI.BindCharDB("VeritasUI_QualityOfLifeDB", defaults)
         -- Drop every superseded Delve key. Each measured the count's position from an
         -- origin that no longer exists -- delveCountOffsetY from the icon's bottom edge,
-        -- then delveCountCenterY/X from its centre, and delveCountCenterX1 was a per-glyph
-        -- correction to centring that corner-anchoring makes meaningless. Keeping any of
+        -- then delveCountCenterY/X from its centre. delveCountCenterX1 was the centred design's
+        -- per-glyph correction; its replacement is delveCountInsetX1, in corner-inset units,
+        -- so the old key must go for the same reason as the others. Keeping any of
         -- them would be a silent lie about where the number is: a stored "6 right of centre"
         -- is a completely different place read as "6 in from the right edge". delveTintAlpha
         -- goes too -- the scrim it controlled no longer exists. Same self-clean the AH
@@ -2742,6 +2797,26 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
             db.delveCheckOutset = v
             VUI.Print("Quality of Life", format(
                 "Delve checkmark outset set to |cFFFFFF00%+d|r px.", v))
+        end
+        return
+    end
+    local one = arg:lower():match("^delveone%s*(-?%d*)")
+    if one then
+        if not db then
+            VUI.Print("Quality of Life", "Still loading — try again in a moment.")
+        elseif one == "" then
+            VUI.Print("Quality of Life", format(
+                "The digit |cFFFFFF001|r sits |cFFFFFF00%d|r px in from the icon's right edge "
+                .. "(every other digit uses |cFFFFFF00%d|r). "
+                .. "|cFFFFFF00/qol delveone <left>|r to change it. Only the horizontal axis: "
+                .. "digits share a baseline, so the vertical never differs.",
+                tonumber(db.delveCountInsetX1) or DELVE_COUNT_INSET_X_BY_COUNT[1],
+                tonumber(db.delveCountInsetX) or DELVE_COUNT_INSET_X))
+        else
+            db.delveCountInsetX1 = tonumber(one)
+            VUI.Print("Quality of Life", format(
+                "The digit |cFFFFFF001|r set to |cFFFFFF00%d|r px in from the right edge.",
+                db.delveCountInsetX1))
         end
         return
     end
