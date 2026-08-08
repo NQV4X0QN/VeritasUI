@@ -20,9 +20,15 @@
 --
 -- The button doubles as hung-scan recovery: during the pre-data wait it stays
 -- ENABLED as "Retry Scan" (Start() clears a fired-but-never-arrived request and
--- re-fires); it disables only while rows actually drain (Progress() > 0). Since
--- v1.9.5's persistent 60s retry chain a dropped request recovers with zero clicks,
--- so this is the impatient path, no longer the only one.
+-- re-fires); it disables only while rows actually drain (Progress() > 0).
+--
+-- ⚠ CORRECTED v1.13.8. This used to claim that since v1.9.5's "persistent 60s retry
+-- chain a dropped request recovers with zero clicks, so this is the impatient path,
+-- no longer the only one." That is the OPPOSITE of the truth and the more harmful of
+-- the two stale retry comments: there is no automatic retry (DoFire has one caller,
+-- Replicate.lua:1074; see Replicate.lua:247-250), so a dropped request recovers ONLY
+-- when the user clicks this button. It is not the impatient path — it is the only
+-- path. Which is precisely why it stays enabled through the wait.
 --
 -- ISOLATION (suite rule #4: one module never edits another)
 --   Pure VIEW + controller over the SCAN FACADE's public api: AH.Scan.StartManual(),

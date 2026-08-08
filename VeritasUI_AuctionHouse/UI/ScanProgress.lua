@@ -238,10 +238,17 @@ local function WaitLabel()
         local secs = floor(GetTime() - state.waitStart)
         if secs > 0 then
             -- Attempt counter (v1.9.5): the retry chain is now persistent
-            -- (Replicate re-fires every 60s while the server drops requests —
-            -- measured ~12 min of silent drops on 2026-07-11), so a long wait
-            -- must read as the addon actively working, not hung. Shown from
-            -- the second attempt on; attempt 1 keeps the plain label.
+            -- ⚠ CORRECTED v1.13.8. This used to read "Replicate re-fires every 60s
+            -- while the server drops requests". THERE IS NO AUTOMATIC RETRY. DoFire has
+            -- exactly ONE caller (Replicate.lua:1074, inside Start), and
+            -- Replicate.lua:247-250 states it outright: since v1.9.14 `attempts` counts
+            -- USER-INITIATED fires only. The measurement behind the old wording was real
+            -- — ~12 min of silent server drops on 2026-07-11 — but the automatic chain
+            -- that was built for it has since been removed. Believing this comment
+            -- means debugging a hang on the assumption that re-fires are happening
+            -- while the addon is in fact sitting waiting for a click.
+            -- So `attempts` climbs only when the USER clicks Retry Scan. Shown from the
+            -- second attempt on; attempt 1 keeps the plain label.
             local tr = AH.Replicate.LastTrace and AH.Replicate.LastTrace()
             local attempts = tr and tr.attempts or 1
             if attempts > 1 then

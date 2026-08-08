@@ -1075,8 +1075,14 @@ function AH.Replicate.Start()
     return true
 end
 
--- Back-compat alias: the Scan button (UI/ScanButton.lua) calls StartManual().
--- Since v1.8.0 there is only one fire path, so they are the same function.
+-- Back-compat alias. Since v1.8.0 there is only one fire path, so this is the same
+-- function as Start.
+--
+-- ⚠ CORRECTED v1.13.8. This used to say "the Scan button (UI/ScanButton.lua) calls
+-- StartManual()". The button calls AH.Scan.StartManual — the FACADE in Core.lua — and
+-- has done since the v1.12.9 migration. THIS alias has zero callers anywhere in the
+-- suite; the only reference to it is the line below. Left in place as a deliberate
+-- back-compat surface, but do not read it as live.
 AH.Replicate.StartManual = AH.Replicate.Start
 
 ----------------------------------------------------------------

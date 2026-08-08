@@ -23,10 +23,14 @@ local InCombatLockdown = InCombatLockdown
 -- only live path and the `GetMouseFocus or` half is the dead one.  Kept in that
 -- direction anyway: it costs one load-time truth test and keeps working if the
 -- global ever returns.  DO NOT collapse this to a bare GetMouseFocus call.
--- VUI.HookPlayerFrameFade's hover test reads it from a 5 Hz ticker (see
--- PLAYER_FRAME_HOVER_POLL_RATE) plus both hover hooks, and CleanSolo hooks the
--- player frame in normal play, so a nil call would error five times a second
--- for as long as the frame is faded in.
+-- VUI.HookPlayerFrameFade's hover test reads it from a 10 Hz ticker
+-- (PLAYER_FRAME_HOVER_POLL_RATE = 0.10, line ~332; the note at line ~329 says 10 Hz
+-- too), and CleanSolo hooks the player frame in normal play, so a nil call would
+-- error TEN times a second for as long as the frame is faded in — and that ticker
+-- keeps no handle, so it cannot be cancelled short of /reload.
+--
+-- ⚠ CORRECTED v1.13.8: this said "5 Hz" and "five times a second". It understated the
+-- blast radius of the exact hazard this block exists to reason about, by half.
 local GetMouseFocus  = GetMouseFocus or function()
     local frames = GetMouseFoci()
     return frames and frames[1]
@@ -37,7 +41,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.13.7"
+VUI.VERSION = "1.13.8"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -390,8 +394,19 @@ function VUI.HookPlayerFrameFade(frame, inCombatRef)
 
     -- ⚠ DO NOT HookScript this frame. Until v1.12.3 hover was driven by
     -- HookScript("OnEnter"/"OnLeave") on the frame itself, with the poll running only
-    -- while it was visible. That is the one place in this suite that hooked a secure
-    -- Blizzard frame's mouse scripts, and it is the same shape as the documented
+    -- while it was visible.
+    --
+    -- ⚠ CORRECTED v1.13.8: this used to call that "the one place in this suite that
+    -- hooked a secure Blizzard frame's mouse scripts". It is not. HookHoverFade still
+    -- does exactly that at line ~310 — on MicroMenu and on up to seven MultiBar*
+    -- containers (CleanSolo.lua:318, :448). That hooking is DELIBERATE and documented
+    -- (parent containers yes, child ActionButtons never — see lines ~163-167, ~286-289
+    -- and ~398-400); only the "one place" claim was false. It matters because a reader
+    -- trusting it would believe no secure mouse-script hooks remain and would not think
+    -- to look at line 310 when the next ADDON_ACTION_FORBIDDEN names VeritasUI_Lib.
+    --
+    -- What IS unique about PlayerFrame: it is the one place where hooking was ABANDONED
+    -- in favour of polling. It is the same shape as the documented
     -- ActionButton trap: hooking a secure frame's OnEnter taints its execution
     -- context, and Blizzard's own code on that frame then runs tainted. HookHoverFade
     -- polls instead of hooking child ActionButtons for exactly this reason —

@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.13.8] - 2026-08-08
+
+### Fixed
+
+- **Four comments that asserted things which are not true.** No behaviour changes — verified mechanically by filtering the diff for any changed line that is not a comment or blank, of which there were none. Each of these would have sent a future change down a wrong path:
+  - `VeritasUI_AuctionHouse` — `UI/ScanProgress.lua` and `UI/ScanButton.lua` both described a live "persistent 60s retry chain". **There is no automatic retry.** `DoFire` has exactly one caller, inside `Start`, and `Replicate.lua:247-250` says so explicitly: since v1.9.14 the attempt counter records user-initiated fires only. The `ScanButton` wording was the more harmful of the two, claiming a dropped request "recovers with zero clicks" — the opposite of the truth, since clicking the button is the *only* recovery. (`UI/ScanProgress.lua`, `UI/ScanButton.lua`)
+  - `VeritasUI_AuctionHouse` — `Replicate.lua` said the Scan button calls `AH.Replicate.StartManual()`. It calls `AH.Scan.StartManual`, the facade, and has since v1.12.9; the `Replicate` alias has **zero callers** anywhere in the suite. Kept as a back-compat surface, now marked as not live. (`Replicate.lua`)
+  - `VeritasUI_Lib` — the `GetMouseFocus` shim's rationale stated a 5 Hz poll and reasoned "would error five times a second" from that figure. `PLAYER_FRAME_HOVER_POLL_RATE` is `0.10`, i.e. **10 Hz**, as a note 300 lines below already said. It understated the blast radius of the exact hazard the block exists to describe, by half — and that ticker keeps no handle, so the error flood cannot be cancelled short of a reload. (`Lib.lua`)
+  - `VeritasUI_Lib` — the PlayerFrame policy block claimed hooking that frame was "the one place in this suite that hooked a secure Blizzard frame's mouse scripts". `HookHoverFade` still does exactly that on `MicroMenu` and up to seven `MultiBar*` containers. That hooking is deliberate and documented — parent containers yes, child action buttons never — but the "one place" claim was false, and it is what someone would trust when the next `ADDON_ACTION_FORBIDDEN` names the library. What is genuinely unique about PlayerFrame is that it is where hooking was *abandoned* in favour of polling. (`Lib.lua`)
+
 ## [1.13.7] - 2026-08-08
 
 ### Fixed
