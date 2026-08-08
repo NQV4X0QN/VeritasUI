@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.13.0] - 2026-08-07
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **the Delve Nemesis count now sits in the icon's lower-right corner instead of being centred on it.** Centring could not be made exact: three rounds of by-eye offsets each fixed one digit and left another visibly off, because the API centres a string's metrics box while no accessor exposes glyph ink bounds, and halving the icon's width lands on fractional pixels that round per digit. The count is now anchored by a single `BOTTOMRIGHT` point — the same construction Blizzard uses for `StackCount` on this exact widget template — so every digit lands identically with no width division. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **the Delve count is drawn white at every value.** `HIGHLIGHT_FONT_COLOR`, which is what `NumberFontNormal` declares and therefore the colour Blizzard's own stack counts render in. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **`/qol delvenudge` now takes insets from the icon's bottom-right corner** rather than offsets from its centre — pixels in from the right edge and up from the bottom, negatives moving outside the icon. Argument order is unchanged, vertical first. Shipped default is `-1 -1`. (`QualityOfLife.lua`)
+
+### Removed
+
+- `VeritasUI_QualityOfLife` — **the dark circular scrim behind the Delve count.** It existed to keep a centred digit readable over icon art; in Blizzard's corner their own count has no backing texture, and the number's `THICKOUTLINE` and drop shadow carry the contrast instead. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **the four-step count colour ramp** (4 red, 3 orange, 2 yellow, 1 green). A stack badge that changes colour by value is not something the default UI does. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **`/qol delvetint` and the per-glyph `/qol delveone`**, along with the saved keys `delveCountCenterX`, `delveCountCenterY`, `delveCountCenterX1` and `delveTintAlpha`, which are cleared at login rather than reinterpreted — a stored offset from the icon's centre is a different position read as a corner inset. (`QualityOfLife.lua`)
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **the Delve completion checkmark was slightly too large.** It extended 2px past the icon on every side; it is now flush with the icon's bounds, and tunable with `/qol delvecheck`. (`QualityOfLife.lua`)
+
 All notable changes to VeritasUI are documented here. Dates reflect the conversation sessions where changes were developed and tested.
 
 ## [1.12.20] - 2026-08-05
