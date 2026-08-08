@@ -256,9 +256,17 @@ end
 local ticker = CreateFrame("Frame")
 ticker:Hide()
 ticker:SetScript("OnUpdate", function(_, elapsed)
-    if not (AH.Replicate and AH.Replicate.IsScanning()) then return end
+    -- ⚠ FACADE, NOT AH.Replicate. This file read AH.Replicate.* directly at every site while
+    -- browse has been the DEFAULT engine since v1.12.12, and Replicate.IsScanning() returns
+    -- Replicate's own `scanning` local, which a browse scan never sets. So this first line
+    -- early-returned for the whole scan: no sweep, a frozen "Connecting…", then a snap to
+    -- "Scan complete" -- the entire three-phase readout inert on the engine that actually runs.
+    -- AH.Scan.IsScanning() reports EITHER engine and AH.Scan.Progress() dispatches to whichever
+    -- is live (Core.lua:484-501). The v1.12.9 facade migration moved ScanButton.lua over and
+    -- missed this file.
+    if not (AH.Scan and AH.Scan.IsScanning()) then return end
 
-    local p = AH.Replicate.Progress() or 0
+    local p = (AH.Scan.Progress and AH.Scan.Progress()) or 0
     if p > 0 then
         -- Phase 2 — determinate: real fill + percentage (1 -> 100%).
         if state.sweep:IsShown() then state.sweep:Hide() end
@@ -379,13 +387,21 @@ end)
 -- Reset the elapsed clock so "(Ns)" times THIS phase, not the whole scan. Guarded
 -- so a stray fire can't resurrect the bar after a terminal/close.
 AH.Events.On("AH_SCAN_REQUESTED", function()
-    if not (state.built and AH.Replicate and AH.Replicate.IsScanning()) then return end
+    -- Facade: browse fires this event too (Browse.lua:374), but the Replicate-only gate meant
+    -- the label stayed on "Connecting…" for an entire browse scan.
+    if not (state.built and AH.Scan and AH.Scan.IsScanning()) then return end
     state.phase     = "requested"
     state.waitStart = GetTime()
     state.label:SetText(WaitLabel())
 end)
 
 -- Main drain finished and committed; gear-residue retries running (Phase 3).
+--
+-- ⚠ DELIBERATELY still gated on AH.Replicate, NOT the facade. Phase 3 is a cold-cache
+-- gear-residue phase that only the replicate engine has -- Browse.lua:33 removes it entirely and
+-- browse never fires this event. Routing this through AH.Scan would let a stray fire during a
+-- browse scan enter a phase whose FinalizeStatus counts do not exist for that engine.
+-- ah_scanprogress_test case 6 enforces this; if you "fix" it for consistency, that test fails.
 AH.Events.On("AH_SCAN_FINALIZING", function()
     if not (state.built and AH.Replicate and AH.Replicate.IsScanning()) then return end
     state.finalizing = true

@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.13.7] - 2026-08-08
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **the scan progress bar did nothing on the default scan engine.** `UI/ScanProgress.lua` read `AH.Replicate.*` directly at every site, but browse has been the default engine since v1.12.12 and `Replicate.IsScanning()` reports only replicate's own state — so the ticker's first line returned immediately and stayed that way for the whole scan. The result was an unanimated bar frozen on "Connecting…" that snapped straight to "Scan complete", with the three-phase readout the file exists to provide inert on the engine that actually runs. The ticker gate, the progress read and the requested-phase relabel now use the `AH.Scan` facade, which reports either engine and dispatches to whichever is live. Cause was the v1.12.9 facade migration, which moved `UI/ScanButton.lua` across and missed this file. (`UI/ScanProgress.lua`)
+
+### Changed
+
+- `VeritasUI_AuctionHouse` — **a browse scan now shows two phases rather than three, which is the honest count.** Browse fires `AH_SCAN_START`, `AH_SCAN_REQUESTED`, `AH_SCAN_COMPLETE` and `AH_SCAN_FAILED`, but never `AH_SCAN_FINALIZING` — it has no cold-cache gear-residue phase (`Browse.lua:33`). The finalizing handler is therefore left gated on `AH.Replicate` deliberately, since routing it through the facade would display "Finalizing gear… N/M" from counts that do not exist for that engine. Browse's progress curve is unchanged: it reaches roughly 57% on the first page and approaches completion asymptotically, by design, because Blizzard exposes no total. (`UI/ScanProgress.lua`)
+
+### Internal
+
+- **`UI/ScanProgress.lua` now has coverage** — 408 lines that had none. `ah_scanprogress_test` drives the real file against a fake namespace holding two independent engines, so "replicate idle, browse scanning" — the production default — is reachable at all. Seven cases, two failing before the fix, with a replicate control proving the harness. All four mutations are caught, including the one that routes finalizing through the facade, so the deliberate non-change is enforced rather than merely commented
+
 ## [1.13.6] - 2026-08-08
 
 ### Fixed
