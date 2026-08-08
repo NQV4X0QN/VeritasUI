@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.14.0] - 2026-08-08
+
+### Added
+
+- `VeritasUI_Lib` — **`VUI.BindScopedDB(globalName, universalDefaults, perCharDefaults)`, which gives a module PER-KEY saved-variable scope instead of all-or-nothing.** Returns `accountTable, charTable`; call it at both `ADDON_LOADED` (account table only, no identity yet) and `PLAYER_LOGIN` (both). Groundwork only — **no module uses it yet and nothing changes in game.** `VUI.BindCharDB` is untouched and the four modules currently on it keep working unchanged. (`Lib.lua`)
+
+### Requires
+
+- Nothing. This release is additive: 77 lines added, none changed or removed, and the new function has no callers.
+
+### Internal
+
+- **Two of the new binder's contracts are deliberately the opposite of `BindCharDB`'s, because `BindCharDB`'s behaviour is what produced the defect this refactor exists to fix.** It returns `nil` rather than the account root when the character identity is unavailable — falling back would write per-character keys into account-wide storage at load time. And it never copies account-wide keys into a new character's slot — that copy is what pins a shipped default per character, which is audit finding D8. It also errors if a key appears in both scopes, rather than silently choosing one and hiding a scope-map violation for as long as the two happen to agree.
+- **New `scoped_db_test`, 22 assertions, mutation-verified against five.** Reinstating either inverted contract, registering the wrong defaults with the copy feature, removing the double-scope check, or shallow-copying table defaults each fails a distinct assertion. The suite also asserts `BindCharDB` still behaves as before, since the four modules migrate off it one at a time over the following phases
+
 ## [1.13.8] - 2026-08-08
 
 ### Fixed

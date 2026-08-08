@@ -41,7 +41,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.13.8"
+VUI.VERSION = "1.14.0"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -1100,6 +1100,83 @@ end
 -- Value carries the module's defaults table, needed to re-seed keys the copy source
 -- happens not to have.
 VUI._charDBs = VUI._charDBs or {}
+
+-- Bind a module's saved variables with PER-KEY scope: an account-wide set and a
+-- per-character set. Returns `accountTable, charTable`.
+--
+--   local adb, cdb = VUI.BindScopedDB("VeritasUI_QualityOfLifeDB", UNIVERSAL, PERCHAR)
+--
+-- Call it at BOTH ADDON_LOADED and PLAYER_LOGIN. The first call seeds and returns the
+-- account table with `cdb == nil` (no identity yet); the second returns both. That is
+-- exactly the shape AdvancedOptions already uses by calling InitDB twice.
+--
+-- WHY THIS EXISTS instead of VUI.BindCharDB: BindCharDB scopes an ENTIRE module
+-- per-character. That is how four modules became per-character to solve a two-setting
+-- problem, and how the Delve count's placement ended up per-character when it should be
+-- shared. The authority on which keys go where is
+-- ~/.agents/skills/veritasui/references/setting-scope-map.md; only EIGHT keys are
+-- per-character. Do not reach for BindCharDB for new work.
+--
+-- ⚠ TWO CONTRACTS THAT ARE THE OPPOSITE OF BindCharDB'S. Both are deliberate, both are
+-- enforced by scoped_db_test, and reverting either reintroduces a shipped defect:
+--
+--   1. NO ROOT FALLBACK. When VUI.CharKey() is unresolvable this returns nil for the
+--      char table, where BindCharDB returns the root. If it fell back, the ADDON_LOADED
+--      call would write per-character keys (cvarCache, cacheVersion) INTO the account
+--      root -- pinning them there for every character, on the very keys the scope map
+--      flags as paired. Callers must therefore defer per-character work to PLAYER_LOGIN
+--      and tolerate a nil second return.
+--
+--   2. NO ROOT->SLOT COPY. BindCharDB seeds a fresh slot from every non-`chars` root key
+--      (see below) so characters inherit account-wide setup. Once universal values live
+--      on the root, that copy pulls them into per-character slots and pins them -- audit
+--      finding D8, in a new place. A new character's slot here is seeded ONLY from
+--      perCharDefaults, which is what "per-character" means: a new character starts from
+--      the shipped default, not from whatever another character happened to set.
+--
+-- Table identity is stable across re-binds: Settings.RegisterAddOnSetting captures the
+-- table it is handed, so handing back a fresh table would silently detach the panel.
+function VUI.BindScopedDB(globalName, universalDefaults, perCharDefaults)
+    universalDefaults = universalDefaults or {}
+    perCharDefaults   = perCharDefaults   or {}
+
+    -- A key with two homes has no defined value. Silently preferring one would hide a
+    -- scope-map violation for as long as both happened to agree.
+    for k in pairs(perCharDefaults) do
+        if universalDefaults[k] ~= nil then
+            error(("VUI.BindScopedDB: key '%s' is in BOTH the universal and per-character "
+                .. "defaults for %s. See references/setting-scope-map.md."):format(
+                tostring(k), tostring(globalName)), 2)
+        end
+    end
+
+    -- Registered with the PER-CHARACTER defaults only. VUI.CopyCharSettings re-seeds from
+    -- this table, so registering the universal set would make /vui copy write
+    -- account-wide values into a character's slot.
+    VUI._charDBs[globalName] = { defaults = perCharDefaults }
+
+    local root = _G[globalName]
+    if type(root) ~= "table" then root = {}; _G[globalName] = root end
+    if type(root.chars) ~= "table" then root.chars = {} end
+
+    for k, v in pairs(universalDefaults) do
+        if root[k] == nil then root[k] = VUI.DeepCopy(v) end
+    end
+
+    local key = VUI.CharKey()
+    if not key then return root, nil end          -- contract 1: nil, never the root
+
+    local slot = root.chars[key]
+    if not slot then
+        slot = {}                                  -- contract 2: no root->slot copy
+        root.chars[key] = slot
+    end
+    for k, v in pairs(perCharDefaults) do
+        if slot[k] == nil then slot[k] = VUI.DeepCopy(v) end
+    end
+
+    return root, slot
+end
 
 -- Bind (or re-bind) this character's settings slot inside `globalName`.
 -- Returns the slot, or the legacy root if the key is not yet resolvable.
