@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.13.2] - 2026-08-08
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **Auto Repair and Auto Sell Junk drew their coin icons larger than Blizzard's.** Both money lines rendered coins one notch bigger than the coins on Blizzard's own `You gained:` line directly beneath them in chat. `GetCoinTextureString`'s icon height defaults to 14; ours now passes 12, matched by eye against Blizzard's line and confirmed in game. Routes all six money strings through a single `Coins()` helper so the size is one named constant instead of six literals. (`QualityOfLife.lua`)
+
+### Internal
+
+- `VeritasUI_QualityOfLife` — **recorded that an absolute coin size is the correct approach here, with the measurement that proves it.** A font-derived, self-scaling size was drafted on the reasoning that a fixed pixel value could only match at one chat font size, since Blizzard's own money strings size coins font-relatively. The sources behind that were accurate but the conclusion was not: WoW's chat font-size setting scales the entire chat frame as a unit, so an absolute coin size tracks the text on its own. Verified at chat font 14, 16 and 18. The self-scaling draft was discarded and the finding written into the code to stop it being "fixed" again. (`QualityOfLife.lua`)
+
 ## [1.13.1] - 2026-08-07
 
 ### Fixed

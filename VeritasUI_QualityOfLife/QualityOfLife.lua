@@ -29,6 +29,53 @@ local C_SuperTrack  = C_SuperTrack
 -- TomTom detection exists to prevent.
 local IsAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
 
+----------------------------------------------------------------
+--  Chat money output
+----------------------------------------------------------------
+-- Coin-icon pixel size for our chat money strings. THIS IS THE KNOB -- every money
+-- string this file prints goes through Coins() below, so retuning is a one-number edit.
+--
+-- GetCoinTextureString's second argument is an absolute icon height in pixels,
+-- defaulting to 14 (sourced: C_CurrencyInfo.GetCoinTextureString, fontHeight
+-- Default = 14, in Blizzard_APIDocumentationGenerated/CurrencyInfoDocumentation.lua).
+-- At that default our coins read slightly LARGER than the coins on Blizzard's own
+-- "You gained:" money line in the same chat frame. 12 matches it. Chosen empirically
+-- and owner-confirmed in game, NOT computed.
+--
+-- ⚠ AN ABSOLUTE SIZE IS CORRECT HERE. Do not "improve" this into a font-derived or
+-- self-scaling value -- that was tried and the reasoning behind it was wrong:
+--
+--   The worry was that a hardcoded 12 could only match at ONE chat font size, since
+--   Blizzard's own money strings size their coins font-relatively (GetMoneyString
+--   emits GOLD_AMOUNT_TEXTURE:format(n, 0, 0) -> "|T...:0:0|t", and height 0 + width 0
+--   means "size = the font's text height" -- sourced: Blizzard_SharedXML/
+--   FormattingUtil.lua and warcraft.wiki.gg UI escape sequences). Both sources are
+--   accurate; the CONCLUSION drawn from them was not.
+--
+--   Owner-measured instead: WoW's chat font-size setting scales the whole chat frame
+--   as a unit, not just the glyphs. So an absolute 12px coin scales along with the
+--   text automatically. Verified in game at chat font 14, 16 and 18 -- our coins and
+--   Blizzard's stayed locked together at every size, on this exact fixed-12 build.
+--   A /run probe printing GetCoinTextureString(n, 12) beside GetMoneyString(n) was
+--   pixel-identical in art AND size at every one of those font sizes.
+--
+-- So GetMoneyString is a genuine drop-in, and switching to it was deliberately NOT
+-- done: it buys nothing measurable, and this fixed-12 path is the one verified
+-- end-to-end as our own rendered chat line rather than only at API level through a
+-- probe. If it is ever revisited, GetMoneyString's one real advantage is that it
+-- handles colorblind mode explicitly (it swaps coins for GOLD/SILVER/COPPER_AMOUNT_
+-- SYMBOL); GetCoinTextureString's behaviour in that mode is unmeasured.
+local COIN_SIZE = 12
+
+-- Single funnel for chat money output so COIN_SIZE stays the one source of truth.
+-- Stays on GetCoinTextureString (the OLD/legacy coin art) deliberately: that art is
+-- the correct match for CHAT, where Blizzard still uses it. The modern |A:coin-*|a
+-- atlas art belongs to UI panels only -- see the AuctionHouse CraftingOrder note and
+-- the AutoSell landmine.
+local function Coins(copper)
+    return GetCoinTextureString(copper, COIN_SIZE)
+end
+
 local VUI = _G.VeritasUI
 if not VUI then
     print("|cFFFF4444[VeritasUI] Lib failed to load — " .. ADDON_NAME .. " disabled.|r")
@@ -235,7 +282,7 @@ local function PrintSold(remainingValue, remainingCount)
         VUI.Print("Quality of Life", format(
             "Sold |cFFFFFF00%d|r junk item%s for %s",
             soldCount, soldCount > 1 and "s" or "",
-            GetCoinTextureString(soldValue)))
+            Coins(soldValue)))
     end
 end
 
@@ -404,7 +451,7 @@ local function AutoRepair()
             VUI.Print("Quality of Life", format(
                 "Can't repair — costs %s, the guild bank can cover %s and you "
                 .. "don't have enough gold for the rest.",
-                GetCoinTextureString(cost), GetCoinTextureString(guildPays)))
+                Coins(cost), Coins(guildPays)))
             return
         end
 
@@ -413,7 +460,7 @@ local function AutoRepair()
             RepairAllItems(false)         -- personal gold covers the remainder
         end
         VUI.Print("Quality of Life", format(
-            "Repaired for %s (guild bank)", GetCoinTextureString(cost)))
+            "Repaired for %s (guild bank)", Coins(cost)))
     else
         -- RepairAllItems silently no-ops when personal gold can't cover the
         -- bill, so an unconditional print would claim a repair that never
@@ -422,12 +469,12 @@ local function AutoRepair()
         if GetMoney() < cost then
             VUI.Print("Quality of Life", format(
                 "Can't repair — costs %s and you don't have enough gold.",
-                GetCoinTextureString(cost)))
+                Coins(cost)))
             return
         end
         RepairAllItems(false)
         VUI.Print("Quality of Life", format(
-            "Repaired for %s", GetCoinTextureString(cost)))
+            "Repaired for %s", Coins(cost)))
     end
 end
 
