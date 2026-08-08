@@ -1,12 +1,12 @@
 # Changelog
 
-## [1.13.3] - 2026-08-08
+## [1.13.3] - 2026-08-07
 
 ### Changed
 
 - `VeritasUI_QualityOfLife` — **Auto Repair and Auto Sell Junk now size their coin icons through Blizzard's own `GetMoneyString` instead of a hardcoded pixel size.** `GetMoneyString` emits each coin as `|T...:0:0|t`, and height 0 + width 0 means "size = the font's text height" — the same mechanism Blizzard's own `You gained:` line uses, rather than a number of ours that reproduces its result. Both approaches render identically today; this one inherits any future change Blizzard makes to coin sizing or coin art instead of silently desyncing until the constant is re-tuned by eye. It also handles colorblind mode explicitly, swapping coins for `GOLD`/`SILVER`/`COPPER_AMOUNT_SYMBOL`. The v1.13.2 `GetCoinTextureString(copper, 12)` path is retained as a fallback. (`QualityOfLife.lua`)
 
-## [1.13.2] - 2026-08-08
+## [1.13.2] - 2026-08-07
 
 ### Fixed
 
