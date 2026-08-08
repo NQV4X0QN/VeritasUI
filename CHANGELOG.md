@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.13.6] - 2026-08-08
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **unticking Show Item Levels left every painted number on screen, and recycled bag slots then showed the wrong item's level.** The `SetItemButtonQuality` hook returned on `not db.showItemLevels` before any `HideOverlay`, and the setting's callback was enable-only, so switching the feature off did nothing until `/reload`. Because bag and bank buttons are reused across items, those stale numbers persisted over whatever item later occupied the slot — a wrong item level displayed against an unrelated item. The setting now applies live in both directions, mirroring Show Map Coordinates directly above it. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **the merchant scanner ignored the setting.** `UpdateMerchantItems` gated on the merchant window being shown and on the selected tab, but never on `showItemLevels`, so vendor item levels kept being repainted after the feature was switched off. It now carries the same gate every other consumer of the feature already had. (`QualityOfLife.lua`)
+
+### Internal
+
+- **Item-level overlays are tracked in a weak-keyed registry** so they can be swept without a reload, with the sweep forward-declared because the options panel is built before the overlay system exists. The hook additionally hides on a disabled button rather than returning, which covers anything Blizzard repaints after the sweep — the two mechanisms handle different moments and mutation testing confirms neither is redundant.
+- **The item-level paths had no disable coverage at all.** Four assertions added across three cases, all failing before the fix. Two pre-existing test defects were found while writing them: the texture mock's `Show`/`Hide` were no-ops, so every assertion about the gradient backdrop passed without testing anything, and the test toggled the account-wide root while the module reads its per-character slot, so the disable never took effect. The suite now asserts up front that it resolved the table the module actually reads
+
 ## [1.13.5] - 2026-08-08
 
 ### Fixed

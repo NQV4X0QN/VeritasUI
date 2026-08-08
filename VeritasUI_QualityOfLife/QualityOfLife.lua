@@ -490,6 +490,13 @@ end
 --   • Merchant windows          (dedicated merchant scanner)
 -- Quest reward buttons are explicitly excluded.
 -- ─────────────────────────────────────────────────────────────
+-- Sweeps every overlay we have painted, so "Show Item Levels" can be switched OFF without a
+-- reload. Forward-declared here on purpose: it is ASSIGNED inside SetupItemLevels (which owns
+-- the registry) but CALLED from InitializeOptions, and InitializeOptions runs FIRST at login.
+-- ⚠ A local declared below the referencing closure would bind as a nil global -- the /way
+-- v1.6.33 trap. Declare above both; assign later.
+local HideAllItemLevelOverlays
+
 local function SetupItemLevels()
     if itemLevelsSetup then return end
     itemLevelsSetup = true
@@ -502,6 +509,11 @@ local function SetupItemLevels()
     local function FindIcon(btn)
         return btn.icon or btn.Icon or btn.IconTexture
     end
+
+    -- Every button we have ever painted. Weak-keyed so it never keeps a button alive on our
+    -- account; WoW frames outlive the session anyway, but the registry has no business being
+    -- the thing that holds them.
+    local overlaid = setmetatable({}, { __mode = "k" })
 
     local function ApplyOverlay(btn, ilvl, quality)
         local anchor = FindIcon(btn) or btn
@@ -537,6 +549,7 @@ local function SetupItemLevels()
         fs:SetTextColor(c.r, c.g, c.b)
         fs:Show()
         if btn._vui_ilvlBG then btn._vui_ilvlBG:Show() end
+        overlaid[btn] = true
     end
 
     local function HideOverlay(btn)
@@ -559,6 +572,12 @@ local function SetupItemLevels()
         btn._vui_pendingIlvl = nil
         if btn._vui_ilvl   then btn._vui_ilvl:Hide()   end
         if btn._vui_ilvlBG then btn._vui_ilvlBG:Hide() end
+    end
+
+    -- Registry entries are deliberately NOT cleared after a sweep: the same button must still
+    -- be swept if the feature is toggled off a second time without being repainted in between.
+    HideAllItemLevelOverlays = function()
+        for btn in pairs(overlaid) do HideOverlay(btn) end
     end
 
     local function IsEquippableGear(itemIDOrLink)
@@ -811,7 +830,17 @@ local function SetupItemLevels()
     end
 
     hooksecurefunc("SetItemButtonQuality", function(btn, quality, itemIDOrLink)
-        if not db or not db.showItemLevels then return end
+        if not db or not db.showItemLevels then
+            -- ⚠ Do NOT bare-return here. Bag and bank buttons are RECYCLED across items, so an
+            -- overlay painted while the feature was on stayed visible over whatever item later
+            -- occupied that slot -- a wrong item level against an unrelated item, indefinitely,
+            -- until /reload. The options sweep clears what is on screen at the moment of
+            -- switching off; this clears anything Blizzard repaints afterwards.
+            -- Gated on _vui_ilvl so the common disabled case stays a single field read: this
+            -- hook fires on every quality set, on every button, everywhere.
+            if btn and btn._vui_ilvl then HideOverlay(btn) end
+            return
+        end
         if not btn or not btn.CreateFontString then return end
         if not itemIDOrLink then HideOverlay(btn); return end
         if quality ~= nil and quality == 0 then HideOverlay(btn); return end
@@ -880,6 +909,9 @@ local function SetupItemLevels()
     end
 
     local function UpdateMerchantItems()
+        -- Every other consumer of this feature gates on the setting; this scanner did not, so
+        -- vendor overlays kept being repainted after the feature was switched off.
+        if not db or not db.showItemLevels then return end
         if not MerchantFrame or not MerchantFrame:IsShown() then return end
         if MerchantFrame.selectedTab and MerchantFrame.selectedTab ~= 1 then
             return
@@ -2439,7 +2471,14 @@ local function InitializeOptions()
     AddCheckbox("showItemLevels", "Show Item Levels",
         "Displays item level numbers on equipment in bags, bank, character panel, and merchants. Quest rewards are excluded.",
         function(value)
-            if value then SetupItemLevels() end
+            -- Live-apply BOTH ways. Enable-only was the bug: the module's stated contract is
+            -- that every QoL toggle applies mid-session, and this one needed a /reload to take
+            -- effect in the off direction. Mirrors showMapCoords directly above.
+            if value then
+                SetupItemLevels()
+            elseif HideAllItemLevelOverlays then
+                HideAllItemLevelOverlays()
+            end
         end)
 
     -- Mid-session enable: MERCHANT_SHOW/CLOSED are registered at PLAYER_LOGIN
