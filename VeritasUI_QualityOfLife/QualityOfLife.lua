@@ -115,7 +115,7 @@ local defaults = {
     -- Horizontal inset used ONLY when the count reads 1, overriding delveCountInsetX. Live
     -- via /qol delveone. See DELVE_COUNT_INSET_X_BY_COUNT for why one glyph needs its own
     -- value even though the count is corner-anchored.
-    delveCountInsetX1 = 1,
+    delveCountInsetX1 = 3,
     -- Pixels the completion checkmark extends past the icon's bounds on each side.
     -- Negative insets it. Live via /qol delvecheck. 0 is owner-confirmed in game.
     delveCheckOutset = 0,
@@ -1700,7 +1700,7 @@ local DELVE_COUNT_INSET_Y = -1
 --
 -- ⚠ A TABLE keyed by count, so a second exception needs no new key and no new command. An
 -- absent key means "use the global inset"; do not collapse this into a plain number.
-local DELVE_COUNT_INSET_X_BY_COUNT = { [1] = 1 }
+local DELVE_COUNT_INSET_X_BY_COUNT = { [1] = 3 }
 
 -- Atlases, both confirmed to RESOLVE on the live client via /qol delve (2026-08-05:
 -- common-icon-checkmark 25x25, UI-Frame-IconMask 64x64) rather than trusted from
@@ -2487,7 +2487,8 @@ local function InitializeOptions()
         .. "plaque, instead of only revealing it when you hover the icon. The count sits "
         .. "in the icon's lower-right corner, where the default UI puts a stack count, and "
         .. "is replaced by a checkmark once every group is defeated. Adjust the position with "
-        .. "/qol delvenudge and the checkmark size with /qol delvecheck.",
+        .. "/qol delvenudge, the digit 1 on its own with /qol delveone, and the checkmark "
+        .. "size with /qol delvecheck.",
         function(value)
             if value then DelveStartCount() else DelveStopCount() end
         end)

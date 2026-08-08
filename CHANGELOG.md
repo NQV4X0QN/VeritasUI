@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.13.4] - 2026-08-08
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **the Delve count `1` now defaults to 3px in from the icon's right edge, matching every other digit's optical position.** Owner-dialled in game with `/qol delveone 3`; the previous default of `1` still read slightly right of the others. Updated in both places that hold the value — the `defaults` table (what a fresh character inherits, since these settings are per-character) and the `DELVE_COUNT_INSET_X_BY_COUNT` fallback used when the saved key is absent. (`QualityOfLife.lua`)
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **`/qol delveone` is now discoverable from inside the game.** The Delve Nemesis Count setting's description listed `/qol delvenudge` and `/qol delvecheck` but never mentioned the per-digit command, so the only way to learn it existed was reading the v1.13.1 changelog. (`QualityOfLife.lua`)
+
+### Internal
+
+- **`qol_delve_test` no longer freezes the digit-1 inset as a literal.** The assertion read `== 1`, so retuning a purely cosmetic pixel value broke a test that had no business caring what the number is — the "do not freeze a cosmetic constant in a test" trap, in the file that documents it. It now parses both value sources from the shipped Lua and asserts they AGREE, plus that a fresh character inherits whatever is currently tuned. Mutation-verified: leaving the constant behind while changing the default fails the suite
+
 ## [1.13.3] - 2026-08-07
 
 ### Changed
