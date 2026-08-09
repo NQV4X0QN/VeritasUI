@@ -33,12 +33,6 @@ local PERCHAR = {
     manualWatched = {},
 }
 
--- Kept as the union for the legacy account-wide seed only. Do NOT add new keys here; add them
--- to UNIVERSAL or PERCHAR above.
-local DEFAULTS = {}
-for k, v in pairs(UNIVERSAL) do DEFAULTS[k] = v end
-for k, v in pairs(PERCHAR)   do DEFAULTS[k] = v end
-
 local db  = nil  -- ACCOUNT-wide table; assigned at ADDON_LOADED
 -- ⚠ Declared HERE, above every function that reads it. `cdb` is the PER-CHARACTER table and is
 -- nil until PLAYER_LOGIN. SnapshotWatched/RestoreWatched reference it ~200 lines below this
@@ -331,10 +325,10 @@ local function InitializeOptions()
         category,
         ADDON_NAME .. "_enabled",
         "enabled",
-        db,                                -- per-character SLOT (see VUI.BindCharDB)
-        type(DEFAULTS.enabled),
+        db,                                -- ACCOUNT table: `enabled` is universal
+        type(UNIVERSAL.enabled),
         "Enable Zone Filtering",
-        DEFAULTS.enabled
+        UNIVERSAL.enabled
     )
     enableSetting:SetValueChangedCallback(function(_, value)
         if value then
@@ -373,10 +367,13 @@ local function InitializeOptions()
             category,
             ADDON_NAME .. "_" .. opt.key,
             opt.key,
-            db,                                -- per-character SLOT (see VUI.BindCharDB)
-            type(DEFAULTS[opt.key]),
+            -- ACCOUNT table: every key in this loop is universal. Reading the default from
+            -- UNIVERSAL rather than a union of both scopes means that adding a per-character key
+            -- here fails loudly instead of silently registering it at account scope.
+            db,
+            type(UNIVERSAL[opt.key]),
             opt.name,
-            DEFAULTS[opt.key]
+            UNIVERSAL[opt.key]
         )
         setting:SetValueChangedCallback(function(_, _)
             SyncTracking(false)

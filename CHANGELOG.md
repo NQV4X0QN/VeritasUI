@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.14.6] - 2026-08-08
+
+### Fixed
+
+- **Four comments that the settings-scope work had made false.** Two ZoneQuests settings registrations were still labelled as targeting per-character storage when they now correctly target the account-wide table; AdvancedOptions' login comment described the old binder copying account values into a character's slot, which is the behaviour the refactor removed; and two library comments presented the legacy binder's fallback as the current pattern. Each would have sent a future change down a wrong path. (`ZoneQuests.lua`, `AdvancedOptions/Core.lua`, `Lib.lua`)
+
+### Removed
+
+- `VeritasUI_ZoneQuests` — **a defaults table whose purpose no longer existed.** It merged both scopes for the sake of the old account-wide seeding pass, which is gone; its only remaining use was supplying defaults to settings registrations that are all account-wide. Those read the account-wide table directly now, so adding a per-character key to that loop fails loudly instead of silently registering it at the wrong scope. (`ZoneQuests.lua`)
+
+### Internal
+
+- **Copy Settings verified end to end against the four real modules.** Now that only per-character keys are copyable, the new suite asserts per module that the copy registry carries no account-wide key — the quiet failure being that registering the wrong set would make `/vui copy` write shared values into one character's slot. Then a full copy: the per-character value moves, the account-wide value is untouched, no shared key is written into the destination, and undo restores without reaching account scope.
+- **The legacy binder is retained rather than deleted, deliberately.** It has no callers left, but removing it is tidiness with no defect attached — which this project's own audit discipline default-rejects — and the entire cost would land in test code, rewriting three working suites. Its header now records that it is legacy, why it remains, and names both behaviours that caused the defects this refactor removed, so it cannot be mistaken for the current pattern.
+
 ## [1.14.5] - 2026-08-08
 
 ### Changed

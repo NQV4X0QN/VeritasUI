@@ -248,12 +248,14 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         ef:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
-        -- Re-bind to this character's slot now that the identity is available. AO
-        -- does NOT use the Blizzard Settings framework for its values (its own
-        -- window reads `db` at call time), so unlike the other three modules there
-        -- is no captured-table constraint here -- only the re-bind. InitDB has
-        -- already seeded defaults into the legacy root, which BindCharDB then uses
-        -- as this character's seed.
+        -- Second InitDB pass: identity is now available, so this is the one that binds the
+        -- per-character table and does the per-character work. AO does NOT use the Blizzard
+        -- Settings framework for its values (its own window reads AO.db at call time), so unlike
+        -- the other three modules there is no captured-table constraint here.
+        --
+        -- ⚠ The first pass seeded only the ACCOUNT table. It does NOT seed a character's slot from
+        -- the root -- VUI.BindScopedDB never copies root keys into a slot, because that copy is
+        -- what pinned a shipped default per character.
         AO:InitDB()
         VUI.Print("Advanced Options",
             format("v%s loaded — |cFFFFFF00/ao|r", AO.VERSION))

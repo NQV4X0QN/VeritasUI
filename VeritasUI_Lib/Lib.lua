@@ -41,7 +41,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.14.5"
+VUI.VERSION = "1.14.6"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -1065,9 +1065,14 @@ end)
 --  ADDON_LOADED is NOT established. PriorityRotation — the one module already
 --  per-character — sidesteps this by never resolving its key at ADDON_LOADED
 --  (PR:InitDB only creates the profiles table) and first resolving at
---  PLAYER_LOGIN. This follows that proven pattern: BindCharDB returns the LEGACY
---  ROOT when no key is available, so a caller may bind at ADDON_LOADED for
---  continuity and MUST re-bind at PLAYER_LOGIN to land on the real slot.
+--  PLAYER_LOGIN. Both binders follow that pattern, but they differ in what the early
+--  call hands back, and the difference is the whole point:
+--    VUI.BindScopedDB (current) returns the account table and NIL for the character
+--      table, so per-character work cannot run before an identity exists.
+--    VUI.BindCharDB (legacy; no shipped callers) returns the LEGACY ROOT as a
+--      stand-in -- which is exactly how AdvancedOptions used to seed its
+--      per-character CVar cache into account-wide storage at load time.
+--  Either way a caller MUST re-bind at PLAYER_LOGIN to land on the real slot.
 --
 --  ⚠ Settings.RegisterAddOnSetting takes the TABLE as its 4th argument, so the
 --  Settings framework holds a direct reference. A module registering settings
@@ -1094,9 +1099,14 @@ function VUI.CharKey()
     return realm .. "-" .. name
 end
 
--- Registry of per-character saved variables, populated BY BindCharDB itself so the
--- copy feature's module list cannot drift from the set of modules that actually use
--- per-character storage. Adding a module to the scheme automatically enrols it.
+-- Registry of per-character saved variables, populated BY THE BINDERS THEMSELVES
+-- (VUI.BindScopedDB today; VUI.BindCharDB historically) so the copy feature's module list cannot
+-- drift from the set of modules that actually use per-character storage. Adding a module to the
+-- scheme enrols it automatically.
+--
+-- ⚠ BindScopedDB registers ONLY its per-character defaults. VUI.CopyCharSettings re-seeds from
+-- this table, so registering the universal set would make /vui copy write account-wide values into
+-- one character's slot. copy_scope_test asserts per module that no universal key appears here.
 -- Value carries the module's defaults table, needed to re-seed keys the copy source
 -- happens not to have.
 VUI._charDBs = VUI._charDBs or {}
@@ -1230,7 +1240,28 @@ function VUI.MigrateScopedDB(globalName, universalDefaults, perCharDefaults, fla
     return next(promoted) ~= nil and promoted or nil
 end
 
--- Bind (or re-bind) this character's settings slot inside `globalName`.
+-- ⛔ LEGACY. ZERO SHIPPED CALLERS as of v1.14.6 -- all four modules moved to VUI.BindScopedDB
+-- across v1.14.1-v1.14.5. Retained, not deleted, and the reasoning is on the record:
+--
+--   * Deleting it is TIDINESS WITH NO DEFECT ATTACHED, which this project's audit discipline
+--     default-rejects (references/audit-cycle-discipline.md Part 1). Nothing calls it, so it cannot
+--     misbehave.
+--   * The cost of deleting lands entirely in TEST code: charDB_test exists to test this function,
+--     and copy_test/copy_ui_test use it to build their fixtures. Rewriting three working suites is
+--     churn in the layer that has produced the most defects during this refactor.
+--   * Its remaining value is real: those copy suites exercise VUI.CopyCharSettings through it.
+--
+-- ⚠ BUT DO NOT USE IT FOR NEW WORK, and do not "restore" a module to it. Its two behaviours are
+-- precisely the ones that caused the defects this refactor removed:
+--   1. It returns the ACCOUNT ROOT when the character key is unresolvable, so anything called at
+--      ADDON_LOADED writes per-character keys into account-wide storage. That is how
+--      AdvancedOptions seeded its per-character CVar cache account-wide at load time.
+--   2. It seeds a new character's slot from every non-`chars` root key, which pins whatever the
+--      shipped default was at that moment -- audit finding D8, the reason a Delve position
+--      confirmed on one character never reached any other.
+-- VUI.BindScopedDB inverts both deliberately; see its header and scoped_db_test.
+--
+-- Binds (or re-binds) this character's settings slot inside `globalName`.
 -- Returns the slot, or the legacy root if the key is not yet resolvable.
 function VUI.BindCharDB(globalName, defaults)
     VUI._charDBs[globalName] = { defaults = defaults }
