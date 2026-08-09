@@ -41,7 +41,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.14.0"
+VUI.VERSION = "1.14.1"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -1176,6 +1176,58 @@ function VUI.BindScopedDB(globalName, universalDefaults, perCharDefaults)
     end
 
     return root, slot
+end
+
+-- ONE-WAY scope migration, for a module moving from VUI.BindCharDB to VUI.BindScopedDB.
+-- Returns a { [key] = value } table of what it promoted, or nil if it had already run.
+--
+-- ⚠ The key lists are the SAME two defaults tables handed to VUI.BindScopedDB. That is
+-- deliberate: it makes the migration list and the scope decision one thing, so they cannot
+-- drift. Do NOT pass a hand-written list -- an earlier plan derived it from a module's
+-- `defaults` table and would have silently skipped `mapCoordsPos`, which is a live saved
+-- key that is not in `defaults`, losing the map readout's dragged position.
+--
+-- Three jobs, in order:
+--   1. PROMOTE newly-universal keys. The CURRENT character's stored value wins and is written
+--      to the account root, overwriting whatever auto-seeded default sits there. Owner-chosen
+--      rule; see references/setting-scope-map.md. A character with no stored value promotes
+--      NOTHING -- promoting a nil would silently reset the setting.
+--   2. CLEAN those keys from EVERY character slot, not just the current one. Nothing reads
+--      them there any more, but a stale per-character copy would resurrect the moment a key
+--      were ever re-scoped back.
+--   3. DELETE the per-character keys' VESTIGIAL ROOT copies. The old auto-seeding loop wrote
+--      every default to the root, so a per-character key has an account-wide copy that is
+--      dead data yet reads as authoritative.
+--
+-- ⚠ TIMING: call this AFTER VUI.BindScopedDB has returned a non-nil char table (i.e. at
+-- PLAYER_LOGIN, not ADDON_LOADED) and BEFORE the module reads any universal key. Read
+-- before, and the feature acts on the pre-migration value for that session.
+function VUI.MigrateScopedDB(globalName, universalDefaults, perCharDefaults, flagKey)
+    local root = _G[globalName]
+    if type(root) ~= "table" then return nil end
+    if root[flagKey] then return nil end            -- one-way: never re-run
+
+    local key      = VUI.CharKey()
+    local chars    = type(root.chars) == "table" and root.chars or nil
+    local slot     = (chars and key) and chars[key] or nil
+    local promoted = {}
+
+    for k in pairs(universalDefaults or {}) do
+        if slot ~= nil and slot[k] ~= nil then
+            root[k] = slot[k]
+            promoted[k] = slot[k]
+        end
+        if chars then
+            for _, s in pairs(chars) do s[k] = nil end
+        end
+    end
+
+    for k in pairs(perCharDefaults or {}) do
+        root[k] = nil
+    end
+
+    root[flagKey] = true
+    return next(promoted) ~= nil and promoted or nil
 end
 
 -- Bind (or re-bind) this character's settings slot inside `globalName`.

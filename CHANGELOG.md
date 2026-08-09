@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.14.1] - 2026-08-08
+
+### Changed
+
+- `VeritasUI_ZoneQuests` — **the quest filter settings are now shared by every character, while the watched-quest list stays per-character.** Previously the whole module was per-character, so each alt had its own copy of filtering choices that are really about how you want the tracker to behave. `enabled` and the five `pin*` filters moved to account scope; `manualWatched` stays per-character because it is a snapshot of one character's quest log, and sharing it would restore watch state for quests an alt has never picked up. A one-off message on first login names whatever it promoted. (`ZoneQuests.lua`)
+
+### Added
+
+- `VeritasUI_Lib` — **`VUI.MigrateScopedDB`, the one-way migration for a module moving to per-key scope.** It promotes the current character's stored values for newly-shared keys, clears those keys from every character's slot so a stale copy cannot resurrect, and deletes the vestigial account-wide copies of per-character keys. Its key lists are the same two tables handed to `VUI.BindScopedDB`, so the migration and the scope decision are one thing and cannot drift apart. (`Lib.lua`)
+
+### Fixed
+
+- `VeritasUI_ZoneQuests` — **the old title-based watch-list migration ran against the wrong table.** It executed at `ADDON_LOADED` against the account-wide root; the list now lives per-character, so the check is re-pointed there. This also covers the one case the old placement never did — a character whose slot predates the migration. (`ZoneQuests.lua`)
+
+### Internal
+
+- **The hand-rolled defaults-seeding loop was replaced, not supplemented.** That loop wrote every default into the account root and is the mechanism behind the pinning defect this refactor removes, so leaving it beside the new binder would have achieved nothing.
+- **`module_scope_test` (new) verifies at RUNTIME that each key resolves into the table the scope map specifies.** It replaces a source-parsed version written first and then removed: that version passed against a module whose per-character table had been emptied, because pattern-extracting a Lua table literal proved too fragile to trust in either direction. Where a value actually lands after the module runs is what decides where it is stored, so that is what is asserted. `scope_map_test`'s own extractor was rewritten to be line-bounded for the same reason, and `module_charDB_test`'s "every registration targets the character slot" assertion — correct only while a module was per-character in its entirety — is now a per-module root/slot split checked against the map
+
 ## [1.14.0] - 2026-08-08
 
 ### Added

@@ -13,9 +13,12 @@ if not VUI then
 end
 
 -- ── Saved variable defaults ────────────────────────────────────────
-local DEFAULTS = {
+-- Saved settings, split by SCOPE. The authority on which key goes where is
+-- ~/.agents/skills/veritasui/references/setting-scope-map.md; `scope_map_test` enforces it.
+-- Shared by every character: filtering choices are about how the player wants the tracker to
+-- behave, not about a particular character's progress.
+local UNIVERSAL = {
     enabled       = true,
-    manualWatched = {},     -- { [questID] = true } for snapshot/restore
     pinCampaign   = true,
     pinImportant  = true,
     pinLegendary  = true,
@@ -23,7 +26,25 @@ local DEFAULTS = {
     pinRepeatable = true,
 }
 
-local db = nil  -- assigned only after ADDON_LOADED
+-- ⚠ PER-CHARACTER, and not a preference: `manualWatched` is a snapshot of THIS character's
+-- quest log ({ [questID] = true }). Sharing it would restore watch state for quests an alt has
+-- never picked up.
+local PERCHAR = {
+    manualWatched = {},
+}
+
+-- Kept as the union for the legacy account-wide seed only. Do NOT add new keys here; add them
+-- to UNIVERSAL or PERCHAR above.
+local DEFAULTS = {}
+for k, v in pairs(UNIVERSAL) do DEFAULTS[k] = v end
+for k, v in pairs(PERCHAR)   do DEFAULTS[k] = v end
+
+local db  = nil  -- ACCOUNT-wide table; assigned at ADDON_LOADED
+-- ⚠ Declared HERE, above every function that reads it. `cdb` is the PER-CHARACTER table and is
+-- nil until PLAYER_LOGIN. SnapshotWatched/RestoreWatched reference it ~200 lines below this
+-- point but are DEFINED above the assignment, so without this declaration the assignment would
+-- create a global and those reads would silently resolve to it -- the /way v1.6.33 trap.
+local cdb = nil  -- PER-CHARACTER table (manualWatched only); nil until PLAYER_LOGIN
 
 -- ── No hot-global localization block here, on purpose ─────────────
 -- Most modules in the suite open with a block of `local x = x` upvalues; this one
@@ -255,23 +276,26 @@ end
 -- that snapshot state, not the player's original pre-enable tracking.
 -- This is an accepted Midnight limitation.
 local function SnapshotWatched()
-    if not db then return end
-    db.manualWatched = {}
+    -- Guards on cdb, not db: manualWatched lives in the per-character table, which is nil
+    -- until PLAYER_LOGIN. Both callers already run after that, but a nil guard on the wrong
+    -- table is the kind of thing that only shows up when someone adds an earlier caller.
+    if not cdb then return end
+    cdb.manualWatched = {}
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
         local ok, info = pcall(C_QuestLog.GetInfo, i)
         if ok and info and not info.isHeader and not info.isHidden and info.questID then
-            db.manualWatched[info.questID] = true
+            cdb.manualWatched[info.questID] = true
         end
     end
 end
 
 local function RestoreWatched()
-    if not db then return end
+    if not cdb then return end
     local watchType = GetWatchType()
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
         local ok, info = pcall(C_QuestLog.GetInfo, i)
         if ok and info and not info.isHeader and info.questID then
-            if db.manualWatched[info.questID] then
+            if cdb.manualWatched[info.questID] then
                 pcall(C_QuestLog.AddQuestWatch, info.questID, watchType)
             else
                 pcall(C_QuestLog.RemoveQuestWatch, info.questID)
@@ -392,33 +416,14 @@ ef:RegisterEvent("QUEST_ACCEPTED")
 ef:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 ~= ADDON_NAME then return end
-        VeritasUI_ZoneQuestsDB = VeritasUI_ZoneQuestsDB or {}
-        -- Deep-copy table defaults to avoid sharing references with the
-        -- DEFAULTS constant (mutating db.<table> would otherwise mutate
-        -- DEFAULTS.<table> at runtime).  See Known Landmines in SKILL.md.
-        local function DeepCopy(t)
-            local c = {}
-            for k, v in pairs(t) do
-                c[k] = (type(v) == "table") and DeepCopy(v) or v
-            end
-            return c
-        end
-        for k, v in pairs(DEFAULTS) do
-            if VeritasUI_ZoneQuestsDB[k] == nil then
-                VeritasUI_ZoneQuestsDB[k] = (type(v) == "table") and DeepCopy(v) or v
-            end
-        end
-        -- Migrate old title-based snapshot to questID-based format
-        if VeritasUI_ZoneQuestsDB.manualWatched then
-            local first = next(VeritasUI_ZoneQuestsDB.manualWatched)
-            if first and type(VeritasUI_ZoneQuestsDB.manualWatched[first]) == "table" then
-                VeritasUI_ZoneQuestsDB.manualWatched = {}
-            end
-        end
-        -- Legacy ROOT bound here so nothing in the ADDON_LOADED -> PLAYER_LOGIN
-        -- window sees a nil db (unchanged behaviour). The per-character slot is
-        -- bound at PLAYER_LOGIN -- see the TIMING note on VUI.BindCharDB.
-        db = VeritasUI_ZoneQuestsDB
+        -- Account table only: no identity yet, so cdb comes back nil. VUI.BindScopedDB
+        -- replaces the hand-rolled seeding loop that used to live here -- that loop wrote
+        -- EVERY default into the account root, which is the mechanism behind the pinning
+        -- defect this refactor fixes, so it had to go rather than sit alongside the binder.
+        -- It also deep-copies table defaults, so the local DeepCopy is no longer needed.
+        db = VUI.BindScopedDB("VeritasUI_ZoneQuestsDB", UNIVERSAL, PERCHAR)
+        -- InitializeOptions stays at PLAYER_LOGIN: Settings.RegisterAddOnSetting captures the
+        -- table it is handed, and the per-character table does not exist yet here.
         -- InitializeOptions moved to PLAYER_LOGIN: Settings.RegisterAddOnSetting
         -- captures the table it is handed, so it must receive the per-character
         -- slot, which does not exist yet here.
@@ -429,8 +434,36 @@ ef:SetScript("OnEvent", function(_, event, arg1)
     if not db then return end
 
     if event == "PLAYER_LOGIN" then
-        -- Re-bind to this character's slot, then register options against it.
-        db = VUI.BindCharDB("VeritasUI_ZoneQuestsDB", DEFAULTS)
+        -- Identity is available: bind BOTH tables. `db` is account-wide (every universal read
+        -- below is unchanged); `cdb` is this character's slot and holds manualWatched only.
+        db, cdb = VUI.BindScopedDB("VeritasUI_ZoneQuestsDB", UNIVERSAL, PERCHAR)
+
+        -- ⚠ MIGRATION MUST RUN HERE: after the char table exists, and BEFORE anything reads a
+        -- universal key. Read first and the feature acts on the pre-migration value for the
+        -- whole session. Promotes this character's stored values for the newly-universal keys
+        -- and clears the vestigial account-wide copy of manualWatched.
+        local promoted = VUI.MigrateScopedDB("VeritasUI_ZoneQuestsDB", UNIVERSAL, PERCHAR,
+                                            "__vuiScopeMigrated")
+        if promoted then
+            local names = {}
+            for k in pairs(promoted) do names[#names + 1] = k end
+            table.sort(names)
+            VUI.Print("Zone Quests", "settings now shared across characters: "
+                .. table.concat(names, ", ") .. "  (taken from this character)")
+        end
+
+        -- Old title-based snapshots migrate to questID-based. RE-POINTED at the per-character
+        -- table: it used to run at ADDON_LOADED against the account root, which is where the
+        -- key no longer lives. The root copy was migrated before any slot was ever seeded from
+        -- it, so existing slots are already clean -- this now covers the one case the old
+        -- placement never did, a slot created before the migration existed.
+        if cdb and cdb.manualWatched then
+            local first = next(cdb.manualWatched)
+            if first and type(cdb.manualWatched[first]) == "table" then
+                cdb.manualWatched = {}
+            end
+        end
+
         InitializeOptions()
         C_Timer.After(2.0, function()
             SnapshotWatched()
