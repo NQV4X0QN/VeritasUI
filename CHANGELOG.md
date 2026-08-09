@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.14.5] - 2026-08-08
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **the Delve count's placement, the item-level and map-coordinate toggles, auto-sell, auto-repair and the AFK screen are now shared by every character; repair funding stays per-character.** Twelve settings move to account scope, including all five Delve tuning values and the map readout's dragged position. Repair funding remains per character because guild membership differs and whether guild funds should be spent on repairs is a decision you may want to make differently on an alt. (`QualityOfLife.lua`)
+
+### Fixed
+
+- **A setting tuned on one character now actually reaches the others.** Previously every Quality of Life setting was stored per character, so a value confirmed on your main never applied anywhere else — and worse, once a character held its own copy, a later change to the shipped default could never reach it. That is why the digit-`1` position corrected in v1.13.4 only ever took effect on the one character it was tuned on. Verified across two characters: both now report identical insets, including a hand-nudged value that had previously existed on only one of them. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **the map coordinate readout's dragged position is carried across rather than lost.** It is the one account-wide setting with no default — an unset value means "use the default anchor" — so it could not simply be added to the defaults table, and a migration derived from that table would have discarded it silently. (`QualityOfLife.lua`)
+
+### Internal
+
+- **A precedence bug introduced during this conversion was caught by the existing vendor suite before release.** Guarding the guild-repair check produced `cdb and X or false` above an existing `and IsInGuild() and …` chain; because `and` binds tighter than `or`, that parses as `(cdb and X) or (false and …)`, short-circuiting the guild-membership checks away entirely — guild repair would have fired with no guild at all. The trap is now documented at the site.
+- **Three existing suites asserted the previous storage location and were updated deliberately rather than silenced.** One had been writing both tables "for clarity", which would have passed whichever the module read. Another's "a fresh character inherits this value" assertions were inverted, since that inheritance was the defect. Several of its value assertions had become contaminated — the nudge cases far above now write the same account table those assertions read, and one passed only because an earlier case happened to reset the value. Replaced with structural assertions no earlier write can fake, leaving shipped values verified from source
+
 ## [1.14.4] - 2026-08-08
 
 ### Changed

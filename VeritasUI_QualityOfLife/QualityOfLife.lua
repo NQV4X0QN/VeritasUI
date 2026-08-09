@@ -90,10 +90,17 @@ end
 ----------------------------------------------------------------
 --  Defaults & state
 ----------------------------------------------------------------
-local defaults = {
+-- Saved settings, split by SCOPE. Authority: references/setting-scope-map.md in the skill
+-- directory; enforced by scope_map_test and module_scope_test.
+--
+-- ⚠ ALL TWELVE of these are shared across characters. That is the point of the refactor: the
+-- Delve count's placement in particular was per-character purely as a side effect of the whole
+-- module being per-character, so a value tuned and confirmed on one character never reached any
+-- other -- and a later change to the shipped default could never reach a character that already
+-- held the key. Making them universal removes that class of defect instead of patching it.
+local UNIVERSAL = {
     autoSellJunk   = true,
     autoRepair     = true,
-    repairFunding  = "guild",   -- "guild" = Guild + Personal; "personal" = Personal Only
     showItemLevels = true,
     showMapCoords  = true,
     afkScreen      = true,
@@ -121,13 +128,42 @@ local defaults = {
     delveCheckOutset = 0,
     -- Points added to Blizzard's number font for the count. Live via /qol delvesize.
     delveFontDelta = 0,
+}
+-- ⚠ ACCOUNT-WIDE BUT DELIBERATELY UNSEEDED. `mapCoordsPos` is written only when the coordinate
+-- readout is dragged, and nil is MEANINGFUL: SetupMapCoordinates reads `if saved then ... else
+-- default anchor`, so seeding it with {} would anchor the readout at nil,nil. It therefore cannot
+-- live in UNIVERSAL, which is a defaults table and gets seeded.
+--
+-- But it MUST still be MIGRATED, or the dragged position -- a value the user actually set -- is
+-- silently lost when the key stops being per-character. That is exactly the failure an earlier
+-- version of this plan would have shipped, by deriving the migration list from the defaults table.
+local UNIVERSAL_NO_DEFAULT = { mapCoordsPos = true }
+
+-- The migration list is UNIVERSAL plus the unseeded keys, BUILT from them rather than restated, so
+-- it cannot drift from either. VUI.MigrateScopedDB only reads the KEYS of this table.
+local MIGRATE_UNIVERSAL = {}
+for k, v in pairs(UNIVERSAL)            do MIGRATE_UNIVERSAL[k] = v    end
+for k    in pairs(UNIVERSAL_NO_DEFAULT) do MIGRATE_UNIVERSAL[k] = true end
+
+-- ⚠ PER-CHARACTER -- exactly two keys, for two different reasons.
+local PERCHAR = {
+    -- A genuine per-character CHOICE: guild membership differs, and whether guild funds should be
+    -- spent on repairs is a decision you may want to make differently on an alt.
+    repairFunding  = "guild",   -- "guild" = Guild + Personal; "personal" = Personal Only
+
+    -- A technical CONSTRAINT, not a preference. Never offer this as a user-facing choice.
     -- Set while the AFK overlay has the UI hidden, cleared when it restores it.
     -- Persisted so a crash or disconnect during AFK can be recovered at the next
     -- PLAYER_LOGIN without force-restoring the UI on every ordinary login.
     afkUIDirty     = false,
 }
 
-local db
+
+local db   -- ACCOUNT-wide table
+-- ⚠ Declared here, above every reader. `cdb` is the PER-CHARACTER table (repairFunding and
+-- afkUIDirty only) and is nil until PLAYER_LOGIN: VUI.BindScopedDB deliberately does not fall
+-- back to the account root.
+local cdb  -- PER-CHARACTER table; nil before PLAYER_LOGIN
 local settingsCategoryID
 local frame = CreateFrame("Frame")
 
@@ -431,7 +467,13 @@ local function AutoRepair()
     local cost, canRepair = GetRepairAllCost()
     if not canRepair or cost == 0 then return end
 
-    local useGuild = db.repairFunding ~= "personal"
+    -- ⚠ DO NOT append `or false` to make this a strict boolean. `and` binds tighter than `or`, so
+    -- `cdb and X or false and IsInGuild() and ...` parses as `(cdb and X) or (false and ...)` --
+    -- the entire guild-membership chain is short-circuited away and guild repair fires with no
+    -- guild at all. That is exactly what happened during the v1.14.5 scope conversion, caught by
+    -- qol_vendor_test case 7. `cdb ~= nil` keeps this one flat and-chain intact.
+    local useGuild = cdb ~= nil
+        and cdb.repairFunding ~= "personal"
         and IsInGuild()
         and CanGuildBankRepair()
         -- Case-insensitive, whitespace-tolerant `[noautorepair]` match.
@@ -1540,7 +1582,7 @@ local function AFK_Enter()
 
     -- Mark the UI as ours-and-hidden so a crash while AFK can be recovered at
     -- the next login. AFK_Exit clears it, so a clean exit leaves nothing to undo.
-    db.afkUIDirty = true
+    if cdb then cdb.afkUIDirty = true end
 
     -- Refresh info and show
     AFK_RefreshInfo()
@@ -1582,7 +1624,7 @@ local function AFK_Exit()
             MinimapCluster:Show()
         end
     end
-    if db then db.afkUIDirty = false end
+    if cdb then cdb.afkUIDirty = false end
 
     -- Hide overlay
     if afkOverlay then afkOverlay:Hide() end
@@ -2447,7 +2489,7 @@ local function InitializeOptions()
     local function AddCheckbox(key, name, tip, onChange)
         local setting = Settings.RegisterAddOnSetting(
             category, ADDON_NAME .. "_" .. key, key,
-            db, type(defaults[key]), name, defaults[key])   -- per-character SLOT
+            db, type(UNIVERSAL[key]), name, UNIVERSAL[key])   -- ACCOUNT table: every
         setting:SetValueChangedCallback(function(_, value)
             -- Live variant: every QoL toggle applies mid-session (v1.6.28
             -- pattern) — the old PrintOnOff instructed a needless /reload.
@@ -2507,10 +2549,13 @@ local function InitializeOptions()
         category,
         ADDON_NAME .. "_repairFunding",
         "repairFunding",
-        db,                                -- per-character SLOT (see VUI.BindCharDB)
-        type(defaults.repairFunding),
+        -- ⚠ The ONLY per-character Settings control in this module. Every other setting here
+        -- goes through AddCheckbox, which correctly targets the ACCOUNT table -- so unlike
+        -- CleanSolo there is no mixed loop, just this one registration that must not use `db`.
+        cdb,
+        type(PERCHAR.repairFunding),
         "Repair Funding",
-        defaults.repairFunding
+        PERCHAR.repairFunding
     )
     repairSetting:SetValueChangedCallback(function(_, value)
         local label = value == "guild" and "Guild + Personal" or "Personal Only"
@@ -2558,24 +2603,40 @@ frame:RegisterEvent("PLAYER_STARTED_MOVING")
 frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 ~= ADDON_NAME then return end
-        VeritasUI_QualityOfLifeDB = VeritasUI_QualityOfLifeDB or {}
-        for k, v in pairs(defaults) do
-            if VeritasUI_QualityOfLifeDB[k] == nil then
-                VeritasUI_QualityOfLifeDB[k] = v
-            end
-        end
-        -- Legacy ROOT bound here so nothing in the ADDON_LOADED -> PLAYER_LOGIN
-        -- window sees a nil db (unchanged behaviour). The per-character slot is
-        -- bound at PLAYER_LOGIN -- see the TIMING note on VUI.BindCharDB.
-        db = VeritasUI_QualityOfLifeDB
+        -- Account table only: no identity yet, so cdb comes back nil. VUI.BindScopedDB replaces
+        -- the hand-rolled seeding loop that used to live here -- that loop wrote EVERY default
+        -- into the account root, which is the mechanism behind the pinning defect (audit D8), so
+        -- it had to go rather than sit alongside the binder. It also deep-copies, where this loop
+        -- assigned table defaults by reference.
+        db = VUI.BindScopedDB("VeritasUI_QualityOfLifeDB", UNIVERSAL, PERCHAR)
         -- InitializeOptions moved to PLAYER_LOGIN: Settings.RegisterAddOnSetting
         -- captures the table it is handed, so it must receive the per-character
         -- slot, which does not exist yet here.
         self:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
-        -- Re-bind to this character's slot, then register options against it.
-        db = VUI.BindCharDB("VeritasUI_QualityOfLifeDB", defaults)
+        -- Identity is available: bind BOTH tables. `db` is account-wide, so all twelve universal
+        -- read sites below are unchanged; `cdb` holds repairFunding and afkUIDirty.
+        db, cdb = VUI.BindScopedDB("VeritasUI_QualityOfLifeDB", UNIVERSAL, PERCHAR)
+
+        -- ⚠ MUST run before any universal read below, or every feature acts on the pre-migration
+        -- value for the whole session. Note MIGRATE_UNIVERSAL, not UNIVERSAL: mapCoordsPos has no
+        -- default and so is absent from UNIVERSAL, but the dragged position must still be carried
+        -- across or it is silently lost.
+        --
+        -- THIS IS WHERE AUDIT FINDING D8 DISSOLVES. The Delve placement keys stop being
+        -- per-character at all, so nothing can pin a stale copy of a shipped default ever again --
+        -- and the digit-1 value confirmed in game at v1.13.4 finally reaches every character
+        -- instead of only the one it was tuned on.
+        local promoted = VUI.MigrateScopedDB("VeritasUI_QualityOfLifeDB", MIGRATE_UNIVERSAL,
+                                             PERCHAR, "__vuiScopeMigrated")
+        if promoted then
+            local names = {}
+            for k in pairs(promoted) do names[#names + 1] = k end
+            table.sort(names)
+            VUI.Print("Quality of Life", "settings now shared across characters: "
+                .. table.concat(names, ", ") .. "  (taken from this character)")
+        end
         -- Drop every superseded Delve key. Each measured the count's position from an
         -- origin that no longer exists -- delveCountOffsetY from the icon's bottom edge,
         -- then delveCountCenterY/X from its centre. delveCountCenterX1 was the centred design's
@@ -2598,10 +2659,10 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- MinimapCluster:Show() is not — running it on every login un-hid a
         -- minimap that another addon or an Edit Mode layout had deliberately
         -- hidden, which is precisely what AFK_Exit goes out of its way to avoid.
-        if db.afkUIDirty then
+        if cdb and cdb.afkUIDirty then
             UIParent:SetAlpha(1)
             if MinimapCluster then MinimapCluster:Show() end
-            db.afkUIDirty = false
+            cdb.afkUIDirty = false
         end
 
         if db.showItemLevels then SetupItemLevels()     end
