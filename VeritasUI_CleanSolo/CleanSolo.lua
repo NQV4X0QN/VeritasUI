@@ -63,21 +63,43 @@ end
 ----------------------------------------------------------------
 --  Defaults & state
 ----------------------------------------------------------------
-local defaults = {
+-- Saved settings, split by SCOPE. Authority: references/setting-scope-map.md in the skill
+-- directory; enforced by scope_map_test and module_scope_test.
+--
+-- Shared by every character: chrome-hiding and chat cosmetics are choices about the interface
+-- itself, not about how a particular character is played.
+local UNIVERSAL = {
     fadeChatTabs        = true,
     transparentChatBG   = true,
     hideSocialButton    = true,
     hideChatButtons     = true,
     hideVoiceChatButton = true,
     fadeMicroMenu       = true,
-    fadePlayerFrame     = true,
     hideBagButtons      = true,
     hideMacroNames      = true,
     hideErrorText       = true,
-    fadeActionBars      = {},
 }
 
+-- ⚠ PER-CHARACTER. These two are the reason per-character storage was requested in the first
+-- place: action bars are laid out and used differently from character to character, so an alt
+-- inheriting a main's bar-fade choices was the original complaint.
+--
+-- PAIRED CONSTRAINT: fadeActionBarsLabel is the composite display string for the dropdown
+-- ("Bars 2, 5") and is recomputed from fadeActionBars. It MUST share that key's scope, or the
+-- label shown in the panel would describe a different character's bars. It has no default here
+-- on purpose -- Blizzard's Settings framework seeds it via the "None" default passed at
+-- registration, which is why it never appeared in a defaults table and why the scope audit
+-- missed it on the first pass.
+local PERCHAR = {
+    fadeActionBars  = {},     -- [barIndex] = true; TABLE-typed, so it needs a per-character copy
+    fadePlayerFrame = true,
+}
+
+
 local db
+-- ⚠ Declared here, above every reader. `cdb` is the PER-CHARACTER table and is nil until
+-- PLAYER_LOGIN: VUI.BindScopedDB deliberately does not fall back to the account root.
+local cdb = nil
 local settingsCategoryID
 local frame = CreateFrame("Frame")
 
@@ -442,7 +464,7 @@ local function SetupActionBarFading()
     local fadeOuts = {}
     local refreshers = {}
     for i = 2, 8 do
-        if db.fadeActionBars[i] then
+        if cdb.fadeActionBars[i] then
             local barFrame = _G[ACTION_BAR_FRAMES[i]]
             if barFrame then
                 local fo, rc = VUI.HookHoverFade(barFrame, IsEditModeActive)
@@ -503,15 +525,25 @@ local function InitializeOptions()
              .. "Requires |cFFFFFF00/reload|r to apply." },
     }
 
+    -- ⚠ THIS LOOP IS MIXED-SCOPE. Nine of these ten keys are account-wide and one
+    -- (fadePlayerFrame) is per-character, so the table handed to Settings AND the table the
+    -- default is read from must both be resolved PER KEY. Passing one table for all ten -- which
+    -- is what this did before v1.14.4 -- would store fadePlayerFrame at account scope, and the
+    -- panel would then read and write a value the runtime code never looks at. Blizzard captures
+    -- the table by reference (Blizzard_Setting.lua:420), so getting this wrong stays invisible
+    -- until a setting fails to persist or leaks across characters.
     for _, opt in ipairs(options) do
+        local perChar  = PERCHAR[opt.key] ~= nil
+        local owner    = perChar and cdb or db
+        local defTable = perChar and PERCHAR or UNIVERSAL
         local setting = Settings.RegisterAddOnSetting(
             category,
             ADDON_NAME .. "_" .. opt.key,
             opt.key,
-            db,                      -- the per-character SLOT (see VUI.BindCharDB)
-            type(defaults[opt.key]),
+            owner,
+            type(defTable[opt.key]),
             opt.name,
-            defaults[opt.key]
+            defTable[opt.key]
         )
         setting:SetValueChangedCallback(function(_, value)
             VUI.PrintOnOff("Clean Solo", opt.name, value)
@@ -528,12 +560,12 @@ local function InitializeOptions()
     -- a bar, then the value is reset to a composite display label
     -- ("Bars 2, 5") via a re-entry-guarded SetValue.
     do
-        db.fadeActionBars[1] = nil  -- Bar 1 is Blizzard-protected
+        cdb.fadeActionBars[1] = nil  -- Bar 1 is Blizzard-protected
         local bars = {}
         for i = 2, 8 do
-            if db.fadeActionBars[i] then bars[#bars + 1] = tostring(i) end
+            if cdb.fadeActionBars[i] then bars[#bars + 1] = tostring(i) end
         end
-        db.fadeActionBarsLabel = #bars > 0
+        cdb.fadeActionBarsLabel = #bars > 0
             and ((#bars == 1 and "Bar " or "Bars ") .. table.concat(bars, ", ")) or "None"
     end
 
@@ -541,7 +573,7 @@ local function InitializeOptions()
         category,
         ADDON_NAME .. "_fadeActionBars",
         "fadeActionBarsLabel",
-        db,                          -- the per-character SLOT (see VUI.BindCharDB)
+        cdb,                         -- PER-CHARACTER: paired with fadeActionBars
         "string",
         "Fade Action Bars",
         "None"
@@ -552,10 +584,10 @@ local function InitializeOptions()
     local function GetBarOptions()
         local container = Settings.CreateControlTextContainer()
         -- Current composite label as the "selected" display option.
-        container:Add(db.fadeActionBarsLabel, db.fadeActionBarsLabel)
+        container:Add(cdb.fadeActionBarsLabel, cdb.fadeActionBarsLabel)
         -- Individual bar toggle actions.
         for i = 2, 8 do
-            local label = db.fadeActionBars[i]
+            local label = cdb.fadeActionBars[i]
                 and ("|cFF00FF00" .. ACTION_BAR_LABELS[i] .. "|r")
                 or ACTION_BAR_LABELS[i]
             container:Add("toggle:" .. i, label)
@@ -567,20 +599,20 @@ local function InitializeOptions()
         if ignoreFadeCallback or type(val) ~= "string" then return end
         local barNum = tonumber(val:match("^toggle:(%d+)$") or "")
         if barNum and barNum >= 2 and barNum <= 8 then
-            db.fadeActionBars[barNum] = not db.fadeActionBars[barNum] or nil
+            cdb.fadeActionBars[barNum] = not cdb.fadeActionBars[barNum] or nil
             VUI.Print("Clean Solo", ACTION_BAR_LABELS[barNum] .. " fade "
-                .. (db.fadeActionBars[barNum] and "enabled" or "disabled")
+                .. (cdb.fadeActionBars[barNum] and "enabled" or "disabled")
                 .. " — |cFFFFFF00/reload|r to apply.")
         end
         -- Recompute display label and reset value.
         local b = {}
         for i = 2, 8 do
-            if db.fadeActionBars[i] then b[#b + 1] = tostring(i) end
+            if cdb.fadeActionBars[i] then b[#b + 1] = tostring(i) end
         end
-        db.fadeActionBarsLabel = #b > 0
+        cdb.fadeActionBarsLabel = #b > 0
             and ((#b == 1 and "Bar " or "Bars ") .. table.concat(b, ", ")) or "None"
         ignoreFadeCallback = true
-        pcall(fadeSetting.SetValue, fadeSetting, db.fadeActionBarsLabel)
+        pcall(fadeSetting.SetValue, fadeSetting, cdb.fadeActionBarsLabel)
         ignoreFadeCallback = false
     end)
 
@@ -601,32 +633,13 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 ~= ADDON_NAME then return end
-        VeritasUI_CleanSoloDB = VeritasUI_CleanSoloDB or {}
-        -- Deep-copy table defaults to avoid sharing references with the
-        -- defaults constant (mutating db.<table>.<key> would otherwise
-        -- mutate defaults.<table>.<key> at runtime — silent table
-        -- aliasing across saved-vars and the constant).  Currently safe
-        -- because fadeActionBars is a flat table, but future nested
-        -- defaults need the recursive pattern to be correct.  Mirrors
-        -- ZoneQuests' own DeepCopy in its ADDON_LOADED handler.  See Known
-        -- Landmines in SKILL.md.
-        local function DeepCopy(t)
-            local c = {}
-            for k, v in pairs(t) do
-                c[k] = (type(v) == "table") and DeepCopy(v) or v
-            end
-            return c
-        end
-        for k, v in pairs(defaults) do
-            if VeritasUI_CleanSoloDB[k] == nil then
-                VeritasUI_CleanSoloDB[k] = (type(v) == "table") and DeepCopy(v) or v
-            end
-        end
-        -- Bind the legacy ROOT here so nothing in the ADDON_LOADED -> PLAYER_LOGIN
-        -- window sees a nil db (today's behaviour, unchanged). The real
-        -- per-character slot is bound at PLAYER_LOGIN, once UnitName("player") is
-        -- reliably available -- see the TIMING note on VUI.BindCharDB.
-        db = VeritasUI_CleanSoloDB
+        -- Account table only: no identity yet, so cdb comes back nil. VUI.BindScopedDB replaces
+        -- the hand-rolled seeding loop AND the local DeepCopy that used to live here -- that loop
+        -- wrote EVERY default into the account root, which is the mechanism behind the pinning
+        -- defect this refactor removes, so it had to go rather than sit alongside the binder. The
+        -- binder deep-copies, which its own comment said the shallow version would eventually
+        -- need for a nested default.
+        db = VUI.BindScopedDB("VeritasUI_CleanSoloDB", UNIVERSAL, PERCHAR)
         -- InitializeOptions deliberately does NOT run here any more:
         -- Settings.RegisterAddOnSetting captures the TABLE it is given, so it must
         -- receive the per-character slot, which does not exist until PLAYER_LOGIN.
@@ -635,10 +648,26 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         self:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
-        -- Re-bind to this character's slot now that the identity is available, then
-        -- register the options panel against that slot. Order matters: every read
-        -- below and every Settings control must see the same table.
-        db = VUI.BindCharDB("VeritasUI_CleanSoloDB", defaults)
+        -- Identity is available: bind BOTH tables, then register the options panel.
+        -- ⚠ The old note here said "every read below and every Settings control must see the same
+        -- table". That was true only while the whole module was per-character. The invariant now
+        -- holds PER KEY: each read and each Settings registration must see the table that OWNS
+        -- that key -- `db` for account-wide, `cdb` for the three per-character ones.
+        db, cdb = VUI.BindScopedDB("VeritasUI_CleanSoloDB", UNIVERSAL, PERCHAR)
+
+        -- ⚠ MUST run here: after the per-character table exists, and BEFORE anything reads a
+        -- universal key below. Read first and every feature acts on the pre-migration value for
+        -- the whole session.
+        local promoted = VUI.MigrateScopedDB("VeritasUI_CleanSoloDB", UNIVERSAL, PERCHAR,
+                                             "__vuiScopeMigrated")
+        if promoted then
+            local names = {}
+            for k in pairs(promoted) do names[#names + 1] = k end
+            table.sort(names)
+            VUI.Print("Clean Solo", "settings now shared across characters: "
+                .. table.concat(names, ", ") .. "  (taken from this character)")
+        end
+
         InitializeOptions()
         if db.hideSocialButton    then HideSocialButton()    end
         if db.fadeChatTabs        then SetupChatTabFading()  end
@@ -646,7 +675,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.hideChatButtons     then HideChatButtons()     end
         if db.hideVoiceChatButton then HideVoiceChatButton() end
         if db.fadeMicroMenu       then SetupMicroMenuFade()  end
-        if db.fadePlayerFrame     then SetupPlayerFrameFade() end
+        if cdb.fadePlayerFrame    then SetupPlayerFrameFade() end
         if db.hideBagButtons      then HideBagButtons()      end
         if db.hideMacroNames      then HideMacroNames()      end
         if db.hideErrorText       then HideErrorText()       end

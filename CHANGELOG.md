@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.14.4] - 2026-08-08
+
+### Changed
+
+- `VeritasUI_CleanSolo` — **chrome and chat settings are now shared by every character, while action-bar fading and player-frame fading stay per-character.** This is the module that prompted per-character storage in the first place: alts inheriting a main's bar-fade choices was the original complaint, and the fix at the time made *everything* per-character, including nine settings that are really about the interface itself. The nine — chat tab fading, transparent chat background, the four button-hiding toggles, micro-menu fading, macro names and error text — are now set once for the account. Action-bar fading, its display label and player-frame fading remain per character. (`CleanSolo.lua`)
+
+### Internal
+
+- **The settings panel builds all ten checkboxes from a single loop, and one of the ten is per-character.** Both the table handed to Blizzard's Settings framework and the table each default is read from are now resolved per key. This is the failure mode that would have been quietest: Blizzard captures the table by reference, so passing one table for all ten would have stored player-frame fading at account scope while the runtime code read the character's — invisible until a value failed to persist or leaked between characters. The test now asserts the exact nine-account/two-character split rather than trusting it.
+- **The action-bar fade dropdown registers under a paired key** (`fadeActionBarsLabel`, the composite "Bars 2, 5" string recomputed from the bar list), which must share its partner's scope or the panel would describe a different character's bars.
+- **Table defaults are deep-copied.** `fadeActionBars` is table-typed, and the hand-rolled loop this replaces used a shallow copy whose own comment warned it would alias a nested default into saved storage.
+- **A comment asserting a now-false invariant was rewritten.** It read "every read below and every Settings control must see the same table", which was true only while the whole module was per-character; the invariant now holds per key, and leaving the sentence would have misled the next change
+
 ## [1.14.3] - 2026-08-08
 
 ### Fixed
