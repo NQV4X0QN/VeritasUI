@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.14.3] - 2026-08-08
+
+### Fixed
+
+- `VeritasUI_AdvancedOptions` — **collapsing a category on the Featured tab hid the category below it.** Expanding again left several checkboxes missing until a different category was collapsed, which then broke the one after that. Controls and headers are created once and cached, then reparented into whichever scroll-list frame the layout assigns; the record of "this frame is showing that control" was written only on the incoming frame, with nothing mapping a control back to the frame currently displaying it. A collapse rebuilds the list and reassigns elements, leaving the old frame holding a stale pointer — and the next time that frame was reused for anything, it hid a control a different frame was legitimately showing. Ownership is now recorded on the control itself and only the owning frame may release it. Headers were affected identically, which is why a whole category title could vanish rather than just its contents. (`Featured.lua`)
+- `VeritasUI_AdvancedOptions` — **collapsing or expanding anything near the bottom of the Featured tab jumped the view back to the top**, so you had to scroll all the way down again to expand what you had just collapsed. Rebuilding the list scrolls to the beginning unless it is explicitly told to retain position. Safe when the list shrinks: Blizzard's scroll box captures the offset before recalculating and corrects it afterwards, precisely so that contents are not displaced by additions or removals. (`Featured.lua`)
+
+### Internal
+
+- **`Featured.lua` now has coverage — 674 lines that had none.** `ao_featured_test` captures the real element initializer from the view and drives it through the frame-reuse sequence a collapse produces. 28 assertions; three failed before the fix. Mutation-verified against six: removing the ownership guard, dropping either ownership write, the tempting "never detach" over-fix, and dropping the scroll-retention flag.
+- **Two mutations initially survived, and one was instructive.** Deleting the *header* ownership write made the header case pass by accident — with ownership never recorded the guard can never fire, so nothing is hidden and the test looks satisfied, while the real cost would have been headers never released at all. Found only by mutating each write separately rather than the fix as a whole. A mock defect surfaced too: parent was stored under a name the mock's catch-all metatable turns into a stub function, so an "is it unparented?" assertion could never be true
+
 ## [1.14.2] - 2026-08-08
 
 ### Changed

@@ -460,7 +460,21 @@ function AO:BuildFeaturedContent(parent)
         for _, elem in ipairs(BuildDataList()) do
             dp:Insert(elem)
         end
-        scrollBox:SetDataProvider(dp)
+        -- retainScrollPosition = true. Without it, ScrollBoxListMixin:SetDataProvider calls
+        -- ScrollToBegin (ScrollBox.lua:711-713), so collapsing or expanding ANY category threw
+        -- you back to the top of the list -- worst near the bottom, where you then had to scroll
+        -- all the way down again to expand what you had just collapsed.
+        --
+        -- Safe when the list SHRINKS, which is what a collapse does: FullUpdateInternal
+        -- (ScrollBox.lua:154-184) captures the offset before recalculating extents and corrects
+        -- the position afterwards "so that the contents do not appear displaced as result of
+        -- additions or removals in the data provider", falling back to ScrollToBegin only when
+        -- the scroll range collapses to zero. So retaining does not leave the view past the end.
+        --
+        -- Only two callers reach here: the header OnClick (where retaining is the point) and the
+        -- one-time initial populate (where there is no position to retain). Tab switches never
+        -- rebuild the provider at all -- OnShow is wired to RefreshValues, values only.
+        scrollBox:SetDataProvider(dp, true)
     end
 
     -- ── Refresh values only — no relayout ────────────────────
@@ -501,13 +515,34 @@ function AO:BuildFeaturedContent(parent)
 
     -- Element initializer — creates or retrieves cached UI, reparents
     view:SetElementInitializer("Frame", function(frame, elementData)
-        -- Detach any previously-attached cached child from this pool frame
-        if frame._attached then
+        -- Detach the cached child this pool frame is displaying -- but ONLY if it still owns it.
+        --
+        -- ⚠ THE OWNERSHIP GUARD IS LOAD-BEARING (v1.14.3). Controls and headers are created once
+        -- and cached, then reparented into whichever pool frame the ScrollBox assigns on each
+        -- layout pass. `_attached` used to be the only record of that, and it is written on the
+        -- INCOMING frame only -- nothing mapped a cached control back to the frame currently
+        -- showing it. So a collapse, which rebuilds the DataProvider and reassigns elements to
+        -- different pool frames, left the OLD frame holding a stale `_attached` pointer. The next
+        -- time that old frame was recycled for any other element, this block ran
+        -- ClearAllPoints/SetParent(nil)/Hide() on a control a DIFFERENT frame was legitimately
+        -- displaying.
+        --
+        -- Observable before the fix: collapse Nameplates and Combat Text vanishes; expand
+        -- Nameplates and several Combat Text checkboxes are still missing until Combat Text is
+        -- itself collapsed, which then breaks the category below it. Headers are affected too
+        -- (see the `_owner` write on h.btn), which is why a whole title could disappear.
+        --
+        -- `_owner` lives on the CHILD and always names the frame that last attached it, so the
+        -- test below is "am I still the owner?". Do NOT weaken this to "never detach": a frame
+        -- that genuinely still owns its child MUST release it, or controls leak across rows.
+        -- ao_featured_test case 4 covers that direction specifically.
+        if frame._attached and frame._attached._owner == frame then
             frame._attached:ClearAllPoints()
             frame._attached:SetParent(nil)
             frame._attached:Hide()
-            frame._attached = nil
+            frame._attached._owner = nil
         end
+        frame._attached = nil
         -- Hide leftover textures from header reuse
         if frame._divider then frame._divider:Hide() end
 
@@ -581,6 +616,7 @@ function AO:BuildFeaturedContent(parent)
             frame._divider:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD_X, 1)
             frame._divider:Show()
 
+            h.btn._owner    = frame
             frame._attached = h.btn
 
         elseif elementData.type == "control" then
@@ -624,6 +660,9 @@ function AO:BuildFeaturedContent(parent)
                 ctrl:SetPoint("TOPLEFT",  frame, "TOPLEFT",  PAD_X, 0)
                 ctrl:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD_X, 0)
                 ctrl:Show()
+                -- Ownership must be recorded on BOTH attach paths. Recording it only for headers
+                -- would leave every control still vulnerable to the stale-pointer detach above.
+                ctrl._owner     = frame
                 frame._attached = ctrl
             end
         end
