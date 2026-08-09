@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.14.2] - 2026-08-08
+
+### Changed
+
+- `VeritasUI_AdvancedOptions` — **starred CVars, collapsed sections and the last active tab are now shared by every character; the CVar value cache stays per-character.** Those three are preferences about the browser itself, so keeping a separate copy per alt served no purpose. The cache stays per-character because WoW's own CVars are a mix of account- and character-scoped, making one character's last-known-good value unsafe to apply to another. (`Core.lua`)
+
+### Fixed
+
+- `VeritasUI_AdvancedOptions` — **the per-character CVar cache was being written into account-wide storage at load time.** `AO:InitDB()` runs twice, at `ADDON_LOADED` and again at `PLAYER_LOGIN`, and the old binder returned the account-wide table as a stand-in on the first call — so the cache was seeded and version-stamped account-wide before the addon knew which character it was. All per-character work now waits for the second call. (`Core.lua`)
+- `VeritasUI_AdvancedOptions` — **`cacheVersion` was an undeclared saved key.** It records which addon version the CVar cache was built for, and it had never appeared in a defaults table — which is how it escaped the first pass of the scope audit. It is now declared, and pinned to the same scope as the cache it invalidates: split across scopes, the first character to log in after an upgrade would stamp the new version and every other character's stale cache would never be cleared again. (`Core.lua`)
+
+### Internal
+
+- **Table defaults are now deep-copied rather than shallow-copied.** The loop this replaces carried a comment warning that a nested default would be aliased into saved storage; the shared binder copies recursively, so that hazard is gone rather than documented.
+- **Two mutations survived the test suite before it was strengthened, and both gaps were in the tests rather than the code.** The suite modelled only a *fresh* account, where the pinning and pairing defects cannot exist — a legacy-data scenario now pre-populates both scopes in the account table and in two character slots, as a pre-refactor account actually looks. And event-handler errors were being discarded by `pcall`, hiding the crash caused by removing the "no identity yet" guard; they are now collected and asserted. Fixture values are unique empty tables compared by identity, after a sentinel string broke a module whose real value is genuinely a table.
+- **`scope_map_test` was scanning 2 of AdvancedOptions' 5 files.** Those three contain no saved keys today, so the gap was harmless in fact, but a new one added there would have been invisible to every assertion in the suite
+
 ## [1.14.1] - 2026-08-08
 
 ### Changed

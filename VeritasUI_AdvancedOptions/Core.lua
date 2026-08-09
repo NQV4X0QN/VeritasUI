@@ -34,49 +34,77 @@ AO.SB_INSET = 16        -- MinimalScrollBar width + gap; both scroll tabs must m
 --  handles that.  We persist UI-side state: collapsed categories,
 --  favourited CVars in the browser, and the last active tab.
 ----------------------------------------------------------------
-local defaults = {
+-- Saved state, split by SCOPE. Authority: references/setting-scope-map.md in the skill
+-- directory; enforced by scope_map_test and module_scope_test.
+--
+-- Shared by every character: these are all UI-side preferences about the browser itself.
+local UNIVERSAL = {
     collapsed  = {},          -- [categoryKey] = true/false
     favorites  = {},          -- [cvarName]    = true
     lastTab    = 1,           -- 1 = Featured, 2 = All CVars
-    cvarCache  = {},          -- [cvarName]    = last-known-good string value
+}
+
+-- ⚠ PER-CHARACTER, and a PAIRED CONSTRAINT: cvarCache and cacheVersion must ALWAYS share a
+-- scope. cacheVersion invalidates cvarCache on addon upgrade; if it were account-wide while the
+-- cache is per-character, the FIRST character to log in after an upgrade would stamp the new
+-- version and every other character's stale cache would never be invalidated again. That is a
+-- defect this refactor would CREATE, not one it inherits.
+--
+-- The cache is per-character because WoW's own CVars are a mix of account- and character-scoped,
+-- so one character's last-known-good value is not safe to apply to another.
+local PERCHAR = {
+    cvarCache    = {},        -- [cvarName] = last-known-good string value
                               -- Fallback for CVars registered by Blizzard LoD
                               -- subsystems (Blizzard_NamePlates, Blizzard_CombatText)
                               -- that aren't in the registry at PLAYER_LOGIN.
+    cacheVersion = 0,         -- AO.VERSION the cache was last built for. Previously UNDECLARED,
+                              -- which is how the scope map missed it on the first pass: it is a
+                              -- live saved key that never appeared in a defaults table.
 }
 
-local db
+local db     -- ACCOUNT-wide table (collapsed/favorites/lastTab). Also exposed as AO.db.
+-- ⚠ Declared here, above every reader. `cdb` is the PER-CHARACTER table and is nil until
+-- PLAYER_LOGIN, because VUI.BindScopedDB deliberately does NOT fall back to the account root.
+local cdb    -- PER-CHARACTER table (cvarCache/cacheVersion); nil before PLAYER_LOGIN
 
+-- Called TWICE: at ADDON_LOADED and again at PLAYER_LOGIN. That double call is why this module
+-- was the awkward one to convert.
+--
+-- Under VUI.BindCharDB the first call returned the account ROOT as a stand-in for the character
+-- slot, so all of this ran twice against two different tables -- which meant the per-character
+-- CVar cache was seeded and version-stamped into ACCOUNT-wide storage at load time.
+-- VUI.BindScopedDB deliberately returns nil for the character table instead, so everything
+-- per-character now happens only on the second call. Do not "simplify" the early return away.
+--
+-- The hand-rolled seeding loop that used to live here is gone: BindScopedDB seeds both scopes
+-- and DEEP-copies table defaults, which is strictly better than the shallow copy it replaced
+-- (that copy's own comment warned it would alias a nested default).
 function AO:InitDB()
-    VeritasUI_AdvancedOptionsDB = VeritasUI_AdvancedOptionsDB or {}
-    -- Called twice: at ADDON_LOADED (binds the legacy root, so nothing sees a nil
-    -- db) and again at PLAYER_LOGIN (binds this character's slot, once
-    -- UnitName("player") is reliably available). BindCharDB returns the root when
-    -- the key is unresolvable, so the first call is a no-op equivalent to the old
-    -- behaviour and the second lands on the slot. Idempotent by design.
-    db = VUI.BindCharDB("VeritasUI_AdvancedOptionsDB", defaults)
-    for k, v in pairs(defaults) do
-        if db[k] == nil then
-            -- Shallow-copy table defaults so the shared `defaults` table above is
-            -- never aliased into the saved DB (v1.3.21). One level is enough because
-            -- every table default is flat and empty, which also means the inner loop
-            -- runs zero times on a fresh DB. Adding a NESTED default (windowPos =
-            -- { x = 0 }, per-category collapse sub-tables) would alias that inner
-            -- table and let saved settings mutate `defaults` for the session — that
-            -- case needs a genuinely recursive copy, which this loop is NOT.
-            if type(v) == "table" then
-                db[k] = {}
-                for sk, sv in pairs(v) do db[k][sk] = sv end
-            else
-                db[k] = v
-            end
-        end
+    db, cdb = VUI.BindScopedDB("VeritasUI_AdvancedOptionsDB", UNIVERSAL, PERCHAR)
+    AO.db = db      -- public surface; Settings.lua reads AO.db.lastTab, a universal key
+
+    if not cdb then return end   -- ADDON_LOADED pass: no identity, so no per-character work
+
+    -- MUST run here: after the character table exists, and before anything reads a universal
+    -- key. Promotes this character's collapsed/favorites/lastTab to account scope and drops the
+    -- vestigial account-wide copies of the CVar cache.
+    local promoted = VUI.MigrateScopedDB("VeritasUI_AdvancedOptionsDB", UNIVERSAL, PERCHAR,
+                                         "__vuiScopeMigrated")
+    if promoted then
+        local names = {}
+        for k in pairs(promoted) do names[#names + 1] = k end
+        table.sort(names)
+        VUI.Print("Advanced Options", "settings now shared across characters: "
+            .. table.concat(names, ", ") .. "  (taken from this character)")
     end
-    -- Clear CVar value cache on version change to evict entries from renamed/removed CVars.
-    if db.cacheVersion ~= AO.VERSION then
-        db.cvarCache    = {}
-        db.cacheVersion = AO.VERSION
+
+    -- Clear the CVar cache on version change to evict entries from renamed/removed CVars.
+    -- Reads and writes cdb: both keys are per-character, and splitting them would break
+    -- invalidation for every character but the first to log in after an upgrade.
+    if cdb.cacheVersion ~= AO.VERSION then
+        cdb.cvarCache    = {}
+        cdb.cacheVersion = AO.VERSION
     end
-    AO.db = db
 end
 
 ----------------------------------------------------------------
@@ -90,7 +118,7 @@ function AO:GetCVar(name)
     local ok, val = pcall(C_CVar.GetCVar, name)
     if ok and val ~= nil then
         -- Live value available — update the cache.
-        if db then db.cvarCache[name] = val end
+        if cdb then cdb.cvarCache[name] = val end
         return val
     end
     -- CVar not (yet) in the registry — return cached value if we have one.
@@ -98,7 +126,7 @@ function AO:GetCVar(name)
     -- of cvarCache stores a string — this function's own read above, and SetCVar's
     -- three writes, whose callers pass "1"/"0", tostring(value), a dropdown's string
     -- option, or an edit box's text. Even "" is truthy in Lua.
-    return db and db.cvarCache[name] or nil
+    return cdb and cdb.cvarCache[name] or nil
 end
 
 --- Read a CVar as a boolean. Returns true/false or nil on failure.
@@ -134,7 +162,7 @@ function AO:SetCVar(name, value)
         VUI.CombatQueue.Add(function()
             local ok, err = pcall(C_CVar.SetCVar, name, value)
             if ok then
-                if db then db.cvarCache[name] = value end
+                if cdb then cdb.cvarCache[name] = value end
             else
                 VUI.Print("Advanced Options",
                     format("|cFFFF4444Failed to set %s:|r %s", name, tostring(err)))
@@ -142,7 +170,7 @@ function AO:SetCVar(name, value)
         end)
         -- Optimistically cache even for deferred writes so the UI
         -- reflects the pending value immediately.
-        if db then db.cvarCache[name] = value end
+        if cdb then cdb.cvarCache[name] = value end
         VUI.Print("Advanced Options",
             format("|cFFFFFF00%s|r will be set after combat.", name))
         return false
@@ -153,7 +181,7 @@ function AO:SetCVar(name, value)
             format("|cFFFF4444Failed to set %s:|r %s", name, tostring(err)))
         return false
     end
-    if db then db.cvarCache[name] = value end
+    if cdb then cdb.cvarCache[name] = value end
     return true
 end
 
