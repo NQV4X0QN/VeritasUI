@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.14.7] - 2026-08-11
+
+### Changed
+
+- **Interface bumped to `120100` for WoW patch 12.1.0 (Curse of Ula'tek).** All seven module TOCs updated so the suite is not flagged out of date on the 12.1 client — no code changes. The interface number follows Blizzard's `MMmmpp` scheme, confirmed against this machine's `12.0.7` → `120007`. (all `.toc` files)
+
 ## [1.14.6] - 2026-08-08
 
 ### Fixed
