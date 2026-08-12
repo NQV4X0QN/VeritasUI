@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.14.9] - 2026-08-11
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **the "Cursor:" label now hides with its numbers when the pointer leaves the map, instead of lingering as `Cursor: —`.** Both parts of the readout appear together only while the pointer is over the map canvas, matching the behaviour of the native 12.1 map coordinates. `Player: …` owns the left edge, so it neither shifts nor jitters as the cursor half comes and goes. The label is still shown as `Cursor: —` in the narrower case where the pointer *is* over the canvas but no position can be read — that is a distinct state from being off the map and collapsing both to blank would have concealed it. (`QualityOfLife.lua`)
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **the readout's invisible drag target no longer reserves the 12px inter-column gap while the cursor half is empty.** Left as-is, unlocking the readout to reposition it would leave a dead strip to the right of `Player: …` for the whole time the pointer was off the map. (`QualityOfLife.lua`)
+
 ## [1.14.8] - 2026-08-11
 
 ### Fixed

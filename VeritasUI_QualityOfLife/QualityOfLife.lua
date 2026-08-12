@@ -1107,20 +1107,28 @@ local function SetupMapCoordinates()
         playerText:SetText("Player: —")
 
         -- Cursor coords (light gray) — right of player, separated by a gap.
+        -- Starts EMPTY, not at a "Cursor: —" placeholder: the label and the
+        -- numbers appear together only while the pointer is over the map
+        -- canvas, and vanish together when it leaves (matching the behaviour
+        -- of Blizzard's own 12.1 map readout). Anchoring is unaffected by the
+        -- empty state — playerText owns the left edge, so nothing shifts.
         local mouseText = anchor:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         mouseText:SetPoint("LEFT", playerText, "RIGHT", 12, 0)
         mouseText:SetJustifyH("LEFT")
         mouseText:SetTextColor(CURSOR_R, CURSOR_G, CURSOR_B)
         mouseText:SetShadowColor(0, 0, 0, 1)
         mouseText:SetShadowOffset(1, -1)
-        mouseText:SetText("Cursor: —")
+        mouseText:SetText("")
 
         -- Resize the invisible hit frame to wrap both fontstrings.
+        -- The 12px gap is only reserved when there IS cursor text; otherwise the
+        -- drag target would keep a 12px dead strip to the right of "Player: …"
+        -- for the whole time the pointer is off the map.
         local function ResizeAnchor()
             local pw = playerText:GetStringWidth() or 0
             local mw = mouseText:GetStringWidth()  or 0
             local h  = playerText:GetStringHeight() or 14
-            anchor:SetSize(pw + 12 + mw, h)
+            anchor:SetSize(pw + ((mw > 0) and 12 or 0) + mw, h)
         end
         ResizeAnchor()
 
@@ -1214,9 +1222,15 @@ local function SetupMapCoordinates()
                 dirty = true
             end
 
-            -- Cursor position (only while hovering the map canvas)
-            local cStr = "Cursor: —"
+            -- Cursor position (only while hovering the map canvas). OFF the
+            -- canvas the string is EMPTY, so the "Cursor:" label disappears
+            -- along with the numbers instead of leaving a dangling "Cursor: —".
+            -- ON the canvas with no readable position we still show "Cursor: —",
+            -- which is a different state worth distinguishing: it means the
+            -- pointer is over the map but the API gave us nothing.
+            local cStr = ""
             if container:IsMouseOver() then
+                cStr = "Cursor: —"
                 local ok, cx, cy = pcall(container.GetNormalizedCursorPosition, container)
                 if ok and cx and cy and cx >= 0 and cx <= 1 and cy >= 0 and cy <= 1 then
                     cStr = format("Cursor: %.1f, %.1f", cx * 100, cy * 100)
