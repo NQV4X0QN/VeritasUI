@@ -52,7 +52,6 @@ local pcall            = pcall
 local format           = string.format
 local CreateFrame      = CreateFrame
 local C_Timer          = C_Timer
-local MouseIsOver      = MouseIsOver
 
 local VUI = _G.VeritasUI
 if not VUI then
@@ -237,12 +236,17 @@ local function SetupChatTabFading()
         if fadeDoneTimer then fadeDoneTimer:Cancel(); fadeDoneTimer = nil end
     end
 
+    -- Uses the :IsMouseOver() widget method rather than the old global
+    -- MouseIsOver() helper: patch 12.1.0 deleted that global (it lived at
+    -- Blizzard_UIParent/Shared/UIParent.lua:530 in 12.0.7 and was itself
+    -- only a one-line wrapper around region:IsMouseOver()). Calling the
+    -- widget method directly is what Blizzard's own 12.1 code does.
     local function IsOverAnyChatElement()
         for _, cf in ipairs(chatFrames) do
-            if MouseIsOver(cf) then return true end
+            if cf:IsMouseOver() then return true end
         end
         for _, tab in ipairs(tabs) do
-            if MouseIsOver(tab) then return true end
+            if tab:IsMouseOver() then return true end
         end
         return false
     end

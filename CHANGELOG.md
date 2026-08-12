@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.14.8] - 2026-08-11
+
+### Fixed
+
+- `VeritasUI_CleanSolo` — **the chat-tab fade threw a Lua error on 12.1 and left the tabs stuck visible.** Patch 12.1.0 deleted the global `MouseIsOver()`, which the module captured at load, so the hide-countdown timer called a `nil` value about a second after the mouse left a chat frame or tab — aborting the fade block before any tab faded. Now calls the `:IsMouseOver()` widget method directly, which is what the deleted global was a one-line wrapper around (`Blizzard_UIParent/Shared/UIParent.lua:530` in 12.0.7) and what Blizzard's own 12.1 code uses. `Lib.lua`, `QualityOfLife.lua` and `SellStrip.lua` already used the widget method; CleanSolo was the only holdout. (`CleanSolo.lua`)
+
+### Internal
+
+- **Both the 12.0.7 and 12.1.0 UI source trees were diffed to bound the patch's impact.** Of the 133 Lua globals 12.1 removed, `MouseIsOver` is the only one this suite referenced, and none of the 86 names dropped from the generated C API documentation appear among the 60 `C_*` calls the modules make. This does not cover changed signatures of surviving functions or renamed Blizzard frame globals, which only surface in play.
+
 ## [1.14.7] - 2026-08-11
 
 ### Changed
