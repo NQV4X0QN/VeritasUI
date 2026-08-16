@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.14.14] - 2026-08-16
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **the digit-1 correction is now a DELTA off the global inset instead of replacing it, and defaults to 0 (no correction).** It used to assign the override outright, which made an inherently *relative* adjustment ("this glyph needs a pixel more inset than the others") behave as an absolute position. That had two costs. Setting `/qol delvenudge 0 0` in v1.14.13 silently changed the digit-1 correction from +2 to +3 with nothing touching it; and a `0` default would have been actively unsafe under the old semantics, because it matched the global only while the global was also `0` — the first `/qol delvenudge` would have torn the digit `1` away from every other digit by exactly the nudge. As a delta, `0` means "no correction" permanently and the two commands stay consistent with each other. ⚠ **Behaviour-preserving for existing accounts:** a stored value read as an absolute gave the same result as read as a delta off the shipped `0` global, so nothing moves and no migration is needed. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **`/qol delveone`'s report described the old absolute model.** It said the digit sat "N px in from the icon's right edge"; it now reports the delta, the resulting absolute, and what the other digits use, because a stale help string teaches the wrong mental model. (`QualityOfLife.lua`)
+
+### Changed
+
+- **The per-glyph override MECHANISM is kept, not removed, despite now being inert by default.** Deleting it has been tried once: v1.13.0 removed the equivalent override on the confident claim that corner anchoring made "every digit land identically by construction", and the owner falsified that on sight one version later — the `1` still read further right. Corner anchoring removed the width division and its per-digit rounding; it cannot move where a glyph's ink sits inside its own advance box, and no API exposes that. The typeface has also just changed to ARIALN, whose per-glyph metrics are unmeasured, so "no correction is needed" is currently an assumption rather than an observation. An inert knob costs one table entry; being wrong again costs a release. (`QualityOfLife.lua`)
+- **Two more test assertions encoded the absolute semantics** and are now expressed as "the digit 1 differs from the other digits by exactly the stored delta", which is immune to a retune of either value. Mutation-validated: dropping the correction, reverting to absolute, and applying the delta to every digit fail 2, 2 and 5 assertions against a green identity control. (`qol_delve_test.lua`)
+
 ## [1.14.13] - 2026-08-15
 
 ### Changed

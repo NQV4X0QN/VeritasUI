@@ -122,7 +122,7 @@ local UNIVERSAL = {
     -- Horizontal inset used ONLY when the count reads 1, overriding delveCountInsetX. Live
     -- via /qol delveone. See DELVE_COUNT_INSET_X_BY_COUNT for why one glyph needs its own
     -- value even though the count is corner-anchored.
-    delveCountInsetX1 = 3,
+    delveCountInsetX1 = 0,
     -- Pixels the completion checkmark extends past the icon's bounds on each side.
     -- Negative insets it. Live via /qol delvecheck. 0 is owner-confirmed in game.
     delveCheckOutset = 0,
@@ -1811,7 +1811,7 @@ local DELVE_COUNT_INSET_Y = 0
 --
 -- ⚠ A TABLE keyed by count, so a second exception needs no new key and no new command. An
 -- absent key means "use the global inset"; do not collapse this into a plain number.
-local DELVE_COUNT_INSET_X_BY_COUNT = { [1] = 3 }
+local DELVE_COUNT_INSET_X_BY_COUNT = { [1] = 0 }
 
 -- Atlases, both confirmed to RESOLVE on the live client via /qol delve (2026-08-05:
 -- common-icon-checkmark 25x25, UI-Frame-IconMask 64x64) rather than trusted from
@@ -2074,10 +2074,25 @@ DelveAnchorCount = function(fs, anchor, count)
     local x = (db and tonumber(db.delveCountInsetX)) or DELVE_COUNT_INSET_X
     -- Per-glyph optical correction; see DELVE_COUNT_INSET_X_BY_COUNT. Only the digit 1 has
     -- one, and only on the X axis.
+    --
+    -- ⚠⚠ A DELTA ADDED TO THE GLOBAL INSET, NOT A REPLACEMENT FOR IT (changed v1.14.14).
+    -- It used to assign `x = <the override>` outright, which made the correction ABSOLUTE --
+    -- and an optical correction is inherently RELATIVE ("this glyph needs N px more inset than
+    -- the others"), so absolute was simply the wrong shape. Two concrete costs:
+    --   1. Moving the global silently changed the correction's magnitude. When the owner set
+    --      /qol delvenudge 0 0 in v1.14.13, the digit 1's correction went from +2 to +3 with
+    --      nothing touching it.
+    --   2. It made a 0 default UNSAFE. With absolute semantics, inset1=0 matches the global
+    --      only while the global is also 0; the first /qol delvenudge would tear the digit 1
+    --      away from every other digit. As a delta, 0 means "no correction" permanently.
+    -- ⚠ Behaviour-preserving at the shipped 0/0: a stored 3 read as an absolute gave x=3, and
+    -- read as a delta off 0 also gives x=3. So no migration is needed for existing accounts.
+    local d1 = (db and tonumber(db.delveCountInsetX1))
+               or DELVE_COUNT_INSET_X_BY_COUNT[1] or 0
     if count == 1 then
-        x = (db and tonumber(db.delveCountInsetX1)) or DELVE_COUNT_INSET_X_BY_COUNT[1]
+        x = x + d1
     elseif DELVE_COUNT_INSET_X_BY_COUNT[count] ~= nil then
-        x = DELVE_COUNT_INSET_X_BY_COUNT[count]
+        x = x + DELVE_COUNT_INSET_X_BY_COUNT[count]
     end
     -- ⚠ The cache key must include the RESOLVED x, not just the stored settings, or a count
     -- ticking 2 -> 1 would keep the previous digit's offset: the early-out would see the same
@@ -2944,7 +2959,8 @@ local function InitializeOptions()
         .. "plaque, instead of only revealing it when you hover the icon. The count sits "
         .. "in the icon's lower-right corner, where the default UI puts a stack count, and "
         .. "is replaced by a checkmark once every group is defeated. Adjust the position with "
-        .. "/qol delvenudge, the digit 1 on its own with /qol delveone, and the checkmark "
+        .. "/qol delvenudge, the digit 1 relative to the others with /qol delveone, and the "
+        .. "checkmark "
         .. "size with /qol delvecheck. Typeface and outline weight are /qol delveface and "
         .. "/qol delveoutline; /qol delveplacard measures the number Blizzard draws itself "
         .. "on the placard at a Delve entrance, for comparison.",
@@ -3333,13 +3349,18 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
         if not db then
             VUI.Print("Quality of Life", "Still loading — try again in a moment.")
         elseif one == "" then
+            -- ⚠ Reports a DELTA and the resulting absolute, since v1.14.14. The old wording
+            -- said "sits N px in from the right edge", which described the absolute semantics
+            -- and is now wrong -- and a stale help string is how a user learns the wrong model.
+            local g  = tonumber(db.delveCountInsetX) or DELVE_COUNT_INSET_X
+            local d1 = tonumber(db.delveCountInsetX1) or DELVE_COUNT_INSET_X_BY_COUNT[1] or 0
             VUI.Print("Quality of Life", format(
-                "The digit |cFFFFFF001|r sits |cFFFFFF00%d|r px in from the icon's right edge "
-                .. "(every other digit uses |cFFFFFF00%d|r). "
-                .. "|cFFFFFF00/qol delveone <left>|r to change it. Only the horizontal axis: "
+                "The digit |cFFFFFF001|r is nudged |cFFFFFF00%+d|r px relative to the other "
+                .. "digits, so it sits at |cFFFFFF00%d|r px in while they sit at "
+                .. "|cFFFFFF00%d|r. |cFFFFFF000|r means no correction. "
+                .. "|cFFFFFF00/qol delveone <n>|r to change it. Only the horizontal axis: "
                 .. "digits share a baseline, so the vertical never differs.",
-                tonumber(db.delveCountInsetX1) or DELVE_COUNT_INSET_X_BY_COUNT[1],
-                tonumber(db.delveCountInsetX) or DELVE_COUNT_INSET_X))
+                d1, g + d1, g))
         else
             db.delveCountInsetX1 = tonumber(one)
             VUI.Print("Quality of Life", format(
