@@ -1834,6 +1834,31 @@ local DELVE_CHECK_OUTSET = 0
 -- the icon now -- which is precisely the placement StackCount is sized for -- so that
 -- rationale is void by its own terms and Blizzard's native size is correct.
 -- Fallback only; the live value is db.delveFontDelta (see /qol delvesize).
+--
+-- ⚠⚠ THE SENTENCE ABOVE -- "it sits ON the icon now, which is precisely the placement
+-- StackCount is sized for" -- IS NOW KNOWN TO BE ONLY HALF TRUE, AND THE MISSING HALF IS
+-- THE ICON SIZE. MEASURED on the entrance placard 2026-08-15 via /qol delveplacard:
+--
+--     Blizzard's own count:  ARIALN.TTF  size 14  flags "OUTLINE"  white (1,1,1,1)
+--                            anchors BOTTOMRIGHT -> BOTTOMRIGHT  -2,+2
+--                            on an Icon measuring 36x36     -> ratio 14/36 = 0.389
+--
+-- Blizzard chose 14 FOR A 36px ICON. We inherit that absolute 14 from StackCount's font
+-- object and apply it to the in-Delve plaque, whose Icon the layout RESCALES SMALLER (the
+-- checkmark comment below records 24x24 measured 2026-08-05, unconfirmed since). At 24px
+-- our number is 14/24 = 0.583 of the icon -- about 1.5x Blizzard's proportion; the ratio-
+-- matched size would be ~9px.
+--
+-- ⚠ The irony is that the checkmark comment ~15 lines below already states this exact
+-- principle -- "any hardcoded size would be wrong on the only surface this ships to" --
+-- and solves it by ANCHORING rather than SetSize. That reasoning was never carried across
+-- to the FONT size, which is the same hardcoded-absolute mistake in a different property.
+--
+-- ⚠ NOT YET CHANGED, DELIBERATELY. Converting this to a ratio needs the in-Delve Icon
+-- height MEASURED (run /qol delve inside a Delve; it prints Icon WxH), not the stale 24
+-- above -- and it is a visible change to a surface the owner hand-tuned and confirmed
+-- good, so it is his call, not a tidy-up. Recorded here so the next session starts from
+-- the measurement instead of re-deriving it.
 local DELVE_COUNT_FONT_DELTA = 0
 
 -- Outline weight for the number. WoW has NO bold flag: SetFont's flags argument takes
