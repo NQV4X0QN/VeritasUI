@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.14.11] - 2026-08-15
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **`/qol delveplacard`, a probe that measures the number Blizzard draws on the placard at a Delve entrance.** The existing `/qol delve` starts from `ScenarioObjectiveTracker` and is structurally blind to that surface, because the placard appears *before* the scenario tracker holds anything. This one discovers by SHAPE from `UIParent` — any frame carrying a `SpellContainer` whose children have `spellInfo` — and reports the sweep result so a miss is diagnosable rather than silent. For every spell widget found it dumps `stackDisplay`, the icon size, whether the `AmountBorder` is shown (which decides whether Blizzard centres the count or corner-anchors it), and the font file, size, flags, colour and anchor points of Blizzard's `StackCount`, the plaque's own `Text` and our count, side by side. Every widget call is `pcall`'d and the walk is depth-capped, because a sweep from `UIParent` meets forbidden objects — that is the v1.14.10 bug, not a hypothetical. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **`/qol delveface` and `/qol delveoutline` switch the count's typeface and outline weight live.** These are the two variables that differ between our count and Blizzard's own, and the only two that had no in-game knob — position, size, the digit `1` and the checkmark already had one. `delveface blizzard` uses the face Blizzard draws its count in (`ARIALN`, via `NumberFontNormal` → `NumberFont_Outline_Med`); `delveface plaque` uses the plaque's own Friz Quadrata. `delveoutline thick|normal|none` sets the weight, where `normal` is what Blizzard's own font object declares. **Both defaults are deliberately unchanged**, so nothing moves until asked. (`QualityOfLife.lua`)
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **the count's font cache key now covers every input `SetFont` consumes, not just the size delta.** `DelveApplyFont` early-outs on a cached key; that key was the delta alone, which was correct only while the typeface and outline were compile-time constants. With both now adjustable, a delta-only key would have made `/qol delveface` and `/qol delveoutline` silently do nothing until the size happened to change — the same class of bug the anchor helper's key already documents. Found by mutation-testing rather than in game: reverting the key to its previous shape fails three assertions. (`QualityOfLife.lua`)
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **corrected the reasoning recorded for where the count's typeface comes from.** The comment said the template "declares it inherits `GameFontNormal`, so reading its file gives us exactly the plaque's face". Reading the live fontstring is right, but the justification was not: `Setup` calls `self.Text:Setup(text, self.spellInfo.textFontType, self.spellInfo.textSizeType, ...)` (`Blizzard_UIWidgetTemplateBase.lua:531`), so the live face is chosen by server-supplied font-type fields rather than fixed by the template's inherit. The note now says why reading the live object is the only correct approach, so nobody "simplifies" it to a hardcoded lookup. (`QualityOfLife.lua`)
+
 ## [1.14.10] - 2026-08-15
 
 ### Fixed

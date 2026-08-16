@@ -128,6 +128,20 @@ local UNIVERSAL = {
     delveCheckOutset = 0,
     -- Points added to Blizzard's number font for the count. Live via /qol delvesize.
     delveFontDelta = 0,
+    -- TYPEFACE for the count. Live via /qol delveface. Two values, both SOURCED:
+    --   "plaque"   — the widget's own Text face (Friz Quadrata). CURRENT DEFAULT, and it is
+    --                the default because the owner reported ARIALN looked "weird" next to
+    --                everything else on the plaque (2026-08-05).
+    --   "blizzard" — StackCount's own face, i.e. what Blizzard draws its count in:
+    --                NumberFontNormal -> NumberFont_Outline_Med -> Fonts\ARIALN.TTF.
+    -- ⚠ The default is deliberately UNCHANGED. This key exists so the two can be compared
+    -- in game without a release round trip, NOT to quietly reverse that decision.
+    delveCountFace = "plaque",
+    -- OUTLINE weight for the count. Live via /qol delveoutline. WoW has no bold flag, so the
+    -- outline IS the weight knob. "THICKOUTLINE" is ours and is the current default;
+    -- "OUTLINE" is what Blizzard's NumberFont_Outline_Med declares (outline="NORMAL").
+    -- Stored as the literal SetFont flag string so nothing has to map it.
+    delveCountOutline = "THICKOUTLINE",
 }
 -- ⚠ ACCOUNT-WIDE BUT DELIBERATELY UNSEEDED. `mapCoordsPos` is written only when the coordinate
 -- readout is dragged, and nil is MEANINGFUL: SetupMapCoordinates reads `if saved then ... else
@@ -2119,16 +2133,43 @@ local DELVE_FALLBACK_FONT_FILE = "Fonts\\FRIZQT__.TTF"
 
 -- Resolve the TYPEFACE for the count.
 --
--- ⚠ Deliberately NOT StackCount's. StackCount is NumberFontNormal (ARIALN, a narrow
--- stack-badge face), which made the count the only number on the plaque not in Friz
+-- ⚠ Deliberately NOT StackCount's, BY DEFAULT. StackCount is NumberFontNormal (ARIALN, a
+-- narrow stack-badge face), which made the count the only number on the plaque not in Friz
 -- Quadrata -- owner-reported 2026-08-05 as looking "weird" next to everything else.
--- The widget's OWN Text fontstring is the authoritative source: the template declares it
--- inherits="GameFontNormal", so reading its file gives us exactly the plaque's face and
--- follows Blizzard if they ever restyle the standard UI font.
+-- The widget's OWN Text fontstring is the authoritative source for that: reading its file
+-- gives us the plaque's live face and follows Blizzard if they restyle the standard UI font.
+--
+-- ⚠ As of v1.14.11 this is SWITCHABLE via db.delveCountFace ("plaque" | "blizzard"), so the
+-- owner can A/B it in game against the number Blizzard itself draws on the pre-entry
+-- placard. The DEFAULT is unchanged ("plaque"). See the key's comment in the defaults table.
+--
+-- ⚠ CORRECTION (sourced 2026-08-15, Blizzard_UIWidgetTemplateBase.lua:531): the old comment
+-- here said the template "declares it inherits=GameFontNormal, so reading its file gives us
+-- exactly the plaque's face". Reading the file IS right, but the reasoning was not: Setup
+-- calls `self.Text:Setup(text, self.spellInfo.textFontType, self.spellInfo.textSizeType, ...)`,
+-- so the live face is chosen by SERVER-SUPPLIED font-type fields, not fixed by the template's
+-- inherit. Reading the live fontstring is therefore the ONLY correct way to get it -- do not
+-- "simplify" this to a hardcoded GameFontNormal lookup on the strength of the inherit.
 --
 -- Only the FILE comes from here; the SIZE still comes from StackCount (see
--- DelveCountString), so switching typeface changed one variable and not two.
+-- DelveCountString), so switching typeface changes one variable and not two.
 local function DelveNumberFontFile(spellFrame)
+    -- Blizzard's own count face, when asked for it. StackCount's live font first (that is
+    -- literally the object Blizzard draws the number with), NumberFontNormal as the fallback.
+    if db and db.delveCountFace == "blizzard" then
+        local sc = spellFrame and spellFrame.StackCount
+        if sc and sc.GetFont then
+            local ok, file = pcall(sc.GetFont, sc)
+            if ok and type(file) == "string" and file ~= "" then return file end
+        end
+        local nfn = _G.NumberFontNormal
+        if nfn and nfn.GetFont then
+            local ok, file = pcall(nfn.GetFont, nfn)
+            if ok and type(file) == "string" and file ~= "" then return file end
+        end
+        -- Fall through to the plaque face rather than returning nothing: a missing number
+        -- font would leave an invisible digit, which reads as the feature being broken.
+    end
     local candidates = { spellFrame.Text, _G.GameFontNormal }
     for i = 1, #candidates do
         local src = candidates[i]
@@ -2140,22 +2181,39 @@ local function DelveNumberFontFile(spellFrame)
     return DELVE_FALLBACK_FONT_FILE
 end
 
--- Apply the size delta and our outline weight, from the base font captured at creation.
+-- Apply the size delta, typeface and outline weight, from the base size captured at creation.
 --
 -- ⚠ Reads fs._vuiBaseSize, NEVER GetFont. Once we have called SetFont, GetFont reports
 -- the size WE wrote, so deriving the new size from it would compound the delta on every
 -- change -- one tap of /qol delvesize would keep growing the number.
--- Re-applied only when the delta actually changed, so the 0.5s poll is not calling
--- SetFont on every tick.
-local function DelveApplyFont(fs)
+--
+-- ⚠⚠ THE EARLY-OUT CACHE KEY MUST COVER EVERY INPUT SetFont CONSUMES -- delta, FACE and
+-- OUTLINE. It covered the delta alone until v1.14.11, which was correct only while the other
+-- two were compile-time constants. Now that /qol delveface and /qol delveoutline can change
+-- them live, a delta-only key would make both commands silently no-op until the delta
+-- happened to move -- the same class of bug the anchor helper's key documents (a count
+-- ticking 2 -> 1 keeping the old glyph's offset). If another SetFont input is ever added,
+-- add it here in the same breath.
+--
+-- ⚠ The FACE is re-resolved on every call rather than read from a value captured at
+-- creation, because the face knob changes what DelveNumberFontFile returns. The SIZE is
+-- still the captured base -- that one genuinely must not be re-read (see above).
+local function DelveApplyFont(fs, spellFrame)
     local d = (db and tonumber(db.delveFontDelta)) or DELVE_COUNT_FONT_DELTA
-    if fs._vuiFontDelta == d then return end
-    fs._vuiFontDelta = d
-    local file, base = fs._vuiBaseFile, fs._vuiBaseSize
+    local outline = (db and db.delveCountOutline) or DELVE_COUNT_OUTLINE
+    local file = spellFrame and DelveNumberFontFile(spellFrame) or fs._vuiBaseFile
+    if fs._vuiFontDelta == d and fs._vuiOutline == outline and fs._vuiFaceFile == file then
+        return
+    end
+    fs._vuiFontDelta, fs._vuiOutline, fs._vuiFaceFile = d, outline, file
+    local base = fs._vuiBaseSize
     if not (file and type(base) == "number") then return end
     local sz = base + d
     if sz < 1 then sz = 1 end
-    pcall(fs.SetFont, fs, file, sz, DELVE_COUNT_OUTLINE)
+    -- ⚠ SetFont takes file, size and flags TOGETHER: a resize that forgets the flags
+    -- silently drops the outline. "NONE" is passed as nil, which is how you ask for no
+    -- outline at all -- the empty string is not a documented flag value.
+    pcall(fs.SetFont, fs, file, sz, (outline ~= "NONE") and outline or nil)
 end
 
 -- `count` is forwarded to DelveAnchorCount only so the per-glyph override is right on the
@@ -2193,7 +2251,7 @@ local function DelveCountString(spellFrame, count)
         fs._vuiBaseSize = size
     end
     fs._vuiBaseFile = DelveNumberFontFile(spellFrame)
-    DelveApplyFont(fs)
+    DelveApplyFont(fs, spellFrame)
 
     -- Drop shadow, on the same reasoning as the map coordinates -- and now load-bearing
     -- rather than decorative: the black scrim that used to guarantee contrast is gone, so
@@ -2256,7 +2314,7 @@ local function DelveUpdate()
                 -- `left` is passed rather than read back off the fontstring: this runs BEFORE
                 -- SetText, so the string still holds the PREVIOUS count at this point.
                 DelveAnchorCount(fs, f.Icon or f, left)  -- picks up /qol delvenudge+delveone
-                DelveApplyFont(fs)                  -- and a /qol delvesize live
+                DelveApplyFont(fs, f)   -- picks up /qol delvesize+delveface+delveoutline live
                 fs:SetText(left)
                 -- Set every tick rather than once at creation: DelveApplyFont can re-read
                 -- the font object, and a colour is cheap. Unconditional white -- there is
@@ -2294,6 +2352,181 @@ end
 -- PERMANENT diagnostic. The whole feature rests on where Blizzard keeps this
 -- number, and that is only knowable by reading the live widget -- so the tool
 -- that reads it stays shipped, exactly like /ah check and /qol ilvl.
+----------------------------------------------------------------
+--  /qol delveplacard  — measure the number Blizzard draws itself
+--
+--  WHY A SECOND PROBE. `/qol delve` (below) starts from ScenarioObjectiveTracker and gives
+--  up with "run this while inside a Delve" if it finds nothing. The surface this one exists
+--  for is the placard that pops up when you WALK UP TO a Delve entrance, i.e. BEFORE the
+--  scenario tracker holds anything -- so the existing probe is structurally blind to it.
+--  That is the recorded landmine "a probe only covers the question it was built for", and
+--  extending the old one was the wrong shape: its whole discovery path is the thing that
+--  cannot reach here.
+--
+--  WHAT IT ANSWERS. On the pre-entry placard Blizzard populates the count itself, which
+--  means `spellInfo.stackDisplay > 0` and its own StackCount fontstring is doing the work
+--  (Blizzard_UIWidgetTemplateBase.lua:543-545). Inside a Delve stackDisplay is 0 -- measured
+--  2026-08-04 -- which is why we draw our own digit there at all. So this dumps, for every
+--  spell widget it can find anywhere in the UI, the three things needed to make ours match
+--  theirs: the FONT (file/size/flags), the ANCHOR (point + offsets), and the COLOUR.
+--
+--  ⚠ DISCOVERY IS BY SHAPE, FROM UIParent -- deliberately not from a named container. I do
+--  not know what frame hosts the pre-entry placard, and guessing a path is exactly how
+--  v1.12.16 shipped a fix for a non-bug. A frame carrying a `SpellContainer` whose children
+--  have `spellInfo` is the signature; the walk reports what it found so a miss is diagnosable
+--  rather than silent.
+--
+--  ⚠⚠ EVERY WIDGET CALL IS pcall'd AND THE WALK IS DEPTH-CAPPED. A sweep from UIParent WILL
+--  meet FORBIDDEN objects -- that is not hypothetical, it is the v1.14.10 bug: a House Editor
+--  pin raised "Attempt to access forbidden object from code tainted by an AddOn" on a bare
+--  GetParent(). Note the asymmetry that makes it easy to get wrong: `node.SpellContainer` is a
+--  table read and is safe, while `node:GetChildren()` is a widget call and is not.
+----------------------------------------------------------------
+local DELVE_PLACARD_MAX_DEPTH = 12
+
+-- Font facts for one FontString, or nil. Returned as a table so the caller decides layout.
+local function DelveFontFacts(fs)
+    if not (fs and fs.GetFont) then return nil end
+    local ok, file, size, flags = pcall(fs.GetFont, fs)
+    if not ok then return nil end
+    local t = { file = file or "?", size = size or 0, flags = flags or "" }
+    -- Strip the directory so the FACE is readable in a screenshot; the full path is noise
+    -- at photo resolution and the filename is the part that identifies the typeface.
+    t.face = tostring(t.file):match("([^\\/]+)$") or tostring(t.file)
+    local okc, r, g, b, a = pcall(fs.GetTextColor, fs)
+    if okc and r then t.color = ("%.2f,%.2f,%.2f,%.2f"):format(r, g, b, a or 1) end
+    local oks, shown = pcall(fs.IsShown, fs)
+    if oks then t.shown = shown end
+    local okt, txt = pcall(fs.GetText, fs)
+    if okt then t.text = txt end
+    local okn, n = pcall(fs.GetNumPoints, fs)
+    if okn and type(n) == "number" and n > 0 then
+        local parts = {}
+        for i = 1, n do
+            local okp, pt, _, relPt, x, y = pcall(fs.GetPoint, fs, i)
+            if okp then
+                parts[#parts + 1] = ("%s->%s %+.0f,%+.0f")
+                    :format(tostring(pt), tostring(relPt), x or 0, y or 0)
+            end
+        end
+        t.anchors = table.concat(parts, "  ")
+    end
+    return t
+end
+
+local function DelvePlacardSweep(node, depth, out, seen, stats)
+    if not node or depth > DELVE_PLACARD_MAX_DEPTH then return end
+    if seen[node] then return end
+    seen[node] = true
+    stats.visited = stats.visited + 1
+    -- Table read: safe even on a forbidden object.
+    if node.SpellContainer ~= nil then
+        out[#out + 1] = node
+    end
+    -- Widget CALL: must be pcall'd. A forbidden object raises here.
+    if not node.GetChildren then return end
+    local ok, kids = pcall(function() return { node:GetChildren() } end)
+    if not ok then stats.forbidden = stats.forbidden + 1; return end
+    for i = 1, #kids do
+        DelvePlacardSweep(kids[i], depth + 1, out, seen, stats)
+    end
+end
+
+local function DumpDelvePlacardProbe()
+    print("|cFF00CCFF[VeritasUI Delve placard probe]|r")
+    print("  Stand at a Delve ENTRANCE with the placard showing, then run this.")
+
+    -- The two reference font objects, printed unconditionally so the comparison table is
+    -- complete even if no placard is found. These are what Blizzard's own count and the
+    -- plaque's own text resolve to, and they are the two candidates /qol delveface switches
+    -- between.
+    for _, name in ipairs({ "NumberFontNormal", "GameFontNormal" }) do
+        local f = DelveFontFacts(_G[name])
+        print(("  %-17s %s"):format(name,
+            f and ("face=%s size=%.0f flags=%q color=%s")
+                :format(f.face, f.size, f.flags, tostring(f.color)) or "ABSENT"))
+    end
+    local face = (db and db.delveCountFace) or "plaque"
+    local outl = (db and db.delveCountOutline) or "?"
+    print(("  our settings:    face=%s outline=%s sizeDelta=%s inset=%s,%s inset1=%s")
+        :format(face, outl, tostring(db and db.delveFontDelta),
+                tostring(db and db.delveCountInsetX), tostring(db and db.delveCountInsetY),
+                tostring(db and db.delveCountInsetX1)))
+
+    local out, stats = {}, { visited = 0, forbidden = 0 }
+    DelvePlacardSweep(_G.UIParent, 0, out, {}, stats)
+    print(("  swept %d frames (depth<=%d), %d forbidden/unreadable, found %d spell widget(s)")
+        :format(stats.visited, DELVE_PLACARD_MAX_DEPTH, stats.forbidden, #out))
+    if #out == 0 then
+        print("  Nothing carrying a SpellContainer is on screen.")
+        print("  If the placard IS showing, it is not a UIWidget spell frame -- that is the")
+        print("  finding, and it means the number is drawn by something else entirely.")
+        return
+    end
+
+    for i = 1, #out do
+        local w = out[i]
+        local nm = "<unnamed>"
+        if w.GetName then
+            local okn, n = pcall(w.GetName, w)
+            if okn and n then nm = n end
+        end
+        local vis = "?"
+        local okv, v = pcall(w.IsVisible, w)
+        if okv then vis = tostring(v) end
+        print(("  [%d] %s visible=%s"):format(i, nm, vis))
+        local kids = {}
+        if w.SpellContainer and w.SpellContainer.GetChildren then
+            local okk, k = pcall(function() return { w.SpellContainer:GetChildren() } end)
+            if okk then kids = k end
+        end
+        print(("       SpellContainer children=%d"):format(#kids))
+        for j = 1, #kids do
+            local f = kids[j]
+            local info = f and f.spellInfo
+            if info then
+                -- stackDisplay is THE discriminator: >0 means Blizzard is drawing the number
+                -- and our count defers; 0 means we draw it. That is the whole difference
+                -- between this surface and the in-Delve plaque.
+                print(("       (%d) spellID=%s stackDisplay=%s amountBorderShown=%s")
+                    :format(j, tostring(info.spellID), tostring(info.stackDisplay),
+                            tostring(f.AmountBorder and select(2,
+                                pcall(f.AmountBorder.IsShown, f.AmountBorder)) or "n/a")))
+                local iw, ih = 0, 0
+                if f.Icon then
+                    local okg, a, b = pcall(function()
+                        return f.Icon:GetWidth(), f.Icon:GetHeight()
+                    end)
+                    if okg then iw, ih = a or 0, b or 0 end
+                end
+                print(("            Icon %.0fx%.0f"):format(iw, ih))
+                -- The three fontstrings that matter, side by side: Blizzard's count, the
+                -- plaque's own text (our current face source), and ours if it exists here.
+                local rows = {
+                    { "StackCount", f.StackCount },
+                    { "Text",       f.Text },
+                    { "ours",       f._vuiNemesisCount },
+                }
+                for r = 1, #rows do
+                    local lbl, tgt = rows[r][1], rows[r][2]
+                    local ft = DelveFontFacts(tgt)
+                    if not tgt then
+                        print(("            %-11s ABSENT"):format(lbl))
+                    elseif not ft then
+                        print(("            %-11s unreadable"):format(lbl))
+                    else
+                        print(("            %-11s face=%s size=%.0f flags=%q shown=%s text=%q")
+                            :format(lbl, ft.face, ft.size, ft.flags,
+                                    tostring(ft.shown), tostring(ft.text)))
+                        print(("            %-11s color=%s  anchors: %s")
+                            :format("", tostring(ft.color), tostring(ft.anchors)))
+                    end
+                end
+            end
+        end
+    end
+end
+
 local function DumpDelveProbe()
     local tracker = _G.ScenarioObjectiveTracker
     print("|cFF00CCFF[VeritasUI Delve probe]|r")
@@ -2596,7 +2829,9 @@ local function InitializeOptions()
         .. "in the icon's lower-right corner, where the default UI puts a stack count, and "
         .. "is replaced by a checkmark once every group is defeated. Adjust the position with "
         .. "/qol delvenudge, the digit 1 on its own with /qol delveone, and the checkmark "
-        .. "size with /qol delvecheck.",
+        .. "size with /qol delvecheck. Typeface and outline weight are /qol delveface and "
+        .. "/qol delveoutline; /qol delveplacard measures the number Blizzard draws itself "
+        .. "on the placard at a Delve entrance, for comparison.",
         function(value)
             if value then DelveStartCount() else DelveStopCount() end
         end)
@@ -2995,6 +3230,58 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
                 "The digit |cFFFFFF001|r set to |cFFFFFF00%d|r px in from the right edge.",
                 db.delveCountInsetX1))
         end
+        return
+    end
+    -- ⚠⚠ ORDERING: every `delve*` subcommand MUST be matched BEFORE the `^delve` catch-all
+    -- below, which is a PREFIX match and would otherwise swallow it into the old probe.
+    -- Adding one after that line makes it silently run the wrong command.
+    local dface = arg:lower():match("^delveface%s*(%a*)$")
+    if dface then
+        if not db then
+            VUI.Print("Quality of Life", "Still loading — try again in a moment.")
+        elseif dface == "" then
+            VUI.Print("Quality of Life", format(
+                "Delve count typeface is |cFFFFFF00%s|r. |cFFFFFF00/qol delveface "
+                .. "blizzard|r uses the face Blizzard draws its own count in (ARIALN, from "
+                .. "NumberFontNormal); |cFFFFFF00/qol delveface plaque|r uses the plaque's "
+                .. "own face (Friz Quadrata). Applies within half a second, no reload.",
+                tostring(db.delveCountFace)))
+        elseif dface ~= "blizzard" and dface ~= "plaque" then
+            VUI.Print("Quality of Life",
+                "Use |cFFFFFF00/qol delveface blizzard|r or |cFFFFFF00/qol delveface plaque|r.")
+        else
+            db.delveCountFace = dface
+            VUI.Print("Quality of Life", format(
+                "Delve count typeface set to |cFFFFFF00%s|r.", dface))
+        end
+        return
+    end
+    local doutline = arg:lower():match("^delveoutline%s*(%a*)$")
+    if doutline then
+        -- Typed as friendly words, stored as the literal SetFont flag so nothing has to map
+        -- it at draw time. WoW has NO bold flag -- the outline IS the weight control.
+        local OUTLINE_MAP = { thick = "THICKOUTLINE", normal = "OUTLINE", none = "NONE" }
+        local OUTLINE_REV = { THICKOUTLINE = "thick", OUTLINE = "normal", NONE = "none" }
+        if not db then
+            VUI.Print("Quality of Life", "Still loading — try again in a moment.")
+        elseif doutline == "" then
+            VUI.Print("Quality of Life", format(
+                "Delve count outline is |cFFFFFF00%s|r. |cFFFFFF00/qol delveoutline "
+                .. "thick|normal|none|r — |cFFFFFF00normal|r is what Blizzard's own count "
+                .. "uses (NumberFont_Outline_Med declares outline=\"NORMAL\").",
+                tostring(OUTLINE_REV[db.delveCountOutline] or db.delveCountOutline)))
+        elseif not OUTLINE_MAP[doutline] then
+            VUI.Print("Quality of Life",
+                "Use |cFFFFFF00thick|r, |cFFFFFF00normal|r or |cFFFFFF00none|r.")
+        else
+            db.delveCountOutline = OUTLINE_MAP[doutline]
+            VUI.Print("Quality of Life", format(
+                "Delve count outline set to |cFFFFFF00%s|r.", doutline))
+        end
+        return
+    end
+    if arg:lower():match("^delveplacard") then
+        DumpDelvePlacardProbe()
         return
     end
     if arg:lower():match("^delve") then
