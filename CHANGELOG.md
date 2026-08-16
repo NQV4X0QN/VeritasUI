@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.14.10] - 2026-08-15
+
+### Fixed
+
+- `VeritasUI_Lib` — **hovering a House Editor room plaque no longer throws a repeating taint error from the player-frame fade.** The hover test walked the parent chain of whatever sat under the cursor with an unguarded `focus:GetParent()`. In the House Editor that object is a `HousingLayoutPin` button, which is a *forbidden* object — reading `focus.GetParent` as a table field succeeds, but calling it raises `Attempt to access forbidden object from code tainted by an AddOn`. Because the check runs from a 10 Hz ticker, the error's `Count` climbed by ten a second for as long as the pointer rested on the plaque, and each throw aborted the fade evaluation part-way. Every widget call in the walk is now wrapped in `pcall` and the walk is depth-capped, making it identical to the equivalent walk in `VUI.HookHoverFade` — which has had both guards since it was written. `VUI.HookPlayerFrameFade` was the inconsistency, not the pattern. An unreadable parent chain is treated as "not hovering", so the player frame fades normally while the cursor is on House Editor furniture. (`Lib.lua`)
+
 ## [1.14.9] - 2026-08-11
 
 ### Changed

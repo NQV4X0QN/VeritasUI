@@ -41,7 +41,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.14.9"
+VUI.VERSION = "1.14.10"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -343,13 +343,37 @@ function VUI.HookPlayerFrameFade(frame, inCombatRef)
     local wasShowing   = false
     local healthActive = false
 
+    -- ⚠ EVERY widget call on the mouse-focus object must be pcall'd, and the walk
+    -- must be depth-capped.  Both were missing until v1.14.10 and both bit.
+    --
+    -- Measured 2026-08-15 (owner, House Editor): with the cursor on a room plaque the
+    -- focus was `Button <Blizzard_HouseEditorLayoutMode.lua:193>` — a HousingLayoutPin,
+    -- which is a FORBIDDEN object.  `focus.GetParent` is a plain table read and
+    -- succeeds; `focus:GetParent()` is a widget C call and raises "Attempt to access
+    -- forbidden object from code tainted by an AddOn".  Our code is tainted by
+    -- definition (this runs from an addon-created ticker), so there is no taint leak to
+    -- chase here — a forbidden object simply cannot be touched by addon code at all,
+    -- and the only correct move is to stop walking.
+    --
+    -- Blast radius was the 10 Hz ticker at line ~427: the error's Count climbed by ten
+    -- a second for as long as the cursor rested on the pin, and each throw aborted
+    -- Evaluate() mid-flight, so the fade stopped being re-evaluated while it happened.
+    --
+    -- This is now the same shape as HookHoverFade's IsMouseOverDescendant (line ~230),
+    -- which has had the pcall and the cap since it was written.  IsHovered was the
+    -- inconsistency, not the pattern.  Returning false on an inaccessible chain is
+    -- deliberate: if we cannot see the chain we cannot claim a hover, and a cursor
+    -- parked on House Editor furniture is not a cursor on the player frame.
     local function IsHovered()
-        local focus = GetMouseFocus()
-        if focus == frame then return true end
-        local p = focus and focus.GetParent and focus:GetParent()
-        while p do
+        local p = GetMouseFocus()
+        local depth = 0
+        while p and depth < HOVER_WALK_MAX_DEPTH do
             if p == frame then return true end
-            p = p.GetParent and p:GetParent()
+            if not p.GetParent then return false end
+            local ok, parent = pcall(p.GetParent, p)
+            if not ok then return false end
+            p = parent
+            depth = depth + 1
         end
         return false
     end
