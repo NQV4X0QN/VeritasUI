@@ -1854,11 +1854,21 @@ local DELVE_CHECK_OUTSET = 0
 -- and solves it by ANCHORING rather than SetSize. That reasoning was never carried across
 -- to the FONT size, which is the same hardcoded-absolute mistake in a different property.
 --
--- ⚠ NOT YET CHANGED, DELIBERATELY. Converting this to a ratio needs the in-Delve Icon
--- height MEASURED (run /qol delve inside a Delve; it prints Icon WxH), not the stale 24
--- above -- and it is a visible change to a surface the owner hand-tuned and confirmed
--- good, so it is his call, not a tidy-up. Recorded here so the next session starts from
--- the measurement instead of re-deriving it.
+-- ⚠⚠ BOTH HALVES NOW MEASURED (/qol delve in-Delve, 2026-08-15). The 24x24 above is
+-- CONFIRMED, not stale:
+--     in-Delve:  Icon 24x24, our count FRIZQT__.TTF at 13.99, stringHeight 13.9
+--                -> 13.9/24 = 0.579  vs  Blizzard's 14/36 = 0.389   = 1.50x their proportion
+--     ratio-matched size on a 24px icon = 9.33px, i.e. delveFontDelta about -5
+--
+-- ⚠ THE INSET IS A 36px CONSTANT TOO. Blizzard's -2,+2 was chosen for a 36px icon; the
+-- proportional equivalent on 24px is 1.33, which is close to the owner's hand-dialled x=1.
+-- So "correct the inset to Blizzard's 2" would move it AWAY from proportional truth.
+--
+-- ⚠ NOT YET CHANGED, DELIBERATELY -- and now for a better reason than a missing measurement.
+-- /qol delvesize already reaches this value live, so the owner can evaluate -5 without a
+-- release. Hard-coding a ratio is only worth doing once he has judged what the ratio-correct
+-- size actually looks like: 9px is small, and "matches Blizzard's proportion" is not the same
+-- claim as "reads well on a 24px icon", which is his call and not mine.
 local DELVE_COUNT_FONT_DELTA = 0
 
 -- Outline weight for the number. WoW has NO bold flag: SetFont's flags argument takes
