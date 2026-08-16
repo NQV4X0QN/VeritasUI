@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.14.13] - 2026-08-15
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **the Delve count now ships matching Blizzard's own number: ARIALN typeface, `OUTLINE` weight, sitting on the icon's bottom-right corner, at 11px.** These are the values the owner settled on in game after measuring Blizzard's count on the Delve entrance placard, which draws `ARIALN.TTF` at size 14 with flags `"OUTLINE"` in white, anchored `BOTTOMRIGHT -2,+2` on a 36×36 icon. New defaults: `delveCountFace = "blizzard"`, `delveCountOutline = "OUTLINE"`, `delveFontDelta = -3`, `delveCountInsetX/Y = 0`. Existing installs are unaffected — the defaults table only seeds keys that are absent, so anyone who has tuned these keeps their values. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **the size is deliberately NOT Blizzard's exact proportion.** Blizzard's 14px on a 36×36 icon is a ratio of 0.389; the in-Delve icon measures 24×24, so the proportionally exact size would be 9.33px. The owner judged that too small to read and settled on 11px (ratio 0.458). The ratio arithmetic located the right neighbourhood; it was not the answer — matching Blizzard's proportion and being legible on the smaller icon turned out to be different goals. Recorded in the code so nobody "corrects" it back. (`QualityOfLife.lua`)
+
+### Fixed
+
+- **Nine test assertions froze cosmetic tuning values as if they were invariants, and failed on correct code the moment the defaults changed.** They asserted literal `FRIZQT__.TTF`, `THICKOUTLINE`, `14` and `-1/-1` — the tuning of one particular hour — which is the exact trap already documented as "do not freeze a cosmetic constant in a test", four of them introduced in v1.14.11. All nine now assert the **invariant**: the face follows `delveCountFace`, the size is StackCount's captured base plus the stored delta, the outline is the stored flag, and the applied offsets track the stored insets with the documented sign convention. Two of the typeface-fallback rungs also relied on `"plaque"` being the default, so they silently tested the wrong branch once it changed; they now set the precondition explicitly and restore it. Mutation-validated: hardcoding the delta, the outline, or the insets fails 7, 6 and 10 assertions respectively, against a green identity control. (`qol_delve_test.lua`)
+
 ## [1.14.12] - 2026-08-15
 
 ### Fixed

@@ -117,8 +117,8 @@ local UNIVERSAL = {
     -- CENTRE), which replaced delveCountOffsetY (from its BOTTOM EDGE). All superseded keys
     -- are dropped at login rather than reinterpreted -- see DELVE_COUNT_INSET_X.
     -- -1/-1 is owner-confirmed in game; NEGATIVE means 1px outside the icon's corner.
-    delveCountInsetX = -1,
-    delveCountInsetY = -1,
+    delveCountInsetX = 0,
+    delveCountInsetY = 0,
     -- Horizontal inset used ONLY when the count reads 1, overriding delveCountInsetX. Live
     -- via /qol delveone. See DELVE_COUNT_INSET_X_BY_COUNT for why one glyph needs its own
     -- value even though the count is corner-anchored.
@@ -127,7 +127,7 @@ local UNIVERSAL = {
     -- Negative insets it. Live via /qol delvecheck. 0 is owner-confirmed in game.
     delveCheckOutset = 0,
     -- Points added to Blizzard's number font for the count. Live via /qol delvesize.
-    delveFontDelta = 0,
+    delveFontDelta = -3,
     -- TYPEFACE for the count. Live via /qol delveface. Two values, both SOURCED:
     --   "plaque"   — the widget's own Text face (Friz Quadrata). CURRENT DEFAULT, and it is
     --                the default because the owner reported ARIALN looked "weird" next to
@@ -136,12 +136,12 @@ local UNIVERSAL = {
     --                NumberFontNormal -> NumberFont_Outline_Med -> Fonts\ARIALN.TTF.
     -- ⚠ The default is deliberately UNCHANGED. This key exists so the two can be compared
     -- in game without a release round trip, NOT to quietly reverse that decision.
-    delveCountFace = "plaque",
+    delveCountFace = "blizzard",
     -- OUTLINE weight for the count. Live via /qol delveoutline. WoW has no bold flag, so the
     -- outline IS the weight knob. "THICKOUTLINE" is ours and is the current default;
     -- "OUTLINE" is what Blizzard's NumberFont_Outline_Med declares (outline="NORMAL").
     -- Stored as the literal SetFont flag string so nothing has to map it.
-    delveCountOutline = "THICKOUTLINE",
+    delveCountOutline = "OUTLINE",
 }
 -- ⚠ ACCOUNT-WIDE BUT DELIBERATELY UNSEEDED. `mapCoordsPos` is written only when the coordinate
 -- readout is dragged, and nil is MEANINGFUL: SetupMapCoordinates reads `if saved then ... else
@@ -1757,6 +1757,13 @@ local DELVE_POLL_RATE = 0.5
 -- problem on this template -- they avoid it, and matching them is both exact and more
 -- native than a centred digit ever was.
 --
+-- ⚠⚠ SETTLED AT 0/0 IN GAME (owner, 2026-08-15) -- the digit sits exactly ON the icon's
+-- bottom-right corner, neither inset nor outset. Note what this does NOT mean: Blizzard's own
+-- -2/+2 was chosen for a 36px icon, and its proportional equivalent on this 24px icon is 1.33,
+-- so 0/0 is a deliberate choice near-but-not-equal to the scaled value, arrived at by eye at
+-- the settled 11px font size. Do not restore -1/-1 (the pre-v1.14.13 default) and do not
+-- "correct" it to Blizzard's 2/2.
+--
 -- ⚠ WHAT IS SOURCED HERE AND WHAT IS NOT -- the distinction cost a test round trip.
 -- SOURCED: the anchoring METHOD (one BOTTOMRIGHT point, no span), which is what removed the
 -- per-digit drift. OWNER-TUNED: the offsets below. Blizzard's literal -2/+2 shipped as the
@@ -1771,8 +1778,8 @@ local DELVE_POLL_RATE = 0.5
 -- from Blizzard's inset placement, in the same spirit as the checkmark departing from their
 -- 16x16 corner EarnedCheck. Do not "correct" them back to 2/2 on the grounds that Blizzard
 -- uses 2/2: that exact move is what this comment exists to prevent.
-local DELVE_COUNT_INSET_X = -1
-local DELVE_COUNT_INSET_Y = -1
+local DELVE_COUNT_INSET_X = 0
+local DELVE_COUNT_INSET_Y = 0
 
 -- Per-glyph X override, keyed by the displayed count. The digit 1 alone reads further RIGHT
 -- than the others and needs pulling left. The value below is the owner's, confirmed in
@@ -1864,19 +1871,28 @@ local DELVE_CHECK_OUTSET = 0
 -- proportional equivalent on 24px is 1.33, which is close to the owner's hand-dialled x=1.
 -- So "correct the inset to Blizzard's 2" would move it AWAY from proportional truth.
 --
--- ⚠ NOT YET CHANGED, DELIBERATELY -- and now for a better reason than a missing measurement.
--- /qol delvesize already reaches this value live, so the owner can evaluate -5 without a
--- release. Hard-coding a ratio is only worth doing once he has judged what the ratio-correct
--- size actually looks like: 9px is small, and "matches Blizzard's proportion" is not the same
--- claim as "reads well on a 24px icon", which is his call and not mine.
-local DELVE_COUNT_FONT_DELTA = 0
+-- ⚠⚠ SETTLED IN GAME AT -3, NOT THE RATIO-MATCHED -5 (owner, 2026-08-15): "in keeping with
+-- the spirit without sacrificing visibility". That is 11px on a 24px icon = ratio 0.458
+-- against Blizzard's 0.389 -- deliberately larger than proportional, because a proportionally
+-- exact 9px digit was not legible enough on a 24px icon at normal viewing distance.
+--
+-- ⚠ DO NOT "CORRECT" THIS TO 0.389 OR TO -5. The ratio arithmetic was the tool for finding the
+-- right neighbourhood, not the answer -- matching Blizzard's proportion and reading well at
+-- 24px turned out to be different goals, and legibility won on the surface that ships. This is
+-- the same trap as the inset: evidence for a construction is not evidence for its constants.
+--
+-- ⚠ Still stored as a DELTA off StackCount's live base, so a Blizzard restyle still carries
+-- through. A ratio-of-icon-height implementation was considered and NOT built: the in-Delve
+-- Icon has now measured 24x24 twice (2026-08-05 and 2026-08-15), so it would add a division
+-- and per-icon rounding to solve a rescaling nobody has ever observed.
+local DELVE_COUNT_FONT_DELTA = -3
 
 -- Outline weight for the number. WoW has NO bold flag: SetFont's flags argument takes
 -- OUTLINE / THICKOUTLINE / MONOCHROME and combinations, never a weight, so a heavier
 -- outline is the native way to make a number read bolder. THICKOUTLINE is what Blizzard
 -- itself uses on nameplate and floating-damage numbers.
 -- Set back to "OUTLINE" if it ever reads too heavy at this size.
-local DELVE_COUNT_OUTLINE = "THICKOUTLINE"
+local DELVE_COUNT_OUTLINE = "OUTLINE"
 
 -- The number's colour. WHITE, unconditionally, and NOT a count-based ramp.
 --
