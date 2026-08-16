@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.14.12] - 2026-08-15
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **`/qol delveplacard` now finds the entrance placard, which v1.14.11 could not.** It reported `found 0 spell widget(s)` against a placard plainly on screen, because it matched frames carrying a `SpellContainer` — and that parentKey belongs to the `ScenarioHeaderDelves` template alone (`Blizzard_UIWidgetTemplateScenarioHeaderDelves.xml:40`), i.e. the *in-delve* plaque. The entrance placard's "Map Properties" icons are registered into a generic `UIWidgetContainerTemplate` (`Blizzard_DelvesDifficultyPicker.xml:136`, registered at `.lua:651`) as `UIWidgetTemplateSpellDisplay` frames, which hold the spell frame one level down under parentKey `Spell` (`Blizzard_UIWidgetTemplateSpellDisplay.xml:8`) — so the old signature missed it twice over: wrong wrapper, and one level too shallow. The probe now looks the container up **by name** from source (`DelvesDifficultyPickerFrame.DelveModifiersWidgetContainer`) and walks `widgetFrames`, which cannot be defeated by a wrong signature or a depth cap. ⚠ The lesson is the one already recorded — a probe only covers the question it was built for — hit while writing a probe specifically to avoid it: the signature was generalised from the one surface already known, so it could only re-find that surface. Matching on `StackCount`, the thing actually being measured, is signature-by-goal rather than signature-by-example. (`QualityOfLife.lua`)
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **the shape sweep is retained as a backstop, widened, and now reports its depth.** It matches `StackCount`, `SpellContainer` or `widgetFrames`, names which signature matched each hit, and warns when the depth cap was actually reached — v1.14.11 could not distinguish "nothing there" from "stopped too early". Kept alongside the named lookup because it is the only thing that would notice Blizzard moving the count elsewhere. (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **removed the probe's wrong conclusion.** On finding nothing it asserted "it is not a UIWidget spell frame — that is the finding", which was false: the placard's icons *are* UIWidgets, reached by a path the probe did not look down. A probe that prints a confident wrong conclusion is worse than one that prints nothing. (`QualityOfLife.lua`)
+
 ## [1.14.11] - 2026-08-15
 
 ### Added

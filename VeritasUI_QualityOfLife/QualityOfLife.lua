@@ -2414,21 +2414,60 @@ local function DelveFontFacts(fs)
     return t
 end
 
+-- ⚠⚠ THE SIGNATURE IS `StackCount`, NOT `SpellContainer` -- CORRECTED v1.14.12 AFTER THE
+-- v1.14.11 PROBE FOUND NOTHING. `SpellContainer` is a parentKey on the ScenarioHeaderDelves
+-- template alone (Blizzard_UIWidgetTemplateScenarioHeaderDelves.xml:40), i.e. the IN-DELVE
+-- plaque. The entrance placard's icons live in a generic `UIWidgetContainerTemplate`
+-- (Blizzard_DelvesDifficultyPicker.xml:136) whose widget frames are
+-- `UIWidgetTemplateSpellDisplay`, and THAT template holds the spell frame one level down
+-- under parentKey `Spell` (Blizzard_UIWidgetTemplateSpellDisplay.xml:8). So the old sweep
+-- missed the placard twice over: wrong wrapper, and one level too shallow.
+--
+-- ⚠ The lesson is the recorded one, hit while writing a probe specifically to avoid it: a
+-- probe only covers the question it was built for. The signature was generalised from the
+-- ONE surface already known, so it could only ever re-find that surface. Matching on
+-- StackCount -- the thing actually being measured -- is signature-by-GOAL rather than
+-- signature-by-example, and it matches all three nestings.
 local function DelvePlacardSweep(node, depth, out, seen, stats)
     if not node or depth > DELVE_PLACARD_MAX_DEPTH then return end
     if seen[node] then return end
     seen[node] = true
     stats.visited = stats.visited + 1
-    -- Table read: safe even on a forbidden object.
-    if node.SpellContainer ~= nil then
-        out[#out + 1] = node
-    end
+    if depth > stats.deepest then stats.deepest = depth end
+    -- Table reads: safe even on a forbidden object. Any of the three shapes counts.
+    local why
+    if node.StackCount ~= nil then why = "StackCount"
+    elseif node.SpellContainer ~= nil then why = "SpellContainer"
+    elseif node.widgetFrames ~= nil then why = "widgetFrames" end
+    if why then out[#out + 1] = { frame = node, why = why, depth = depth } end
     -- Widget CALL: must be pcall'd. A forbidden object raises here.
     if not node.GetChildren then return end
     local ok, kids = pcall(function() return { node:GetChildren() } end)
     if not ok then stats.forbidden = stats.forbidden + 1; return end
     for i = 1, #kids do
         DelvePlacardSweep(kids[i], depth + 1, out, seen, stats)
+    end
+end
+
+-- Dump the count-bearing fontstrings for ONE spell frame. Shared by the named-lookup path
+-- and the sweep, so both report identically and a discrepancy between them is meaningful.
+local function DelveDumpSpellFrame(indent, sf)
+    local rows = { { "StackCount", sf.StackCount }, { "Text", sf.Text },
+                   { "ours", sf._vuiNemesisCount } }
+    for r = 1, #rows do
+        local lbl, tgt = rows[r][1], rows[r][2]
+        local ft = DelveFontFacts(tgt)
+        if not tgt then
+            print(("%s%-11s ABSENT"):format(indent, lbl))
+        elseif not ft then
+            print(("%s%-11s unreadable"):format(indent, lbl))
+        else
+            print(("%s%-11s face=%s size=%.0f flags=%q shown=%s text=%q")
+                :format(indent, lbl, ft.face, ft.size, ft.flags,
+                        tostring(ft.shown), tostring(ft.text)))
+            print(("%s%-11s color=%s  anchors: %s")
+                :format(indent, "", tostring(ft.color), tostring(ft.anchors)))
+        end
     end
 end
 
@@ -2453,76 +2492,102 @@ local function DumpDelvePlacardProbe()
                 tostring(db and db.delveCountInsetX), tostring(db and db.delveCountInsetY),
                 tostring(db and db.delveCountInsetX1)))
 
-    local out, stats = {}, { visited = 0, forbidden = 0 }
-    DelvePlacardSweep(_G.UIParent, 0, out, {}, stats)
-    print(("  swept %d frames (depth<=%d), %d forbidden/unreadable, found %d spell widget(s)")
-        :format(stats.visited, DELVE_PLACARD_MAX_DEPTH, stats.forbidden, #out))
-    if #out == 0 then
-        print("  Nothing carrying a SpellContainer is on screen.")
-        print("  If the placard IS showing, it is not a UIWidget spell frame -- that is the")
-        print("  finding, and it means the number is drawn by something else entirely.")
-        return
+    ----------------------------------------------------------------
+    --  PATH 1 — NAMED LOOKUP (sourced, primary)
+    --
+    --  Blizzard_DelvesDifficultyPicker.lua:651 registers the placard's "Map Properties"
+    --  icons via  self.DelveModifiersWidgetContainer:RegisterForWidgetSet(
+    --      self.selectedTierInfo.modifierUIWidgetSetID)
+    --  and UIWidgetContainerMixin keeps them in `self.widgetFrames`
+    --  (Blizzard_UIWidgetManager.lua:262), keyed by widgetID. Each frame is a
+    --  UIWidgetTemplateSpellDisplay, which holds the actual spell frame one level down
+    --  under parentKey `Spell` (Blizzard_UIWidgetTemplateSpellDisplay.xml:8).
+    --
+    --  A named lookup is used IN PREFERENCE to the sweep now that source supplies the name:
+    --  it cannot be missed by a wrong signature or a depth cap, which is exactly how the
+    --  v1.14.11 sweep reported "found 0" on a placard that was plainly on screen.
+    ----------------------------------------------------------------
+    local picker = _G.DelvesDifficultyPickerFrame
+    print(("  DelvesDifficultyPickerFrame: %s"):format(tostring(picker ~= nil)))
+    if picker then
+        local shown = "?"
+        local oks, s = pcall(picker.IsShown, picker)
+        if oks then shown = tostring(s) end
+        local mc = picker.DelveModifiersWidgetContainer
+        print(("    shown=%s  DelveModifiersWidgetContainer=%s")
+            :format(shown, tostring(mc ~= nil)))
+        if mc then
+            -- widgetFrames is a plain table: pairs() is a table read, no widget call.
+            local wf = mc.widgetFrames
+            local n = 0
+            if type(wf) == "table" then for _ in pairs(wf) do n = n + 1 end end
+            print(("    widgetFrames=%s count=%d"):format(type(wf), n))
+            if type(wf) == "table" then
+                for id, wframe in pairs(wf) do
+                    -- The spell frame is under .Spell on a SpellDisplay widget; fall back to
+                    -- the frame itself in case a different widget type is in use here.
+                    -- ⚠ named wframe, not frame: `frame` is an upvalue in this file.
+                    local sf = wframe and (wframe.Spell or wframe)
+                    local info = sf and sf.spellInfo
+                    print(("    widget id=%s  hasSpell=%s stackDisplay=%s spellID=%s")
+                        :format(tostring(id), tostring(wframe and wframe.Spell ~= nil),
+                                tostring(info and info.stackDisplay),
+                                tostring(info and info.spellID)))
+                    if sf then
+                        local iw, ih = 0, 0
+                        if sf.Icon then
+                            local okg, a, b = pcall(function()
+                                return sf.Icon:GetWidth(), sf.Icon:GetHeight()
+                            end)
+                            if okg then iw, ih = a or 0, b or 0 end
+                        end
+                        local ab = "n/a"
+                        if sf.AmountBorder then
+                            local okab, v = pcall(sf.AmountBorder.IsShown, sf.AmountBorder)
+                            if okab then ab = tostring(v) end
+                        end
+                        print(("        Icon %.0fx%.0f  amountBorderShown=%s")
+                            :format(iw, ih, ab))
+                        DelveDumpSpellFrame("        ", sf)
+                    end
+                end
+            end
+        end
     end
 
+    ----------------------------------------------------------------
+    --  PATH 2 — SHAPE SWEEP (backstop)
+    --
+    --  Retained even though PATH 1 is authoritative, because it is the only thing that
+    --  would notice Blizzard MOVING the count somewhere else. Signature widened in
+    --  v1.14.12 from SpellContainer to StackCount/SpellContainer/widgetFrames, and the
+    --  deepest depth reached is now reported so a cap miss is visible rather than silent.
+    ----------------------------------------------------------------
+    local out, stats = {}, { visited = 0, forbidden = 0, deepest = 0 }
+    DelvePlacardSweep(_G.UIParent, 0, out, {}, stats)
+    print(("  sweep: %d frames, deepest=%d (cap %d), %d forbidden, %d candidate(s)")
+        :format(stats.visited, stats.deepest, DELVE_PLACARD_MAX_DEPTH,
+                stats.forbidden, #out))
+    if stats.deepest >= DELVE_PLACARD_MAX_DEPTH then
+        print("    ⚠ hit the depth cap — something may lie deeper and be unreported.")
+    end
     for i = 1, #out do
-        local w = out[i]
+        local rec = out[i]
+        local w = rec.frame
         local nm = "<unnamed>"
         if w.GetName then
-            local okn, n = pcall(w.GetName, w)
-            if okn and n then nm = n end
+            local okn, nn = pcall(w.GetName, w)
+            if okn and nn then nm = nn end
         end
         local vis = "?"
         local okv, v = pcall(w.IsVisible, w)
         if okv then vis = tostring(v) end
-        print(("  [%d] %s visible=%s"):format(i, nm, vis))
-        local kids = {}
-        if w.SpellContainer and w.SpellContainer.GetChildren then
-            local okk, k = pcall(function() return { w.SpellContainer:GetChildren() } end)
-            if okk then kids = k end
-        end
-        print(("       SpellContainer children=%d"):format(#kids))
-        for j = 1, #kids do
-            local f = kids[j]
-            local info = f and f.spellInfo
-            if info then
-                -- stackDisplay is THE discriminator: >0 means Blizzard is drawing the number
-                -- and our count defers; 0 means we draw it. That is the whole difference
-                -- between this surface and the in-Delve plaque.
-                print(("       (%d) spellID=%s stackDisplay=%s amountBorderShown=%s")
-                    :format(j, tostring(info.spellID), tostring(info.stackDisplay),
-                            tostring(f.AmountBorder and select(2,
-                                pcall(f.AmountBorder.IsShown, f.AmountBorder)) or "n/a")))
-                local iw, ih = 0, 0
-                if f.Icon then
-                    local okg, a, b = pcall(function()
-                        return f.Icon:GetWidth(), f.Icon:GetHeight()
-                    end)
-                    if okg then iw, ih = a or 0, b or 0 end
-                end
-                print(("            Icon %.0fx%.0f"):format(iw, ih))
-                -- The three fontstrings that matter, side by side: Blizzard's count, the
-                -- plaque's own text (our current face source), and ours if it exists here.
-                local rows = {
-                    { "StackCount", f.StackCount },
-                    { "Text",       f.Text },
-                    { "ours",       f._vuiNemesisCount },
-                }
-                for r = 1, #rows do
-                    local lbl, tgt = rows[r][1], rows[r][2]
-                    local ft = DelveFontFacts(tgt)
-                    if not tgt then
-                        print(("            %-11s ABSENT"):format(lbl))
-                    elseif not ft then
-                        print(("            %-11s unreadable"):format(lbl))
-                    else
-                        print(("            %-11s face=%s size=%.0f flags=%q shown=%s text=%q")
-                            :format(lbl, ft.face, ft.size, ft.flags,
-                                    tostring(ft.shown), tostring(ft.text)))
-                        print(("            %-11s color=%s  anchors: %s")
-                            :format("", tostring(ft.color), tostring(ft.anchors)))
-                    end
-                end
-            end
+        print(("   [%d] %s  matched=%s depth=%d visible=%s")
+            :format(i, nm, rec.why, rec.depth, vis))
+        -- Only a StackCount match is directly measurable here; the other two shapes are
+        -- reported so their existence is known, and PATH 1 covers the placard properly.
+        if rec.why == "StackCount" then
+            DelveDumpSpellFrame("        ", w)
         end
     end
 end
