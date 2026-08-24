@@ -444,6 +444,13 @@ function AH.Browse.IsScanning() return scanning end
 function AH.Browse.Progress()   return progress end
 
 -- Shared with Replicate on purpose; see Finish().
+-- No click-to-refire recovery on this engine. `Start` refuses outright while a scan is
+-- already running, so a second click is a no-op, and the pre-data window here is one throttled
+-- send plus a server round trip -- fractions of a second, not replicate's ~30s snapshot wait.
+-- Offering "Retry Scan" for that window made the button flash it on every scan (owner-reported
+-- on 2026-08-24). Consumed via AH.Scan.SupportsRetry(); see UI/ScanButton.lua.
+AH.Browse.SupportsRetry = false
+
 function AH.Browse.SecondsUntilReady()
     if AH.Replicate and AH.Replicate.SecondsUntilReady then
         return AH.Replicate.SecondsUntilReady()

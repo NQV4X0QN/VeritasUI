@@ -499,6 +499,16 @@ function AH.Scan.Progress()
     return 0
 end
 
+-- Does the ACTIVE engine support the click-to-refire recovery that the button's "Retry Scan"
+-- state offers? Asked through the facade rather than having the button test engine names --
+-- UI/ScanButton.lua is a pure view over this API and references neither engine.
+-- ⚠ Defaults to FALSE for an engine that does not declare it: a disabled "Scanning…" is never
+-- wrong, whereas offering a recovery we cannot honour is.
+function AH.Scan.SupportsRetry()
+    local e = Engine()
+    return (e and e.SupportsRetry) and true or false
+end
+
 function AH.Scan.SecondsUntilReady()
     -- The floor is SHARED (one auction house, one sensible cadence) and both engines
     -- read/write AH.db.lastScan, so either accessor answers. Replicate owns the

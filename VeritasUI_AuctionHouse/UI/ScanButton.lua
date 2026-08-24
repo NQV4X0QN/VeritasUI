@@ -164,13 +164,24 @@ local function RefreshLabel()
             -- Rows are actually draining — a real scan is in flight; hands off.
             btn:SetText("Scanning…")
             btn:Disable()
-        else
-            -- Pre-data wait: EITHER a healthy 28-40s snapshot wait OR the hang.
-            -- Must stay clickable — this is the state the whole test exists for.
-            -- StartManual() internally refuses if a coroutine is live, so a click
-            -- during a healthy wait is safe (duplicate request = known no-op).
+        elseif AH.Scan.SupportsRetry and AH.Scan.SupportsRetry() then
+            -- Pre-data wait on an engine where retrying MEANS something: replicate's
+            -- ~28-40s snapshot wait, which can stretch indefinitely if the server drops
+            -- the request. Must stay clickable — Start() clears a fired-but-never-arrived
+            -- request and re-fires, and StartManual() refuses if a coroutine is live, so a
+            -- click during a healthy wait is a known no-op.
             btn:SetText("Retry Scan")
             btn:Enable()
+        else
+            -- Pre-data wait on an engine with no retry path (browse, the default). This
+            -- window is one throttled send plus a server round trip, so "Retry Scan"
+            -- FLASHED on every scan and offered a recovery the engine cannot perform
+            -- (owner-reported 2026-08-24). It reads as one continuous scan instead.
+            -- ⚠ v1.14.17 removed the tooltip that EXPLAINED this recovery for exactly the
+            -- same reason but kept the label state, which left the misleading affordance
+            -- without its explanation. Half a fix; this is the other half.
+            btn:SetText("Scanning…")
+            btn:Disable()
         end
         return
     end

@@ -324,6 +324,12 @@ function AH.Replicate.ScanFloorSeconds()
 end
 
 -- Seconds remaining before another scan is permitted (0 = ready).
+-- Click-to-refire IS meaningful here: the pre-data wait is a ~30s snapshot wait that can
+-- stretch indefinitely when the server silently drops the request (measured ~12 min, v1.9.5),
+-- and Start() clears a fired-but-never-arrived request and re-fires. That is what the
+-- "Retry Scan" button state exists for.
+AH.Replicate.SupportsRetry = true
+
 function AH.Replicate.SecondsUntilReady()
     local elapsed = time() - LastScanTime()
     local remaining = ScanFloorSeconds() - elapsed

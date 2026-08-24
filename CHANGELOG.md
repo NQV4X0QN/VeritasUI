@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.14.19] - 2026-08-24
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **the Scan button no longer flashes "Retry Scan" at the start of every scan.** The label's pre-data state — scanning has begun but no progress exists yet — was calibrated for the replicate engine, where that window is a ~30 second snapshot wait that can stretch indefinitely if the server silently drops the request, and where clicking again genuinely re-fires it. On the browse engine (the default since v1.12.12) the same window is one throttled send plus a server round trip, so the state appeared for a fraction of a second on every scan and advertised a recovery browse cannot perform — `Browse.Start` refuses outright while a scan is already running. The state is now offered only where the engine can honour it: each engine declares `SupportsRetry`, and the button asks through `AH.Scan.SupportsRetry()` rather than testing engine names, preserving its contract as a pure view over the scan API. An engine that declares nothing defaults to NO retry, because a disabled "Scanning…" is never wrong whereas a false affordance is. ⚠ v1.14.17 removed this button's TOOLTIP for precisely this reason but kept the label state, leaving the misleading affordance without its explanation; this is the other half of that fix. (`UI/ScanButton.lua`, `Browse.lua`, `Replicate.lua`, `Core.lua`)
+
+### Internal
+
+- `VeritasUI_AuctionHouse` — **first test coverage for `UI/ScanButton.lua`.** No suite loaded the file, so its label state machine — the part visible during a scan — was entirely unverified, and a green run said nothing about it. 19 checks over all four states plus the engine-capability gate. Mutation-validated four ways: restoring the unconditional "Retry Scan", flipping browse's declaration, defaulting the facade to true, and removing replicate's capability each fail. ⚠ The suite's first version drove the button against a FAKED facade and so covered the consumer but never the producers — flipping browse's declaration still passed. It now asserts the real engine declarations and the real facade resolution before installing the fake.
+
 ## [1.14.18] - 2026-08-24
 
 ### Changed
