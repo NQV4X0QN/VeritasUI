@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.14.15] - 2026-08-23
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **running a scan no longer replaces the Buy tab's Favorites view with the entire auction house.** The browse engine's empty `SendBrowseQuery` (the default scan since v1.12.12) is not private: the server REPLACES the shared browse result set, and Blizzard's `AuctionHouseBrowseResultsFrame` — which renders the Buy tab's list, *including* the Favorites view, favorites being just a browse search (`C_AuctionHouse.SearchForFavorites`) — re-reads that set on `AUCTION_HOUSE_BROWSE_RESULTS_UPDATED/ADDED` (its `OnEvent` → `UpdateBrowseResults` → `GetBrowseResults`, verified against wow-ui-source live). So every scan visibly streamed ~20k items into whatever browse view the player had up. The scan now unregisters those events on Blizzard's frame for its duration — the frame's Lua-side copy of the list is simply never repainted — and re-registers them on every exit path (complete, failure, AH close; the close path re-registers without re-querying so the frame is never left deaf for the next session). If the Favorites view was up at scan start, `C_AuctionHouse.SearchForFavorites` is re-issued through the scan's existing throttle queue at completion, so the C-side result set matches the screen again. No Blizzard frame method is called and no Blizzard table is written — event-registration flips and one raw `C_AuctionHouse` call only (the `StaticPopupDialogs` taint lesson, v1.12.5). Known tradeoff: if category/search results were up instead of Favorites, they now stay on screen stale-but-intact rather than being replaced by the full AH; they are not re-queried, because that search's parameters live in Blizzard file-locals. (`Browse.lua`)
+
 ## [1.14.14] - 2026-08-16
 
 ### Fixed

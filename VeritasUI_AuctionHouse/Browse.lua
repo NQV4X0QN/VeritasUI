@@ -154,6 +154,86 @@ local function ClearQueue()
 end
 
 ----------------------------------------------------------------
+--  Blizzard browse-UI suppression
+--
+--  The scan's empty browse query is not private: the server REPLACES the shared
+--  browse result set, and Blizzard's AuctionHouseBrowseResultsFrame — which renders
+--  the Buy tab's list, INCLUDING the Favorites view (favorites are just a browse
+--  search, C_AuctionHouse.SearchForFavorites) — re-reads that set on
+--  AUCTION_HOUSE_BROWSE_RESULTS_UPDATED/ADDED (its OnEvent → UpdateBrowseResults →
+--  GetBrowseResults, verified against wow-ui-source live 2026-08-23). Net effect:
+--  clicking Scan visibly replaced the player's Favorites list with the entire
+--  auction house streaming in.
+--
+--  While OUR scan is in flight, unregister those events on Blizzard's frame so its
+--  Lua-side copy of the list (self.browseResults) is never repainted; on any scan
+--  end (complete, fail, AH closed) re-register, and if the Favorites view was up,
+--  re-issue the favorites search so the C-side result set matches the screen again.
+--  The re-issue goes through the send queue: SearchForFavorites lives in the same
+--  throttled-message system as browse queries, and the queue drains on
+--  THROTTLED_SYSTEM_READY regardless of `scanning` (see the OnEvent note).
+--
+--  Deliberately NOT touched:
+--    * AuctionHouseItemBuyFrame also registers ..._UPDATED, but only to refresh a
+--      cosmetic refresh-button state (ItemList:UpdateRefreshFrame) — harmless.
+--    * No Blizzard frame METHOD is called and no Blizzard table is written —
+--      event-registration flips and a raw C_AuctionHouse call only. QueryAll /
+--      SetDisplayMode would repaint "properly" but run Blizzard code from an
+--      insecure path (the StaticPopupDialogs lesson, v1.12.5).
+--
+--  Known tradeoff: if the player had CATEGORY/search results up instead of
+--  Favorites, those rows stay on screen (stale but intact) and are NOT re-queried —
+--  strictly better than today's behaviour (list replaced by the full AH) without
+--  replaying a search whose parameters live in Blizzard file-locals.
+----------------------------------------------------------------
+local BLIZZARD_BROWSE_EVENTS = {
+    "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED",
+    "AUCTION_HOUSE_BROWSE_RESULTS_ADDED",
+    "AUCTION_HOUSE_BROWSE_FAILURE",
+}
+
+local uiSuppressed     = false
+local hadFavoritesView = false
+
+local function SuppressBlizzardBrowseUI()
+    local frame  = _G.AuctionHouseFrame
+    local browse = frame and frame.BrowseResultsFrame
+    if not browse then return end
+    -- Captured at scan start. QueryItem / QueryAll / SendBrowseQueryInternal are
+    -- the only writers of isDisplayingFavorites, and any of them running mid-scan
+    -- means the player launched a competing query that clobbers the scan anyway.
+    hadFavoritesView = frame.isDisplayingFavorites == true
+    for _, ev in ipairs(BLIZZARD_BROWSE_EVENTS) do
+        pcall(browse.UnregisterEvent, browse, ev)
+    end
+    uiSuppressed = true
+end
+
+local function RestoreBlizzardBrowseUI()
+    if not uiSuppressed then return end
+    uiSuppressed = false
+    local frame  = _G.AuctionHouseFrame
+    local browse = frame and frame.BrowseResultsFrame
+    if browse then
+        for _, ev in ipairs(BLIZZARD_BROWSE_EVENTS) do
+            pcall(browse.RegisterEvent, browse, ev)
+        end
+    end
+    local wasFavorites = hadFavoritesView
+    hadFavoritesView = false
+    if wasFavorites and AH.isOpen then
+        Enqueue(function()
+            local C = C_AuctionHouse
+            if C and C.SearchForFavorites and AH.isOpen then
+                -- Empty sorts = server default order; Blizzard's own sort list is a
+                -- file-local and unreadable from here.
+                C.SearchForFavorites({})
+            end
+        end)
+    end
+end
+
+----------------------------------------------------------------
 --  Fold one page of browse results
 --
 --  Mirrors Replicate's Fold(): keep the MINIMUM unit price per key and SUM the
@@ -239,6 +319,7 @@ local function Finish()
     scanning, progress = false, 1
     agg = nil
     ClearQueue()
+    RestoreBlizzardBrowseUI()
 
     -- COVERAGE REPORT. Always printed, not debug-gated: this is the evidence that the
     -- default scan engine is not losing items, and it is worthless if it only appears
@@ -277,6 +358,7 @@ local function Fail(reason)
     scanning, progress = false, 0
     agg, dryRun = nil, false
     ClearQueue()
+    RestoreBlizzardBrowseUI()
     AH.Events.Fire("AH_SCAN_FAILED", tostring(reason or "unknown"))
 end
 
@@ -362,6 +444,8 @@ function AH.Browse.Start(opts)
     noKeyExamples = nil
     startedAt = GetTime()
 
+    SuppressBlizzardBrowseUI()
+
     AH.Events.Fire("AH_SCAN_START")
     Enqueue(function()
         C_AuctionHouse.SendBrowseQuery({
@@ -432,6 +516,9 @@ AH.Events.On("AH_CLOSED", function()
     else
         ClearQueue()
     end
+    -- AH.isOpen is already false here, so this re-registers Blizzard's events
+    -- without re-querying favorites — the frame must not stay deaf next session.
+    RestoreBlizzardBrowseUI()
 end)
 
 ----------------------------------------------------------------
