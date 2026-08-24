@@ -209,6 +209,49 @@ local function SuppressBlizzardBrowseUI()
     uiSuppressed = true
 end
 
+-- The player's CURRENT favorites sort order, for re-issuing the favorites search after a
+-- scan (see the browse-UI suppression note above).
+--
+-- ⚠ WHY THIS EXISTS: v1.14.15 passed an EMPTY sorts table here, with a comment claiming
+-- Blizzard's sort list was "a file-local and unreadable from here". THAT WAS WRONG on both
+-- counts, and the owner caught the symptom: after a scan his Favorites came back ordered by
+-- NAME while the column header still read "Price". Empty sorts means server-default order,
+-- so the re-issued search silently re-sorted the list out from under the UI's own header
+-- state -- it looked like a shuffle.
+--
+-- Both pieces are GLOBALS, verified in wow-ui-source live (12.1.0):
+--   Blizzard_AuctionHouseFrame.lua:2   `g_auctionHouseSortsBySearchContext = ... or nil;`
+--                                      -- no `local`; it is a Blizzard SavedVariable.
+--   Blizzard_AuctionHouseUtil.lua:14   `AuctionHouseSearchContext = tInvert({ ... })`
+--                                      -- "AllFavorites" is entry 11 in that list.
+-- Blizzard reads the same table for the same purpose at Blizzard_AuctionHouseFrame.lua:767
+-- (`GetSortTypes(searchContext)`) immediately before its own SearchForFavorites call at :772.
+--
+-- ⚠ READ-ONLY, AND COPIED. We never write Blizzard's saved variable, and we hand the C API
+-- our OWN table rather than aliasing theirs -- keeping the v1.12.5 rule that this file calls
+-- no Blizzard method and writes no Blizzard table. A per-entry copy (not a shallow one) so
+-- the sort entries cannot be aliased either.
+--
+-- Falls back to `{}` (server default) only if the globals are genuinely absent, which is the
+-- pre-v1.14.18 behaviour and still better than not restoring the view at all.
+local function FavoritesSorts()
+    local ctx = _G.AuctionHouseSearchContext
+    local all = _G.g_auctionHouseSortsBySearchContext
+    if type(ctx) ~= "table" or type(all) ~= "table" then return {} end
+    local key = ctx.AllFavorites
+    if key == nil then return {} end
+    local src = all[key]
+    if type(src) ~= "table" then return {} end
+    local out = {}
+    for i = 1, #src do
+        local e = src[i]
+        if type(e) == "table" then
+            out[#out + 1] = { sortOrder = e.sortOrder, reverseSort = e.reverseSort }
+        end
+    end
+    return out
+end
+
 local function RestoreBlizzardBrowseUI()
     if not uiSuppressed then return end
     uiSuppressed = false
@@ -225,9 +268,7 @@ local function RestoreBlizzardBrowseUI()
         Enqueue(function()
             local C = C_AuctionHouse
             if C and C.SearchForFavorites and AH.isOpen then
-                -- Empty sorts = server default order; Blizzard's own sort list is a
-                -- file-local and unreadable from here.
-                C.SearchForFavorites({})
+                C.SearchForFavorites(FavoritesSorts())
             end
         end)
     end

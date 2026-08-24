@@ -72,7 +72,10 @@ local debugprofilestop = debugprofilestop
 
 AH.Replicate = {}
 
-local SCAN_FLOOR_SECONDS    = 15 * 60   -- minimum gap between full scans
+local SCAN_FLOOR_SECONDS    = 15 * 60   -- DEFAULT minimum gap between full scans.
+                                        -- Overridable per-account via
+                                        -- db.settings.scanFloorSeconds (`/ah floor`);
+                                        -- see ScanFloorSeconds() below.
 local ROWS_PER_SLICE        = 2000      -- safety cap on rows per frame
 local FRAME_BUDGET_MS       = 8         -- ~8ms/frame work budget (debugprofilestop)
 local REPLICATE_STALL_TIMEOUT = 60      -- seconds of total silence after which the request is declared LOST.
@@ -296,10 +299,34 @@ local function SetLastScanTime(t)
     if AH.db then AH.db.lastScan = t end
 end
 
+-- The floor actually in force. ABSENCE of the setting means "use the shipped default",
+-- the same convention as `scanEngine` (SEED_EXEMPT in Tooltip.lua) and for the same
+-- reason: a seeded copy of the default would make a future default change inert, and it
+-- would be indistinguishable from a deliberate choice.
+--
+-- 0 disables OUR floor entirely. ⚠ That does NOT remove Blizzard's own throttling:
+-- `ReplicateItems` has a server-side cooldown of its own, so on the replicate engine a
+-- disabled floor mostly means the request is refused or returns the same snapshot. On
+-- the BROWSE engine (the default since v1.12.12) there is no such fixed cooldown — the
+-- send queue gates on IsThrottledMessageSystemReady — so repeat scans do genuinely work.
+-- Added v1.14.18 for iteration on the scan bar's appearance: waiting 15 minutes to see a
+-- cosmetic change once is not a workable test loop.
+local function ScanFloorSeconds()
+    local s = AH.db and AH.db.settings and AH.db.settings.scanFloorSeconds
+    if type(s) == "number" and s >= 0 then return s end
+    return SCAN_FLOOR_SECONDS
+end
+
+-- Exposed so `/ah floor` and `/ah diag` report the same number the gate uses, rather
+-- than each re-deriving it (the three-way slash drift lesson, Core.lua:514).
+function AH.Replicate.ScanFloorSeconds()
+    return ScanFloorSeconds(), SCAN_FLOOR_SECONDS
+end
+
 -- Seconds remaining before another scan is permitted (0 = ready).
 function AH.Replicate.SecondsUntilReady()
     local elapsed = time() - LastScanTime()
-    local remaining = SCAN_FLOOR_SECONDS - elapsed
+    local remaining = ScanFloorSeconds() - elapsed
     return remaining > 0 and remaining or 0
 end
 
