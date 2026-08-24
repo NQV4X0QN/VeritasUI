@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.14.16] - 2026-08-23
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **the sell strip now shows every bag item the auction house will actually accept, not just items a vendor would also buy.** The strip's predicate was a heuristic from its construction — unbound + vendor sell price > 0, "matched 31/31 observed sellables" — which was measurement-complete for the bags it was probed against but wrong as a *definition*: auctionable items with no vendor value (caged battle pets are the canonical case; various BoEs and reagents too) read `sellPrice` 0/nil and were silently hidden — the owner-reported gap. The predicate is now `C_AuctionHouse.IsSellItemValid(loc, false)` — the exact check `AuctionHouseFrameMixin:SetPostItem` itself gates on before loading the sell form (verified against wow-ui-source live), so the strip shows precisely the set of items the native loader will accept when clicked, by construction. ⚠ `displayError=false` matters: the parameter *defaults to true*, which would pop a UI error for every non-sellable slot on every refresh. The unbound pre-filter stays (nothing bound is auctionable; skips the API call for most of the bag), the old vendor-price heuristic survives only as the fallback if `IsSellItemValid` is absent or errors, the warband-until-equip rejection stays as belt-and-braces (whether the API rejects warband gear itself is unmeasured, and the check only ever removes a definitively-unpostable item), and the cold-cache retry now covers *any* excluded item whose `GetItemInfo` is still nil — including a verdict delivered against cold data — not just the fallback path. (`UI/SellStrip.lua`)
+
 ## [1.14.15] - 2026-08-23
 
 ### Fixed

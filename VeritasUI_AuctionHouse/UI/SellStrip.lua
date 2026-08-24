@@ -15,8 +15,9 @@
 --   BuyoutModeCheckButton             x48 y563 (COLLIDES with our strip -> hidden)
 --   => empty band under Create Auction, above the gold bar (~y555..y643).
 --
--- VERIFIED PREDICATE (bag introspection): an item appears when it is UNBOUND and
--- has a vendor sell price (matched 31/31 observed sellables). A Shift-Right-click
+-- PREDICATE (v1.14.16): C_AuctionHouse.IsSellItemValid(loc, false) — the SAME
+-- check SetPostItem itself gates on, so the strip shows exactly what the native
+-- loader will accept (see the CollectItems block comment). A Shift-Right-click
 -- blocklist (AH.db.sellBlocklist[itemID]) hides items you never want to list.
 --
 -- SCROLL: a fixed row of reusable item buttons + mouse-wheel paging by an offset.
@@ -119,7 +120,24 @@ local function IsSellMode()
 end
 
 ----------------------------------------------------------------
---  Collect sellable bag items (unbound + vendor price, minus blocklist).
+--  Collect sellable bag items (minus blocklist).
+--
+--  PREDICATE (v1.14.16): C_AuctionHouse.IsSellItemValid(loc, false) — the SAME
+--  check AuctionHouseFrameMixin:SetPostItem gates on before loading the sell form
+--  (Blizzard_AuctionHouseFrame.lua, verified against wow-ui-source live
+--  2026-08-23), so the strip shows exactly the set of items the native loader
+--  will accept when clicked. The original heuristic (unbound + vendor price > 0,
+--  "matched 31/31 observed sellables") was measurement-complete for the bags it
+--  was built against but WRONG as a definition: auctionable items with NO vendor
+--  value (caged pets, various BoEs/reagents) read sellPrice 0/nil and were
+--  silently hidden — the owner-reported gap that motivated this change.
+--  ⚠ displayError=false is REQUIRED: the parameter DEFAULTS TO TRUE, which would
+--  pop a UI error for every non-sellable slot on every refresh pass.
+--
+--  The unbound pre-filter stays: nothing bound is ever auctionable, it skips the
+--  ItemLocation + API call for most of the bag, and isBound may be secret in
+--  some contexts (guarded, skip-on-doubt, as before). The vendor-price heuristic
+--  remains ONLY as the fallback when IsSellItemValid is absent or errors.
 ----------------------------------------------------------------
 local function CollectItems()
     local out = {}
@@ -138,48 +156,79 @@ local function CollectItems()
                 local okB, unbound = pcall(function() return not info.isBound end)
                 local itemID = info.itemID
                 if okB and unbound and itemID and not (block and block[itemID]) then
-                    -- The vendor sell price (GetItemInfo index 11) and the
-                    -- comparison against it may both touch a secret value; guard
-                    -- the call and the arithmetic separately, as QoL ScanJunk does.
-                    local okP, sellPrice = pcall(function()
-                        return select(11, C_Item.GetItemInfo(info.hyperlink))
-                    end)
-                    if okP then
-                        local okC, sellable = pcall(function()
-                            return sellPrice and sellPrice > 0
+                    local loc = ItemLocation:CreateFromBagAndSlot(bag, slot)
+
+                    local include = false
+                    local decided = false
+                    if C_AuctionHouse and C_AuctionHouse.IsSellItemValid then
+                        local okV, valid = pcall(function()
+                            return loc and loc:IsValid()
+                                and C_AuctionHouse.IsSellItemValid(loc, false) == true
                         end)
-                        if okC and sellable then
-                            -- Reject warband-bound-until-equipped equipment: effectively
-                            -- account-soulbound, cannot be auctioned, yet reads
-                            -- isBound=false (binds on equip) WITH a sell price, so the
-                            -- unbound+price predicate alone lets it through. VERIFIED
-                            -- (probe, 12.0.5, item 249677 Twinthorn Wildglaive):
-                            -- IsBoundToAccountUntilEquip is the ONLY clean discriminator —
-                            -- warband-until-equip gear reports bindType=2, IDENTICAL to
-                            -- ordinary sellable BoE, so bindType cannot tell them apart.
-                            -- Conservative: only reject on a definitive true; on pcall
-                            -- error or a cold/absent result we SHOW the item (never hide a
-                            -- legit sellable on doubt — at worst a warband item flashes for
-                            -- one refresh, then self-corrects when its cache warms).
-                            local loc = ItemLocation:CreateFromBagAndSlot(bag, slot)
-                            local okW, warband = pcall(function()
-                                return loc and loc:IsValid()
-                                    and C_Item.IsBoundToAccountUntilEquip
-                                    and C_Item.IsBoundToAccountUntilEquip(loc) or false
+                        if okV then
+                            decided = true
+                            include = valid == true
+                        end
+                    end
+
+                    if not decided then
+                        -- FALLBACK — the pre-v1.14.16 heuristic, for when
+                        -- IsSellItemValid is absent or errored. The vendor sell
+                        -- price (GetItemInfo index 11) and the comparison against
+                        -- it may both touch a secret value; guard the call and the
+                        -- arithmetic separately, as QoL ScanJunk does.
+                        local okP, sellPrice = pcall(function()
+                            return select(11, C_Item.GetItemInfo(info.hyperlink))
+                        end)
+                        if okP then
+                            local okC, sellable = pcall(function()
+                                return sellPrice and sellPrice > 0
                             end)
-                            if not (okW and warband) then
-                                out[#out + 1] = {
-                                    bag = bag, slot = slot, link = info.hyperlink,
-                                    itemID = itemID, texture = info.iconFileID,
-                                    count = info.stackCount, quality = info.quality,
-                                    name = info.hyperlink:match("%[(.-)%]") or "",
-                                }
-                            end
-                        elseif okP and sellPrice == nil then
-                            -- GetItemInfo returned nil — item data not yet in the
-                            -- client cache. Request a fill and track the itemID so
-                            -- GET_ITEM_INFO_RECEIVED can schedule a Refresh once it
-                            -- lands. The item will appear on the next Refresh pass.
+                            include = (okC and sellable) == true
+                        end
+                    end
+
+                    -- Reject warband-bound-until-equipped equipment: effectively
+                    -- account-soulbound, cannot be auctioned, yet reads
+                    -- isBound=false (binds on equip), so the unbound pre-filter
+                    -- lets it through. VERIFIED (probe, 12.0.5, item 249677
+                    -- Twinthorn Wildglaive): IsBoundToAccountUntilEquip is the
+                    -- ONLY clean discriminator — warband-until-equip gear reports
+                    -- bindType=2, IDENTICAL to ordinary sellable BoE. Kept as
+                    -- belt-and-braces under the API predicate too: whether
+                    -- IsSellItemValid rejects warband gear itself is UNMEASURED,
+                    -- and this check only ever removes a definitively-unpostable
+                    -- item. Conservative: only reject on a definitive true; on
+                    -- pcall error or a cold/absent result we SHOW the item (never
+                    -- hide a legit sellable on doubt).
+                    if include then
+                        local okW, warband = pcall(function()
+                            return loc and loc:IsValid()
+                                and C_Item.IsBoundToAccountUntilEquip
+                                and C_Item.IsBoundToAccountUntilEquip(loc) or false
+                        end)
+                        if okW and warband then include = false end
+                    end
+
+                    if include then
+                        out[#out + 1] = {
+                            bag = bag, slot = slot, link = info.hyperlink,
+                            itemID = itemID, texture = info.iconFileID,
+                            count = info.stackCount, quality = info.quality,
+                            name = info.hyperlink:match("%[(.-)%]") or "",
+                        }
+                    else
+                        -- Excluded. If that's because the item's data is not yet
+                        -- in the client cache (GetItemInfo nil), request a fill
+                        -- and track the itemID so GET_ITEM_INFO_RECEIVED can
+                        -- schedule a Refresh once it lands — the item then
+                        -- re-evaluates on the next pass. This covers both the
+                        -- fallback's nil sellPrice AND an IsSellItemValid verdict
+                        -- delivered against cold data.
+                        local okN, itemName = pcall(function()
+                            return (C_Item.GetItemInfo(info.hyperlink))
+                        end)
+                        if okN and itemName == nil then
                             state.pending[itemID] = true
                             if C_Item.RequestLoadItemDataByID then
                                 pcall(C_Item.RequestLoadItemDataByID, itemID)
