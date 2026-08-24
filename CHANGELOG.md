@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.14.17] - 2026-08-23
+
+### Changed
+
+- `VeritasUI_AuctionHouse` — **the Scan button no longer shows a tooltip.** Blizzard's own AH buttons carry none, the label already says what a click does, and the tooltip's main content had gone stale twice over: it explained a "Retry Scan" recovery flow that belongs to the *replicate* engine, while on the default browse engine (since v1.12.12) `Browse.Start` refuses to start while a scan is already running — so the advice ("click to re-fire, recovers a stuck scan") was not just clutter but wrong for the engine actually in use. The "Retry Scan" *label state* itself remains: it is still correct for anyone switched back to the replicate engine, where the click-to-recover path is real. (`UI/ScanButton.lua`)
+
 ## [1.14.16] - 2026-08-23
 
 ### Fixed

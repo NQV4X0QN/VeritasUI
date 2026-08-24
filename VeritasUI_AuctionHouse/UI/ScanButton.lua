@@ -233,15 +233,11 @@ local function Build()
     PrewarmDisabledArt(btn)
 
     btn:SetScript("OnClick", OnClick)
-    btn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("VeritasUI: Manual price scan")
-        GameTooltip:AddLine("Fires a full auction scan now.", 0.8, 0.8, 0.8, true)
-        GameTooltip:AddLine("\"Retry Scan\" = a request is out but no data has arrived; "
-            .. "click to re-fire (recovers a stuck scan).", 0.8, 0.8, 0.8, true)
-        GameTooltip:Show()
-    end)
-    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- No tooltip, deliberately (removed v1.14.17, owner request): Blizzard's own AH
+    -- buttons carry none, the label already says what a click does, and the old text
+    -- explained a "Retry Scan" recovery that belongs to the REPLICATE engine —
+    -- Browse.Start refuses while a scan is running, so on the default engine the
+    -- advice was wrong, not just noisy.
 
     state.btn = btn
     state.built = true
