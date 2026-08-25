@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0] - 2026-08-24
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **"Show as Experience Bar" now appears on the Journeys "Encounters" cards (Delves and Prey), which Blizzard ships without it.** The capability was always there; only the widget was missing. `JourneyCardButtonMixin` is `CreateFromMixins(RenownCardButtonMixin)`, so the encounter cards already inherit the `OnEnter`/`OnLeave` that reveal and hide the toggle — those were no-ops purely because the guard is `if self.WatchedFactionToggleFrame` and only `RenownCardButtonTemplate` declares that child. Creating it is the whole fix, after which Blizzard's own logic drives it, and the checkbox is `Mixin`'d with Blizzard's global `WatchedFactionToggleFrameMixin` so `OnClick` is theirs verbatim. Only `OnShow` is overridden: it derives its checked state from `C_Reputation.GetFactionDataByID`, which returns nil for every journey faction, so it would always draw unchecked — ours reads `GetWatchedFactionData().factionID` instead. Verified end to end in game: watching Delves: Season 2 produces a real bar reading `Delves: Season 2 (Warband) 2750 / 4200`, and the bar swaps cleanly between Delves and Prey. Placement is anchored to `JourneyCardLevel` rather than to a tuned offset, so Blizzard owns the row's position, and the horizontal inset is derived from their own `RIGHT x=30` spec so it matches the Renown cards exactly. (`Journeys.lua`, new)
+- `VeritasUI_QualityOfLife` — **left-clicking the reputation status bar opens that faction's own page, and clicking again closes it.** Major factions — which is what Delves, Prey and every Renown track are — go to the Journeys page via the exact four-call sequence Blizzard's own renown NPC uses in `ShowMajorFactionRenown`; everything else opens Character → Reputation selected to that faction, walking the faction list by index because that pane addresses factions by index rather than ID. The toggle's close is deliberately narrow: it fires only when the window already shows that faction's own page, so a click while the Adventure Guide sits on Dungeons or on another faction navigates instead of discarding your place. Hooked on both status-bar containers, since Main and Secondary each build a full set of bars and Edit Mode decides which is on screen. (`Journeys.lua`)
+
 ## [1.14.20] - 2026-08-24
 
 ### Changed
