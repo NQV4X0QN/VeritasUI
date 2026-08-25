@@ -110,6 +110,82 @@ local function SuppressBuyoutCheckbox()
 end
 
 ----------------------------------------------------------------
+--  Pin the Quantity row visible on both sell forms (v1.14.20).
+--
+--  WHY: Blizzard hides that row whenever you can only post one of the item, at
+--  Blizzard_AuctionHouseSellFrame.lua:396-397 inside AuctionHouseSellFrameMixin
+--  :SetItem (verified against wow-ui-source live 2026-08-24):
+--      local showQuantity = self:GetMaxQuantity() > 1;
+--      self.QuantityInput:SetShown(showQuantity);
+--  The sell form is a VerticalLayoutFrame (Blizzard_AuctionHouseSellFrame.xml:163)
+--  and QuantityInput carries layoutIndex 20 (xml:229-231); LayoutFrame.lua:38
+--  excludes any child that is not :IsShown() from the layout, so EVERY row below it
+--  -- Unit Price 30, Duration 40, Deposit 50, Total Price 60, Create Auction 70 --
+--  slides up one row height. Clicking a 1-count vs a 2+-count icon in the strip
+--  therefore moves the Create Auction button, which defeats click muscle memory.
+--
+--  Line 397 is the ONLY place in the entire AH source that changes this row's
+--  visibility (grep of every QuantityInput reference across
+--  Blizzard_AuctionHouse*.lua/xml), and the forms are driven through instance
+--  dispatch -- self.CommoditiesSellFrame:SetItem(loc) / self.ItemSellFrame:SetItem
+--  (Blizzard_AuctionHouseFrame.lua:625,629), including the SetItem(nil) clears at
+--  :634-637 -- so a post-hook on each form's SetItem catches every load and clear.
+--
+--  After re-showing we re-run three things SetItem already did while the row was
+--  still hidden, so we inherit Blizzard's logic instead of re-deriving it:
+--    MarkDirty()          -- re-request a layout pass (LayoutFrame.lua:84); the
+--        pass is deferred to OnUpdate and GetLayoutChildren() is recomputed then
+--        (LayoutFrame.lua:78-81,254), so a child shown after SetItem's own
+--        MarkDirty at :404 is still picked up. Needed for the non-SetItem calls.
+--    UpdateFocusTabbing() -- reads QuantityInput:IsShown() to wire Tab order
+--        (sellframe:357, item-form override itemsellframe:419-422). SetItem runs it
+--        at :406, i.e. while hidden, so Tab would skip the now-visible box.
+--    UpdatePostState()    -- recomputes MaxButton:SetEnabled(quantity < max)
+--        (sellframe:344); on the commodities path the quantity is set AFTER that
+--        call (commoditiessellframe:173), so "Max" can be left enabled at 1 of 1.
+--  Plus InputBox:SetCursorPosition(0) -- Blizzard's own documented hack for text
+--  set on an edit box that is shown in the same frame (sellframe:399-402,
+--  commoditiessellframe:176-179). We move the show into that same frame, so the
+--  condition their comment describes applies to us and the "1" could render
+--  scrolled out of view without it.
+--
+--  Applied to BOTH forms so the button sits at one fixed height for every sale.
+--  On the gear form the row reads 1 with "Max" greyed, since equipment max is 1.
+--
+--  Not combat-gated: QuantityInput is a plain Frame (xml:229) and Blizzard itself
+--  calls SetShown on it from SetItem during combat. Over-max typing stays clamped
+--  by Blizzard's own input callback (sellframe:289-292), so an always-editable box
+--  cannot post more than you own.
+----------------------------------------------------------------
+local function PinQuantityRow()
+    for _, formKey in ipairs({ "ItemSellFrame", "CommoditiesSellFrame" }) do
+        local form = AuctionHouseFrame and AuctionHouseFrame[formKey]
+        if form and form.QuantityInput then
+            local function pin()
+                local q = form.QuantityInput
+                -- Already visible (2+ available): Blizzard ran the updates below
+                -- itself with the correct state, so there is nothing to correct.
+                if q:IsShown() then return end
+                q:Show()
+                if form.MarkDirty then form:MarkDirty() end
+                pcall(form.UpdateFocusTabbing, form)
+                pcall(form.UpdatePostState, form)
+                if q.InputBox then
+                    pcall(q.InputBox.SetCursorPosition, q.InputBox, 0)
+                end
+            end
+
+            if not form._vuiQuantityPinned then
+                form._vuiQuantityPinned = true
+                hooksecurefunc(form, "SetItem", pin)
+            end
+
+            pin()   -- the form may already hold an item when we first hook
+        end
+    end
+end
+
+----------------------------------------------------------------
 --  Sell display mode?
 ----------------------------------------------------------------
 local function IsSellMode()
@@ -483,6 +559,7 @@ local function Build()
     state.built = true
 
     SuppressBuyoutCheckbox()
+    PinQuantityRow()
 
     if not state.hooked then
         hooksecurefunc(AuctionHouseFrame, "SetDisplayMode", function()
@@ -525,6 +602,7 @@ function UpdateVisibility()
         state.card:Show()
         state.strip:Show()
         SuppressBuyoutCheckbox()   -- re-assert after Blizzard rebuilds the form
+        PinQuantityRow()           -- ditto; installs the SetItem hook on first pass
         Refresh()
     else
         state.card:Hide()

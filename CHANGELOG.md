@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.14.20] - 2026-08-24
+
+### Changed
+
+- `VeritasUI_AuctionHouse` — **the Quantity row now stays visible on the Sell tab even when you only have one of the item, so "Create Auction" never moves.** Blizzard hides that row whenever you can post at most one — `AuctionHouseSellFrameMixin:SetItem` does `self.QuantityInput:SetShown(self:GetMaxQuantity() > 1)` — and because the sell form is a `VerticalLayoutFrame` whose children are ordered by `layoutIndex`, a hidden row is dropped from the layout entirely and every row beneath it (Unit Price, Duration, Deposit, Total Price, Create Auction) slides up one row height. Clicking a single-count icon in the sell strip therefore put the button at a different screen position than clicking a stack, which defeats click muscle memory. The row is now pinned shown on both sell forms via a post-hook on each form's `SetItem` — the sole place in the AH source that touches its visibility — after which Blizzard's own `MarkDirty`, `UpdateFocusTabbing` and `UpdatePostState` are re-run, since `SetItem` had already called them while the row was still hidden: without them the layout pass would miss the row, Tab from Unit Price would skip the now-visible box, and "Max" would be left enabled at 1 of 1. Blizzard's documented `SetCursorPosition(0)` workaround is re-applied too, because showing the box in the same frame its text was set is exactly the condition that hack exists for. Applied to the gear form as well, where the row reads 1 with "Max" greyed, so the button sits at one fixed height for every sale. Over-max typing remains clamped by Blizzard's own input callback, so an always-editable box cannot post more than you own. (`UI/SellStrip.lua`)
+
 ## [1.14.19] - 2026-08-24
 
 ### Fixed
