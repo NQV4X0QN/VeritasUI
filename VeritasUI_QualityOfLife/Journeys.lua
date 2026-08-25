@@ -417,13 +417,31 @@ local function HookStatusBars()
     return found
 end
 
-local barLoader = CreateFrame("Frame")
-barLoader:RegisterEvent("PLAYER_LOGIN")
-barLoader:SetScript("OnEvent", function(self)
-    self:UnregisterEvent("PLAYER_LOGIN")
-    if not HookStatusBars() then
-        -- Containers exist but bars not built yet: retry once next frame rather than
-        -- silently doing nothing.
-        C_Timer.After(0, HookStatusBars)
-    end
-end)
+-- >>> ISOLATION STEP — status-bar hooking DISABLED to confirm it is the taint source <<<
+-- Owner hit this on entering Edit Mode at v1.15.1:
+--   EncounterWarningsViewElements.lua:75: attempt to compare a secret number value
+--   (execution tainted by 'VeritasUI_QualityOfLife')
+--   [C]: secureexecuterange <- EditModeManager.lua:2742 RefreshEncounterEvents
+--        <- EditModeManagerOverrides.lua:38 EditModeFrameSetup <- OnEditModeEnter <- EnterEditMode
+-- The status tracking bars are Edit Mode SYSTEM frames (their containers inherit
+-- EditModeStatusTrackingBar1/2SystemTemplate, StatusTrackingBar.xml:41,49), and HookScript on a
+-- secure Blizzard frame is a known taint source in this suite's own landmine list. The
+-- "parent bar frames are safe to hook" precedent I relied on was measured on ACTION bars against
+-- ACTIONBAR_UPDATE_COOLDOWN and does not extend to Edit Mode systems.
+-- If Edit Mode is clean with this disabled, the cause is confirmed and the feature gets rebuilt
+-- with our own click-catcher frame that never writes to a Blizzard frame.
+local ENABLE_STATUS_BAR_CLICKS = false
+
+if ENABLE_STATUS_BAR_CLICKS then
+    local barLoader = CreateFrame("Frame")
+    barLoader:RegisterEvent("PLAYER_LOGIN")
+    barLoader:SetScript("OnEvent", function(self)
+        self:UnregisterEvent("PLAYER_LOGIN")
+        if not HookStatusBars() then
+            -- Containers exist but bars not built yet: retry once next frame rather than
+            -- silently doing nothing.
+            C_Timer.After(0, HookStatusBars)
+        end
+    end)
+end
+-- <<< END ISOLATION STEP >>>

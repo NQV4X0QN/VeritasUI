@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.15.2] - 2026-08-24
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **entering Edit Mode no longer throws `attempt to compare a secret number value (execution tainted by 'VeritasUI_QualityOfLife')`.** The status-bar click navigation added in v1.15.0 attached its handler with `HookScript("OnMouseUp")` directly to Blizzard's reputation and honor bars — but those bars sit inside Edit Mode system frames (their containers inherit `EditModeStatusTrackingBar1/2SystemTemplate`), so hooking them taints Edit Mode's own `RefreshEncounterEvents`, which then cannot compare a Secret Value inside `secureexecuterange`. Confirmed by isolation: with the hook disabled and a fresh `/reload`, Edit Mode opens clean. The click navigation is temporarily disabled behind a flag while it is rebuilt with our own click-catcher frame that never writes to a Blizzard frame; the Journeys "Show as Experience Bar" checkbox is unaffected and still works. ⚠ This suite's landmine list already warned that `HookScript` on a secure Blizzard frame is a taint source — the mistake was treating a narrower precedent ("parent bar frames are safe to hook", measured on action bars against `ACTIONBAR_UPDATE_COOLDOWN`) as a general licence. (`Journeys.lua`)
+
 ## [1.15.1] - 2026-08-24
 
 ### Added
