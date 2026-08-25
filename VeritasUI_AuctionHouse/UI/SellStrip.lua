@@ -157,12 +157,25 @@ end
 --  by Blizzard's own input callback (sellframe:289-292), so an always-editable box
 --  cannot post more than you own.
 ----------------------------------------------------------------
+-- Which sell forms we have already hooked. ⚠ Deliberately a MODULE-LOCAL table keyed by the
+-- form, NOT a `form._vuiQuantityPinned` field on Blizzard's frame (which is what v1.14.20
+-- shipped). Writing our own bookkeeping onto a Blizzard frame is a taint write on a frame
+-- whose SetItem -> CanPostItem path reaches `C_AuctionHouse.PostCommodity`, and this module's
+-- landmines record a historical crash INSIDE Blizzard's commodity-post code on the native
+-- Create Auction click. Nothing reads this but us, so it does not belong on their frame.
+-- (Contrast VeritasUI_QualityOfLife/Journeys.lua, where `card.WatchedFactionToggleFrame` MUST
+-- be set on Blizzard's frame because Blizzard's own inherited OnEnter reads that exact field.)
+local quantityPinnedForms = {}
+
 local function PinQuantityRow()
     for _, formKey in ipairs({ "ItemSellFrame", "CommoditiesSellFrame" }) do
         local form = AuctionHouseFrame and AuctionHouseFrame[formKey]
         if form and form.QuantityInput then
             local function pin()
                 local q = form.QuantityInput
+                -- Re-read each call, so re-check it: a nil here would otherwise throw from
+                -- inside a hooksecurefunc post-hook on every sell-form load.
+                if not q then return end
                 -- Already visible (2+ available): Blizzard ran the updates below
                 -- itself with the correct state, so there is nothing to correct.
                 if q:IsShown() then return end
@@ -175,8 +188,8 @@ local function PinQuantityRow()
                 end
             end
 
-            if not form._vuiQuantityPinned then
-                form._vuiQuantityPinned = true
+            if not quantityPinnedForms[form] then
+                quantityPinnedForms[form] = true
                 hooksecurefunc(form, "SetItem", pin)
             end
 
