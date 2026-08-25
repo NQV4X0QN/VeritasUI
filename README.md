@@ -1,6 +1,6 @@
 # VeritasUI
 
-A personal World of Warcraft addon suite for **Midnight** (12.0.7, Interface 120007), focused on solo play quality-of-life improvements.
+A personal World of Warcraft addon suite for **Midnight** (12.1.0 "Curse of Ula'tek", Interface 120100), focused on solo play quality-of-life improvements.
 
 VeritasUI uses Blizzard's native APIs exclusively and matches Blizzard's UI aesthetics — fonts, spacing, layout, and settings panels are designed to be indistinguishable from the default UI. Most features are configurable through the standard **Options → AddOns** panel, with slash commands available for quick access.
 
@@ -34,6 +34,9 @@ Functional enhancements that don't fit the "hide/fade" category.
 - **Auto Sell Junk** — automatically sells gray items when visiting a merchant using event-driven batch selling; reports earnings by summing item sell prices, independent of any concurrent gold deductions (e.g. AutoRepair on the same merchant frame)
 - **Auto Repair** — automatically repairs gear at repair merchants, with a **Repair Funding** option (Guild + Personal, or Personal Only) and source reporting; honors the `[noautorepair]` guild-info tag
 - **AFK Screen** — a cinematic full-screen overlay when you go AFK (character name, level, item level, zone, and clock over a slow camera orbit), useful for reducing OLED burn-in; dismissed on movement
+- **Show Delve Nemesis Count** — adds the remaining enemy-group count to the Delve objective plaque, reading it from the widget's spell description where Blizzard only exposes it in prose
+- **Journeys experience-bar toggle** — adds the "Show as Experience Bar" checkbox that Blizzard ships on Renown cards but omits from the Journeys "Encounters" cards, so Delves and Prey progress can be watched on the status bar like any other reputation
+- **Click a status bar to open its window** — left-click the reputation bar to jump straight to that faction's Journeys page (or Character → Reputation for factions without one), or the Honor bar to open the PvP UI; clicking again closes it
 - **TomTom-compatible Waypoints** — `/way #mapID x y [label]` or `/way x y [label]` places a native Blizzard waypoint pin and activates the minimap directional arrow; `/way clear` removes it; reads the same format used by most online guides (e.g. `/way #2351 45.2 56.3`)
 
 Settings: **Options → AddOns → Quality of Life** | `/qol` | `/way`
@@ -73,27 +76,32 @@ Settings: **Options → AddOns → Advanced Options** | `/ao`
 ### VeritasUI_AuctionHouse
 Auction House price tracking and selling convenience, built entirely on the native Auction House frame.
 
-- **Price database** — a **Scan** button on the Auction House frame does a complete sweep of the auction house and stores current market prices account-wide. Every item on the AH is captured in a single scan; you can also run one with `/ah scan`
+- **Price database** — a **Scan** button on the Auction House frame sweeps the whole auction house and records the current lowest price and quantity seen for every item listed, stored account-wide; you can also run one with `/ah scan`
 - **Scan button states** — the button tells you where a scan stands at a glance: ready to scan, counting down the cooldown between scans, or working through results
+- **Scan progress bar** — a progress readout next to the money frame at the bottom of the Auction House, visible on the Buy, Sell and Auctions tabs alike
 - **Tooltip prices** — shows the latest market price on item and battle-pet tooltips, styled to match Blizzard's own "Sell Price:" line. Prices stay available everywhere, including away from the Auction House
 - **Sell strip** — a strip of your sellable bag items on the Sell tab; click one to load it into Blizzard's Create-Auction form (you confirm and post), or Shift-Right-click to hide it from the strip
-- Settings hold the tooltip-display toggles
+- **Steady Create Auction button** — the Sell tab's Quantity row stays visible even when you only have one of an item, so the form never changes height and "Create Auction" does not move between listings
+- **Reagents value on crafting orders** — adds a "Reagents Value:" line to Blizzard's Place Crafting Order form showing what the recipe's reagents are worth at the last scanned price, so a commission can be judged against material cost; works away from an auctioneer
+- Settings hold the three tooltip-display toggles and the crafting-order reagents line
 
 Settings: **Options → AddOns → Auction House** | `/ah`
 
 ## Installation
 
-1. Download or clone this repository
-2. Copy all seven `VeritasUI_*` folders into:
+1. Download the latest `VeritasUI-vX.Y.Z.zip` from the [Releases page](https://github.com/NQV4X0QN/VeritasUI/releases/latest) — the zip contains only the seven addon folders, nothing to sort through
+2. Extract it and copy all seven `VeritasUI_*` folders into:
    ```
    World of Warcraft/_retail_/Interface/AddOns/
    ```
-3. Ensure the folder names exactly match the TOC filenames (WoW requires this)
+3. Keep the folder names exactly as they are — WoW requires each folder name to match its `.toc` filename
 4. Reload or restart the game
+
+All seven modules move in lockstep on a single version number, so install them together; `VeritasUI_Lib` is required by every other module.
 
 ## Requirements
 
-- World of Warcraft: Midnight (Patch 12.0.7, Interface 120007)
+- World of Warcraft: Midnight (Patch 12.1.0, Interface 120100)
 - No external library dependencies — fully self-contained
 
 ## Design Philosophy
