@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.15.1] - 2026-08-24
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **left-clicking the Honor bar now opens and closes the PvP UI**, matching what v1.15.0 gave the reputation bar. The implementation is a single `TogglePVPUI()` call, because Blizzard's own toggle already has the narrow-close behaviour written by hand for the reputation path: `PVEFrame_ToggleFrame` closes only when the PvP panel is the one currently showing, and otherwise navigates to it, so clicking while the Group Finder sits on Dungeons switches rather than closing. It also owns the load-on-demand and the group-finder availability guard, so wrapping it in an `IsShown` check or a `LoadUI` call would only fight logic that is already correct. The bar hooks are now a dispatch table keyed by `StatusTrackingBarInfo.BarsEnum` rather than special-casing reputation, so wiring another bar is one entry. Experience, Artifact, Azerite and House Favor are deliberately left unwired — no window was requested for them, and a click that opens something unexpected is worse than one that does nothing. (`Journeys.lua`)
+
 ## [1.15.0] - 2026-08-24
 
 ### Added

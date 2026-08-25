@@ -356,29 +356,62 @@ local function OpenFactionPage(factionID)
     OpenReputationPane(factionID)
 end
 
+----------------------------------------------------------------
+--  Honor bar -> the PvP UI (v1.15.1).
+--
+--  `TogglePVPUI()` is the whole implementation, and it ALREADY has the narrow-close
+--  behaviour we hand-rolled for the reputation path. It is
+--  `PVEFrame_ToggleFrame("PVPUIFrame", nil)` (Blizzard_PVPUI_Bootstrap.lua:7-9), and
+--  PVEFrame_ToggleFrame (PVEFrame.lua:31-56) closes ONLY when PVEFrame is shown AND
+--  PVPUIFrame is the side panel currently up (:45-48); if PVEFrame is open on some other
+--  panel it falls through to PVEFrame_ShowFrame and NAVIGATES. It also owns the
+--  load-on-demand of Blizzard_PVPUI and the `C_LFGInfo.CanPlayerUseGroupFinder` guard.
+--  So: do NOT add toggle logic, an IsShown check, or a LoadUI call here. It is one call by
+--  design, and it is the same function Blizzard's own TOGGLEPVPUI keybinding invokes.
+----------------------------------------------------------------
+local function ToggleHonorUI()
+    if _G.TogglePVPUI then pcall(_G.TogglePVPUI) end
+end
+
 local hookedBars = {}
 
-local function HookReputationBars()
+----------------------------------------------------------------
+--  Hook every status bar we have a destination for.
+--
+--  Add a bar by adding one entry to `actions` -- the enum key comes from
+--  StatusTrackingBarInfo.BarsEnum (StatusTrackingManager.lua:5). Deliberately NOT wired:
+--  Experience (no "experience window" exists), Artifact, Azerite, HouseFavor -- none were
+--  asked for, and a click that opens something surprising is worse than a click that does
+--  nothing.
+----------------------------------------------------------------
+local function HookStatusBars()
     local manager = _G.StatusTrackingBarManager
     local info    = _G.StatusTrackingBarInfo
     if not (manager and manager.barContainers and info and info.BarsEnum) then return false end
-    local repIndex = info.BarsEnum.Reputation
-    if not repIndex then return false end
+
+    local actions = {
+        [info.BarsEnum.Reputation] = function(bar)
+            local okData, watched = pcall(C_Reputation.GetWatchedFactionData)
+            local factionID = (okData and watched and watched.factionID) or bar.factionID
+            OpenFactionPage(factionID)
+        end,
+        [info.BarsEnum.Honor] = ToggleHonorUI,
+    }
 
     local found = false
     for _, container in ipairs(manager.barContainers) do
-        local bar = container.bars and container.bars[repIndex]
-        if bar and not hookedBars[bar] then
-            hookedBars[bar] = true
-            found = true
-            bar:HookScript("OnMouseUp", function(self, button)
-                if button ~= "LeftButton" then return end
-                local okData, watched = pcall(C_Reputation.GetWatchedFactionData)
-                local factionID = (okData and watched and watched.factionID) or self.factionID
-                OpenFactionPage(factionID)
-            end)
-        elseif bar then
-            found = true
+        for barIndex, action in pairs(actions) do
+            local bar = container.bars and container.bars[barIndex]
+            if bar then
+                found = true
+                if not hookedBars[bar] then
+                    hookedBars[bar] = true
+                    bar:HookScript("OnMouseUp", function(self, button)
+                        if button ~= "LeftButton" then return end
+                        action(self)
+                    end)
+                end
+            end
         end
     end
     return found
@@ -388,9 +421,9 @@ local barLoader = CreateFrame("Frame")
 barLoader:RegisterEvent("PLAYER_LOGIN")
 barLoader:SetScript("OnEvent", function(self)
     self:UnregisterEvent("PLAYER_LOGIN")
-    if not HookReputationBars() then
+    if not HookStatusBars() then
         -- Containers exist but bars not built yet: retry once next frame rather than
         -- silently doing nothing.
-        C_Timer.After(0, HookReputationBars)
+        C_Timer.After(0, HookStatusBars)
     end
 end)
