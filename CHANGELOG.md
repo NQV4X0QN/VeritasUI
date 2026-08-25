@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.15.4] - 2026-08-24
+
+Hardening pass over the day's changes. No behaviour change in any working path — owner-verified across all seven checks (AH Quantity row, checkbox label, checked-state across pooled cards, reputation bar click, Honor bar click, reload with the Adventure Guide open, Edit Mode entry).
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **our bookkeeping no longer gets written onto Blizzard's Auction House sell frames.** v1.14.20 marked hooked forms with a `form._vuiQuantityPinned` field; that is an addon write onto a Blizzard frame whose `SetItem` → `CanPostItem` path reaches `C_AuctionHouse.PostCommodity`, and this module's landmines record a historical crash inside Blizzard's own commodity-post code on the native Create Auction click. It is the same family of mistake as the Edit Mode taint fixed in v1.15.2. Nothing but us reads the flag, so it now lives in a module-local table keyed by the form. The `QuantityInput` reference inside the post-hook is also re-checked for nil, since it is re-read on every call but was only guarded at install time — without it, a removed widget would throw from inside the hook on every sell-form load. (`UI/SellStrip.lua`)
+- `VeritasUI_QualityOfLife` — **removed a shipped scaffolding marker and closed five latent error paths in the Journeys code.** An orphaned `<<< END ISOLATION STEP >>>` comment shipped in v1.15.3 after its opening block was removed; that marker is the string `PROBE_LIBRARY_AND_REFERENCE.md` tells future sessions to grep for when hunting scaffolding that must never ship, so a live marker with no block is actively misleading. `C_Reputation` was the file's only Blizzard namespace read unguarded — `pcall(C_Reputation.Foo)` evaluates the index before pcall runs, so pcall was protecting the call but not the lookup; all seven sites now resolve through an accessor, and every name string was verified against Blizzard's generated API documentation. The checkbox's `factionID` is now re-derived unconditionally rather than only when Blizzard's pcall'd `OnShow` left it zero, because journey cards are pooled and reused across factions and a gated refresh could have left the previous card's faction in place. The `ADDON_LOADED` listener now unregisters on the already-loaded path instead of string-comparing every addon load for the session, the status-bar overlay attach retries a bounded number of times instead of once (a single next-frame retry meant late containers left clicks silently dead for the whole session), and the `SHOW_FACTION_ON_MAINSCREEN` global is checked before being passed to `SetText`. (`Journeys.lua`)
+
 ## [1.15.3] - 2026-08-24
 
 ### Changed

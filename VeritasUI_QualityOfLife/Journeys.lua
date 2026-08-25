@@ -61,6 +61,15 @@ local Mixin          = Mixin
 local pcall          = pcall
 local type           = type
 
+-- ⚠ `pcall(C_Reputation.Foo)` evaluates the INDEX before pcall runs, so a nil namespace would
+-- throw unprotected -- pcall only protects the CALL. Every other Blizzard global in this file is
+-- reached through `_G.X and ...`; this was the one exception. Rep() returns the function or nil,
+-- and `pcall(nil)` is caught, so both a missing namespace and a removed member degrade quietly.
+local function Rep(name)
+    local ns = _G.C_Reputation
+    return ns and ns[name] or nil
+end
+
 -- Placement: in the free right-hand part of the card's "Level N/10" row.
 --
 -- ⚠ ANCHOR TO `JourneyCardLevel`, NOT TO THE PROGRESS BAR OR THE CARD EDGE. Aligning the
@@ -96,7 +105,7 @@ local OFFSET_Y = 0
 ----------------------------------------------------------------
 local function IsWatching(factionID)
     if not factionID or factionID == 0 then return false end
-    local ok, watched = pcall(C_Reputation.GetWatchedFactionData)
+    local ok, watched = pcall(Rep("GetWatchedFactionData"))
     if not ok or not watched then return false end
     return watched.factionID == factionID
 end
@@ -128,7 +137,9 @@ local function Attach(card)
     cb:SetHitRectInsets(0, 0, 0, 0)
 
     local label = cb.Text or cb.Label
-    if label then label:SetText(SHOW_FACTION_ON_MAINSCREEN) end
+    if label and SHOW_FACTION_ON_MAINSCREEN then
+        label:SetText(SHOW_FACTION_ON_MAINSCREEN)
+    end
 
     Mixin(cb, WatchedFactionToggleFrameMixin)
 
@@ -137,10 +148,13 @@ local function Attach(card)
     -- checked state, which it derives from a call that is nil here.
     cb:SetScript("OnShow", function(self)
         pcall(WatchedFactionToggleFrameMixin.OnShow, self)
-        if not self.factionID or self.factionID == 0 then
-            local data = card.majorFactionData
-            self.factionID = data and data.factionID or 0
-        end
+        -- ⚠ Re-derive UNCONDITIONALLY, do not restore the old `if factionID == 0` gate.
+        -- ScrollBox cards are POOLED and reused across factions, and Blizzard's OnShow above is
+        -- pcall'd -- if it ever errors, a gated refresh would leave the PREVIOUS card's
+        -- factionID in place and the checkbox would watch the wrong faction. Their OnShow
+        -- already sets this unconditionally, so in the normal path this is identical.
+        local data = card.majorFactionData
+        self.factionID = data and data.factionID or 0
         self.renownCard = self.renownCard or card
         self:SetChecked(IsWatching(self.factionID))
     end)
@@ -220,6 +234,9 @@ end)
 -- ADDON_LOADED for it may fire before this file runs.
 if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("Blizzard_EncounterJournal") then
     Install()
+    -- Nothing left for the listener to do: it only ever acts on Blizzard_EncounterJournal, which
+    -- is already loaded, so leaving it registered string-compares every addon load all session.
+    loader:UnregisterEvent("ADDON_LOADED")
 end
 
 ----------------------------------------------------------------
@@ -316,9 +333,9 @@ local function ReputationPaneIsShowing(factionID)
     if not (charFrame and repFrame) then return false end
     if not charFrame:IsShown() or not repFrame:IsShown() then return false end
 
-    local okIndex, index = pcall(C_Reputation.GetSelectedFaction)
+    local okIndex, index = pcall(Rep("GetSelectedFaction"))
     if not okIndex or not index then return false end
-    local okData, data = pcall(C_Reputation.GetFactionDataByIndex, index)
+    local okData, data = pcall(Rep("GetFactionDataByIndex"), index)
     if not okData or not data then return false end
     return data.factionID == factionID
 end
@@ -329,11 +346,11 @@ local function OpenReputationPane(factionID)
         return
     end
 
-    local okCount, count = pcall(C_Reputation.GetNumFactions)
+    local okCount, count = pcall(Rep("GetNumFactions"))
     for i = 1, (okCount and count) or 0 do
-        local ok, data = pcall(C_Reputation.GetFactionDataByIndex, i)
+        local ok, data = pcall(Rep("GetFactionDataByIndex"), i)
         if ok and data and data.factionID == factionID then
-            pcall(C_Reputation.SetSelectedFaction, i)
+            pcall(Rep("SetSelectedFaction"), i)
             if _G.EventRegistry then
                 pcall(_G.EventRegistry.TriggerEvent, _G.EventRegistry,
                       "ReputationFrame.NewFactionSelected")
@@ -349,7 +366,7 @@ end
 local function OpenFactionPage(factionID)
     if not factionID or factionID == 0 then return end
 
-    local ok, isMajor = pcall(C_Reputation.IsMajorFaction, factionID)
+    local ok, isMajor = pcall(Rep("IsMajorFaction"), factionID)
     if ok and isMajor and OpenMajorFactionJourney(factionID) then return end
 
     OpenReputationPane(factionID)
@@ -457,7 +474,7 @@ local function AttachStatusBarOverlays()
 
     local actions = {
         [info.BarsEnum.Reputation] = function(bar)
-            local okData, watched = pcall(C_Reputation.GetWatchedFactionData)
+            local okData, watched = pcall(Rep("GetWatchedFactionData"))
             local factionID = (okData and watched and watched.factionID) or bar.factionID
             OpenFactionPage(factionID)
         end,
@@ -481,11 +498,21 @@ local barLoader = CreateFrame("Frame")
 barLoader:RegisterEvent("PLAYER_LOGIN")
 barLoader:SetScript("OnEvent", function(self)
     self:UnregisterEvent("PLAYER_LOGIN")
-    if not AttachStatusBarOverlays() then
-        -- Containers exist but bars not built yet: retry once next frame rather than
-        -- silently doing nothing.
-        C_Timer.After(0, AttachStatusBarOverlays)
+
+    -- BOUNDED retry. `InitializeBars` (StatusTrackingManagerOverrides.lua:44-66) normally runs
+    -- well before PLAYER_LOGIN, so the first attempt succeeds -- but the single next-frame retry
+    -- v1.15.3 shipped meant that if the containers were late for any reason, clicks were silently
+    -- dead for the WHOLE session with nothing reporting it. Retry a bounded number of times, then
+    -- stop: no unbounded timer, and no permanent silent failure either.
+    local attemptsLeft = 10
+    local function TryAttach()
+        if AttachStatusBarOverlays() then return end
+        attemptsLeft = attemptsLeft - 1
+        if attemptsLeft > 0 then
+            C_Timer.After(0.5, TryAttach)
+        end
     end
+    TryAttach()
+
     C_Timer.NewTicker(POLL_INTERVAL, SyncOverlays)
 end)
--- <<< END ISOLATION STEP >>>
