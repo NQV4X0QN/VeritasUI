@@ -249,18 +249,17 @@ end
 --  Character > Reputation selected to that faction, which is the equivalent window for it.
 --  The index walk is needed because the pane addresses factions by INDEX, not ID.
 --
---  Hooked on the bar frames rather than on their mixin because Blizzard_ActionBar is not
---  load-on-demand: `StatusTrackingBarContainerMixin:InitializeBars`
---  (StatusTrackingManagerOverrides.lua:44-66) has already run and created them by the time
---  we load, so hooking ReputationStatusBarMixin.OnLoad would be too late. Both containers
---  are walked because Main and Secondary each build a full set of bars and EditMode decides
---  which is on screen.
+--  Both bar containers are walked because Main and Secondary each build a full set of bars
+--  (`StatusTrackingBarContainerMixin:InitializeBars`, StatusTrackingManagerOverrides.lua:44-66)
+--  and Edit Mode decides which is on screen.
 --
---  Taint: safe per our own measured precedent -- the ActionButton hook landmine is about
---  ActionButton CHILDREN (v1.6.14 -> v1.6.15); parent bar frames are fine to hook, and this
---  frame carries no secure attributes. `enableMouse` is already true on
---  StatusTrackingBarTemplate (StatusTrackingBarTemplate.xml:3) and no OnMouseUp exists to
---  displace, so HookScript adds a handler without replacing Blizzard behaviour.
+--  ⛔ TAINT — THE ORIGINAL VERSION OF THIS COMMENT WAS WRONG AND SHIPPED A BUG.
+--  It read: "safe per our own measured precedent -- the ActionButton hook landmine is about
+--  ActionButton CHILDREN; parent bar frames are fine to hook". That precedent was measured on
+--  ACTION bars against ACTIONBAR_UPDATE_COOLDOWN and does NOT cover these bars, which belong
+--  to an Edit Mode system. `bar:HookScript("OnMouseUp", ...)` on them tainted Edit Mode in
+--  v1.15.0/v1.15.1 (owner-reported, fixed v1.15.2). Clicks are now taken by our own overlay
+--  frame instead -- see the click-catcher block further down, and do not undo it.
 ----------------------------------------------------------------
 --  TOGGLE SEMANTICS: a second click closes the window, a third reopens it. The close is
 --  deliberately NARROW -- it fires only when the window is already showing THIS faction's
@@ -373,10 +372,77 @@ local function ToggleHonorUI()
     if _G.TogglePVPUI then pcall(_G.TogglePVPUI) end
 end
 
-local hookedBars = {}
+----------------------------------------------------------------
+--  Click-catcher overlays for the status bars (v1.15.3).
+--
+--  ⛔ NEVER GO BACK TO `bar:HookScript(...)` HERE. v1.15.0/v1.15.1 did, and it tainted
+--  Edit Mode: a single HookScript on `container.bars[...]` produced, on entering Edit Mode,
+--  `EncounterWarningsViewElements.lua:75: attempt to compare a secret number value
+--  (execution tainted by 'VeritasUI_QualityOfLife')` via `secureexecuterange` <-
+--  `EditModeManager.lua:2742 RefreshEncounterEvents`. Those bars' containers inherit
+--  `EditModeStatusTrackingBar1/2SystemTemplate` (StatusTrackingBar.xml:41,49), so the whole
+--  subtree belongs to a secure system. Owner-confirmed by isolation, fixed v1.15.2.
+--
+--  THE SHAPE THAT AVOIDS IT: we write to NOTHING of Blizzard's. Our own frame is parented to
+--  `UIParent` and merely ANCHORED to the bar -- SetPoint writes to OUR frame and only reads
+--  theirs -- so the Edit Mode subtree is never modified and never gains our taint. Anchoring
+--  also means the overlay follows the bar automatically when it is dragged in Edit Mode.
+--
+--  Mouse handling, both deliberate:
+--    * `SetPropagateMouseMotion(true)` -- hover still reaches the bar beneath, so Blizzard's
+--      own OnEnter text reveal and paragon tooltip keep working.
+--    * `SetPropagateMouseClicks(true)` -- we OBSERVE clicks rather than consuming them, so a
+--      stale overlay can never starve a frame underneath of input.
+--
+--  Visibility is POLLED, not hooked, for the same reason the whole file avoids hooks here
+--  (and matching `HookHoverFade` / `AFK_ScanPanels` elsewhere in the suite). The click
+--  handler re-checks `IsVisible()` itself, so a stale poll cannot fire an action for a bar
+--  that is not on screen. Overlays are also hidden while Edit Mode is active, so they cannot
+--  interfere with dragging the bars around.
+----------------------------------------------------------------
+local overlays = {}          -- [barFrame] = our click frame
+local POLL_INTERVAL = 0.2
+
+local function EditModeIsActive()
+    local manager = _G.EditModeManagerFrame
+    if not (manager and manager.IsEditModeActive) then return false end
+    local ok, active = pcall(manager.IsEditModeActive, manager)
+    return ok and active or false
+end
+
+local function EnsureOverlay(bar, action)
+    if overlays[bar] then return end
+
+    -- ⚠ parent = UIParent, NOT the bar. See the block comment.
+    local click = CreateFrame("Frame", nil, UIParent)
+    click:SetFrameStrata("MEDIUM")
+    click:SetFrameLevel(600)
+    click:SetPoint("TOPLEFT", bar, "TOPLEFT")
+    click:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT")
+    click:EnableMouse(true)
+    if click.SetPropagateMouseMotion then click:SetPropagateMouseMotion(true) end
+    if click.SetPropagateMouseClicks then click:SetPropagateMouseClicks(true) end
+    click:SetScript("OnMouseUp", function(_, button)
+        if button ~= "LeftButton" then return end
+        if not bar:IsVisible() then return end   -- poll may be up to POLL_INTERVAL stale
+        if EditModeIsActive() then return end
+        action(bar)
+    end)
+    click:Hide()
+
+    overlays[bar] = click
+end
+
+local function SyncOverlays()
+    local editing = EditModeIsActive()
+    for bar, click in pairs(overlays) do
+        local want = (not editing) and bar:IsVisible() or false
+        if want ~= click:IsShown() then click:SetShown(want) end
+    end
+end
 
 ----------------------------------------------------------------
---  Hook every status bar we have a destination for.
+--  Attach an overlay to every status bar we have a destination for.
 --
 --  Add a bar by adding one entry to `actions` -- the enum key comes from
 --  StatusTrackingBarInfo.BarsEnum (StatusTrackingManager.lua:5). Deliberately NOT wired:
@@ -384,7 +450,7 @@ local hookedBars = {}
 --  asked for, and a click that opens something surprising is worse than a click that does
 --  nothing.
 ----------------------------------------------------------------
-local function HookStatusBars()
+local function AttachStatusBarOverlays()
     local manager = _G.StatusTrackingBarManager
     local info    = _G.StatusTrackingBarInfo
     if not (manager and manager.barContainers and info and info.BarsEnum) then return false end
@@ -404,44 +470,22 @@ local function HookStatusBars()
             local bar = container.bars and container.bars[barIndex]
             if bar then
                 found = true
-                if not hookedBars[bar] then
-                    hookedBars[bar] = true
-                    bar:HookScript("OnMouseUp", function(self, button)
-                        if button ~= "LeftButton" then return end
-                        action(self)
-                    end)
-                end
+                EnsureOverlay(bar, action)
             end
         end
     end
     return found
 end
 
--- >>> ISOLATION STEP — status-bar hooking DISABLED to confirm it is the taint source <<<
--- Owner hit this on entering Edit Mode at v1.15.1:
---   EncounterWarningsViewElements.lua:75: attempt to compare a secret number value
---   (execution tainted by 'VeritasUI_QualityOfLife')
---   [C]: secureexecuterange <- EditModeManager.lua:2742 RefreshEncounterEvents
---        <- EditModeManagerOverrides.lua:38 EditModeFrameSetup <- OnEditModeEnter <- EnterEditMode
--- The status tracking bars are Edit Mode SYSTEM frames (their containers inherit
--- EditModeStatusTrackingBar1/2SystemTemplate, StatusTrackingBar.xml:41,49), and HookScript on a
--- secure Blizzard frame is a known taint source in this suite's own landmine list. The
--- "parent bar frames are safe to hook" precedent I relied on was measured on ACTION bars against
--- ACTIONBAR_UPDATE_COOLDOWN and does not extend to Edit Mode systems.
--- If Edit Mode is clean with this disabled, the cause is confirmed and the feature gets rebuilt
--- with our own click-catcher frame that never writes to a Blizzard frame.
-local ENABLE_STATUS_BAR_CLICKS = false
-
-if ENABLE_STATUS_BAR_CLICKS then
-    local barLoader = CreateFrame("Frame")
-    barLoader:RegisterEvent("PLAYER_LOGIN")
-    barLoader:SetScript("OnEvent", function(self)
-        self:UnregisterEvent("PLAYER_LOGIN")
-        if not HookStatusBars() then
-            -- Containers exist but bars not built yet: retry once next frame rather than
-            -- silently doing nothing.
-            C_Timer.After(0, HookStatusBars)
-        end
-    end)
-end
+local barLoader = CreateFrame("Frame")
+barLoader:RegisterEvent("PLAYER_LOGIN")
+barLoader:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_LOGIN")
+    if not AttachStatusBarOverlays() then
+        -- Containers exist but bars not built yet: retry once next frame rather than
+        -- silently doing nothing.
+        C_Timer.After(0, AttachStatusBarOverlays)
+    end
+    C_Timer.NewTicker(POLL_INTERVAL, SyncOverlays)
+end)
 -- <<< END ISOLATION STEP >>>

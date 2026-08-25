@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.15.3] - 2026-08-24
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **status-bar click navigation is back, rebuilt so it writes to nothing of Blizzard's.** v1.15.2 disabled it because `HookScript` on the reputation and honor bars tainted Edit Mode. Clicks are now taken by our own frame parented to `UIParent` and merely *anchored* to the bar — `SetPoint` writes to our frame and only reads theirs, so the Edit Mode subtree is never modified and never inherits our taint; anchoring also makes the overlay follow the bar when it is dragged in Edit Mode. `SetPropagateMouseMotion` keeps Blizzard's own hover text reveal working, and `SetPropagateMouseClicks` means we observe clicks rather than consume them, so a stale overlay can never starve a frame beneath of input. Visibility is polled at 0.2s instead of hooked (matching `HookHoverFade` and `AFK_ScanPanels` elsewhere in the suite), the click handler re-checks `IsVisible()` so a stale poll cannot fire on an off-screen bar, and overlays hide entirely while `EditModeManagerFrame:IsEditModeActive()` so they cannot interfere with dragging. Owner-verified: reputation click, honor click, Edit Mode entry, and bar hover text all correct with no Lua errors. (`Journeys.lua`)
+
 ## [1.15.2] - 2026-08-24
 
 ### Fixed
