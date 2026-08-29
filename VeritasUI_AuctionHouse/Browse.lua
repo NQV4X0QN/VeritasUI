@@ -47,22 +47,46 @@
 -- 10-15s on every attempt, priced 22,540 items against replicate's 15,828 in 55.9s, and
 -- abandons no gear (replicate dropped 38-67% of gear rows on two measured scans).
 --
--- ⚠ KNOWN DEFECT, shipped knowingly: minPrice is NOT the live lowest unit buyout. Measured
--- 2026-08-04, item 242639, one moment: Blizzard's ascending Sell-tab list showed the
--- cheapest listing at 29800; browse returned 27500. A minimum cannot sit below the cheapest
--- thing on sale. totalQuantity (79681 vs the tab's 79606) and the key were both right, so
--- the POPULATION is correct and only the PRICE lags -- probably a server-side cached
--- aggregate, unverified.
+-- ⚠ KNOWN DEFECT, shipped knowingly: minPrice is NOT the live lowest unit buyout.
+-- Measured twice with /ah browseprobe against Blizzard's ascending Sell-tab ladder at the
+-- same moment:
+--      2026-08-04  item 242639   browse 27500   cheapest listing 29800   ( -7.7%)
+--      2026-08-29  item 237365   browse 204900  cheapest listing 352200  (-41.8%)
+-- A minimum cannot sit below the cheapest thing on sale. In both captures totalQuantity and
+-- the key were right, so the POPULATION is correct and only the PRICE is wrong -- probably a
+-- server-side cached aggregate, still unverified.
 --
--- ⚠ SIZE IT BEFORE ACTING ON IT. The gap attributable to browse is ~7.7%. The 20-29% gaps
--- reported in use were mostly SCAN STALENESS (that commodity moved 41% in minutes) and
--- replicate would show the same. v1.12.11 reverted this engine on the conflated figure and
--- that was an over-correction; see the block above scanEngine in Tooltip.lua.
+-- ⚠ THE 2026-08-29 CAPTURE KILLS TWO THINGS THIS HEADER USED TO CLAIM.
+-- 1. "The gap attributable to browse is ~7.7%" -- it was one sample presented as a ceiling.
+--    237365 is 41.8% attributable to browse, with the market provably STILL: the ladder read
+--    352200 continuously across the 13s probe, so it cannot be dismissed as staleness.
+-- 2. "Only the PRICE lags", read as a stale summary -- the same payload carried
+--    totalQuantity 187985 against the tab's own 187986 Available, accurate to ONE unit. A
+--    live-accurate quantity and a 42%-wrong price arrived TOGETHER, so whatever is broken is
+--    the price field specifically, not the freshness of the summary.
+-- Also note 204900 is below the price of a SINGLE unit at the cheapest listing, so it is
+-- neither a unit price nor a stack total under any reading of the market. The 2026-08-04
+-- capture could not show this: its matching listing had quantity 1, where unit and total
+-- coincide.
+--
+-- ⚠ SIZE IT BEFORE ACTING ON IT -- the METHOD stands even though the number did not. The
+-- 20-29% gaps reported in use were mostly SCAN STALENESS (that commodity moved 41% in
+-- minutes) and replicate would show the same; v1.12.11 reverted this engine on the conflated
+-- figure and that was an over-correction. Separate lag from staleness first, with
+-- /ah browseprobe, before touching the default again.
 --
 -- ⚠ Do not cite "/ah compare showed 98.2% commodity agreement" as evidence either way. It
 -- is an average over a population dominated by items whose price had not moved, and it
 -- concealed the failures on the ones that had -- the same report carried a 2:1 skew (1,400
 -- lower vs 774 higher) that was the lag showing through and was dismissed as churn.
+--
+-- ⚠ THE DEFECT IS NOT FIXED HERE AND CANNOT BE. BrowseResultInfo carries exactly one price
+-- field (itemKey, appearanceLink, totalQuantity, minPrice, containsOwnerItem), so there is
+-- no better field to read on this endpoint. It is CORRECTED downstream instead:
+-- LiveSearch.lua folds the AH's own authoritative per-item search results into the DB for
+-- any item opened on the Buy or Sell tab, overwriting whatever this engine stored. That is
+-- per-item and on-demand only -- the per-item search is rate-capped, which is why this
+-- whole-AH engine exists -- so items never opened still carry the scan's figure.
 --
 -- Use /ah browseprobe to check any single item against the game's own listing at the same
 -- moment. That is the only tool that separates lag from staleness.
@@ -388,7 +412,13 @@ local function Finish()
         VUI.Print(AH.TAG, format(
             "Browse dry run complete — %d items observed in %.0fs (nothing written).",
             rows, elapsed))
-        AH.Events.Fire("AH_SCAN_COMPLETE", 0, rows)
+        -- ⚠ The 4th arg marks this as a DRY completion so Core suppresses its own chat
+        -- line. The event still has to FIRE -- UI/ScanProgress.lua listens to it to finish
+        -- the bar, and a dry run that left the bar mid-scan would look like a hang. But
+        -- Core's handler renders committed=0 as "Scan complete — 0 items priced", which
+        -- landed directly under the honest line above and read like a FAILED scan. The
+        -- owner hit exactly that twice while diagnosing the minPrice defect.
+        AH.Events.Fire("AH_SCAN_COMPLETE", 0, rows, nil, true)
     else
         AH.Events.Fire("AH_SCAN_COMPLETE", kept, rows)
     end

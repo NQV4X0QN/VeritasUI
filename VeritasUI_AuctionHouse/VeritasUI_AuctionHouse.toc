@@ -11,6 +11,7 @@ Money.lua
 Database.lua
 Replicate.lua
 Browse.lua
+LiveSearch.lua
 Tooltip.lua
 UI\SellStrip.lua
 UI\ScanProgress.lua

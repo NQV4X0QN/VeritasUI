@@ -245,7 +245,14 @@ end)
 -- The noun is passed IN rather than derived from AH.Scan.EngineName() here, so Core
 -- keeps owning the user-facing wording while staying engine-agnostic -- the same split
 -- that lets the scanners stay UI-agnostic.
-AH.Events.On("AH_SCAN_COMPLETE", function(committed, rows, sourceUnit)
+--
+-- `dry` is set by an engine run that wrote nothing (/ah compare, /ah browseprobe). Such a
+-- run prints its OWN completion line carrying the honest observed count, so ours is
+-- suppressed: committed is 0 by definition on that path, and "Scan complete — 0 items
+-- priced" printed directly underneath read like a FAILED scan. The owner hit exactly that
+-- twice while diagnosing the browse minPrice defect.
+AH.Events.On("AH_SCAN_COMPLETE", function(committed, rows, sourceUnit, dry)
+    if dry then return end
     if sourceUnit and rows and rows > 0 then
         VUI.Print(AH.TAG, format(
             "Scan complete — |cFF00FF00%d|r items priced from |cFFFFFF00%d|r %s.",
@@ -522,7 +529,7 @@ end
 --  Slash Commands
 --
 --  Surface: help / scan / engine / floor / bardemo / bartune / baratlas / compare /
---  browseprobe /
+--  browseprobe / live /
 --  diag / check / find / wipe / blocked / settings / debug.
 --  This list, the `cmd ==` branches below, and PrintHelp are meant to stay
 --  one-for-one — the list had drifted, silently gaining four commands it never
@@ -551,6 +558,7 @@ local function PrintHelp()
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah engine|r       — show or set the scan engine (browse | replicate)")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah compare|r      — scan with browse, diff against the stored prices")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah browseprobe|r  — check one shift-clicked item against the live listing")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah live|r         — live-search price corrections (on | off | status)")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah diag|r         — diagnostic / state dump")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah check|r        — show stored price for a shift-clicked item")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah find|r         — search the last scan's raw data for a shift-clicked item")
@@ -581,6 +589,19 @@ local function PrintDiag()
     VUI.Print(AH.TAG, format("  engine:       |cFFFFFF00%s|r (%s)",
         AH.Scan.EngineName(),
         AH.Scan.EngineIsPinned() and "pinned via /ah engine" or "default"))
+
+    -- Live-search correction layer (LiveSearch.lua). Reported here for the same reason
+    -- the engine name is: it silently REWRITES scanned prices, so a state dump that
+    -- omitted it would leave "why is this price different from the last scan" unanswerable.
+    -- `corrected` is the number that matters -- it is nonzero only if the layer is
+    -- actually disagreeing with the scan, which is the whole point of it existing.
+    if AH.LiveSearch then
+        local obs, rec, corr = AH.LiveSearch.Stats()
+        VUI.Print(AH.TAG, format("  live search:  %s — %d observed, %d recorded, "
+            .. "|cFFFFFF00%d corrected|r (/ah live)",
+            AH.Setting("liveSearchPrices") and "|cFF00FF00on|r" or "|cFFFF4444off|r",
+            obs, rec, corr))
+    end
 
     -- Scan state.
     if AH.Replicate then
@@ -844,6 +865,49 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             VUI.Print(AH.TAG, reasonP or "Probe could not start.")
         else
             VUI.Print(AH.TAG, format("Watching |cFFFFFF00%s|r through a dry browse scan…", key))
+        end
+
+    elseif cmd == "live" then
+        -- Readout and toggle for LiveSearch.lua, the correction layer over the browse
+        -- engine's minPrice defect. This exists because the layer is otherwise INVISIBLE:
+        -- it prints nothing on the event by design (a search-results event fires on every
+        -- sell-form load and every commodity opened on the Buy tab, so a chat line per
+        -- observation would be unusable), and a silent price-rewriting path with no readout
+        -- is exactly the "unmeasured" shape Browse.lua's coverage report was added to kill.
+        if not AH.LiveSearch then
+            VUI.Print(AH.TAG, "Live search not loaded.")
+            return
+        end
+        local arg = strtrim(rest)   -- `rest` is already lowercased above
+        if arg == "on" or arg == "off" then
+            if not (AH.db and AH.db.settings) then
+                VUI.Print(AH.TAG, "Settings not loaded.")
+                return
+            end
+            AH.db.settings.liveSearchPrices = (arg == "on")
+            -- Live variant: this takes effect on the next search-results event, with no
+            -- /reload needed, so the stock PrintOnOff wording would print a false
+            -- instruction (Lib's PrintOnOff appends "— /reload to apply").
+            VUI.PrintOnOffLive(AH.TAG, "Live search prices", arg == "on")
+            return
+        end
+        local obs, rec, corr = AH.LiveSearch.Stats()
+        VUI.Print(AH.TAG, format("Live search prices: %s",
+            AH.Setting("liveSearchPrices") and "|cFF00FF00on|r" or "|cFFFF4444off|r"))
+        VUI.Print(AH.TAG, format("  %d search result(s) observed, %d recorded, "
+            .. "|cFFFFFF00%d|r changed a stored price", obs, rec, corr))
+        local list = AH.LiveSearch.Recent()
+        if #list == 0 then
+            VUI.Print(AH.TAG, "  no corrections yet — open an item on the Buy or Sell tab.")
+        else
+            VUI.Print(AH.TAG, "  most recent corrections (oldest first):")
+            for i = 1, #list do
+                local e = list[i]
+                VUI.Print(AH.TAG, format("    %s  %s -> |cFF00FF00%s|r",
+                    e.key,
+                    e.old and AH.Money.FormatText(e.old) or "none",
+                    AH.Money.FormatText(e.new)))
+            end
         end
 
     elseif cmd == "compare" then
