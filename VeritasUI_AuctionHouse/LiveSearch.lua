@@ -78,7 +78,6 @@ if not VUI then return end
 ----------------------------------------------------------------
 local pcall  = pcall
 local type   = type
-local floor  = math.floor
 local format = string.format
 local min    = math.min
 
@@ -191,15 +190,31 @@ end
 --  skipNoPrice, so including them here would make a live-search price mean something
 --  different from a scanned one for the same item.
 --
---  Per-unit is floor(buyoutAmount / quantity), matching Replicate's documented
---  floor(buyout/count). Non-commodity listings are quantity 1 in practice, so this is
---  almost always a no-op -- it is here so the arithmetic cannot silently differ from the
---  engines' if that ever stops being true.
+--  ⚠⚠ `buyoutAmount` IS THE PRICE. DO NOT DIVIDE IT BY `quantity`. v1.16.0 did exactly
+--  that -- `floor(buyoutAmount / quantity)`, on the stated reasoning that it "matched
+--  Replicate's floor(buyout/count)" -- and it was WRONG, because the two `quantity` fields
+--  are not the same thing:
+--    * Replicate's `count` comes from GetReplicateItemInfo and IS a per-auction stack size,
+--      so dividing is right there.
+--    * ItemSearchResultInfo's `quantity` is the number of AUCTIONS GROUPED AT THAT PRICE --
+--      the count column the native item list renders -- so dividing turns one auction's
+--      price into a fraction of itself.
+--  MEASURED 2026-08-29, item 275334 (Pattern: Stretched Snakeskin Rack): three auctions at
+--  a 50000 buyout, one at 100000. The native ladder and the Sell tab's Buyout Price both
+--  read 50000; we stored floor(50000/3) = 16666 and the tooltip showed 1g66s66c against a
+--  real cheapest of 5g. Off by the number of competing sellers, which is the worst possible
+--  shape: it looks like a plausible price and it moves as the market changes.
+--  SOURCE: Blizzard_AuctionHouseItemSellFrame.lua:325 does
+--  `self.PriceInput:SetAmount(searchResult.buyoutAmount or 0)` -- straight through, no
+--  division -- and :135-138 sorts by raw `buyoutAmount`. There is no per-unit arithmetic on
+--  this path anywhere in Blizzard's code, because a non-commodity auction is one item.
 --
---  ⚠ There is no GetItemSearchResultsQuantity, so quantity is SUMMED over the walked
---  results and is therefore a floor, not a total, when the set is paginated. That is
---  safe: Record only ever RAISES a day's qty (`if qty > d.qty`), so an undercount can
---  never overwrite a better figure from a scan.
+--  ⚠ `quantity` IS still the right thing to SUM for the qty field: summing it across the
+--  ladder gives the item's total availability (3 + 1 = 4 above, matching both the tab's
+--  "4 Available" and browse's qty=4). It is the price that must not touch it.
+--  There is no GetItemSearchResultsQuantity, so that sum is a floor, not a total, when the
+--  set is paginated. Safe: Record only ever RAISES a day's qty (`if qty > d.qty`), so an
+--  undercount cannot overwrite a better figure from a scan.
 ----------------------------------------------------------------
 local function OnItemResults(itemKey)
     if type(itemKey) ~= "table" then return end
@@ -220,8 +235,9 @@ local function OnItemResults(itemKey)
             local n = info.quantity
             if type(n) ~= "number" or n <= 0 then n = 1 end
             if type(buyout) == "number" and buyout > 0 then
-                local unit = floor(buyout / n)
-                if unit > 0 and (not best or unit < best) then best = unit end
+                -- NO DIVISION. See the block above: buyoutAmount is already this auction's
+                -- price, and `quantity` counts competing auctions at it.
+                if not best or buyout < best then best = buyout end
                 qtySum = qtySum + n
             end
         end

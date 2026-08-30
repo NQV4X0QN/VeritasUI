@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.17.1] - 2026-08-29
+
+### Fixed
+- `VeritasUI_AuctionHouse` — non-commodity prices from a live search were divided by the number of competing auctions. `ItemSearchResultInfo.quantity` is how many auctions are grouped at that price, not a stack size, so v1.16.0's `floor(buyoutAmount / quantity)` stored a fraction of one auction's own price — measured on item 275334 as `floor(50000 / 3)` = 16666, showing 1g 66s 66c against a real cheapest listing of 5g. `buyoutAmount` is now stored as-is, matching `Blizzard_AuctionHouseItemSellFrame.lua:325`, which sets its own price input from that field with no division (`LiveSearch.lua`)
+
+### Changed
+- `VeritasUI_AuctionHouse` — quantity is still summed across the ladder for availability, which was never the broken part
+
+### Requires
+- No action — affected prices correct themselves the next time you open the item. Commodities were never affected; only non-commodity items with more than one auction at the cheapest price
+
 ## [1.17.0] - 2026-08-29
 
 ### Added
