@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.17.0] - 2026-08-29
+
+### Added
+- `VeritasUI_AuctionHouse` — the sell strip now loads the next item into the sell form after you create an auction, so posting a run of items is just `Create Auction` repeatedly (`UI/SellStrip.lua`)
+- `VeritasUI_AuctionHouse` — `/ah autoadvance` toggles that behaviour (`on` | `off`), alongside an "Auto-Load Next Item After Posting" checkbox, default on, key `sellAutoAdvance` (`Core.lua`, `Settings.lua`, `Tooltip.lua`)
+
+### Changed
+- `VeritasUI_AuctionHouse` — auto-advance populates only; nothing on that path calls a posting API, and quantity and price are left to Blizzard's own loader so the form matches a hand-clicked strip icon exactly
+
+### Requires
+- No action — on by default; `/ah autoadvance off` disables it
+
 ## [1.16.0] - 2026-08-29
 
 ### Added
