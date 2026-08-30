@@ -73,9 +73,11 @@ local state = {
     hooked        = false,
     pending       = {},     -- itemIDs whose GetItemInfo returned nil (cache miss); cleared each CollectItems
     refreshTimer  = nil,    -- debounce handle for GET_ITEM_INFO_RECEIVED bursts
+    advanceIndex  = nil,    -- strip index to auto-load once a post settles, or nil
+    advanceTries  = 0,      -- multisell-busy retries for a pending advance
 }
 
-local Refresh, UpdateVisibility, Render, ScheduleRefresh   -- forward decls
+local Refresh, UpdateVisibility, Render, ScheduleRefresh, TryAutoAdvance   -- forward decls
 
 ----------------------------------------------------------------
 --  Tooltip for a strip button (shared by OnEnter and by scroll-refresh).
@@ -521,6 +523,10 @@ function Refresh()
     if not (state.built and AH.isOpen) then return end
     state.items = CollectItems()
     Render()
+    -- Auto-advance runs HERE, not on the post event, because it needs the rebuilt list:
+    -- Refresh is what BAG_UPDATE_DELAYED drives, so by this point the posted stack has
+    -- actually left the bag and index N means what the advance expects it to mean.
+    TryAutoAdvance()
 end
 
 ----------------------------------------------------------------
@@ -607,6 +613,129 @@ local function Build()
 end
 
 ----------------------------------------------------------------
+--  Auto-advance: load the next strip item once a post settles
+--
+--  Owner-requested 2026-08-29: post an item, and the next one is already sitting in the
+--  sell form so a run of postings is just Create Auction over and over.
+--
+--  ⚠ IT POPULATES, IT DOES NOT POST. Nothing here calls a posting API. The native Create
+--  Auction button stays the only thing that sells, and it still needs a real click.
+--
+--  ⚠ QUANTITY IS NOT SET HERE, DELIBERATELY. Blizzard's own SetItem does it:
+--  Blizzard_AuctionHouseCommoditiesSellFrame.lua:173 runs
+--  `self.QuantityInput:SetQuantity(C_Item.GetStackCount(itemLocation))`. Because this
+--  advance calls the SAME SetPostItem entry point a strip click does, the loaded quantity
+--  matches a manual click BY CONSTRUCTION. Do not add a quantity write to "make it fill
+--  Max" -- that would diverge from the click path AND touch the input box on the
+--  SetItem -> CanPostItem -> PostCommodity path this module retreated from at v1.15.4.
+--  (Note it is that SLOT's stack count, not the total across bags -- an item split over
+--  two slots is two strip entries and gets offered twice, which is the desired outcome.)
+--
+--  ⚠ THE UNPROVEN PART, stated as a hypothesis: the strip's click handler is documented
+--  as "hardware-event-initiated native load; proven taint-clean". This path has NO
+--  hardware event behind it -- it fires from an event handler. SetPostItem itself is plain
+--  Lua with no protected call (Blizzard_AuctionHouseFrame.lua:608-631), so it should be
+--  callable; whether driving it without a hardware event leaves the subsequent native post
+--  clean is NOT measured. FALSIFYING OBSERVATION: Create Auction starts failing, erroring
+--  inside Blizzard's commodity-post code, or reporting a blocked action naming this addon,
+--  on an auto-advanced item but not on a hand-clicked one. If that appears, turn it off
+--  with /ah autoadvance off and say so -- do not paper over it with a pcall.
+--
+--  INDEX SEMANTICS, and why it is an index rather than an item identity: the advance
+--  targets the SAME index the posted entry occupied. The list is sorted by name and
+--  rebuilt after the bag settles, so:
+--    - full-stack post  -> that entry is gone, everything shifted up, index N is the NEXT item
+--    - partial post     -> that entry survives at index N, so it re-presents for the remainder
+--    - posted the last  -> index N is past the end, and the advance stops rather than wrapping
+--  One rule, all three cases, no name matching.
+----------------------------------------------------------------
+local ADVANCE_RETRY_DELAY = 0.2
+local ADVANCE_MAX_TRIES   = 25    -- ~5s; a bound, not a deadline we expect to reach
+
+-- Record WHERE to advance to, while the pre-post list is still current.
+local function ArmAutoAdvance()
+    if not AH.Setting("sellAutoAdvance") then return end
+    if not (state.built and state.posted) then return end
+    for i = 1, #state.items do
+        local d = state.items[i]
+        if d.bag == state.posted.bag and d.slot == state.posted.slot then
+            state.advanceIndex = i
+            state.advanceTries = 0
+            return
+        end
+    end
+end
+
+local function CancelAutoAdvance()
+    state.advanceIndex = nil
+    state.advanceTries = 0
+end
+
+function TryAutoAdvance()
+    local idx = state.advanceIndex
+    if not idx then return end
+
+    -- Re-checked at fire time, not just at arm time: the toggle may have flipped, or the
+    -- player may have walked off to the Buy tab between posting and the bag settling.
+    -- Advancing then would yank them back to Sell, since SetPostItem calls SetDisplayMode.
+    if not AH.Setting("sellAutoAdvance") or not IsSellMode() then
+        CancelAutoAdvance()
+        return
+    end
+
+    -- SetPostItem BAILS OUTRIGHT while the multisell progress frame is up
+    -- (Blizzard_AuctionHouseFrame.lua:609) -- and silently, which is what makes this gate
+    -- necessary rather than defensive: posting a commodity stack IS a multisell, so
+    -- without the wait the advance would do nothing on exactly the common case.
+    local prog = _G.AuctionHouseMultisellProgressFrame
+    if prog and prog.IsShown then
+        local okShown, shown = pcall(prog.IsShown, prog)
+        if okShown and shown then
+            state.advanceTries = (state.advanceTries or 0) + 1
+            if state.advanceTries > ADVANCE_MAX_TRIES then
+                CancelAutoAdvance()
+                return
+            end
+            C_Timer.After(ADVANCE_RETRY_DELAY, function() TryAutoAdvance() end)
+            return
+        end
+    end
+
+    -- Cleared BEFORE the call: a bag update and the retry timer can both land here, and
+    -- the advance must happen once.
+    CancelAutoAdvance()
+
+    local data = state.items[idx]
+    if not data then return end          -- posted the last item; nothing left to load
+
+    local loc = ItemLocation:CreateFromBagAndSlot(data.bag, data.slot)
+    if not (loc and AuctionHouseFrame and AuctionHouseFrame.SetPostItem) then return end
+    local okValid, valid = pcall(loc.IsValid, loc)
+    if not (okValid and valid) then return end
+
+    -- Re-assert sellability with displayError=FALSE before handing the item over.
+    -- SetPostItem's own IsSellItemValid call omits that argument, so it defaults to TRUE
+    -- and would pop a UI error if the item stopped being postable between the collect and
+    -- now. CollectItems already filtered on this; the re-check exists for that race.
+    if C_AuctionHouse and C_AuctionHouse.IsSellItemValid then
+        local okSell, sellable = pcall(C_AuctionHouse.IsSellItemValid, loc, false)
+        if not (okSell and sellable) then return end
+    end
+
+    pcall(AuctionHouseFrame.SetPostItem, AuctionHouseFrame, loc)
+end
+
+AH.SellStrip.ArmAutoAdvance    = ArmAutoAdvance
+AH.SellStrip.CancelAutoAdvance = CancelAutoAdvance
+AH.SellStrip._TryAutoAdvance   = function() return TryAutoAdvance() end
+-- TEST SEAM. Returns the REAL state table (not a copy), so a suite drives the same table
+-- the module reads — the qol_ilvl_test lesson: a test that toggles a parallel copy makes
+-- its own assertions unfalsifiable. Exists because Build() does live frame geometry that
+-- cannot be stubbed faithfully, while the advance logic below it is pure and worth
+-- covering. Same pattern as Browse.lua's _AddPrices/_Skips/_QueueLen. Not used at runtime.
+AH.SellStrip._State            = function() return state end
+
+----------------------------------------------------------------
 --  Visibility
 ----------------------------------------------------------------
 function UpdateVisibility()
@@ -668,11 +797,29 @@ local loader = CreateFrame("Frame")
 loader:RegisterEvent("ADDON_LOADED")
 loader:RegisterEvent("BAG_UPDATE_DELAYED")
 loader:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+-- Post-completion signals for auto-advance. BOTH are registered on purpose: which of
+-- them fires for which kind of post is NOT measured. AUCTION_HOUSE_AUCTION_CREATED is
+-- documented as "not used in the base UI but is included for AddOn ease-of-use", which
+-- makes it the intended hook but says nothing about commodity multisells;
+-- AUCTION_MULTISELL_START definitely fires for a stack. Arming is idempotent, so both
+-- firing is harmless, and either alone is enough.
+loader:RegisterEvent("AUCTION_HOUSE_AUCTION_CREATED")
+loader:RegisterEvent("AUCTION_MULTISELL_START")
+-- A post that FAILED must not advance — the item is still in the bag and still wants
+-- posting, so moving on would quietly skip it.
+loader:RegisterEvent("AUCTION_HOUSE_POST_ERROR")
+loader:RegisterEvent("AUCTION_MULTISELL_FAILURE")
 loader:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 == "Blizzard_AuctionHouseUI" then Build() end
     elseif event == "BAG_UPDATE_DELAYED" then
         Refresh()
+    elseif event == "AUCTION_HOUSE_AUCTION_CREATED" or event == "AUCTION_MULTISELL_START" then
+        -- Arm only. The advance itself waits for the bag to settle (Refresh), because the
+        -- target index is only meaningful against the rebuilt list.
+        ArmAutoAdvance()
+    elseif event == "AUCTION_HOUSE_POST_ERROR" or event == "AUCTION_MULTISELL_FAILURE" then
+        CancelAutoAdvance()
     elseif event == "GET_ITEM_INFO_RECEIVED" then
         -- arg1 is the itemID whose data just landed. Only act if it was one of
         -- the items we flagged as a cache miss in the last CollectItems pass.
