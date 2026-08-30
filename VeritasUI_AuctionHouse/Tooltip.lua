@@ -512,6 +512,13 @@ local function OnItemTooltip(tooltip, data)
     local fs = coinFS[tooltip]
     if fs then fs:Hide() end
 
+    -- Clear the per-pass outcome FIRST. Without this the recorder keeps the previous hover's
+    -- key/price whenever this pass renders nothing (unpriced item, or gear whose link and id
+    -- disagree), so /ah ttprobe would report a price that is not on screen -- and a test
+    -- asserting "nothing rendered" would read the stale value and fail on correct code, which
+    -- is exactly how this was found.
+    lastRender.key, lastRender.price, lastRender.used = nil, nil, nil
+
     -- SOURCE CAPTURE for /ah ttprobe. All FOUR candidate identities are recorded before one
     -- is chosen, because a compound tooltip (this pattern teaches a decor item) can make them
     -- disagree, and picking the right source by reasoning is what produced the wrong answer
@@ -537,12 +544,80 @@ local function OnItemTooltip(tooltip, data)
         end
     end
 
-    local link = dataLink
-    lastRender.used = "data.hyperlink"
-    if not link and TooltipUtil and TooltipUtil.GetDisplayedItem then
-        local _, l = TooltipUtil.GetDisplayedItem(tooltip)
-        link = l
-        lastRender.used = "TooltipUtil.GetDisplayedItem"
+    ----------------------------------------------------------------
+    --  IDENTITY RESOLUTION -- read this before reordering anything.
+    --
+    --  ⚠ `data.hyperlink` CANNOT BE TRUSTED TO NAME THE HOVERED ITEM. On an item whose
+    --  tooltip embeds another item -- a recipe/pattern that teaches something -- the data
+    --  pipeline's `hyperlink` points at the TAUGHT item while `data.id` stays correct.
+    --  MEASURED 2026-08-29 hovering `Pattern: Stretched Snakeskin Rack`:
+    --      data.hyperlink      id=275334  link parses to 279346   <- Pattern id, WRONG link
+    --      PrimaryTooltipData  id=275334  link parses to 279346   <- same
+    --      GetDisplayedItem    id=275334  link parses to 275334   <- CORRECT
+    --  v1.7.x-v1.17.1 preferred data.hyperlink, so the tooltip rendered a CORRECT price for
+    --  the WRONG item (10000g1s, the decor item's price, on a pattern worth 5g). Silent, and
+    --  invisible unless the inner item also happens to have a stored price.
+    --
+    --  WHY GetDisplayedItem IS RIGHT, from Blizzard's source rather than from the one
+    --  measurement: TooltipUtil.lua:9-21 resolves GUID FIRST --
+    --  `if tooltipData.guid then hyperlink = C_Item.GetItemLinkByGUID(tooltipData.guid)` --
+    --  and only falls back to `tooltipData.hyperlink`. A GUID identifies the actual item
+    --  instance under the cursor, so it cannot drift to an embedded item.
+    --
+    --  ⚠ THAT FALLBACK IS WHY THE ID CHECK BELOW EXISTS. With no GUID (a chat link, an
+    --  ItemRefTooltip) GetDisplayedItem returns `tooltipData.hyperlink` -- the same untrusted
+    --  string. So the link is VALIDATED against `data.id`, which was correct in every
+    --  candidate measured, and a link that disagrees with it is discarded.
+    --
+    --  ⚠ THE CROSS-CHECK IS LOAD-BEARING; THE ORDERING IS NOT. Mutation-tested: swapping the
+    --  two candidates back to data.hyperlink-first leaves the suite GREEN, because a lying
+    --  link fails the id comparison and the loop moves on regardless of position. Do not
+    --  "simplify" this by deleting the comparison and keeping the order -- that reinstates the
+    --  bug in every no-GUID case while looking like the fix. The order only decides which of
+    --  two ALREADY-VALID candidates wins, and GetDisplayedItem is first because a
+    --  GUID-resolved link is the more specific identity.
+    ----------------------------------------------------------------
+    local authID = data and data.id
+    local displayedLink = lastRender.displayedLink
+
+    -- Battle-pet links are keyed by SPECIES and their data.id is the generic cage item, so
+    -- the id check below must never touch them.
+    local function IsPetLink(l)
+        return type(l) == "string" and l:find("|Hbattlepet:", 1, true) ~= nil
+    end
+
+    local link, keyFromID
+    if IsPetLink(displayedLink) then
+        link, lastRender.used = displayedLink, "GetDisplayedItem (battlepet)"
+    elseif IsPetLink(dataLink) then
+        link, lastRender.used = dataLink, "data.hyperlink (battlepet)"
+    elseif type(authID) == "number" and authID > 0 then
+        -- Accept the first candidate whose OWN itemID matches the authoritative one.
+        for _, pair in ipairs({ { displayedLink, "GetDisplayedItem" },
+                               { dataLink, "data.hyperlink" } }) do
+            local cand = pair[1]
+            if type(cand) == "string" and tonumber(cand:match("|Hitem:(%d+)")) == authID then
+                link, lastRender.used = cand, pair[2]
+                break
+            end
+        end
+        if not link then
+            -- No link agrees with data.id. Key off the id alone rather than pricing whatever
+            -- the wrong link points at. MakeKeyFromItemID refuses gear (its key needs an item
+            -- level the id cannot supply), so gear in this state shows NO line -- which is the
+            -- correct outcome: silence beats a confident wrong price.
+            keyFromID, lastRender.used = authID, "data.id (no link agreed)"
+        end
+    else
+        link = displayedLink or dataLink
+        lastRender.used = displayedLink and "GetDisplayedItem (no id)" or "data.hyperlink (no id)"
+    end
+
+    if keyFromID then
+        local k = AH.DB and AH.DB.MakeKeyFromItemID(keyFromID)
+        lastRender.link = "id:" .. keyFromID
+        if k then pcall(AppendPriceForKey, tooltip, k) end
+        return
     end
     if not link then return end
 
