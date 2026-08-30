@@ -454,6 +454,12 @@ local function RenderCoinLine(tooltip, price)
     return true
 end
 
+-- DIAGNOSTIC SEAM for /ah ttprobe. Exposes the EXACT price the tooltip render would use,
+-- so a disagreement between the tooltip and /ah check can be localised to the lookup or to
+-- the render instead of being argued about. Same reasoning as /ah browseprobe: the question
+-- recurs and cannot be summoned on demand.
+AH.Tooltip._BuildPriceData = BuildPriceData
+
 local function AppendPriceForKey(tooltip, key)
     local price, extras = BuildPriceData(key)
     if not price then return end

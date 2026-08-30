@@ -529,7 +529,7 @@ end
 --  Slash Commands
 --
 --  Surface: help / scan / engine / floor / bardemo / bartune / baratlas / compare /
---  browseprobe / live / autoadvance /
+--  browseprobe / live / autoadvance / ttprobe /
 --  diag / check / find / wipe / blocked / settings / debug.
 --  This list, the `cmd ==` branches below, and PrintHelp are meant to stay
 --  one-for-one — the list had drifted, silently gaining four commands it never
@@ -560,6 +560,7 @@ local function PrintHelp()
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah browseprobe|r  — check one shift-clicked item against the live listing")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah live|r         — live-search price corrections (on | off | status)")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah autoadvance|r  — load the next sell-strip item after a post (on | off)")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah ttprobe|r      — why a shift-clicked item's TOOLTIP price differs from /ah check")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah diag|r         — diagnostic / state dump")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah check|r        — show stored price for a shift-clicked item")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah find|r         — search the last scan's raw data for a shift-clicked item")
@@ -908,6 +909,67 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
                     e.key,
                     e.old and AH.Money.FormatText(e.old) or "none",
                     AH.Money.FormatText(e.new)))
+            end
+        end
+
+    elseif cmd == "ttprobe" then
+        -- Localise a tooltip-vs-/ah check price disagreement. Reports the tooltip render's
+        -- OWN computation for the shift-clicked link AND every stored record sharing the
+        -- itemID, because the leading explanation for such a split is TWO records -- one
+        -- keyed bare and one keyed with an item level -- which no other command can reveal.
+        local link = rawRest and rawRest:match("|H.-|h.-|h")
+        if not link then
+            VUI.Print(AH.TAG, "Usage: |cFFFFFF00/ah ttprobe|r then shift-click an item link.")
+            return
+        end
+        local iid = link:match("|Hitem:(%d+)") or link:match("|Hbattlepet:(%d+)")
+        VUI.Print(AH.TAG, format("ttprobe: %s", link))
+
+        -- What MakeKey decides, and the two inputs that steer it.
+        local _, _, _, equipLoc = (C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant)(link)
+        local okIlvl, ilvl = pcall(function()
+            return (C_Item and C_Item.GetDetailedItemLevelInfo or GetDetailedItemLevelInfo)(link)
+        end)
+        VUI.Print(AH.TAG, format("  equipLoc:   %s   ilvl: %s",
+            (equipLoc == nil and "|cFFFF4444nil|r") or (equipLoc == "" and "empty (not gear)") or equipLoc,
+            okIlvl and tostring(ilvl) or "|cFFFF4444error|r"))
+
+        local key = AH.DB and AH.DB.MakeKey(link)
+        VUI.Print(AH.TAG, format("  derived key: |cFFFFFF00%s|r", tostring(key)))
+
+        -- The number the RENDER would use, straight off the tooltip module's own builder.
+        if AH.Tooltip and AH.Tooltip._BuildPriceData and key then
+            local p = AH.Tooltip._BuildPriceData(key)
+            VUI.Print(AH.TAG, format("  tooltip would render: %s   (raw %s)",
+                p and AH.Money.FormatText(p) or "|cFFFF4444nothing|r", tostring(p)))
+            if p and AH.Tooltip.CoinMarkup then
+                -- Escaped so the markup is READABLE rather than rendered as coin art.
+                local mk = AH.Tooltip.CoinMarkup(p) or ""
+                VUI.Print(AH.TAG, "  coin markup: " .. mk:gsub("|", "||"))
+            end
+        end
+        VUI.Print(AH.TAG, format("  GetMarketPrice(key): %s",
+            key and tostring(AH.DB.GetMarketPrice(key)) or "n/a"))
+
+        -- EVERY record for this itemID. A bare key and an i:<id>:<ilvl> key holding
+        -- different prices is the split that makes a tooltip and /ah check disagree.
+        if iid and AH.db and AH.db.prices then
+            local hits = 0
+            for k, rec in pairs(AH.db.prices) do
+                if k == "i:" .. iid or k:match("^i:" .. iid .. ":") or k == "p:" .. iid then
+                    hits = hits + 1
+                    VUI.Print(AH.TAG, format("  stored %s%s|r = %s  (seen day %s)",
+                        k == key and "|cFF00FF00" or "|cFFFFFF00", k,
+                        rec.market and AH.Money.FormatText(rec.market) or "nil",
+                        tostring(rec.seen)))
+                end
+            end
+            if hits == 0 then
+                VUI.Print(AH.TAG, "  |cFFFF4444no stored record for this itemID at all.|r")
+            elseif hits > 1 then
+                VUI.Print(AH.TAG, "  |cFFFF4444More than one record for this itemID.|r "
+                    .. "The green one is what MakeKey resolves to now; a different key holding "
+                    .. "the price you see on the tooltip means the two paths disagree on the key.")
             end
         end
 
