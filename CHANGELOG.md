@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.17.3] - 2026-08-30
+
+### Added
+
+- `VeritasUI_Lib` — **the addon now arms WoW's own taint log at login, because the CVar does not survive a logout.** `taintLog` is a Debug-category CVar with no account or character scope, so it is never synchronised to `config-cache.wtf` or the server. Measured 2026-08-30: the owner set `/console taintLog 1`, the `UseContainerItem` FORBIDDEN then fired at 00:15, and by the time he checked the CVar read `0` with no `taint.log` in `Logs/` at all. That is why four recorded occurrences of this bug across five weeks still have no WoW-side taint log — arming it by hand cannot survive the days of ordinary play between events, and the bug cannot be reproduced on demand. Value `1` is used, which logs blocked-action errors *and the taint events leading up to them*, i.e. the causal chain for this exact class; values 2–4 add tainted reads and writes of globals, upvalues and table fields and are far more verbose over multi-day sessions, so they are held in reserve. Skips the write when the CVar already reads `1`. ⚠ This is a temporary diagnostic tied to the open investigation and should be removed when it closes; `/vui taint disarm` opts out permanently without a code change, since forcing a debug setting on with no escape hatch is user-hostile. (`Lib.lua`)
+
 ## [1.17.2] - 2026-08-29
 
 ### Fixed
