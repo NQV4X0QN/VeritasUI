@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.16.0] - 2026-08-29
+
+### Added
+- `VeritasUI_AuctionHouse` — live-search price correction: opening an item on the Buy or Sell tab now records its real listing price into the price database, overwriting whatever the scan stored (`LiveSearch.lua`, new)
+- `VeritasUI_AuctionHouse` — `/ah live` reports what the correction layer has changed, and toggles it (`on` | `off`); the counters also appear in `/ah diag` (`Core.lua`)
+- `VeritasUI_AuctionHouse` — "Correct Prices from Live Searches" checkbox, default on, key `liveSearchPrices` (`Settings.lua`, `Tooltip.lua`)
+
+### Fixed
+- `VeritasUI_AuctionHouse` — tooltip prices no longer read far below the cheapest listing on items you handle. The browse engine's `minPrice` can sit below every existing auction — measured item 237365 at 204900 against a cheapest listing of 352200, a 41.8% error with the market provably still — and `BrowseResultInfo` exposes only that one price field, so the value is corrected downstream from the auction house's own per-item search instead (`LiveSearch.lua`, `Browse.lua`)
+- `VeritasUI_AuctionHouse` — a dry run (`/ah compare`, `/ah browseprobe`) no longer prints `Scan complete — 0 items priced` directly beneath its own honest result line, which read like a failed scan (`Browse.lua`, `Core.lua`)
+
+### Changed
+- `VeritasUI_AuctionHouse` — corrected the claim, asserted in two files since v1.12.12, that the price error attributable to browse is bounded at ~7.7%. That was a single sample presented as a ceiling; the measured error is 41.8% on an item whose market had not moved (`Browse.lua`, `Tooltip.lua`)
+
+### Requires
+- No action — the correction is on by default and needs no rescan; prices update as you open items
+
 ## [1.15.4] - 2026-08-24
 
 Hardening pass over the day's changes. No behaviour change in any working path — owner-verified across all seven checks (AH Quantity row, checkbox label, checked-state across pooled cards, reputation bar click, Honor bar click, reload with the Adventure Guide open, Edit Mode entry).
