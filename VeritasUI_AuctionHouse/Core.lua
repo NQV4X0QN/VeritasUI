@@ -939,8 +939,18 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             VUI.Print(AH.TAG, format("  key:    |cFFFFFF00%s|r", tostring(lr.key)))
             VUI.Print(AH.TAG, format("  price:  |cFFFFFF00%s|r  (raw %s)",
                 lr.price and AH.Money.FormatText(lr.price) or "none", tostring(lr.price)))
-            VUI.Print(AH.TAG, "  |cFF888888If that itemID is not the item you hovered, the "
-                .. "tooltip resolved an inner item and the key is for something else.|r")
+            VUI.Print(AH.TAG, format("  source used: |cFFFFFF00%s|r", tostring(lr.used)))
+            -- All four candidate identities, so the correct SOURCE is chosen by measurement
+            -- rather than by argument. On a compound tooltip these disagree.
+            VUI.Print(AH.TAG, "  candidates:")
+            VUI.Print(AH.TAG, format("    data.hyperlink      id=%s  %s",
+                tostring(lr.dataId), tostring(lr.dataLink)))
+            VUI.Print(AH.TAG, format("    PrimaryTooltipData  id=%s  %s",
+                tostring(lr.primaryId), tostring(lr.primaryLink)))
+            VUI.Print(AH.TAG, format("    GetDisplayedItem    id=%s  %s",
+                tostring(lr.displayedId), tostring(lr.displayedLink)))
+            VUI.Print(AH.TAG, "  |cFF888888Whichever line names the item you actually hovered "
+                .. "is the source the tooltip should be reading.|r")
             return
         end
         local iid = link:match("|Hitem:(%d+)") or link:match("|Hbattlepet:(%d+)")

@@ -512,10 +512,37 @@ local function OnItemTooltip(tooltip, data)
     local fs = coinFS[tooltip]
     if fs then fs:Hide() end
 
-    local link = data and data.hyperlink
+    -- SOURCE CAPTURE for /ah ttprobe. All FOUR candidate identities are recorded before one
+    -- is chosen, because a compound tooltip (this pattern teaches a decor item) can make them
+    -- disagree, and picking the right source by reasoning is what produced the wrong answer
+    -- twice. Measured 2026-08-29: hovering `Pattern: Stretched Snakeskin Rack` (275334) priced
+    -- itemID 279346, the TAUGHT item -- a correct price for the wrong item.
+    local dataLink = data and data.hyperlink
+    lastRender.dataLink = dataLink
+    lastRender.dataId   = data and data.id
+    lastRender.primaryLink, lastRender.primaryId = nil, nil
+    if tooltip.GetPrimaryTooltipData then
+        local okP, td = pcall(tooltip.GetPrimaryTooltipData, tooltip)
+        if okP and type(td) == "table" then
+            lastRender.primaryLink = td.hyperlink
+            lastRender.primaryId   = td.id
+        end
+    end
+    lastRender.displayedLink, lastRender.displayedId = nil, nil
+    if TooltipUtil and TooltipUtil.GetDisplayedItem then
+        local okD, _, dl, did = pcall(TooltipUtil.GetDisplayedItem, tooltip)
+        if okD then
+            lastRender.displayedLink = dl
+            lastRender.displayedId   = did
+        end
+    end
+
+    local link = dataLink
+    lastRender.used = "data.hyperlink"
     if not link and TooltipUtil and TooltipUtil.GetDisplayedItem then
         local _, l = TooltipUtil.GetDisplayedItem(tooltip)
         link = l
+        lastRender.used = "TooltipUtil.GetDisplayedItem"
     end
     if not link then return end
 
