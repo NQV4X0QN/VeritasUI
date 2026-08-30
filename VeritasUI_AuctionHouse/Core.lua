@@ -560,7 +560,7 @@ local function PrintHelp()
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah browseprobe|r  — check one shift-clicked item against the live listing")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah live|r         — live-search price corrections (on | off | status)")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah autoadvance|r  — load the next sell-strip item after a post (on | off)")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah ttprobe|r      — why a shift-clicked item's TOOLTIP price differs from /ah check")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah ttprobe|r      — what the tooltip actually priced (no args = last render)")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah diag|r         — diagnostic / state dump")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah check|r        — show stored price for a shift-clicked item")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah find|r         — search the last scan's raw data for a shift-clicked item")
@@ -919,7 +919,28 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
         -- keyed bare and one keyed with an item level -- which no other command can reveal.
         local link = rawRest and rawRest:match("|H.-|h.-|h")
         if not link then
-            VUI.Print(AH.TAG, "Usage: |cFFFFFF00/ah ttprobe|r then shift-click an item link.")
+            -- NO LINK => report what the tooltip path ACTUALLY used on its last run. This is
+            -- the decisive mode: hover the item, then run this. A reconstruction from a
+            -- shift-clicked link cannot see the case where the tooltip resolved a DIFFERENT
+            -- item than the one you clicked, which a compound tooltip (recipe + taught item,
+            -- housing decor) can do via TooltipUtil.GetDisplayedItem.
+            local lr = AH.Tooltip and AH.Tooltip._LastRender and AH.Tooltip._LastRender()
+            if not (lr and lr.link) then
+                VUI.Print(AH.TAG, "No tooltip price rendered yet this session. Hover a priced "
+                    .. "item, then run |cFFFFFF00/ah ttprobe|r again — or pass a shift-clicked "
+                    .. "link to probe one directly.")
+                return
+            end
+            VUI.Print(AH.TAG, "Last tooltip price render:")
+            VUI.Print(AH.TAG, format("  frame:  %s", tostring(lr.frame)))
+            VUI.Print(AH.TAG, format("  link:   %s", tostring(lr.link)))
+            VUI.Print(AH.TAG, format("  itemID: |cFFFFFF00%s|r",
+                tostring(lr.link:match("|Hitem:(%d+)") or lr.link:match("|Hbattlepet:(%d+)"))))
+            VUI.Print(AH.TAG, format("  key:    |cFFFFFF00%s|r", tostring(lr.key)))
+            VUI.Print(AH.TAG, format("  price:  |cFFFFFF00%s|r  (raw %s)",
+                lr.price and AH.Money.FormatText(lr.price) or "none", tostring(lr.price)))
+            VUI.Print(AH.TAG, "  |cFF888888If that itemID is not the item you hovered, the "
+                .. "tooltip resolved an inner item and the key is for something else.|r")
             return
         end
         local iid = link:match("|Hitem:(%d+)") or link:match("|Hbattlepet:(%d+)")

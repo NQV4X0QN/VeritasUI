@@ -460,8 +460,22 @@ end
 -- recurs and cannot be summoned on demand.
 AH.Tooltip._BuildPriceData = BuildPriceData
 
+-- LAST-RENDER RECORDER for /ah ttprobe. Records the link, key and price the tooltip path
+-- ACTUALLY used on its most recent run, rather than letting a probe RECONSTRUCT them from a
+-- shift-clicked link. The two are not the same input: a compound tooltip (a recipe that also
+-- teaches an item, housing decor, a caged pet) displays more than one item name, and
+-- TooltipUtil.GetDisplayedItem may resolve to an INNER item whose itemID differs from the one
+-- the player shift-clicks. That difference is invisible to any reconstruction and is the
+-- leading explanation for a tooltip and /ah check reporting different prices for "the same"
+-- item. Records unconditionally; costs three table writes per priced tooltip.
+local lastRender = {}
+AH.Tooltip._LastRender = function() return lastRender end
+
 local function AppendPriceForKey(tooltip, key)
     local price, extras = BuildPriceData(key)
+    lastRender.key   = key
+    lastRender.price = price
+    lastRender.frame = tooltip and tooltip.GetName and tooltip:GetName() or "?"
     if not price then return end
     if not RenderCoinLine(tooltip, price) then
         -- Self-render path unavailable (no tooltip name/anchor) → plain text-coin line.
@@ -474,6 +488,7 @@ end
 -- Append our line(s) to a tooltip for the given item link, if we have a price.
 local function AppendPrice(tooltip, link)
     if not (AH.DB and link) then return end
+    lastRender.link = link
     local key = AH.DB.MakeKey(link)
     if key then AppendPriceForKey(tooltip, key) end
 end
