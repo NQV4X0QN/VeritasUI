@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.17.2] - 2026-08-29
+
+### Fixed
+- `VeritasUI_AuctionHouse` — tooltips on recipes and patterns showed the price of the item they *teach* instead of the price of the recipe itself. Hovering `Pattern: Stretched Snakeskin Rack` rendered 10,000g 1s — the correct price of the decor item it teaches — on a pattern worth 5g. The tooltip data pipeline's `hyperlink` points at the taught item while its `id` stays correct, and the tooltip preferred the link. It now resolves via `TooltipUtil.GetDisplayedItem` (which resolves GUID-first, per `TooltipUtil.lua:9-21`) and cross-checks the result against `data.id`, discarding any link that disagrees (`Tooltip.lua`)
+- `VeritasUI_AuctionHouse` — an item whose link and id disagree and which is equippable now renders no price line at all, rather than resolving to the ilvl-agnostic bare `i:<itemID>` gear key the key design forbids (`Tooltip.lua`)
+
+### Added
+- `VeritasUI_AuctionHouse` — `/ah ttprobe` reports what the tooltip actually priced: the link, itemID, derived key, price, and all three candidate item identities side by side. With no argument it reports the last render rather than a reconstruction (`Core.lua`, `Tooltip.lua`)
+
+### Requires
+- No action — affects display only; no stored prices were wrong
+
 ## [1.17.1] - 2026-08-29
 
 ### Fixed
