@@ -357,6 +357,35 @@ end
 --    secure frame from tainted code and the two armed together, so no observation could
 --    separate them. This change removes the one that is a pattern we had already banned.
 --
+--    ⚠⚠ AND IT WAS NOT THE CAUSE, OR NOT THE ONLY ONE. RECURRED AT v1.17.2.
+--    Owner's recorder, 2026-08-30 00:15, char Khalthazar, zone Sunkiller Sanctum (a Delve),
+--    combat false, ah-ui-loaded true:
+--        ADDON_ACTION_FORBIDDEN | addon = VeritasUI_AuctionHouse | func = UseContainerItem()
+--    triggered by right-clicking a curio in the bag. IDENTICAL signature and function to the
+--    2026-08-04 event, with the OnTooltipCleared HookScript long gone. The suspect this file
+--    named as the other half of the pair is therefore the one still standing.
+--    WHAT REMAINS, and nothing here is yet proven to be the tainter:
+--      (1) `tooltip:CreateFontString(...)` in GetCoinFontString — a PERSISTENT addon-owned
+--          child of a secure frame.
+--      (2) `fs:SetPoint("LEFT", left, ...)` in RenderCoinLine — anchors our object to
+--          BLIZZARD's own GameTooltipTextLeftN region, creating a cross-taint anchor
+--          relationship on a Blizzard-owned fontstring. This is the one that has no
+--          equivalent in the ordinary "addon calls AddLine" pattern.
+--      (3) the WatchCoins ticker, which calls fs:Hide() OUTSIDE any securecall firewall
+--          (post-calls are dispatched through Blizzard's AttributeDelegate; a C_Timer
+--          callback is not).
+--    ⚠ ELIMINATION TEST, cheap and decisive, before touching any of the three: turning
+--    `ttShowPrice` off removes ALL THREE, because BuildPriceData returns nil, so
+--    RenderCoinLine never runs, GetCoinFontString is never called, no fontstring exists for
+--    the AllTypes hide to touch, and WatchCoins is never started. If the FORBIDDEN still
+--    fires with it off, this file is not the source and the real one is elsewhere in the
+--    module. Do NOT start rewriting the coin render until that test has been run.
+--    ⚠ Do not "fix" this by reverting to text coins in an AddLine. The owned fontstring
+--    exists because the 12.0.7 native restyle was matched pixel-for-pixel over v1.7.15-17
+--    with probe-verified values, and Blizzard's own money code CANNOT be used here (it does
+--    arithmetic on a Secret Value inside instanced content — the v1.7.6 Delve crash, which
+--    is the same class of place this FORBIDDEN was recorded).
+--
 --  ⚠ Do NOT "simplify" this back to a single driver: the post-call alone leaves stale
 --    coins on legacy tooltips, and the poll alone shows them for up to one tick.
 ----------------------------------------------------------------
