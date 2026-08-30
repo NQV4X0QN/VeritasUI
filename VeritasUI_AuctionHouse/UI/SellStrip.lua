@@ -631,15 +631,24 @@ end
 --  (Note it is that SLOT's stack count, not the total across bags -- an item split over
 --  two slots is two strip entries and gets offered twice, which is the desired outcome.)
 --
---  ⚠ THE UNPROVEN PART, stated as a hypothesis: the strip's click handler is documented
+--  ⚠ THE TAINT QUESTION — MEASURED ONCE, NOT SETTLED. The strip's click handler is documented
 --  as "hardware-event-initiated native load; proven taint-clean". This path has NO
 --  hardware event behind it -- it fires from an event handler. SetPostItem itself is plain
 --  Lua with no protected call (Blizzard_AuctionHouseFrame.lua:608-631), so it should be
---  callable; whether driving it without a hardware event leaves the subsequent native post
---  clean is NOT measured. FALSIFYING OBSERVATION: Create Auction starts failing, erroring
---  inside Blizzard's commodity-post code, or reporting a blocked action naming this addon,
---  on an auto-advanced item but not on a hand-clicked one. If that appears, turn it off
---  with /ah autoadvance off and say so -- do not paper over it with a pcall.
+--  callable, and it is:
+--    OWNER-VERIFIED IN GAME 2026-08-29 — four consecutive auctions created, each on an
+--    auto-advanced item, MULTI-ITEM STACKS (so the multisell wait/retry above genuinely
+--    ran), quantity auto-populated to the full stack, Create Auction clicked one after
+--    another with no failure and no error.
+--  That is real evidence for the mechanism and it is why this shipped. It is NOT proof of
+--  taint-cleanliness: n=4, one session, one character, one zone. This module's history is
+--  specifically that a taint theory can look settled and still be wrong -- see the
+--  PlayerFrame/ClearTarget entry in the Lib inventory, recorded as UNPROVEN pending a long
+--  clean run despite a confirmed behavioural fix. Treat this the same way.
+--  FALSIFYING OBSERVATION: Create Auction starts failing, erroring
+--  inside Blizzard's commodity-post code, or /vui taint records a blocked action naming
+--  this addon, on an auto-advanced item but not on a hand-clicked one. If that appears,
+--  turn it off with /ah autoadvance off and say so -- do not paper over it with a pcall.
 --
 --  INDEX SEMANTICS, and why it is an index rather than an item identity: the advance
 --  targets the SAME index the posted entry occupied. The list is sorted by name and
