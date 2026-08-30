@@ -57,6 +57,14 @@ local function BuildNativeSettingsPanel()
             .. "chosen; unfilled basic slots at their cheapest quality. Auction prices only — "
             .. "it does not consider vendor cost, so it is a sale value, not a sourcing cost.")
 
+        AddCheckbox("liveSearchPrices", true, "Correct Prices from Live Searches",
+            "When you open an item on the Buy or Sell tab, the Auction House has already "
+            .. "fetched that item's real listings — it is where Blizzard's own suggested "
+            .. "Unit Price comes from. This records it, overwriting the scanned price. "
+            .. "Sends no requests of its own and never touches the scan cooldown. "
+            .. "It fixes the items you actually open; a full |cFFFFFF00/ah scan|r is still "
+            .. "what prices everything else. See |cFFFFFF00/ah live|r for what it has corrected.")
+
         -- Auto-scan on AH open: REMOVED (2026-07-02). Scans are user-initiated via
         -- the Scan button (UI/ScanButton.lua) or /ah scan. The auto-fire-on-open
         -- path was the locus of the first-open-of-session replicate hang; Core's

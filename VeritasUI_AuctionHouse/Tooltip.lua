@@ -40,6 +40,12 @@ local SETTING_DEFAULTS = {
     ttShowQty   = true,   -- show last-seen quantity
     -- UI/CraftingOrder.lua — "Reagents Value:" on the Place Crafting Order form
     craftShowReagentValue = true,
+    -- LiveSearch.lua — fold the AH's own per-item search results into the price DB.
+    -- The CORRECTION LAYER for the browse minPrice defect documented below: it sends no
+    -- query of its own (the client has already fetched the data to fill Blizzard's
+    -- suggested Unit Price) and makes the stored price exact for every item you open on
+    -- the Buy or Sell tab.
+    liveSearchPrices = true,
     -- Which whole-AH scan engine the Scan button drives: "replicate" (Replicate.lua,
     -- C_AuctionHouse.ReplicateItems) or "browse" (Browse.lua, empty SendBrowseQuery).
     -- DEFAULT IS BROWSE (v1.12.12, owner decision after the arithmetic below).
@@ -48,30 +54,37 @@ local SETTING_DEFAULTS = {
     -- the two previous flips were each made on a number that had not been decomposed.
     --
     -- KNOWN DEFECT, NOT A REASON TO REVERT ON ITS OWN: browse's minPrice is not the live
-    -- lowest unit buyout. Measured 2026-08-04 (item 242639, one moment, /ah browseprobe):
-    -- Blizzard's ascending Sell-tab list showed the cheapest listing at 29800; browse
-    -- returned 27500. A minimum cannot sit below the cheapest thing on sale, so this is
-    -- real. Quantity (79681 vs the tab's 79606) and the derived key were both correct, so
-    -- browse reads the right POPULATION and only the PRICE lags. Probably a server-side
-    -- cached aggregate; unverified.
+    -- lowest unit buyout. Measured twice with /ah browseprobe against Blizzard's ascending
+    -- Sell-tab ladder at the same moment:
+    --      2026-08-04  item 242639   browse 27500   cheapest listing 29800   ( -7.7%)
+    --      2026-08-29  item 237365   browse 204900  cheapest listing 352200  (-41.8%)
+    -- A minimum cannot sit below the cheapest thing on sale, so this is real. In both
+    -- captures the quantity and the derived key were CORRECT (2026-08-29: 187985 against
+    -- the tab's own 187986 Available, accurate to one unit, in the same payload as the bad
+    -- price), so browse reads the right POPULATION and only the PRICE is wrong. Probably a
+    -- server-side cached aggregate; still unverified.
     --
-    -- ⚠ THE DECOMPOSITION THAT MATTERS, and the reason v1.12.11's revert was an
-    -- over-correction:
+    -- ⚠ THE 7.7% CEILING WAS WRONG, AND THIS BLOCK ASSERTED IT FOR SEVENTEEN RELEASES.
+    -- What stood here was:
     --      stored 2g11s vs market 2g64s (owner's first report)  = 20% gap
     --      stored 2g11s vs market 2g98s (minutes later)         = 29% gap
     --      browse minPrice vs market, SAME MOMENT               =  7.7% gap
-    -- Only the 7.7% is attributable to browse. The 20-29% the user actually experienced is
-    -- SCAN STALENESS -- the market moved 41% in minutes -- and REPLICATE WOULD SHOW THE
-    -- SAME GAP, because every scan-based price goes stale the instant the market moves.
-    -- v1.12.11 reverted the engine that fixed the first-scan hang on the strength of the
-    -- conflated 20-29% figure. Do not repeat that: separate lag from staleness first.
+    -- and concluded "only the 7.7% is attributable to browse". The DECOMPOSITION METHOD is
+    -- sound and still the rule -- separate lag from staleness before acting, which is what
+    -- /ah browseprobe is for. The CEILING it produced was not: 7.7% was one sample, and
+    -- 237365 is 41.8% attributable to browse with the market provably still (the ladder
+    -- read 352200 continuously across a 13s probe). Do not quote 7.7% as a bound again.
     --
     -- WHY BROWSE ANYWAY: replicate fails the first scan of most days -- the original
     -- complaint, unsolved for months, five hypotheses falsified. Browse completed in 10-15s
     -- every attempt, priced 22,540 items against replicate's 15,828 in 55.9s, and abandons
     -- no gear (replicate abandoned 38-67% of gear rows on two measured scans, which
-    -- silently froze both the price AND the age of those items). A reliable scan that reads
-    -- a few percent low on fast-moving commodities beats an exact scan that will not run.
+    -- silently froze both the price AND the age of those items). And the defect above is now
+    -- CORRECTED where it is felt: LiveSearch.lua rewrites the price of any item you open on
+    -- the Buy or Sell tab from the AH's own authoritative per-item search, for free.
+    -- ⚠ That correction is per-item and on-demand ONLY. It cannot cover the whole AH -- the
+    -- per-item search is rate-capped, which is why the scan exists -- so an item you have
+    -- never opened still carries whatever the scan stored.
     --
     -- ⚠ Deliberately NOT paired with a minutes-granularity age line. That was proposed and
     -- REJECTED by the owner: he reads the age line to decide whether to rescan, and
@@ -79,7 +92,7 @@ local SETTING_DEFAULTS = {
     --
     -- Escape hatch if prices feel wrong in use: /ah engine replicate. Spot-check any single
     -- item with /ah browseprobe, which compares browse's raw return against the game's own
-    -- listing at the same moment.
+    -- listing at the same moment; /ah live shows what the correction layer has fixed.
     scanEngine = "browse",
 }
 
