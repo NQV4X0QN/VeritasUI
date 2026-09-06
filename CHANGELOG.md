@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.17.5] - 2026-09-06
+
+### Fixed
+- `VeritasUI_AuctionHouse` — restored the tooltip coin column alignment that v1.17.4 destroyed — `Tooltip.lua` is reverted byte-for-byte to its v1.17.3 content, so the coin block's first digit again lands under Blizzard's native "Sell Price:" column (`Tooltip.lua`)
+
+### Changed
+- `VeritasUI_AuctionHouse` — the `ADDON_ACTION_FORBIDDEN` on `UseContainerItem()` is deliberately still open — v1.17.4 closed it by deleting the owned-`FontString` renderer, which traded away the visual fidelity the suite exists for; that trade was not authorised and is reversed here (`Tooltip.lua`)
+
+### Requires
+- Nothing new — retail Midnight 12.1.0, Interface `120100`
+
+
 ## [1.17.4] - 2026-09-06
 
 ### Fixed
