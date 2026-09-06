@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.17.4] - 2026-09-06
+
+### Fixed
+- `VeritasUI_AuctionHouse` — removed the entire taint surface behind the recurring `ADDON_ACTION_FORBIDDEN` on `UseContainerItem()` — the tooltip price is now a plain `AddLine` using Blizzard's `GetCoinTextureString`, instead of an addon-owned `FontString` created on `GameTooltip` and anchored into Blizzard's own `GameTooltipTextLeftN` line region and polled by a `C_Timer` ticker (`Tooltip.lua`)
+
+### Changed
+- `VeritasUI_AuctionHouse` — the auction price no longer column-aligns under Blizzard's native "Sell Price:" coin column; it follows the `Auction:` label as inline text (`Tooltip.lua`)
+- `VeritasUI_AuctionHouse` — the stale-coin hide machinery (`WatchCoins` poll, the two `fs:Hide()` drivers, `MeasureNativePrefix`) is now unreachable, because Blizzard clears line regions on every tooltip rebuild (`Tooltip.lua`)
+
+### Requires
+- Nothing new — retail Midnight 12.1.0, Interface `120100`
+
+
 ## [1.17.3] - 2026-08-30
 
 ### Added

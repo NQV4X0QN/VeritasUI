@@ -439,6 +439,11 @@ local function MeasureNativePrefix(fontPath, fontSize, fontFlags)
     return w
 end
 
+-- ⛔ INTENTIONALLY UNCALLED as of v1.17.4 — see the block at the AppendPriceForKey call site
+-- for why. Left in place (rather than deleted) only to keep this release minimal; the dead
+-- machinery it anchors is slated for removal once the taint fix is confirmed. Do NOT "restore"
+-- the call in order to silence the unused-function warning.
+-- luacheck: ignore RenderCoinLine
 local function RenderCoinLine(tooltip, price)
     if not (tooltip.AddLine and tooltip.CreateFontString) then return false end
 
@@ -506,11 +511,43 @@ local function AppendPriceForKey(tooltip, key)
     lastRender.price = price
     lastRender.frame = tooltip and tooltip.GetName and tooltip:GetName() or "?"
     if not price then return end
-    if not RenderCoinLine(tooltip, price) then
-        -- Self-render path unavailable (no tooltip name/anchor) → plain text-coin line.
-        local coins = AH.Money.Format(price) or tostring(price)
-        tooltip:AddLine(PRICE_PREFIX .. "  " .. coins, 1, 1, 1)
-    end
+
+    -- ⛔ RenderCoinLine IS DELIBERATELY NOT CALLED (v1.17.4). Do not restore this call.
+    --
+    -- It was the ONLY caller of GetCoinFontString, WatchCoins and MeasureNativePrefix, so
+    -- removing this one call renders all three of the taint suspects documented above
+    -- structurally unreachable in a single edit:
+    --   (1) tooltip:CreateFontString(...)  — never reached (GetCoinFontString has no caller)
+    --   (2) fs:SetPoint("LEFT", GameTooltipTextLeftN, ...) — never reached
+    --   (3) the WatchCoins ticker           — never started (no other call site)
+    -- coinFS therefore stays permanently empty, which also makes the two `fs:Hide()` sites
+    -- (OnItemTooltip, OnAnyTooltip) no-ops. Verified by grep before the edit: WatchCoins is
+    -- referenced only from RenderCoinLine; coinFS is written only in GetCoinFontString;
+    -- measureFS is created only in MeasureNativePrefix.
+    --
+    -- WHY, after three unsuccessful attempts to identify WHICH of the three it was: the
+    -- ADDON_ACTION_FORBIDDEN on UseContainerItem() recurred on 2026-08-04, 2026-08-30 and
+    -- 2026-09-06, and every round of narrowing depended on a chance recurrence. Suspect (2)
+    -- is the only one of the three that is not a pattern thousands of addons use benignly
+    -- (anchoring an addon-owned region INTO a Blizzard-owned tooltip line region), but that
+    -- is an argument, not evidence. Deleting the whole class costs one cosmetic property and
+    -- ends the guessing.
+    --
+    -- COST, and it is real: the coins are no longer column-aligned under Blizzard's native
+    -- "Sell Price:" coin column. They now follow "Auction:" as inline text. Everything else
+    -- the owned fontstring bought us is preserved by Blizzard's own tooltip rebuild, which
+    -- also removes the stale-coin bug (v1.7.8) and the two hide drivers it needed.
+    --
+    -- Coin icons still render: GetCoinTextureString is a pure string formatter and our price
+    -- is a plain Lua copper integer (Money.lua §2.1), so the v1.7.6 Delve Secret-Value crash
+    -- (Blizzard MoneyFrame LAYOUT arithmetic) is not in this path.
+    --
+    -- ⚠ NOT YET PROVEN TO BE THE FIX. If the FORBIDDEN recurs with this in place, this file
+    -- is exonerated and the next target is the item-level overlay that QualityOfLife paints
+    -- onto bag item buttons (SetItemButtonQuality hook) — which sits far closer to
+    -- UseContainerItem than a tooltip does, and can be eliminated the same way.
+    local coins = AH.Money.Format(price) or tostring(price)
+    tooltip:AddLine(PRICE_PREFIX .. "  " .. coins, 1, 1, 1)
     if extras then tooltip:AddLine(extras) end
 end
 
