@@ -1,29 +1,22 @@
 # Changelog
 
-## [1.17.5] - 2026-09-06
+## [Withdrawn] 1.17.4 / 1.17.5 - 2026-09-06
 
-### Fixed
-- `VeritasUI_AuctionHouse` — restored the tooltip coin column alignment that v1.17.4 destroyed — `Tooltip.lua` is reverted byte-for-byte to its v1.17.3 content, so the coin block's first digit again lands under Blizzard's native "Sell Price:" column (`Tooltip.lua`)
+Both releases were removed from GitHub. `main` is functionally identical to v1.17.3.
 
-### Changed
-- `VeritasUI_AuctionHouse` — the `ADDON_ACTION_FORBIDDEN` on `UseContainerItem()` is deliberately still open — v1.17.4 closed it by deleting the owned-`FontString` renderer, which traded away the visual fidelity the suite exists for; that trade was not authorised and is reversed here (`Tooltip.lua`)
-
-### Requires
-- Nothing new — retail Midnight 12.1.0, Interface `120100`
-
-
-## [1.17.4] - 2026-09-06
-
-### Fixed
-- `VeritasUI_AuctionHouse` — removed the entire taint surface behind the recurring `ADDON_ACTION_FORBIDDEN` on `UseContainerItem()` — the tooltip price is now a plain `AddLine` using Blizzard's `GetCoinTextureString`, instead of an addon-owned `FontString` created on `GameTooltip` and anchored into Blizzard's own `GameTooltipTextLeftN` line region and polled by a `C_Timer` ticker (`Tooltip.lua`)
-
-### Changed
-- `VeritasUI_AuctionHouse` — the auction price no longer column-aligns under Blizzard's native "Sell Price:" coin column; it follows the `Auction:` label as inline text (`Tooltip.lua`)
-- `VeritasUI_AuctionHouse` — the stale-coin hide machinery (`WatchCoins` poll, the two `fs:Hide()` drivers, `MeasureNativePrefix`) is now unreachable, because Blizzard clears line regions on every tooltip rebuild (`Tooltip.lua`)
-
-### Requires
-- Nothing new — retail Midnight 12.1.0, Interface `120100`
-
+- 1.17.4 deleted the AuctionHouse tooltip's owned-`FontString` coin renderer to remove the
+  taint surface behind the recurring `ADDON_ACTION_FORBIDDEN` on `UseContainerItem()`. That
+  destroyed the coin column alignment against Blizzard's native "Sell Price:" column, which
+  had been matched pixel-for-pixel over v1.7.15-17. The trade was not authorised — visual
+  fidelity is the reason this suite exists — and the build should not have shipped.
+- 1.17.5 reverted `Tooltip.lua` byte-for-byte to its v1.17.3 content, making it a no-op
+  release whose only shipped difference was the version string.
+- Both were therefore deleted rather than left as permanent entries, and the version strings
+  returned to 1.17.3. The commits remain in history as the record, and the `v1.17.4` tag is
+  retained deliberately: `ah_tooltip_taint_test`'s positive control runs against that
+  renderer to prove its alignment regression anchors can actually fail.
+- The `UseContainerItem` FORBIDDEN remains OPEN. Any future fix must preserve the column
+  alignment; deleting the renderer is not a permitted solution.
 
 ## [1.17.3] - 2026-08-30
 
