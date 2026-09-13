@@ -1563,7 +1563,11 @@ SlashCmdList["VERITASUI"] = function(msg)
         local db = TaintDB()
         if not db then return end
         local arm = (cmd == "taint arm")
-        db.taintLogArm = arm or nil   -- nil = default (armed); false = explicit opt-out
+        -- Store `false` explicitly. `arm or nil` collapsed false to nil, so the
+        -- opt-out could never be recorded and the `== false` guard in ArmTaintLog
+        -- never fired: /vui taint disarm printed success and re-armed at next login,
+        -- clobbering any manually-set higher taintLog level.
+        db.taintLogArm = arm and true or false
         local setter = _G.C_CVar and _G.C_CVar.SetCVar or _G.SetCVar
         if type(setter) == "function" then pcall(setter, "taintLog", arm and "1" or "0") end
         VUI.Print("VeritasUI", arm
