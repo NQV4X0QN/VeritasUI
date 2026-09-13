@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.17.6] - 2026-09-12
+
+### Fixed
+- `VeritasUI_Lib` — the addon no longer overwrites a `taintLog` level the owner set deliberately — `ArmTaintLog` skipped its write only when the CVar read exactly `"1"`, then wrote `"1"` unconditionally, so a higher level set in Advanced Options was stamped back down at every login; measured 2026-09-12, `taintLog 4` was set to catch the open `UseContainerItem` `ADDON_ACTION_FORBIDDEN`, our arming reset it to `1`, and that night's occurrence went unlogged (`Lib.lua`)
+- `VeritasUI_Lib` — `/vui taint arm` carried the same hardcoded `"1"`, so an explicit arm also demoted a higher level (`Lib.lua`)
+
+### Added
+- `VeritasUI_Lib` — `/vui taint level 0-4` persists a taintLog level and re-applies it at every login, which is the only way a level survives, the CVar being unscoped and reset on logout — out-of-range input is rejected rather than silently clamped, and a corrupt saved value is clamped at arm time (`Lib.lua`)
+
+### Changed
+- `VeritasUI_Lib` — arming is now raise-only: a level at or above our floor of `1` is left completely alone with no write issued (`Lib.lua`)
+- `VeritasUI_Lib` — recorded the CVar's real level semantics from the in-game help text: `1` blocked actions plus the taint chain, `2` globals, `3` upvalues, `4` table fields — level `1` has now produced an empty `taint.log` for this defect twice (2026-09-06, 2026-09-12), and `4` is the level that names a tainted table field (`Lib.lua`)
+
+### Requires
+- Nothing new — retail Midnight 12.1.0, Interface `120100`
+
 ## [Withdrawn] 1.17.4 / 1.17.5 - 2026-09-06
 
 Both releases were removed from GitHub. `main` is functionally identical to v1.17.3.

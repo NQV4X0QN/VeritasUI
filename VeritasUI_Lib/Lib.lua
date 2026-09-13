@@ -41,7 +41,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.17.3"
+VUI.VERSION = "1.17.6"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -1064,18 +1064,52 @@ end
 --  needing a code change, because forcing a debug setting with no escape is user-hostile.
 --  taintLog is NOT a secure CVar (no shield in the CVar table), so SetCVar is allowed here.
 ----------------------------------------------------------------
+--  ⛔ NEVER LOWER THE CVAR. This function used to skip its write only when the value read
+--  EXACTLY "1", then unconditionally wrote "1" — so an owner who deliberately set a HIGHER
+--  level got it silently reset to 1 on every single login. Measured 2026-09-12: he set
+--  taintLog 4 in Advanced Options to catch this bug, our arming stamped it back to 1 at
+--  login, and the occurrence that night went unlogged as a result. Four days of his time,
+--  spent by our own diagnostic aid fighting him. The floor is a FLOOR: raise to it, never
+--  descend to it.
+--
+--  LEVEL SEMANTICS, sourced from the in-game CVar help text (screenshotted 2026-09-12; the
+--  assistant had previously asserted these from memory and was wrong):
+--    0 Disable all logging
+--    1 Log blocked action errors and taint events leading up to them
+--    2 Log tainted reads and writes of GLOBAL variables
+--    3 Log tainted reads and writes of UPVALUES
+--    4 Log tainted reads and writes of TABLE FIELDS
+--  ⚠ OBSERVED, twice (2026-09-06 and 2026-09-12): at level 1 this bug produces an EMPTY
+--  taint.log — the file is created with a fresh mtime and zero bytes. Level 1 is therefore
+--  empirically useless for THIS defect, whatever the help text promises. Level 4 is the one
+--  that would name a tainted table field, which is what all three of our suspects write.
+--  The default floor stays 1 (imposing verbose multi-day logging on the owner is not ours to
+--  decide) but `/vui taint level N` persists a higher choice and re-applies it every login,
+--  which is the whole reason this arming exists: the CVar does not survive a logout.
+----------------------------------------------------------------
+local function DesiredTaintLevel()
+    local db = TaintDB()
+    local lvl = db and tonumber(db.taintLogLevel) or 1
+    if lvl < 1 then lvl = 1 elseif lvl > 4 then lvl = 4 end
+    return math.floor(lvl)
+end
+
 local function ArmTaintLog()
     local db = TaintDB()
     if not db then return end
     if db.taintLogArm == false then return end        -- explicit opt-out only
     local setter = _G.C_CVar and _G.C_CVar.SetCVar or _G.SetCVar
     if type(setter) ~= "function" then return end
+    local want = DesiredTaintLevel()
     local getter = _G.C_CVar and _G.C_CVar.GetCVar or _G.GetCVar
     if type(getter) == "function" then
         local ok, cur = pcall(getter, "taintLog")
-        if ok and tostring(cur) == "1" then return end -- already armed; no write needed
+        cur = ok and tonumber(cur) or nil
+        -- Raise-only. A level at or above what we want is left completely alone, so a
+        -- deliberately-higher setting survives instead of being stamped back down.
+        if cur and cur >= want then return end
     end
-    pcall(setter, "taintLog", "1")
+    pcall(setter, "taintLog", tostring(want))
 end
 
 local taintFrame = CreateFrame("Frame")
@@ -1558,6 +1592,24 @@ SlashCmdList["VERITASUI"] = function(msg)
             db.taintLogDropped = nil
         end
         VUI.Print("VeritasUI", "Blocked-action log cleared.")
+    elseif cmd:match("^taint%s+level") then
+        -- Persists the taintLog level so ArmTaintLog re-applies it at EVERY login. The CVar
+        -- is unscoped and does not survive a logout, which is why setting it by hand in
+        -- Advanced Options kept evaporating. Raise-only still applies: we never lower a
+        -- level the owner has set higher by other means.
+        local db = TaintDB()
+        if not db then return end
+        local n = tonumber(cmd:match("^taint%s+level%s+(%d+)$") or "")
+        if not n or n < 0 or n > 4 then
+            VUI.Print("VeritasUI", "Usage: /vui taint level 0-4  (current: "
+                .. tostring(db.taintLogLevel or 1) .. ")")
+            return
+        end
+        db.taintLogLevel = (n ~= 1) and n or nil   -- nil = default floor of 1
+        local setter = _G.C_CVar and _G.C_CVar.SetCVar or _G.SetCVar
+        if type(setter) == "function" then pcall(setter, "taintLog", tostring(n)) end
+        VUI.Print("VeritasUI", ("WoW taint logging level set to |cFF00FF00%d|r and it will be "
+            .. "re-applied at every login. 4 = log tainted table-field reads/writes."):format(n))
     elseif cmd == "taint disarm" or cmd == "taint arm" then
         -- Opt in/out of forcing WoW's own `taintLog` CVar on at login. See ArmTaintLog.
         local db = TaintDB()
@@ -1565,9 +1617,14 @@ SlashCmdList["VERITASUI"] = function(msg)
         local arm = (cmd == "taint arm")
         db.taintLogArm = arm or nil   -- nil = default (armed); false = explicit opt-out
         local setter = _G.C_CVar and _G.C_CVar.SetCVar or _G.SetCVar
-        if type(setter) == "function" then pcall(setter, "taintLog", arm and "1" or "0") end
+        -- Uses the PERSISTED level, not a hardcoded "1" — the old hardcode meant `taint arm`
+        -- silently demoted a deliberately-higher setting, same defect as ArmTaintLog had.
+        if type(setter) == "function" then
+            pcall(setter, "taintLog", arm and tostring(DesiredTaintLevel()) or "0")
+        end
         VUI.Print("VeritasUI", arm
-            and "WoW taint logging |cFF00FF00armed|r at every login (writes Logs/taint.log)."
+            and ("WoW taint logging |cFF00FF00armed|r at level " .. DesiredTaintLevel()
+                 .. " at every login (writes Logs/taint.log).")
             or  "WoW taint logging |cFFFF8800disarmed|r — it will stay off across logins.")
     elseif cmd == "hover" then
         VUI.ProbeHoverChain()
