@@ -49,7 +49,7 @@ local SETTING_DEFAULTS = {
     -- UI/SellStrip.lua — once a post settles, load the next strip item into the sell form
     -- so a run of postings is just Create Auction repeatedly. It POPULATES ONLY: nothing
     -- on that path posts, and the native button still requires a real click.
-    sellAutoAdvance = true,
+    sellAutoAdvance = false,
     -- Which whole-AH scan engine the Scan button drives: "replicate" (Replicate.lua,
     -- C_AuctionHouse.ReplicateItems) or "browse" (Browse.lua, empty SendBrowseQuery).
     -- DEFAULT IS BROWSE (v1.12.12, owner decision after the arithmetic below).

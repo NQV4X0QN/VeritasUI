@@ -121,6 +121,21 @@ function AH:InitDB()
     db.shopping = nil
     -- Auto-scan removed (2026-07-02): drop the orphaned settings toggle if present.
     if db.settings then db.settings.autoScan = nil end
+    -- v1.17.4 — FORCED one-time disable of sell-strip auto-advance.
+    --
+    -- Not a default flip: the loop above only fills ABSENT keys, so every existing
+    -- user already carries sellAutoAdvance = true and a default change would never
+    -- reach them. This is the taint source — a post-completion event has no hardware
+    -- press behind it, so the load it drives taints BankPanel.bankType through
+    -- CloseAllBags (ContainerFrame.lua:2017) and blocks bag clicks for the session.
+    -- Right-click-to-load / left-click-to-post on the strip replaces it with two real
+    -- presses and no taint. The setting itself is kept for one version so /ah
+    -- autoadvance on is available if the secure click misbehaves; remove both once
+    -- the replacement is confirmed in game.
+    if db.settings and not db.autoAdvanceRetiredV1174 then
+        db.settings.sellAutoAdvance = false
+        db.autoAdvanceRetiredV1174 = true
+    end
     AH.db = db
 end
 

@@ -211,6 +211,35 @@ local function IsSellMode()
 end
 
 ----------------------------------------------------------------
+--  The native "Create Auction" button for whichever sell frame is live.
+--
+--  Blizzard keeps a separate sell frame per commodity status and each owns its
+--  own PostButton (Blizzard_AuctionHouseSellFrame.xml:259, parentKey="PostButton",
+--  inherits UIPanelButtonTemplate). SetPostItem picks the frame by
+--  C_AuctionHouse.GetItemCommodityStatus (Blizzard_AuctionHouseFrame.lua:620-630),
+--  so displayMode is the authoritative read-back of which one is showing.
+--
+--  Returned to be handed to a SecureActionButton as "clickbutton" — we forward a
+--  real left-click to it rather than calling PostItem ourselves. Blizzard's own
+--  OnClick (Blizzard_AuctionHouseSellFrame.lua:206) then runs in SECURE execution.
+----------------------------------------------------------------
+local function GetActivePostButton()
+    if not (AuctionHouseFrame and IsSellMode()) then return nil end
+    local M = AuctionHouseFrameDisplayMode
+    local frame
+    if M and AuctionHouseFrame.displayMode == M.CommoditiesSell then
+        frame = AuctionHouseFrame.CommoditiesSellFrame
+    else
+        frame = AuctionHouseFrame.ItemSellFrame
+    end
+    -- Never substitute a disabled button: UpdatePostButtonState disables it when the
+    -- item isn't postable (Blizzard_AuctionHouseSellFrame.lua:465-468), and Click()
+    -- on a disabled button is a no-op — which is exactly what a player clicking it
+    -- themselves would get. Returning it anyway keeps our behaviour identical.
+    return frame and frame.PostButton or nil
+end
+
+----------------------------------------------------------------
 --  Collect sellable bag items (minus blocklist).
 --
 --  PREDICATE (v1.14.16): C_AuctionHouse.IsSellItemValid(loc, false) — the SAME
@@ -346,6 +375,49 @@ local TIER_ATLAS = {
     [3] = "Professions-Icon-Quality-Tier3-Inv",
 }
 
+----------------------------------------------------------------
+--  Secure click wiring — the whole taint fix lives here.
+--
+--  The strip never loads or posts anything itself. Each button is a
+--  SecureActionButton whose "clickbutton" delegate is retargeted per state, so a
+--  real hardware press is forwarded to one of Blizzard's own widgets and Blizzard's
+--  handler runs in SECURE execution:
+--
+--    right-click  -> that item's native bag button. Blizzard's
+--                    ContainerFrameItemButton_OnClick else-branch (ContainerFrame.lua
+--                    :1386-1392) calls SetPostItem itself. NOTE it must be RIGHT:
+--                    :1338 LeftButton calls PickupContainerItem and would put the
+--                    item on the cursor.
+--    left-click   -> the live Create Auction button, and ONLY while this exact stack
+--                    is the loaded one. Blizzard's OnClick posts.
+--    shift+left   -> blocklist, handled insecurely in PostClick.
+--
+--  Why this replaces auto-advance: a post-completion event has no hardware press
+--  behind it, so any load we drive from one is tainted by construction, and the
+--  taint reaches BankPanel.bankType via CloseAllBags (ContainerFrame.lua:2017) and
+--  blocks UseContainerItem. Two presses on one icon costs no mouse travel and
+--  creates no taint at all.
+--
+--  shift-type1 is set to "" rather than left unset: SecureButton_GetModifiedAttribute
+--  falls back from "shift-type1" to "type1" when the prefixed key is absent
+--  (SecureTemplates.lua:119-131), so an unset key would make shift+left POST.
+----------------------------------------------------------------
+local function WireSecureClicks(button, data, isPosted)
+    -- Attributes on a secure frame cannot be rewritten in combat. The auction house
+    -- is unreachable in combat, so this is belt-and-braces rather than a live path.
+    if InCombatLockdown() then return end
+
+    local bagButton = data and ContainerFrameUtil_GetItemButtonAndContainer
+        and ContainerFrameUtil_GetItemButtonAndContainer(data.bag, data.slot) or nil
+    button:SetAttribute("type2", bagButton and "click" or nil)
+    button:SetAttribute("clickbutton2", bagButton)
+
+    local postButton = isPosted and GetActivePostButton() or nil
+    button:SetAttribute("type1", postButton and "click" or nil)
+    button:SetAttribute("clickbutton1", postButton)
+    button:SetAttribute("shift-type1", "")
+end
+
 local function SetButton(button, data)
     if not data then button:Hide(); return end
     button.data = data
@@ -356,6 +428,7 @@ local function SetButton(button, data)
     local isPosted = state.posted
         and state.posted.bag == data.bag and state.posted.slot == data.slot
     button.icon:SetDesaturated(isPosted and true or false)
+    WireSecureClicks(button, data, isPosted)
     if data.count and data.count > 1 then
         button.count:SetText(data.count)
         button.count:Show()
@@ -415,7 +488,7 @@ local function MakeButton(parent, index)
     -- Anonymous frame: these buttons are never referenced by global name (no XML
     -- template inheritance, no _G lookups), so naming them would only pollute the
     -- global namespace. `index` is still used for left-offset positioning below.
-    local b = CreateFrame("Button", nil, parent)
+    local b = CreateFrame("Button", nil, parent, "SecureActionButtonTemplate")
     b:SetSize(ICON, ICON)
     b:SetPoint("LEFT", parent, "LEFT", PAD_L + (index - 1) * STEP, 0)
     b:EnableMouse(true)
@@ -456,28 +529,31 @@ local function MakeButton(parent, index)
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    b:SetScript("OnClick", function(self, mouseButton)
+    -- PostClick, NOT OnClick: SecureActionButtonTemplate installs its own OnClick
+    -- (SecureActionButton_OnClick) and replacing it would disable the secure
+    -- forwarding entirely. PostClick runs insecurely AFTER the secure action, which
+    -- is the correct home for our own bookkeeping.
+    --
+    -- Only the blocklist lives here now. Loading and posting are BOTH performed by
+    -- Blizzard, via a real click forwarded to Blizzard's own widgets:
+    --   right-click -> the item's native bag button  (ContainerFrame.lua:1386 loads
+    --                  the sell form; this is Blizzard's own bag gesture)
+    --   left-click  -> the sell frame's Create Auction button, but only while THIS
+    --                  stack is the loaded one
+    -- Both attributes are written in SetButton(). We no longer call SetPostItem, and
+    -- we no longer post anything ourselves.
+    b:SetScript("PostClick", function(self, mouseButton)
         local data = self.data
         if not data then return end
-        if mouseButton == "RightButton" then
-            -- Shift is required to hide. A bare right-click is ignored: the
-            -- strip sits over the bag/sell area where right-clicks fly often,
-            -- and blocklisting the wrong item is annoying to undo. Requiring
-            -- Shift makes hiding a deliberate act.
-            if not IsShiftKeyDown() then return end
-            if not AH.db then return end
-            AH.db.sellBlocklist = AH.db.sellBlocklist or {}
-            AH.db.sellBlocklist[data.itemID] = true
-            VUI.Print(AH.TAG, "Hidden from the sell strip: " .. data.link
-                .. "  |cFF888888(/ah blocked to manage)|r")
-            Refresh()
-        else
-            local loc = ItemLocation:CreateFromBagAndSlot(data.bag, data.slot)
-            if loc and loc:IsValid() and AuctionHouseFrame and AuctionHouseFrame.SetPostItem then
-                -- Hardware-event-initiated native load; proven taint-clean.
-                AuctionHouseFrame:SetPostItem(loc)
-            end
-        end
+        -- Shift+Left-click hides the item. Moved off Shift+Right-click at v1.17.4
+        -- because right-click is now Blizzard's load gesture and must stay unshared.
+        if mouseButton ~= "LeftButton" or not IsShiftKeyDown() then return end
+        if not AH.db then return end
+        AH.db.sellBlocklist = AH.db.sellBlocklist or {}
+        AH.db.sellBlocklist[data.itemID] = true
+        VUI.Print(AH.TAG, "Hidden from the sell strip: " .. data.link
+            .. "  |cFF888888(/ah blocked to manage)|r")
+        Refresh()
     end)
     return b
 end
