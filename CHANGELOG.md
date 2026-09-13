@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.17.4] - 2026-09-13
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **`ADDON_ACTION_FORBIDDEN` on `UseContainerItem()` when clicking a bag item.** Open since 2026-07 and firing roughly once per session. The sell strip called `AuctionHouseFrame:SetPostItem()` itself, so Blizzard stored our `ItemLocation` in its own sell frame from inside our execution. Closing the auction house made `ClearPostItem()` read that tainted value, which tainted `FRAME_THAT_OPENED_BAGS` via `CloseAllBags` (`ContainerFrame.lua:2017`); opening the bank then wrote `BankPanel.bankType` tainted and every later bag click was refused. The strip no longer loads or posts anything itself — see Changed (`UI/SellStrip.lua`)
+- `VeritasUI_Lib` — **`/vui taint disarm` never persisted.** The opt-out was stored as `nil` instead of `false`, so the `== false` guard could never fire and `taintLog` was silently re-armed to level 1 at every login, clobbering any manually-set level (`Lib.lua`)
+
+### Changed
+
+- `VeritasUI_AuctionHouse` — **Sell-strip items now use two real clicks, both handled by Blizzard.** Right-click loads the item into the sell form by forwarding a genuine click to that item's own bag button, so Blizzard's `ContainerFrameItemButton_OnClick` runs it in secure execution; left-click posts it by forwarding to the native Create Auction button. Right-click for loading matches Blizzard's own bag gesture — a left-click there picks the item up. Neither press leaves the icon, so the tooltip is never between you and the button (`UI/SellStrip.lua`)
+- `VeritasUI_AuctionHouse` — **Blocklist moved from Shift+Right-click to Shift+Left-click**, now that right-click is Blizzard's load gesture (`UI/SellStrip.lua`)
+
+### Removed
+
+- `VeritasUI_AuctionHouse` — **Sell-strip auto-advance.** It loaded the next item from a post-completion event, which has no hardware press behind it, so the load tainted by construction and was the origin of the bug above. Two presses on one icon replace it with no mouse travel and no taint. Force-disabled on upgrade rather than defaulted off, since defaults only fill absent keys; `/ah autoadvance on` remains for one version (`Core.lua`, `Tooltip.lua`, `UI/SellStrip.lua`)
+
+
 ## [1.17.3] - 2026-08-30
 
 ### Added
