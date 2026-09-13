@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.5] - 2026-09-13
+
+### Removed
+
+- `VeritasUI_AuctionHouse` — **Sell-strip auto-advance, fully removed.** Retired and force-disabled in v1.17.4, kept one version as a fallback in case the secure two-press strip misbehaved; it did not. Gone are `ArmAutoAdvance`/`CancelAutoAdvance`/`TryAutoAdvance`, the `advanceIndex`/`advanceTries` state, the multisell retry loop, the four post-completion event registrations, the `sellAutoAdvance` setting and its options checkbox, and the `/ah autoadvance` command. `InitDB` drops the orphaned key and the v1.17.4 migration flag (`UI/SellStrip.lua`, `Core.lua`, `Settings.lua`, `Tooltip.lua`)
+
+
 ## [1.17.4] - 2026-09-13
 
 ### Fixed

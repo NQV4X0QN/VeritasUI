@@ -65,14 +65,6 @@ local function BuildNativeSettingsPanel()
             .. "It fixes the items you actually open; a full |cFFFFFF00/ah scan|r is still "
             .. "what prices everything else. See |cFFFFFF00/ah live|r for what it has corrected.")
 
-        AddCheckbox("sellAutoAdvance", true, "Auto-Load Next Item After Posting",
-            "After you create an auction, the next item in the sell strip is loaded into the "
-            .. "sell form automatically, so posting a run of items is just "
-            .. "|cFFFFFF00Create Auction|r repeatedly. It only POPULATES the form — it never "
-            .. "posts anything, and the quantity and price come from Blizzard's own loader, "
-            .. "exactly as when you click a strip icon by hand. A failed post does not "
-            .. "advance, and leaving the Sell tab cancels a pending advance.")
-
         -- Auto-scan on AH open: REMOVED (2026-07-02). Scans are user-initiated via
         -- the Scan button (UI/ScanButton.lua) or /ah scan. The auto-fire-on-open
         -- path was the locus of the first-open-of-session replicate hang; Core's

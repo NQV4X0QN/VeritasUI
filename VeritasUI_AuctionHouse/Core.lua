@@ -121,21 +121,11 @@ function AH:InitDB()
     db.shopping = nil
     -- Auto-scan removed (2026-07-02): drop the orphaned settings toggle if present.
     if db.settings then db.settings.autoScan = nil end
-    -- v1.17.4 — FORCED one-time disable of sell-strip auto-advance.
-    --
-    -- Not a default flip: the loop above only fills ABSENT keys, so every existing
-    -- user already carries sellAutoAdvance = true and a default change would never
-    -- reach them. This is the taint source — a post-completion event has no hardware
-    -- press behind it, so the load it drives taints BankPanel.bankType through
-    -- CloseAllBags (ContainerFrame.lua:2017) and blocks bag clicks for the session.
-    -- Right-click-to-load / left-click-to-post on the strip replaces it with two real
-    -- presses and no taint. The setting itself is kept for one version so /ah
-    -- autoadvance on is available if the secure click misbehaves; remove both once
-    -- the replacement is confirmed in game.
-    if db.settings and not db.autoAdvanceRetiredV1174 then
-        db.settings.sellAutoAdvance = false
-        db.autoAdvanceRetiredV1174 = true
-    end
+    -- Sell-strip auto-advance removed (v1.17.5): the load ran from a post-completion
+    -- event with no hardware press behind it and tainted by construction. Drop its
+    -- orphaned setting and the v1.17.4 one-shot migration flag.
+    if db.settings then db.settings.sellAutoAdvance = nil end
+    db.autoAdvanceRetiredV1174 = nil
     AH.db = db
 end
 
@@ -544,7 +534,7 @@ end
 --  Slash Commands
 --
 --  Surface: help / scan / engine / floor / bardemo / bartune / baratlas / compare /
---  browseprobe / live / autoadvance / ttprobe /
+--  browseprobe / live / ttprobe /
 --  diag / check / find / wipe / blocked / settings / debug.
 --  This list, the `cmd ==` branches below, and PrintHelp are meant to stay
 --  one-for-one — the list had drifted, silently gaining four commands it never
@@ -574,7 +564,6 @@ local function PrintHelp()
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah compare|r      — scan with browse, diff against the stored prices")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah browseprobe|r  — check one shift-clicked item against the live listing")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah live|r         — live-search price corrections (on | off | status)")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah autoadvance|r  — load the next sell-strip item after a post (on | off)")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah ttprobe|r      — what the tooltip actually priced (no args = last render)")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah diag|r         — diagnostic / state dump")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah check|r        — show stored price for a shift-clicked item")
@@ -1017,32 +1006,6 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
                     .. "The green one is what MakeKey resolves to now; a different key holding "
                     .. "the price you see on the tooltip means the two paths disagree on the key.")
             end
-        end
-
-    elseif cmd == "autoadvance" then
-        -- Toggle/readout for UI/SellStrip.lua's post-then-load-the-next-item behaviour.
-        -- A slash toggle exists alongside the checkbox because this one has an UNPROVEN
-        -- taint assumption behind it (see the block above ArmAutoAdvance): if the native
-        -- Create Auction button ever starts failing on an auto-advanced item, the fix has
-        -- to be reachable without hunting through the options panel mid-session.
-        local want = strtrim(rest)   -- `rest` is already lowercased above
-        if want == "on" or want == "off" then
-            if not (AH.db and AH.db.settings) then
-                VUI.Print(AH.TAG, "Settings not loaded.")
-                return
-            end
-            AH.db.settings.sellAutoAdvance = (want == "on")
-            if want == "off" and AH.SellStrip and AH.SellStrip.CancelAutoAdvance then
-                AH.SellStrip.CancelAutoAdvance()   -- drop any advance already armed
-            end
-            VUI.PrintOnOffLive(AH.TAG, "Sell-strip auto-advance", want == "on")
-        elseif want == "" then
-            VUI.Print(AH.TAG, format("Sell-strip auto-advance: %s  (/ah autoadvance on | off)",
-                AH.Setting("sellAutoAdvance") and "|cFF00FF00on|r" or "|cFFFF4444off|r"))
-            VUI.Print(AH.TAG, "  |cFF888888Loads the next strip item after a post. "
-                .. "It never posts anything — Create Auction is still a real click.|r")
-        else
-            VUI.Print(AH.TAG, "Usage: /ah autoadvance on | off")
         end
 
     elseif cmd == "compare" then
