@@ -17,7 +17,7 @@
 --
 -- PREDICATE (v1.14.16): C_AuctionHouse.IsSellItemValid(loc, false) — the SAME
 -- check SetPostItem itself gates on, so the strip shows exactly what the native
--- loader will accept (see the CollectItems block comment). A Shift-Right-click
+-- loader will accept (see the CollectItems block comment). A Shift-Left-click
 -- blocklist (AH.db.sellBlocklist[itemID]) hides items you never want to list.
 --
 -- SCROLL: a fixed row of reusable item buttons + mouse-wheel paging by an offset.
@@ -91,8 +91,8 @@ local function ShowButtonTooltip(button)
     GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
     pcall(GameTooltip.SetHyperlink, GameTooltip, button.data.link)
     GameTooltip:AddLine(" ")
-    GameTooltip:AddLine("|cFF00FF00Click|r to load into the Sell form.", 1, 1, 1)
-    GameTooltip:AddLine("|cFFFF8800Shift-Right-click|r to hide from this strip.", 1, 1, 1)
+    GameTooltip:AddLine("|cFF00FF00Right-click|r to load into the Sell form.", 1, 1, 1)
+    GameTooltip:AddLine("|cFFFF8800Shift-Left-click|r to hide from this strip.", 1, 1, 1)
     GameTooltip:Show()
 end
 

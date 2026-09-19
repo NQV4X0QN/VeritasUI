@@ -103,6 +103,7 @@ local UNIVERSAL = {
     autoRepair     = true,
     showItemLevels = true,
     showMapCoords  = true,
+    showMinimapCoords = true,
     afkScreen      = true,
     -- Paints the Nemesis groups-remaining count on the Delve plaque icon that
     -- otherwise only reveals it on hover, and a checkmark once all groups are down.
@@ -185,6 +186,8 @@ local itemLevelsSetup   = false  -- guards SetupItemLevels() re-entry
 local coordsInitialized = false  -- guards InitCoords() re-entry
 local mapCoordsSetup    = false  -- guards SetupMapCoordinates() re-entry
 local mapCoordsAnchor   = nil    -- reference for mid-session show/hide
+local miniCoordsSetup   = false  -- guards SetupMinimapCoordinates() re-entry
+local miniCoordsFrame   = nil    -- reference for mid-session show/hide
 
 -- ── /way — proximity auto-clear state ───────────────────────
 local wayTicker        = nil
@@ -1276,6 +1279,66 @@ local function SetupMapCoordinates()
             end
         end)
     end
+end
+
+-- ── Feature: Minimap Coordinates ────────────────────────────
+-- Player coordinates shown directly under the minimap. Display-only:
+-- a plain FontString on an insecure frame, no protected actions, so it
+-- adds no taint surface. Parented to Minimap, so it inherits the map's
+-- show/hide (e.g. it vanishes with the minimap during the AFK screen).
+-- Hidden automatically wherever the API returns no position (dungeons,
+-- raids, arenas), so it never displays a stale value.
+--
+-- Uses the same C_Map path as the world-map readout above:
+-- C_Map.GetBestMapForUnit -> GetPlayerMapPosition, x/y in 0-1 scaled to
+-- 0-100. Reuses its nil-guards (pcall, x>0 or y>0) verbatim.
+local function SetupMinimapCoordinates()
+    if miniCoordsSetup then return end
+    if not Minimap then return end
+    miniCoordsSetup = true
+
+    local THROTTLE = 0.1   -- 10 Hz; coordinates change slowly, 30 fps is wasteful here
+    local PLAYER_R, PLAYER_G, PLAYER_B = 1, 0.82, 0   -- gold, matching the world-map readout
+
+    local holder = CreateFrame("Frame", nil, Minimap)
+    miniCoordsFrame = holder
+    holder:SetSize(80, 12)
+    holder:SetPoint("TOP", Minimap, "BOTTOM", 0, -6)
+    holder:SetFrameStrata(Minimap:GetFrameStrata())
+    holder:SetFrameLevel(Minimap:GetFrameLevel() + 5)
+
+    local text = holder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    text:SetPoint("CENTER", holder, "CENTER", 0, 0)
+    text:SetJustifyH("CENTER")
+    text:SetTextColor(PLAYER_R, PLAYER_G, PLAYER_B)
+    text:SetShadowColor(0, 0, 0, 1)
+    text:SetShadowOffset(1, -1)
+    holder.text = text
+
+    holder:SetScript("OnUpdate", function(self, elapsed)
+        if not db or not db.showMinimapCoords then self:Hide(); return end
+        self._t = (self._t or 0) + elapsed
+        if self._t < THROTTLE then return end
+        self._t = 0
+
+        local str = ""
+        local mapID = C_Map.GetBestMapForUnit("player")
+        if mapID then
+            local ok, pos = pcall(C_Map.GetPlayerMapPosition, mapID, "player")
+            if ok and pos then
+                local x, y = pos:GetXY()
+                if x and y and (x > 0 or y > 0) then
+                    str = format("%.1f, %.1f", x * 100, y * 100)
+                end
+            end
+        end
+        if str ~= self._last then
+            self.text:SetText(str)
+            self._last = str
+        end
+    end)
+
+    frame:Show()
 end
 
 -- ── Feature: AFK Screen ─────────────────────────────────────
@@ -2888,6 +2951,17 @@ local function InitializeOptions()
             end
         end)
 
+    AddCheckbox("showMinimapCoords", "Show Minimap Coordinates",
+        "Displays your current coordinates directly below the minimap. Hidden automatically in dungeons, raids, and other areas without a position.",
+        function(value)
+            if value then
+                if not miniCoordsSetup then SetupMinimapCoordinates()
+                elseif miniCoordsFrame then miniCoordsFrame:Show() end
+            else
+                if miniCoordsFrame then miniCoordsFrame:Hide() end
+            end
+        end)
+
     AddCheckbox("showItemLevels", "Show Item Levels",
         "Displays item level numbers on equipment in bags, bank, character panel, and merchants. Quest rewards are excluded.",
         function(value)
@@ -3048,6 +3122,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 
         if db.showItemLevels then SetupItemLevels()     end
         if db.showMapCoords  then SetupMapCoordinates() end
+        if db.showMinimapCoords then SetupMinimapCoordinates() end
 
         if db.autoSellJunk or db.autoRepair then
             self:RegisterEvent("MERCHANT_SHOW")

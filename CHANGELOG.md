@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.17.6] - 2026-09-18
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Minimap coordinates.** Shows your current position in gold directly below the minimap, updating at 10 Hz. Display-only FontString on an insecure frame parented to `Minimap`, so it inherits the map’s show/hide and adds no taint surface; hidden automatically wherever `C_Map.GetPlayerMapPosition` returns no position (dungeons, raids, arenas). Toggle via the new "Show Minimap Coordinates" setting (`showMinimapCoords`), on by default (`QualityOfLife.lua`)
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **Sell-strip tooltip now states the correct gestures.** The two hint lines were stale after the v1.17.4 secure-click rework: the load line said "Click" (it is now Right-click) and the hide line said "Shift-Right-click" (it is now Shift-Left-click). Text only; the bindings were already correct (`UI/SellStrip.lua`)
+
+
 ## [1.17.5] - 2026-09-13
 
 ### Removed
