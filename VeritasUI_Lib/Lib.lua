@@ -1377,7 +1377,7 @@ end
 --
 --  ⚠ Slots are rewritten IN PLACE rather than replaced. Each module holds its slot
 --  in a file-local `db`, and Blizzard's Settings framework holds the same table by
---  reference (see the BindCharDB header). Swapping in a new table would leave both
+--  reference (see the "Per-character settings storage" header). Swapping in a new table would leave both
 --  pointing at an orphan: the options panel would edit a table nobody reads, and
 --  every module read would return pre-copy values until a reload. Keeping table
 --  identity means the copy is live for anything that re-reads, and only CleanSolo's
@@ -1386,8 +1386,8 @@ end
 --  Deliberately excluded: PriorityRotation (its rotations are keyed per character
 --  AND per specialization, so they cannot map onto a different class) and
 --  AuctionHouse (account-wide market data, nothing character-specific). Neither
---  registers with BindCharDB, so both are excluded automatically rather than by a
---  list that could rot.
+--  calls VUI.BindScopedDB, which is what enrols a module here (VUI._charDBs), so both
+--  are excluded automatically rather than by a list that could rot.
 ----------------------------------------------------------------
 
 -- Characters that have a slot in ANY registered module, excluding this one.
