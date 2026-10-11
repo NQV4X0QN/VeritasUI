@@ -74,7 +74,7 @@ read_globals = {
     "ReloadUI", "C_AddOns", "IsAddOnLoaded", "GetBuildInfo",
     "StaticPopup_Show", "ACCEPT", "CANCEL",
     -- Strings / math helpers WoW exposes globally
-    "strtrim", "strsplit", "strjoin", "strlower", "strfind",
+    "strtrim", "strsplit", "strjoin", "strlower", "strfind", "format",
     "CreateColor", "CreateVector2D", "C_ClassColor",
     -- Settings / options framework
     "Settings", "SettingsPanel", "InterfaceOptions_AddCategory",
