@@ -49,7 +49,6 @@ local SETTINGS_LABEL = "Clean Solo"
 local _G               = _G
 local ipairs, pairs    = ipairs, pairs
 local pcall            = pcall
-local format           = string.format
 local CreateFrame      = CreateFrame
 local C_Timer          = C_Timer
 
@@ -690,7 +689,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         SetupActionBarFading()
 
         self:UnregisterEvent("PLAYER_LOGIN")
-        VUI.Print("Clean Solo", format("v%s loaded — |cFFFFFF00/cs|r", VUI.VERSION))
+        -- Login line removed (suite-wide audit S2): Lib prints the one "VeritasUI vX loaded" line.
 
     elseif event == "PLAYER_REGEN_DISABLED" then
         if self._playerEvaluate then

@@ -735,8 +735,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         -- Icon refresh only, and only for the rotation's own macro (create = false).
         C_Timer.After(2, function() if PR:IsEnabled() then PR:UpdateMacroStub(false) end end)
         PR:ScheduleScan(4)
-        VUI.Print("Priority Rotation",
-            format("v%s loaded — |cFFFFFF00/pr|r", PR.VERSION))
+        -- Login line removed (suite-wide audit S2): Lib prints the one "VeritasUI vX loaded" line.
 
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
         local newKey = PR:GetProfileKey()

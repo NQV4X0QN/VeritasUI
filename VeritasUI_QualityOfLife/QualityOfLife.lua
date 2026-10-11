@@ -2919,7 +2919,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         end
 
         self:UnregisterEvent("PLAYER_LOGIN")
-        VUI.Print("Quality of Life", format("v%s loaded — |cFFFFFF00/qol|r", VUI.VERSION))
+        -- Login line removed (suite-wide audit S2): Lib prints the one "VeritasUI vX loaded" line.
 
     elseif event == "PLAYER_LOGOUT" then
         -- Ensure UI is fully restored before the client saves frame state.

@@ -465,10 +465,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         C_Timer.After(2.0, function()
             -- No snapshot here: the record is taken only when filtering is switched on.
             SyncTracking(false)
-            if db.enabled then
-                VUI.Print("Zone Quests", "v" .. VUI.VERSION .. " active for |cFFFFCC00"
-                    .. ZoneName() .. "|r  —  |cFFFFFF00/zq|r")
-            end
+            -- Login line removed (suite-wide audit S2): Lib prints the one "VeritasUI vX loaded" line.
         end)
 
     elseif event == "ZONE_CHANGED"

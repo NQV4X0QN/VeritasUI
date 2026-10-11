@@ -257,8 +257,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         -- the root -- VUI.BindScopedDB never copies root keys into a slot, because that copy is
         -- what pinned a shipped default per character.
         AO:InitDB()
-        VUI.Print("Advanced Options",
-            format("v%s loaded — |cFFFFFF00/ao|r", AO.VERSION))
+        -- Login line removed (suite-wide audit S2): Lib prints the one "VeritasUI vX loaded" line.
         ef:UnregisterEvent("PLAYER_LOGIN")
     end
 end)

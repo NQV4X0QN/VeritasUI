@@ -186,8 +186,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
             AH.Tooltip.SeedDefaults()
         end
 
-        VUI.Print(AH.TAG,
-            format("v%s loaded — |cFFFFFF00/ah|r", AH.VERSION))
+        -- Login line removed (suite-wide audit S2): Lib prints the one "VeritasUI vX loaded" line.
 
         -- One-time, once ever: the engine setting was cleared so the default applies
         -- again. Announced rather than done quietly -- it discards a stored value, and

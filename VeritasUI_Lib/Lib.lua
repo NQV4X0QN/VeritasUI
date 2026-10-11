@@ -1554,6 +1554,16 @@ end
 ----------------------------------------------------------------
 --  /veritasui slash command
 ----------------------------------------------------------------
+-- Each module's command, for the /vui listing. Only modules that are actually loaded are shown.
+local MODULE_COMMANDS = {
+    { "VeritasUI_AuctionHouse",     "/ah",  "Auction House" },
+    { "VeritasUI_AdvancedOptions",  "/ao",  "Advanced Options" },
+    { "VeritasUI_CleanSolo",        "/cs",  "Clean Solo" },
+    { "VeritasUI_PriorityRotation", "/pr",  "Priority Rotation" },
+    { "VeritasUI_QualityOfLife",    "/qol", "Quality of Life" },
+    { "VeritasUI_ZoneQuests",       "/zq",  "Zone Quests" },
+}
+
 SLASH_VERITASUI1 = "/veritasui"
 SLASH_VERITASUI2 = "/vui"
 SlashCmdList["VERITASUI"] = function(msg)
@@ -1602,5 +1612,25 @@ SlashCmdList["VERITASUI"] = function(msg)
         VUI.Print("VeritasUI", "|cFFFFFF00/vui hover|r — dump the parent chain under the cursor (5s delay).")
         VUI.Print("VeritasUI", "|cFFFFFF00/vui copy|r — copy another character's settings onto this one.")
         VUI.Print("VeritasUI", "|cFFFFFF00/vui undocopy|r — undo the last copy on this character.")
+        local isLoaded = C_AddOns and C_AddOns.IsAddOnLoaded
+        local lines = {}
+        for _, m in ipairs(MODULE_COMMANDS) do
+            if isLoaded and isLoaded(m[1]) then
+                lines[#lines + 1] = "|cFFFFFF00" .. m[2] .. "|r " .. m[3]
+            end
+        end
+        if #lines > 0 then
+            VUI.Print("VeritasUI", "Modules: " .. table.concat(lines, "  ·  "))
+        end
     end
 end
+
+-- The one login line for the whole suite (audit S2, owner-chosen 2026-10-11). Each module used
+-- to print its own "vX loaded" line -- six lines at every login, where WoW's own UI prints none.
+-- Warnings and one-time notices still come from the modules themselves.
+local loginFrame = CreateFrame("Frame")
+loginFrame:RegisterEvent("PLAYER_LOGIN")
+loginFrame:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_LOGIN")
+    VUI.Print("VeritasUI", format("VeritasUI v%s loaded — |cFFFFFF00/vui|r for commands", VUI.VERSION))
+end)
