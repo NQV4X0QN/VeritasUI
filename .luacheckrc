@@ -78,6 +78,7 @@ read_globals = {
     "CreateColor", "CreateVector2D", "C_ClassColor",
     -- Settings / options framework
     "Settings", "SettingsPanel", "InterfaceOptions_AddCategory",
+    "EventRegistry", "SETTINGS_DEFAULTS", "RELOADUI",
     "UISpecialFrames", "ShowUIPanel", "HideUIPanel",
     "PanelTemplates_SetTab", "PanelTemplates_SetNumTabs",
     "PanelTemplates_TabResize", "PanelTemplates_GetSelectedTab",

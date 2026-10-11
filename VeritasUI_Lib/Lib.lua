@@ -760,34 +760,41 @@ function VUI._InitReloadButton()
     end
     VUI._reloadBtnHooked = true
 
-    SettingsPanel:HookScript("OnShow", function()
-        if reloadBtn then return end
-
-        -- Find the Defaults button to anchor beside.
-        local defaultsBtn
+    -- Blizzard's own Defaults button, reached by its parentKey path: SettingsPanel:GetSettingsList()
+    -- (Blizzard_SettingsPanel.lua:823) -> .Header.DefaultsButton (Blizzard_SettingsList.xml:28).
+    -- Until v1.17.7 this searched every child for a button labelled DEFAULTS, but Blizzard labels it
+    -- SETTINGS_DEFAULTS (Blizzard_SettingsPanel.lua:78), so on a client where the two differ the
+    -- search missed and the buttons fell back to a fixed offset. The label search survives only as a
+    -- fallback for the day the path changes, and now matches the string Blizzard actually sets.
+    local function FindDefaultsButton()
+        local ok, list = pcall(SettingsPanel.GetSettingsList, SettingsPanel)
+        local direct = ok and type(list) == "table" and type(list.Header) == "table"
+                       and list.Header.DefaultsButton
+        if direct then return direct end
+        local label = SETTINGS_DEFAULTS or DEFAULTS
+        if not label then return nil end
+        local found
         local function Search(f)
             for _, child in ipairs({ f:GetChildren() }) do
-                if child:IsObjectType("Button") then
-                    local t = child:GetText()
-                    -- The "Defaults" literal is a WON'T FIX decided in cycle 4, not an oversight:
-                    -- DEFAULTS is the correct localized global and is tested first, so the literal can
-                    -- only ever help on enUS, where the two are equal anyway. If DEFAULTS were nil the
-                    -- search simply fails and the else branch below mis-anchors the button to a fixed
-                    -- offset - cosmetic, never a fault. Paired with the AH tooltip's ": " separator as
-                    -- one decision: single-user addon on an English client.
-                    if t and (t == DEFAULTS or t == "Defaults") then
-                        defaultsBtn = child; return
-                    end
+                if child:IsObjectType("Button") and child:GetText() == label then
+                    found = child; return
                 end
                 Search(child)
-                if defaultsBtn then return end
+                if found then return end
             end
         end
         Search(SettingsPanel)
+        return found
+    end
+
+    local function CreateButtons()
+        local defaultsBtn = FindDefaultsButton()
 
         reloadBtn = CreateFrame("Button", nil, SettingsPanel, "UIPanelButtonTemplate")
-        reloadBtn:SetText("Reload UI")
-        reloadBtn:SetWidth(100)
+        -- RELOADUI is Blizzard's localized "Reload UI" (Blizzard_AddOnList/AddonList.lua:527).
+        reloadBtn:SetText(RELOADUI or "Reload UI")
+        local okW, textW = pcall(reloadBtn.GetTextWidth, reloadBtn)
+        reloadBtn:SetWidth(math.max(100, ((okW and tonumber(textW)) or 0) + 24))
         reloadBtn:SetScript("OnClick", ReloadUI)
         if defaultsBtn then
             reloadBtn:SetPoint("RIGHT", defaultsBtn, "LEFT", -8, 0)
@@ -838,28 +845,39 @@ function VUI._InitReloadButton()
             copyBtn:SetScript("OnClick", function(self) VUI.ShowCopyMenu(self) end)
         end
         copyBtn:Hide()
-    end)
+    end
 
-    -- Poll every 0.25s to show the button only when a VUI category is active.
-    -- Uses pcall so unknown API shapes degrade to "button stays hidden".
-    local checker = CreateFrame("Frame", nil, SettingsPanel)
-    local checkT = 0
-    checker:SetScript("OnUpdate", function(_, dt)
-        checkT = checkT + dt
-        if checkT < 0.25 then return end
-        checkT = 0
+    -- Shown only while a VeritasUI category is the current one. Driven by Blizzard's own
+    -- notification rather than the 4 Hz poll used until v1.17.7: SelectCategory fires
+    -- "Settings.CategoryChanged" with the category on every change (Blizzard_SettingsPanel.lua:
+    -- 799-809), and SettingsPanelMixin:OnShow re-selects with force=true (:153-157), so it fires
+    -- on every open as well. The OnShow evaluation below covers the very first open, where
+    -- Blizzard's event fires before our hook has created the buttons.
+    local function UpdateButtons(category)
         if not reloadBtn then return end
+        if category == nil then
+            local ok, cur = pcall(SettingsPanel.GetCurrentCategory, SettingsPanel)
+            category = ok and cur or nil
+        end
         local show = false
-        local ok, cat = pcall(SettingsPanel.GetCurrentCategory, SettingsPanel)
-        if ok and cat then
-            local ok2, name = pcall(cat.GetName, cat)
-            if ok2 and name and VUI._settingsLabels[name] then
-                show = true
-            end
+        if category and category.GetName then
+            local ok, name = pcall(category.GetName, category)
+            show = (ok and name and VUI._settingsLabels[name]) and true or false
         end
         reloadBtn:SetShown(show)
         if copyBtn then copyBtn:SetShown(show) end
+    end
+
+    SettingsPanel:HookScript("OnShow", function()
+        if not reloadBtn then CreateButtons() end
+        UpdateButtons()
     end)
+
+    if EventRegistry and EventRegistry.RegisterCallback then
+        EventRegistry:RegisterCallback("Settings.CategoryChanged", function(_, category)
+            UpdateButtons(category)
+        end, {})
+    end
 
     SettingsPanel:HookScript("OnHide", function()
         if reloadBtn then reloadBtn:Hide() end
