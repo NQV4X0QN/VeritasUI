@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.17.16] - 2026-10-11
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **Sell-strip icons respond to clicks again.** With WoW's "cast on key down" setting on, every strip right-click (load) and left-click (post) did nothing: Blizzard's secure buttons act on the press when that setting is on, and the strip only listens for the release. Priority Rotation used to force that setting off for everyone, which hid the problem; v1.17.10 stopped doing that and put the setting back to WoW's default, which exposed it. The strip's buttons now act on release by themselves, whatever the setting is (`UI/SellStrip.lua`)
+- `VeritasUI_AuctionHouse` — `/ah stripdiag` also reports the key-down setting and the button's own choice (`UI/SellStrip.lua`)
+
+
 ## [1.17.15] - 2026-10-11
 
 ### Added
