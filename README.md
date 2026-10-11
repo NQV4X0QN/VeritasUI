@@ -7,7 +7,7 @@ VeritasUI uses Blizzard's native APIs exclusively and matches Blizzard's UI aest
 ## Modules
 
 ### VeritasUI_Lib
-Shared utility library loaded by all other modules. Provides the common print formatter, smooth per-frame fade manager (replacing Blizzard's conflicting `UIFrameFadeIn`/`UIFrameFadeOut`), player frame fade with event-timing health detection, frame suppression helpers (`SafeHide`/`SuppressFrame`), hover-fade hooks, a combat-deferral queue (`CombatQueue`), managed-panel helpers wrapping Blizzard's `UIPanelWindows` system, and the shared settings panel infrastructure including the Reload UI button.
+Shared utility library loaded by all other modules. Provides the common print formatter, smooth per-frame fade manager (replacing Blizzard's conflicting `UIFrameFadeIn`/`UIFrameFadeOut`), player frame fade with event-timing health detection, frame suppression helpers (`SafeHide`/`SuppressFrame`), hover-fade hooks, a combat-deferral queue (`CombatQueue`), managed-panel helpers wrapping Blizzard's `UIPanelWindows` system, and the shared settings panel infrastructure including the Reload UI button. Prints the suite's single login line and owns `/vui` — type it to list every module's command; `/vui debug` toggles debug output for all modules.
 
 ### VeritasUI_CleanSolo
 UI decluttering for a cleaner solo experience.

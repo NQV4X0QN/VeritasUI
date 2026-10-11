@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.17.14] - 2026-10-11
+
+### Fixed
+
+- `VeritasUI_Lib` — **Hidden buttons stay hidden.** Buttons VeritasUI hides (for example the voice/channels, mute and deafen buttons) could be brought back by Blizzard through a route VeritasUI wasn't watching, returning invisible but still clickable — so a click on empty space beside chat could open voice channels or mute you. Both routes are now caught (`Lib.lua`)
+
+### Changed
+
+- **One login line instead of six.** Each module printed its own "loaded" line at every login and `/reload`; VeritasUI now prints a single line, "VeritasUI vX loaded — /vui for commands", and `/vui` lists every installed module's command. Warnings and one-time notices are unchanged (`Lib.lua` and every module)
+- `VeritasUI_Lib` — **`/vui debug` turns debug output on or off for every module.** It used to exist only as `/ah debug`, which disappears if Auction House is turned off; `/ah debug` still works (`Lib.lua`, `VeritasUI_PriorityRotation/Core.lua`)
+- `VeritasUI_QualityOfLife` — **Minimap coordinates are white**, in the same font as WoW's own World Map coordinates (`QualityOfLife.lua`, `README.md`)
+
+
 ## [1.17.13] - 2026-10-11
 
 ### Fixed
