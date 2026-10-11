@@ -805,7 +805,9 @@ function AH.SellStrip.Diag()
         yn(MerchantFrame and MerchantFrame:IsShown()), yn(InCombatLockdown())))
     -- The cause found from this command's first capture: the button's own key-down choice
     -- against WoW's setting (see MakeButton).
-    local okK, keyDown = pcall(C_CVar.GetCVarBool, "ActionButtonUseKeyDown")
+    -- Namespace-guarded: indexing a nil C_CVar would raise before pcall could catch it.
+    local cv = _G.C_CVar
+    local okK, keyDown = pcall(cv and cv.GetCVarBool, "ActionButtonUseKeyDown")
     P(("key-down setting=%s button useOnKeyDown=%s"):format(okK and tostring(keyDown) or "?",
         tostring(b:GetAttribute("useOnKeyDown"))))
 
