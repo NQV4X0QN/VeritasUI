@@ -80,7 +80,7 @@ Auction House price tracking and selling convenience, built entirely on the nati
 - **Scan button states** — the button tells you where a scan stands at a glance: ready to scan, counting down the cooldown between scans, or working through results
 - **Scan progress bar** — a progress readout next to the money frame at the bottom of the Auction House, visible on the Buy, Sell and Auctions tabs alike
 - **Tooltip prices** — shows the latest market price on item and battle-pet tooltips, styled to match Blizzard's own "Sell Price:" line. Prices stay available everywhere, including away from the Auction House
-- **Sell strip** — a strip of your sellable bag items on the Sell tab; click one to load it into Blizzard's Create-Auction form (you confirm and post), or Shift-Right-click to hide it from the strip
+- **Sell strip** — a strip of your sellable bag items on the Sell tab. Right-click one to load it into Blizzard's sell form, then left-click it again (or press Create Auction) to post; Shift-Left-click hides it from the strip. Loading works through Blizzard's own bag window, so your bags need to be open — with a bag addon that replaces Blizzard's bags, load items from that addon instead
 - **Steady Create Auction button** — the Sell tab's Quantity row stays visible even when you only have one of an item, so the form never changes height and "Create Auction" does not move between listings
 - **Reagents value on crafting orders** — adds a "Reagents Value:" line to Blizzard's Place Crafting Order form showing what the recipe's reagents are worth at the last scanned price, so a commission can be judged against material cost; works away from an auctioneer
 - Settings hold the three tooltip-display toggles and the crafting-order reagents line

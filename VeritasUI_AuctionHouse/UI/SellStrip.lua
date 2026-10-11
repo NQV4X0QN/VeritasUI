@@ -91,7 +91,13 @@ local function ShowButtonTooltip(button)
     GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
     pcall(GameTooltip.SetHyperlink, GameTooltip, button.data.link)
     GameTooltip:AddLine(" ")
-    GameTooltip:AddLine("|cFF00FF00Right-click|r to load into the Sell form.", 1, 1, 1)
+    -- Only promise the load when it can happen: it forwards to the item's button in Blizzard's
+    -- bag window, which exists only while that bag is open (see WireSecureClicks).
+    if button.canLoad then
+        GameTooltip:AddLine("|cFF00FF00Right-click|r to load into the Sell form.", 1, 1, 1)
+    else
+        GameTooltip:AddLine("|cFFFF8800Open your bags|r to load this item.", 1, 1, 1)
+    end
     GameTooltip:AddLine("|cFFFF8800Shift-Left-click|r to hide from this strip.", 1, 1, 1)
     GameTooltip:Show()
 end
@@ -409,6 +415,13 @@ local function WireSecureClicks(button, data, isPosted)
         and ContainerFrameUtil_GetItemButtonAndContainer(data.bag, data.slot) or nil
     button:SetAttribute("type2", bagButton and "click" or nil)
     button:SetAttribute("clickbutton2", bagButton)
+    -- ⚠ ContainerFrameUtil_GetItemButtonAndContainer returns a button ONLY for a bag whose
+    -- window is shown (ContainerFrame.lua:2037-2046 -> GetShownFrameForID :2137-2143). With the
+    -- bags closed there is nothing to forward to, so a right-click does nothing. Recorded for
+    -- the tooltip, and the strip re-wires on Blizzard's bag open/close notifications (Build).
+    -- A bag addon that replaces Blizzard's bag windows never shows them, so loading from the
+    -- strip is unavailable there by construction; the tooltip says so rather than promising it.
+    button.canLoad = bagButton ~= nil
 
     local postButton = isPosted and GetActivePostButton() or nil
     button:SetAttribute("type1", postButton and "click" or nil)
@@ -677,6 +690,30 @@ local function Build()
             end)
         end
         state.hooked = true
+    end
+
+    -- Re-wire the load path whenever Blizzard opens or closes a bag window (audit A2): the
+    -- right-click target only exists while its bag is shown, and before v1.17.8 nothing redrew
+    -- the strip on a bag change, so closing the bags before opening the Sell tab left every
+    -- right-click dead. Blizzard announces all four on EventRegistry (ContainerFrame.lua:690,
+    -- 714, 1900, 1956/2024). OpenBag fires from the frame's OnShow, before its item buttons are
+    -- necessarily laid out, so the re-render waits one frame; a burst (OpenAllBags opens every
+    -- bag) collapses into one.
+    if EventRegistry and EventRegistry.RegisterCallback then
+        local pendingRewire = false
+        local function OnBagsChanged()
+            if pendingRewire then return end
+            pendingRewire = true
+            C_Timer.After(0, function()
+                pendingRewire = false
+                if state.built and AH.isOpen and IsSellMode() then Render() end
+            end)
+        end
+        local owner = {}
+        for _, ev in ipairs({ "ContainerFrame.OpenBag", "ContainerFrame.CloseBag",
+                              "ContainerFrame.OpenAllBags", "ContainerFrame.CloseAllBags" }) do
+            EventRegistry:RegisterCallback(ev, OnBagsChanged, owner)
+        end
     end
 
     UpdateVisibility()
