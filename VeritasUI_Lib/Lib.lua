@@ -1061,6 +1061,11 @@ taintFrame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
 taintFrame:RegisterEvent("ADDON_ACTION_BLOCKED")
 taintFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
     if event == "ADDON_ACTION_FORBIDDEN" or event == "ADDON_ACTION_BLOCKED" then
+        -- arg1 is the name of the addon Blizzard blames (RestrictedActionsDocumentation.lua;
+        -- Blizzard passes it to AddonTooltip_ActionBlocked). Record ONLY our own modules:
+        -- another addon's blocked actions are not ours to report, and recording them made the
+        -- login nudge announce other addons' problems and let their noise fill the 25-entry cap.
+        if type(arg1) ~= "string" or not arg1:find("^VeritasUI") then return end
         RecordTaintEvent(event, arg1, arg2)
     elseif event == "ADDON_LOADED" then
         if arg1 ~= "VeritasUI_Lib" then return end
