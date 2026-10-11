@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.17.8] - 2026-10-10
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **The price database now forgets items that have left the auction house.** Nothing ever removed a record: the per-day history prune only ran for an item being recorded again, so every item ever seen kept its last price forever (one account held 30,027 records in a 5 MB file, 8,103 unseen for over 60 days). A successful scan now removes items not seen for 30 days before that scan. It is measured from the scan, so logging in after months away removes nothing, and dry runs and failed scans never prune (`Database.lua`, `Browse.lua`, `Replicate.lua`)
+- `VeritasUI_AuctionHouse` — **Sell-strip right-click works however your bags were when you opened the Sell tab.** Loading forwards your click to the item's button in Blizzard's bag window, which exists only while that bag is open, and nothing redrew the strip when bags opened or closed — so closing your bags first left every right-click dead. The strip now re-wires on Blizzard's own bag open/close notifications, and the tooltip says "Open your bags to load this item" when there is nothing to forward to. With a bag addon that replaces Blizzard's bags, load items from that addon (`UI/SellStrip.lua`, `README.md`)
+- `VeritasUI_AuctionHouse` — **Closing the auction house during `/ah compare` or `/ah browseprobe` no longer leaves a stray report** after the next scan (`Core.lua`)
+
+### Changed
+
+- `VeritasUI_AuctionHouse` — **Auction prices are written by Blizzard's own money formatter.** The "Auction:" tooltip line and the crafting-order "Reagents Value:" line now use the same formatter as Blizzard's "Sell Price:" line, so gold shows thousands separators (`12,345`) and Colorblind Mode shows letters, exactly as Blizzard's line above. Coin size and alignment are unchanged (`Tooltip.lua`)
+- `VeritasUI_AuctionHouse` — **Sell-strip quality markers come from Blizzard.** Each icon's profession-quality marker is now the one Blizzard reports for that item, drawn the way your bag buttons draw it, so crafted items get their marker too (`UI/SellStrip.lua`)
+
+
 ## [1.17.7] - 2026-10-10
 
 ### Fixed
