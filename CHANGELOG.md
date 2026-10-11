@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.17.7] - 2026-10-10
+
+### Fixed
+
+- `VeritasUI_Lib` — **WoW's taint debugging log is no longer switched on at every login.** Lib forced the `taintLog` CVar to 1 at each login while the `UseContainerItem()` FORBIDDEN was being investigated; the code was marked temporary and that investigation closed in v1.17.4. Removed the arming, the `/vui taint arm` / `/vui taint disarm` commands and their help line, and the leftover `taintLogArm` saved key. The CVar resets itself on logout, so nothing needs undoing. The blocked-action recorder (`/vui taint`) is unchanged (`Lib.lua`)
+- `VeritasUI_Lib` — **The blocked-action recorder only records VeritasUI's own problems.** `ADDON_ACTION_BLOCKED` / `ADDON_ACTION_FORBIDDEN` name whichever addon Blizzard blames, and every one was recorded — so the login notice announced other addons' blocked actions, and their entries could push genuine VeritasUI ones out of the 25-entry log (`Lib.lua`)
+
+### Changed
+
+- `VeritasUI_Lib` — **Settings-panel Reload UI and Copy From buttons use Blizzard's own hooks.** They now anchor to Blizzard's Defaults button directly (`SettingsPanel:GetSettingsList().Header.DefaultsButton`) instead of searching for a button labelled `DEFAULTS` — Blizzard labels it `SETTINGS_DEFAULTS`, so on clients where those differ the buttons fell back to a fixed position. They show and hide on Blizzard's `Settings.CategoryChanged` event instead of a four-times-a-second check, and the Reload button uses Blizzard's translated `RELOADUI` text and sizes to fit it (`Lib.lua`, `.luacheckrc`)
+
+
 ## [1.17.6] - 2026-09-18
 
 ### Added
