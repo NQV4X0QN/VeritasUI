@@ -455,9 +455,43 @@ end
 --  Returns true on success, false on failure. Silent combat-lockdown
 --  no-op returns false; callers that surface a success message should
 --  gate it on the return value.
+--
+--  ⚠ OWNERSHIP (audit P1, v1.17.10): "Attack" is an ordinary macro name, so a macro by that
+--  name is only OURS if its body clicks our button. This used to run at every login for every
+--  player, created the macro whether or not the rotation was set up, and overwrote any macro of
+--  the player's own that happened to be called Attack -- then bound the rotation to its key.
+--  Now: `create` is true only for an explicit request (/pr macro, the Create / Update button);
+--  the login refresh only ever edits a macro that is already ours, and a foreign one is never
+--  written to or bound.
 ----------------------------------------------------------------
-function PR:UpdateMacroStub()
+-- 1 = ours, 0 = no macro by that name, -1 = a different macro holds the name. Second return is
+-- the macro index when one exists.
+function PR:StubState()
+    local idx = GetMacroIndexByName(self.MACRO_NAME)
+    if not idx or idx == 0 then return 0 end
+    local _, _, body = GetMacroInfo(idx)
+    if type(body) == "string" and body:find("/click " .. self.BUTTON_NAME, 1, true) then
+        return 1, idx
+    end
+    return -1, idx
+end
+
+local FOREIGN_ATTACK_MSG = "|cFFFF8800A macro named |cFFFFFF00Attack|r already exists and isn't the "
+    .. "rotation's.|r It has been left alone. Rename it in |cFFFFFF00/macro|r, then click "
+    .. "|cFFFFFF00Create / Update Macro|r."
+
+function PR:UpdateMacroStub(create)
     if InCombatLockdown() then return false end
+
+    local state, idx = self:StubState()
+    if state == -1 then
+        if create or not self._foreignWarned then
+            self._foreignWarned = true
+            VUI.Print("Priority Rotation", FOREIGN_ATTACK_MSG)
+        end
+        return false
+    end
+    if state == 0 and not create then return false end
 
     local macroBody = "#showtooltip\n/click " .. self.BUTTON_NAME
     local macroIcon = "ability_warrior_charge"
@@ -466,8 +500,7 @@ function PR:UpdateMacroStub()
         macroIcon = profile.spells[1].icon
     end
 
-    local idx = GetMacroIndexByName(self.MACRO_NAME)
-    if idx > 0 then
+    if state == 1 then
         -- pcall-wrap the EditMacro write — historically reliable but the
         -- macro frame can be in a transient state during /reload bursts
         -- or addon-driven CreateMacro pile-ups; a hard error here would
@@ -564,8 +597,17 @@ function PR:ScanAndOverrideBarButton(macroName, verbose)
     macroName = macroName or self.MACRO_NAME
     if InCombatLockdown() or not self:IsEnabled() then return end
 
-    local macroIdx = GetMacroIndexByName(macroName)
-    if not macroIdx or macroIdx == 0 then return end
+    -- Only a macro that is ours (see StubState). A different macro called Attack is the player's;
+    -- taking over its key would hijack whatever it does.
+    local state, macroIdx = self:StubState()
+    if state ~= 1 then
+        if state == -1 then
+            -- Drop any binding left from when the name was still ours (body edited mid-session).
+            self:ClearOverride(macroName)
+            if verbose then VUI.Print("Priority Rotation", FOREIGN_ATTACK_MSG) end
+        end
+        return
+    end
 
     self:ClearOverride(macroName)
 
@@ -663,7 +705,8 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         PR:SwitchToCurrentSpec()
         PR:CompileSequence()
         PR._lastProfileKey = PR:GetProfileKey()
-        C_Timer.After(2, function() PR:UpdateMacroStub() end)
+        -- Icon refresh only, and only for the rotation's own macro (create = false).
+        C_Timer.After(2, function() if PR:IsEnabled() then PR:UpdateMacroStub(false) end end)
         PR:ScheduleScan(4)
         VUI.Print("Priority Rotation",
             format("v%s loaded — |cFFFFFF00/pr|r", PR.VERSION))
@@ -730,6 +773,9 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             return
         end
         PR:ScanAndOverrideBarButton(PR.MACRO_NAME, true)
+        -- A foreign "Attack" was already explained by the scan; the not-found advice below
+        -- would contradict it.
+        if PR:StubState() == -1 then return end
         local override = PR.overrides[PR.MACRO_NAME]
         if override and override.keys then
             VUI.Print("Priority Rotation",
@@ -761,7 +807,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             VUI.Print("Priority Rotation", "|cFFFF4444Can't create macro in combat.|r")
             return
         end
-        if PR:UpdateMacroStub() then
+        if PR:UpdateMacroStub(true) then
             VUI.Print("Priority Rotation",
                 "Macro |cFFFFFF00" .. PR.MACRO_NAME
                 .. "|r is ready — drag it from /macro to an action bar.")
@@ -770,13 +816,15 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
 
     elseif cmd == "status" then
         local function yn(v) return v and "|cFF00FF00yes|r" or "|cFFFF4444no|r" end
-        local macroIdx   = GetMacroIndexByName(PR.MACRO_NAME)
-        local macroExists = macroIdx and macroIdx > 0
+        local stubState  = PR:StubState()
+        local macroExists = stubState == 1
         local override   = PR.overrides[PR.MACRO_NAME]
         VUI.Print("Priority Rotation", "Status:")
         VUI.Print("Priority Rotation", "  Enabled:  " .. yn(PR:IsEnabled()))
         VUI.Print("Priority Rotation", "  Macro:    " .. yn(macroExists)
-            .. (macroExists and "" or "  — run |cFFFFFF00/pr macro|r"))
+            .. (macroExists and "" or (stubState == -1
+                and "  — another macro is named Attack; rename it"
+                or  "  — run |cFFFFFF00/pr macro|r")))
         VUI.Print("Priority Rotation", "  On bar:   " .. (override
             and "|cFF00FF00slot " .. override.slot .. "|r"
             or  "|cFFFF4444no|r  — run |cFFFFFF00/pr scan|r"))
