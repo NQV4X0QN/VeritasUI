@@ -1264,6 +1264,16 @@ local function AFK_CreateOverlay()
     return f
 end
 
+-- Blizzard's own clock text (GameTimeUtil.lua:77-80): follows the player's 24-hour setting and
+-- writes "7:30 PM", not "07:30 PM". os.date was hard-wired to 12-hour with a leading zero (audit Q3).
+local function AFK_ClockText()
+    if GameTime_GetLocalTime then
+        local ok, s = pcall(GameTime_GetLocalTime, true)
+        if ok and type(s) == "string" then return s end
+    end
+    return date("%I:%M %p")
+end
+
 local function AFK_RefreshInfo()
     if not afkOverlay then return end
 
@@ -1297,15 +1307,16 @@ local function AFK_RefreshInfo()
     -- Build info line; omit zone segment if zone data is unavailable
     -- (loading screen, instance transition) to avoid a trailing separator.
     local parts = {}
-    parts[#parts + 1] = "Level " .. tostring(level)
-    parts[#parts + 1] = "Item Level " .. ilvlStr
+    -- Blizzard's translated labels, so a non-English client does not get English here.
+    parts[#parts + 1] = (LEVEL or "Level") .. " " .. tostring(level)
+    parts[#parts + 1] = (STAT_AVERAGE_ITEM_LEVEL or "Item Level") .. " " .. ilvlStr
     if zoneDisplay ~= "" then
         parts[#parts + 1] = zoneDisplay
     end
     afkOverlay._infoText:SetText(table.concat(parts, "  ·  "))
 
     -- Clock
-    afkOverlay._clockText:SetText(date("%I:%M %p"))
+    afkOverlay._clockText:SetText(AFK_ClockText())
 end
 
 -- ── AFK panel reveal ─────────────────────────────────────────
@@ -1464,7 +1475,7 @@ local function AFK_Enter()
     if afkClockTicker then afkClockTicker:Cancel() end
     afkClockTicker = C_Timer.NewTicker(30, function()
         if afkOverlay and afkOverlay:IsShown() then
-            afkOverlay._clockText:SetText(date("%I:%M %p"))
+            afkOverlay._clockText:SetText(AFK_ClockText())
         end
     end)
 end

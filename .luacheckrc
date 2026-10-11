@@ -81,7 +81,7 @@ read_globals = {
     "EventRegistry", "SETTINGS_DEFAULTS", "RELOADUI",
     "SELL_PRICE", "ContainerFrameUtil_GetItemButtonAndContainer",
     -- QualityOfLife (audit Q2, Q5)
-    "MAP_PIN_INVALID_MAP",
+    "MAP_PIN_INVALID_MAP", "GameTime_GetLocalTime", "LEVEL", "STAT_AVERAGE_ITEM_LEVEL",
     "UISpecialFrames", "ShowUIPanel", "HideUIPanel",
     "PanelTemplates_SetTab", "PanelTemplates_SetNumTabs",
     "PanelTemplates_TabResize", "PanelTemplates_GetSelectedTab",
