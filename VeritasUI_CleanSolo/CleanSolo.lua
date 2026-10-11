@@ -307,25 +307,26 @@ local function SetupChatTabFading()
 end
 
 -- ── Feature: Hide Chat Buttons ──────────────────────────────
+-- The chat menu button (speech bubble). Frame names are SOURCED, live 12.1:
+-- Blizzard_ChatFrameBase/Mainline/FloatingChatFrame.xml:659. Until v1.17.11 this list also
+-- held the voice/channels button (which belongs to the voice option below) and three
+-- ChatFrame1ButtonFrame{Up,Down,Bottom}Button scroll buttons that no longer exist (audit C1).
 local function HideChatButtons()
-    for _, name in ipairs({
-        "ChatFrameMenuButton", "ChatFrameChannelButton",
-        "ChatFrame1ButtonFrameUpButton",
-        "ChatFrame1ButtonFrameDownButton",
-        "ChatFrame1ButtonFrameBottomButton",
-    }) do
-        VUI.SuppressFrame(_G[name])
-    end
+    VUI.SuppressFrame(_G.ChatFrameMenuButton)
 end
 
 -- ── Feature: Hide Voice Chat Button ─────────────────────────
+-- The voice/channels button (headset) and the mute/deafen pair Blizzard shows while you are in
+-- a voice channel: Blizzard_ChatFrame/Mainline/FloatingChatFrameVoiceChat.xml:4-27. Until
+-- v1.17.11 this targeted VoiceChatTalkerContainer and ChatFrame1EditBox.voiceButton, neither
+-- of which exists in 12.1, so the option did nothing (audit C1).
 local function HideVoiceChatButton()
-    VUI.SuppressFrame(VoiceChatTalkerContainer)
-    if ChatFrame1EditBox then
-        VUI.SuppressFrame(
-            ChatFrame1EditBox.voiceButton
-            or _G["ChatFrame1EditBoxVoiceButton"]
-        )
+    for _, name in ipairs({
+        "ChatFrameChannelButton",
+        "ChatFrameToggleVoiceDeafenButton",
+        "ChatFrameToggleVoiceMuteButton",
+    }) do
+        VUI.SuppressFrame(_G[name])
     end
 end
 
