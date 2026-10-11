@@ -1073,7 +1073,6 @@ local function SetupMinimapCoordinates()
     miniCoordsSetup = true
 
     local THROTTLE = 0.1   -- 10 Hz; coordinates change slowly, 30 fps is wasteful here
-    local PLAYER_R, PLAYER_G, PLAYER_B = 1, 0.82, 0   -- gold
 
     local holder = CreateFrame("Frame", nil, Minimap)
     miniCoordsFrame = holder
@@ -1082,10 +1081,12 @@ local function SetupMinimapCoordinates()
     holder:SetFrameStrata(Minimap:GetFrameStrata())
     holder:SetFrameLevel(Minimap:GetFrameLevel() + 5)
 
-    local text = holder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    -- GameFontHighlightSmall (white): the font Blizzard's own World Map coordinates use
+    -- (Blizzard_WorldMapTemplates.xml:206, 217), so the two readouts match. Was gold
+    -- GameFontNormalSmall to match VeritasUI's retired map readout (owner request 2026-10-11).
+    local text = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     text:SetPoint("CENTER", holder, "CENTER", 0, 0)
     text:SetJustifyH("CENTER")
-    text:SetTextColor(PLAYER_R, PLAYER_G, PLAYER_B)
     text:SetShadowColor(0, 0, 0, 1)
     text:SetShadowOffset(1, -1)
     holder.text = text

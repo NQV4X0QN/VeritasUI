@@ -29,7 +29,7 @@ Settings: **Options → AddOns → Clean Solo** | `/cs`
 ### VeritasUI_QualityOfLife
 Functional enhancements that don't fit the "hide/fade" category.
 
-- **Minimap Coordinates** — shows your coordinates directly below the minimap; hidden where the game gives no position. For World Map coordinates use WoW's own option (Options > Interface); VeritasUI's former map readout was retired in v1.17.9 and turns that option on for anyone who had it enabled
+- **Minimap Coordinates** — shows your coordinates directly below the minimap, in the same white font as WoW's own map coordinates; hidden where the game gives no position. For World Map coordinates use WoW's own option (Options > Interface); VeritasUI's former map readout was retired in v1.17.9 and turns that option on for anyone who had it enabled
 - **Item Level Overlays** — shows color-coded item levels on gear in bags, character panel, bank, warband bank, and merchant windows; uses a universal `SetItemButtonQuality` hook with a dedicated merchant scanner
 - **Auto Sell Junk** — automatically sells gray items when visiting a merchant using event-driven batch selling; reports earnings by summing item sell prices, independent of any concurrent gold deductions (e.g. AutoRepair on the same merchant frame)
 - **Auto Repair** — automatically repairs gear at repair merchants, with a **Repair Funding** option (Guild + Personal, or Personal Only) and source reporting; honors the `[noautorepair]` guild-info tag
