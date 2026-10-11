@@ -3348,9 +3348,20 @@ WayCommand = function(msg)
         return
     end
 
-    -- Set the native Blizzard user waypoint.
+    -- Set the native Blizzard user waypoint. Both checks are the ones Blizzard's own /mappin
+    -- makes (WaypointLocationDataProvider.lua:214-220): some maps refuse pins, and the set
+    -- itself reports whether it happened. Without them /way announced a waypoint that did
+    -- not exist and started the arrival ticker for it (audit Q2).
+    local invalid = MAP_PIN_INVALID_MAP or "Map pins cannot be placed on this map."
+    if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(mapID) then
+        VUI.Print("Quality of Life", invalid)
+        return
+    end
     local mapPoint = UiMapPoint.CreateFromVector2D(mapID, CreateVector2D(nx, ny))
-    C_Map.SetUserWaypoint(mapPoint)
+    if not C_Map.SetUserWaypoint(mapPoint) then
+        VUI.Print("Quality of Life", invalid)
+        return
+    end
     C_SuperTrack.SetSuperTrackedUserWaypoint(true)
     StartWaypointTracking()
 
