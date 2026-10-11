@@ -502,7 +502,8 @@ local function InitializeOptions()
         { key = "transparentChatBG",   name = "Transparent Chat Background",
           tip = "Sets the chat window background to fully transparent so only the text is visible when idle. "
              .. "Blizzard's built-in hover behavior reveals the background on mouseover. "
-             .. "The transparency is never saved, so after turning this off and reloading, your own background comes back. "
+             .. "The transparency is never saved, so after turning this off and reloading, "
+             .. "your own background comes back. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideSocialButton",    name = "Hide Social Button",
           tip = "Hides the Quick Join / Communities toast button. "
@@ -511,7 +512,8 @@ local function InitializeOptions()
           tip = "Hides the chat menu button (the speech bubble beside the chat window). "
              .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideVoiceChatButton", name = "Hide Voice Chat Button",
-          tip = "Hides the voice and channels button beside the chat window, and the mute and deafen buttons shown while you are in a voice channel. "
+          tip = "Hides the voice and channels button beside the chat window, and the mute and "
+             .. "deafen buttons shown while you are in a voice channel. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "fadeMicroMenu",       name = "Fade Micro Menu",
           tip = "The bottom-right menu bar fades out unless moused over. "
@@ -526,7 +528,8 @@ local function InitializeOptions()
           tip = "Hides the macro name text displayed on action bar buttons. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideErrorText",       name = "Hide Error Text",
-          tip = "Hides the red error messages like 'Not enough energy' and 'You're facing the wrong way', and the spoken error lines that go with them, the same way WoW's own /uierrorsoff does. "
+          tip = "Hides the red error messages like 'Not enough energy' and 'You're facing the wrong way', "
+             .. "and the spoken error lines that go with them, the same way WoW's own /uierrorsoff does. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
     }
 
