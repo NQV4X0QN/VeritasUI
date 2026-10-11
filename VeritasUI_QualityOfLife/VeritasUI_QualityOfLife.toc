@@ -1,6 +1,6 @@
 ## Interface: 120100
 ## Title: VeritasUI — Quality of Life
-## Notes: Minimap coordinates, item levels, auto-repair, auto-sell junk, and TomTom-compatible waypoints. |cFF888888by NQV4X0QN|r
+## Notes: Item levels, auto-repair and junk selling, minimap coordinates, /way waypoints, AFK screen and Delve helpers. |cFF888888by NQV4X0QN|r
 ## Version: 1.17.16
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
