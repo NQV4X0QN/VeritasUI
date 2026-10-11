@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.17.9] - 2026-10-11
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **World Map coordinates now come from WoW itself.** WoW 12.1 added its own player and cursor coordinates to the World Map (Options > Interface). VeritasUI's readout duplicated it and was less correct: its "Player" numbers came from the zone you were standing in even while the map showed another zone, and it hid the map's quest-log toggle until `/reload`. It has been removed. If you had it turned on, WoW's two map coordinate options are switched on for you once, at your next login (after combat, if you log in fighting). The quest-log toggle is back. Minimap coordinates are unchanged (`QualityOfLife.lua`, `README.md`)
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **`/way` no longer announces a waypoint that was not placed.** On a map that does not allow pins it printed "Waypoint set" and nothing appeared. It now makes the same two checks as Blizzard's own `/mappin` and shows Blizzard's error message instead (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **The AFK screen clock follows your 24-hour setting** and writes the time the way Blizzard's clock does ("7:30 PM", not "07:30 PM"). The "Level" and "Item Level" labels use the game's translated words (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **`/qol delveone <n>` confirms the change as a nudge relative to the other digits**, matching what `/qol delveone` reports, and no longer errors on a bare `-` (`QualityOfLife.lua`)
+
+
 ## [1.17.8] - 2026-10-10
 
 ### Fixed
