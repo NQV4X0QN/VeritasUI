@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.15] - 2026-10-11
+
+### Added
+
+- `VeritasUI_AuctionHouse` — **`/ah stripdiag`, for a sell strip that stops loading items.** Hover a strip icon that won't load on right-click and run it: it reports what is under the cursor, which bag button the icon forwards to and whether that is still the right one, and whether Blizzard is refusing the forwarded click, then re-wires the strip so you can try again. Diagnostic only; it changes nothing else (`UI/SellStrip.lua`, `Core.lua`)
+
+
 ## [1.17.14] - 2026-10-11
 
 ### Fixed
