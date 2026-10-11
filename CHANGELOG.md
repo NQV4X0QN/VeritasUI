@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.12] - 2026-10-11
+
+### Fixed
+
+- `VeritasUI_ZoneQuests` — **Turning zone filtering off puts your own quest tracking back.** The module believed WoW had removed any way to ask which quests you track, so two seconds after every login it noted every quest in your log, and turning filtering off tracked that list and untracked everything else: quests you had untracked came back, and quests picked up since you logged in vanished from the tracker. WoW does still report it (`C_QuestLog.GetQuestWatchType`). Now, when you turn filtering on, Zone Quests remembers which quests you had chosen not to track; turning it off untracks just those and tracks everything else, including quests picked up in between. If filtering was already on before this version there is no record yet, so the first time you turn it off every quest is tracked. The setting's description is corrected (`ZoneQuests.lua`)
+
+
 ## [1.17.11] - 2026-10-11
 
 ### Fixed
