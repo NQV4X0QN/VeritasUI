@@ -51,6 +51,9 @@ One-button spell cycling system for accessibility.
 - `PortraitFrameTemplate` settings window registered as a Tier A UIPanel (behaves like Blizzard's Journeys/Collections panels)
 - Built-in Tools section: spec switcher dropdown, Spellbook and Macros toggle buttons
 - Frequency tuning per entry for weighted distribution (interleave compiler)
+- The rotation's hidden button acts on key release by itself; WoW's own "cast on key down" setting is left to you
+- The `Attack` macro is created only when you click **Create / Update Macro** (or `/pr macro`); a macro of yours that already uses the name is never overwritten
+- Works from any of Action Bars 1–8; druid form and stealth bar pages can't be bound
 
 Settings: `/pr` or `/pr settings`
 
@@ -113,7 +116,6 @@ All seven modules move in lockstep on a single version number, so install them t
 
 ## Known Limitations
 
-- **Press and Hold Casting** must be disabled for Priority Rotation to function (the addon handles this automatically with a one-time notification)
 - **Quest reward item levels** are not displayed — async data loading and base vs. effective ilvl mismatch make reliable display impractical; this is an open problem for future work
 - **Secret Values** in Midnight prevent direct health reading from addon code — the player frame fade uses event-timing as a workaround
 

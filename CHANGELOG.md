@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.17.10] - 2026-10-11
+
+### Fixed
+
+- `VeritasUI_PriorityRotation` — **The `Attack` macro is no longer created or overwritten behind your back.** Two seconds after every login the rotation wrote a macro named `Attack`: it created one for every VeritasUI player whether or not they used the rotation, brought it back after it was deleted, and replaced the text of any macro of the player's own that was already called `Attack` — then took over that macro's key. Now the macro is created only when you click **Create / Update Macro** (or `/pr macro`). At login only the rotation's own macro has its icon refreshed. A different macro using the name is left alone and never bound, and chat says so (`Core.lua`, `README.md`)
+- `VeritasUI_PriorityRotation` — **WoW's "cast on key down" setting is yours again.** To make its hidden button act on key release, the rotation switched WoW's account-wide setting off at every login — changing every action bar for every VeritasUI player — and back on when it was disabled. The rotation's button now chooses key release for itself (Blizzard's per-button setting), and the account-wide setting is never changed. Because it had been overwritten for everyone, it is put back to WoW's default once, with a line in chat; set it however you like afterwards (`Core.lua`, `Settings.lua`, `README.md`)
+- `VeritasUI_PriorityRotation` — **The Attack macro works from Action Bars 6, 7 and 8, and form/stealth bars no longer take over another key.** Those three bars were never searched, and the slots the rotation thought were Bars 6–8 are really the pages WoW swaps in for druid forms and stealth, so a macro placed there bound the rotation to an unrelated Bar 6–8 key. `/pr scan` now finds all eight bars and says when a form or stealth page can't be bound (`Core.lua`)
+- `VeritasUI_PriorityRotation` — **The Compiled Sequence preview updates straight away** instead of showing the sequence from before your last change (`Core.lua`)
+
+
 ## [1.17.9] - 2026-10-11
 
 ### Changed
