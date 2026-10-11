@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.17.17] - 2026-10-11
+
+### Changed
+
+- **Clearer descriptions.** The README is rewritten as a plain-language overview of what each module does and how to get started, and the descriptions shown in the in-game AddOns list now say what each module is for (`README.md`, every `.toc`)
+- The developer probe reference is labelled as a dated notebook that players don't need (`PROBE_LIBRARY_AND_REFERENCE.md`)
+
+
 ## [1.17.16] - 2026-10-11
 
 ### Fixed
