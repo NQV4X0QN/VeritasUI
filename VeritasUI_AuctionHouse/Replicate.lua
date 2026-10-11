@@ -27,8 +27,9 @@
 -- taint, readiness, fire-context or rate-limit difference — all five of which were
 -- investigated and falsified (see ArmStallDetector and the SKILL landmines).
 --
--- Root cause of the replicate failure is still UNKNOWN and is no longer the priority:
--- the plan is to add the browse-summary scan rather than keep trying to repair this one.
+-- Root cause of the replicate failure is still UNKNOWN and is no longer the priority: the
+-- browse-summary scan (Browse.lua) was added in v1.12.9 and has been the DEFAULT engine
+-- since v1.12.12. This engine is the fallback, reached only by `/ah engine replicate`.
 -- ⚠ Do not "simplify" that away as duplication if both paths end up present.
 --
 -- Flow:
@@ -152,9 +153,9 @@ local LINK_RETRY_BUDGET     = 120       -- hard cap (seconds) on the whole retry
                                         --
                                         -- ⚠ This is a BAND-AID, not the fix. Browse.lua gets the
                                         -- item level from the browse result's itemKey, so it has
-                                        -- no deferred pile, no budget and nothing to drop. When
-                                        -- browse becomes the default engine this constant stops
-                                        -- mattering; do not tune it further, switch engine.
+                                        -- no deferred pile, no budget and nothing to drop. Browse
+                                        -- has been the default since v1.12.12, so this constant
+                                        -- matters only on the fallback; do not tune it further.
 
 ----------------------------------------------------------------
 --  Throttled-message instrumentation (v1.12.6)
@@ -1060,7 +1061,8 @@ local function DoFire()
     -- Arm the stall detector: if REPLICATE_ITEM_LIST_UPDATE doesn't arrive
     -- within REPLICATE_STALL_TIMEOUT seconds the request was lost (a lost
     -- request produces NO event at all). It does not re-fire and does not
-    -- abort — it marks the session and tells the user to reopen the AH.
+    -- abort — it reports the loss and says Scan may be pressed again (reopening
+    -- the AH and /reload are both stated as useless; see ArmStallDetector).
     -- If the event arrives first (normal path), CancelStallDetector() in the
     -- event handler defuses it immediately.
     ArmStallDetector()

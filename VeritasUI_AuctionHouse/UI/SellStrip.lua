@@ -2,10 +2,17 @@
 -- ============================================================================
 -- Architecture A: a horizontal strip of your sellable bag items, mounted in the
 -- empty band at the bottom of the native Sell tab's left column (under the
--- "Create Auction" button). Click an icon -> AuctionHouseFrame:SetPostItem(loc)
--- (the native loader, PROVEN taint-clean) -> the item populates Blizzard's own
--- Sell form -> you verify -> you click Blizzard's Create Auction. We NEVER make a
--- protected call; Blizzard owns the post entirely.
+-- "Create Auction" button). Two real presses on one icon, both handled by Blizzard:
+-- right-click is forwarded to that item's own bag button, whose handler loads the
+-- Sell form; left-click on the loaded stack is forwarded to Create Auction. The strip
+-- itself never loads or posts anything (see "Secure click wiring" below).
+--
+-- ⚠ CORRECTED v1.17.8. This header used to say the strip called
+-- AuctionHouseFrame:SetPostItem(loc), "the native loader, PROVEN taint-clean". That call
+-- WAS the cause of the v1.17.4 UseContainerItem FORBIDDEN, and "proven taint-clean" was a
+-- narrow measurement written up as a guarantee -- it steered three audits away from this
+-- file. The strip has not called SetPostItem since v1.17.4. Never write "proven" about
+-- taint without naming exactly what was measured.
 --
 -- VERIFIED GEOMETRY (live introspection, 12.0.5):
 --   AuctionHouseFrame                 x36 y528 w800 h538

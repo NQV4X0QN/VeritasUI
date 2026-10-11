@@ -40,7 +40,8 @@
 -- which SUGGESTS minPrice is buyout — but that is inference from field naming, not a
 -- measurement, and this project has been burned by exactly that (see the MenuUtil
 -- naming-pattern note in SKILL.md). `/ah compare` exists to settle it against real
--- data before this becomes the default engine.
+-- data. (This engine became the default in v1.12.12 -- see below -- with the question
+-- still open; /ah browseprobe is the per-item check.)
 --
 -- THE DEFAULT ENGINE (v1.12.12). Chosen because replicate fails the first scan of most
 -- days -- the original complaint, unsolved for months -- while this path completed in
