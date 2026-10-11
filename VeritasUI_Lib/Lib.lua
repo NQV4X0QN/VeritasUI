@@ -1043,40 +1043,16 @@ local function DumpTaintLog()
 end
 
 ----------------------------------------------------------------
---  Arm WoW's own taint log at login.
+--  WoW's own `taintLog` CVar is NOT touched here any more.
 --
---  WHY THE ADDON HAS TO DO THIS: `taintLog` is a **Debug** CVar with **no account or
---  character scope** (Warcraft Wiki CVar table, 12.1.0), so it is not synchronised to
---  config-cache.wtf or the server and does not survive a logout. Measured by the owner
---  2026-08-30: he set `/console taintLog 1`, the FORBIDDEN then fired on 08-30 00:15, and
---  by the time he checked, the CVar read 0 and Logs/ held no taint.log at all. Four
---  occurrences of this bug have now been recorded and not one has a WoW-side taint log,
---  because arming it by hand cannot survive the days of normal play between events.
---
---  Value 1 = "log blocked action errors and taint events leading up to them", which is
---  precisely the causal chain for our ADDON_ACTION_FORBIDDEN. Values 2/3/4 add tainted
---  reads/writes of globals / upvalues / table fields; escalate to 4 only if a value-1
---  capture fails to name a carrier, since it is far more verbose over multi-day sessions.
---
---  ⚠ TEMPORARY, tied to the open UseContainerItem FORBIDDEN investigation. Remove this
---  block once that is closed — leaving a debug CVar forced on costs performance and grows
---  a log file forever. `db.taintLogArm = false` (via `/vui taint disarm`) opts out without
---  needing a code change, because forcing a debug setting with no escape is user-hostile.
---  taintLog is NOT a secure CVar (no shield in the CVar table), so SetCVar is allowed here.
+--  v1.17.3-v1.17.6 forced it to 1 at every login (ArmTaintLog) while the UseContainerItem
+--  FORBIDDEN was being chased, because the CVar does not survive a logout (measured by the
+--  owner 2026-08-30). That code was marked TEMPORARY and was removed in v1.17.7 once the
+--  investigation closed (v1.17.4, 2026-09-13): forcing a Blizzard debug setting on for every
+--  player diverges from the default client. Nothing needs undoing — the CVar resets itself on
+--  the next logout. To capture a WoW-side log again, set `/console taintLog 1` by hand AFTER
+--  logging in.
 ----------------------------------------------------------------
-local function ArmTaintLog()
-    local db = TaintDB()
-    if not db then return end
-    if db.taintLogArm == false then return end        -- explicit opt-out only
-    local setter = _G.C_CVar and _G.C_CVar.SetCVar or _G.SetCVar
-    if type(setter) ~= "function" then return end
-    local getter = _G.C_CVar and _G.C_CVar.GetCVar or _G.GetCVar
-    if type(getter) == "function" then
-        local ok, cur = pcall(getter, "taintLog")
-        if ok and tostring(cur) == "1" then return end -- already armed; no write needed
-    end
-    pcall(setter, "taintLog", "1")
-end
 
 local taintFrame = CreateFrame("Frame")
 taintFrame:RegisterEvent("ADDON_LOADED")
@@ -1090,11 +1066,11 @@ taintFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
         if arg1 ~= "VeritasUI_Lib" then return end
         if type(_G.VeritasUI_LibDB) ~= "table" then _G.VeritasUI_LibDB = {} end
         TaintDB()   -- seeds .taintLog
+        -- Opt-out flag for the removed taintLog arming (see above). Dead data now.
+        _G.VeritasUI_LibDB.taintLogArm = nil
     else
-        -- PLAYER_LOGIN: arm WoW's own taint log (it does not survive a logout — see
-        -- ArmTaintLog), then a one-line nudge so a popup dismissed with "Ignore" long
-        -- ago does not sit unread in the log forever.
-        ArmTaintLog()
+        -- PLAYER_LOGIN: a one-line nudge so a popup dismissed with "Ignore" long ago does
+        -- not sit unread in the log forever.
         local db = TaintDB()
         if not db then return end
         local n = CountTaintEntries(db)
@@ -1558,21 +1534,6 @@ SlashCmdList["VERITASUI"] = function(msg)
             db.taintLogDropped = nil
         end
         VUI.Print("VeritasUI", "Blocked-action log cleared.")
-    elseif cmd == "taint disarm" or cmd == "taint arm" then
-        -- Opt in/out of forcing WoW's own `taintLog` CVar on at login. See ArmTaintLog.
-        local db = TaintDB()
-        if not db then return end
-        local arm = (cmd == "taint arm")
-        -- Store `false` explicitly. `arm or nil` collapsed false to nil, so the
-        -- opt-out could never be recorded and the `== false` guard in ArmTaintLog
-        -- never fired: /vui taint disarm printed success and re-armed at next login,
-        -- clobbering any manually-set higher taintLog level.
-        db.taintLogArm = arm and true or false
-        local setter = _G.C_CVar and _G.C_CVar.SetCVar or _G.SetCVar
-        if type(setter) == "function" then pcall(setter, "taintLog", arm and "1" or "0") end
-        VUI.Print("VeritasUI", arm
-            and "WoW taint logging |cFF00FF00armed|r at every login (writes Logs/taint.log)."
-            or  "WoW taint logging |cFFFF8800disarmed|r — it will stay off across logins.")
     elseif cmd == "hover" then
         VUI.ProbeHoverChain()
     elseif cmd == "copy" or cmd:match("^copy%s") then
@@ -1605,7 +1566,6 @@ SlashCmdList["VERITASUI"] = function(msg)
         VUI.Print("VeritasUI", "Version " .. VUI.VERSION .. " loaded.")
         VUI.Print("VeritasUI", "|cFFFFFF00/vui taint|r — show recorded blocked-action events.")
         VUI.Print("VeritasUI", "|cFFFFFF00/vui taint clear|r — reset that log.")
-        VUI.Print("VeritasUI", "|cFFFFFF00/vui taint disarm|r — stop forcing WoW's own taint.log on at login.")
         VUI.Print("VeritasUI", "|cFFFFFF00/vui hover|r — dump the parent chain under the cursor (5s delay).")
         VUI.Print("VeritasUI", "|cFFFFFF00/vui copy|r — copy another character's settings onto this one.")
         VUI.Print("VeritasUI", "|cFFFFFF00/vui undocopy|r — undo the last copy on this character.")
