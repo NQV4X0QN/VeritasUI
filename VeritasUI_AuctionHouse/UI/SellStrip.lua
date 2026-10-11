@@ -516,6 +516,14 @@ local function MakeButton(parent, index)
     b:SetPoint("LEFT", parent, "LEFT", PAD_L + (index - 1) * STEP, 0)
     b:EnableMouse(true)
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    -- ⚠ Act on RELEASE, matching the clicks registered above, whatever WoW's "cast on key down"
+    -- setting says. SecureActionButton_OnClick performs the action on the DOWN edge when this
+    -- attribute is nil and ActionButtonUseKeyDown is on (SecureTemplates.lua:795-814), and a
+    -- down edge never arrives here, so every strip click silently did nothing. Hidden until
+    -- v1.17.10 because Priority Rotation forced that setting off for everyone; its one-time
+    -- restore to WoW's default exposed it (owner report 2026-10-11, confirmed by /ah stripdiag:
+    -- wiring, target and gating all correct). Same per-button attribute PR's button uses.
+    b:SetAttribute("useOnKeyDown", false)
 
     b.icon = b:CreateTexture(nil, "BACKGROUND")
     b.icon:SetPoint("TOPLEFT", 1, -1)
@@ -795,6 +803,11 @@ function AH.SellStrip.Diag()
         and ContainerFrameUtil_GetItemButtonAndContainer(d.bag, d.slot)
     P(("fresh lookup: %s same=%s | merchant=%s combat=%s"):format(nm(now), yn(now == t),
         yn(MerchantFrame and MerchantFrame:IsShown()), yn(InCombatLockdown())))
+    -- The cause found from this command's first capture: the button's own key-down choice
+    -- against WoW's setting (see MakeButton).
+    local okK, keyDown = pcall(C_CVar.GetCVarBool, "ActionButtonUseKeyDown")
+    P(("key-down setting=%s button useOnKeyDown=%s"):format(okK and tostring(keyDown) or "?",
+        tostring(b:GetAttribute("useOnKeyDown"))))
 
     Render()
     P("Re-wired the strip. Right-click the icon again and note whether it works now.")
