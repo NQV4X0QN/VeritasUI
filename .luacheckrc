@@ -79,6 +79,7 @@ read_globals = {
     -- Settings / options framework
     "Settings", "SettingsPanel", "InterfaceOptions_AddCategory",
     "EventRegistry", "SETTINGS_DEFAULTS", "RELOADUI",
+    "SELL_PRICE", "ContainerFrameUtil_GetItemButtonAndContainer",
     "UISpecialFrames", "ShowUIPanel", "HideUIPanel",
     "PanelTemplates_SetTab", "PanelTemplates_SetNumTabs",
     "PanelTemplates_TabResize", "PanelTemplates_GetSelectedTab",
