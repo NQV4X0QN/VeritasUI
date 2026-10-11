@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.17.11] - 2026-10-11
+
+### Fixed
+
+- `VeritasUI_CleanSolo` — **"Hide Voice Chat Button" now hides the voice buttons.** It targeted two frames that WoW 12.1 no longer has, so it did nothing; the voice/channels button only looked hidden because "Hide Chat Buttons" was hiding it. "Hide Voice Chat Button" now hides the voice/channels button and the mute/deafen buttons shown while you're in a voice channel, and "Hide Chat Buttons" hides the chat menu button. With both on (the default) chat looks the same as before, except mute/deafen also stay hidden in voice (`CleanSolo.lua`, `README.md`)
+- `VeritasUI_CleanSolo` — **Three setting descriptions corrected.** "Transparent Chat Background" no longer claims your background won't come back (it does, after `/reload`); "Hide Chat Buttons" names the button it actually hides; "Hide Error Text" mentions that it also silences the spoken error lines, as WoW's own `/uierrorsoff` does (`CleanSolo.lua`, `README.md`)
+
+
 ## [1.17.10] - 2026-10-11
 
 ### Fixed

@@ -15,14 +15,14 @@ UI decluttering for a cleaner solo experience.
 - **Fade Chat Tabs** — tabs fade in sync with the chat window, reappear on mouseover
 - **Transparent Chat Background** — removes the chat window's background and edge so only the text shows
 - **Hide Social Button** — removes the Quick Join / Communities toast
-- **Hide Chat Buttons** — removes scroll buttons and the new-window button
-- **Hide Voice Chat Button** — removes the voice chat icon
+- **Hide Chat Buttons** — removes the chat menu button (speech bubble)
+- **Hide Voice Chat Button** — removes the voice/channels button and the mute/deafen buttons shown in a voice channel
 - **Fade Micro Menu** — bottom-right menu fades unless moused over
 - **Fade Player Frame** — player frame fades when out of combat, at full health, and not moused over (uses event-timing via `UNIT_HEALTH` to work around Midnight's Secret Values)
 - **Fade Action Bars** — per-bar multi-select fading (bars 2–8) that reappear on mouseover; survives Edit Mode changes
 - **Hide Bag Buttons** — hides the bag bar (use `B` to open bags)
 - **Hide Macro Names** — removes macro name text from action bar buttons
-- **Hide Error Text** — suppresses red center-screen error messages
+- **Hide Error Text** — suppresses red center-screen error messages and their spoken lines (like WoW's /uierrorsoff)
 
 Settings: **Options → AddOns → Clean Solo** | `/cs`
 
