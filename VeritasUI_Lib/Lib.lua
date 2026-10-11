@@ -45,7 +45,7 @@ VUI.VERSION = "1.17.13"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
--- toggle at runtime via /ah debug (suite-wide despite the prefix) or
+-- toggle at runtime via /vui debug (or /ah debug, kept as an alias) or
 -- /run VeritasUI.debug = true, then reproduce the issue.
 VUI.debug = false
 
@@ -1598,6 +1598,12 @@ SlashCmdList["VERITASUI"] = function(msg)
         else
             StaticPopup_Show("VERITASUI_COPY_SETTINGS", target, VUI.CharKey() or "?", target)
         end
+    elseif cmd == "debug" then
+        -- Suite-wide debug switch (audit S3): lived only as /ah debug, so it vanished with the
+        -- Auction House module. /ah debug still works.
+        VUI.debug = not VUI.debug
+        VUI.Print("VeritasUI", "Debug prints " .. (VUI.debug and "|cFF00FF00ON|r (suite-wide)"
+            or "|cFFFF4444OFF|r"))
     elseif cmd == "undocopy" then
         local last = VUI.GetUndoableCopy()
         if not last then
@@ -1612,6 +1618,7 @@ SlashCmdList["VERITASUI"] = function(msg)
         VUI.Print("VeritasUI", "|cFFFFFF00/vui hover|r — dump the parent chain under the cursor (5s delay).")
         VUI.Print("VeritasUI", "|cFFFFFF00/vui copy|r — copy another character's settings onto this one.")
         VUI.Print("VeritasUI", "|cFFFFFF00/vui undocopy|r — undo the last copy on this character.")
+        VUI.Print("VeritasUI", "|cFFFFFF00/vui debug|r — toggle debug output for every module.")
         local isLoaded = C_AddOns and C_AddOns.IsAddOnLoaded
         local lines = {}
         for _, m in ipairs(MODULE_COMMANDS) do

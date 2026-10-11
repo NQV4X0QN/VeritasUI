@@ -1068,9 +1068,9 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         -- rotation didn't recompile after combat" with /pr debug alone gets silence.
         -- Pointed at the existing suite-wide toggle rather than making /pr debug write
         -- VUI.debug: that would turn every other module's debug output on and off as a
-        -- side effect, and would silently clear a flag the user set from /ah debug.
+        -- side effect, and would silently clear a flag the user set from /vui debug.
         VUI.Print("Priority Rotation",
-            "  |cFF888888combat-queue errors need suite-wide debug: /ah debug|r")
+            "  |cFF888888combat-queue errors need suite-wide debug: /vui debug|r")
 
     else
         if PR.MainWindow then
