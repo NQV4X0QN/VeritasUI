@@ -547,7 +547,7 @@ end
 --  Slash Commands
 --
 --  Surface: help / scan / engine / floor / bardemo / bartune / baratlas / compare /
---  browseprobe / live / ttprobe /
+--  browseprobe / live / ttprobe / stripdiag /
 --  diag / check / find / wipe / blocked / settings / debug.
 --  This list, the `cmd ==` branches below, and PrintHelp are meant to stay
 --  one-for-one — the list had drifted, silently gaining four commands it never
@@ -578,6 +578,7 @@ local function PrintHelp()
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah browseprobe|r  — check one shift-clicked item against the live listing")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah live|r         — live-search price corrections (on | off | status)")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah ttprobe|r      — what the tooltip actually priced (no args = last render)")
+    VUI.Print(AH.TAG, "  |cFFFFFF00/ah stripdiag|r    — hover a sell-strip icon that won't load, then run")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah diag|r         — diagnostic / state dump")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah check|r        — show stored price for a shift-clicked item")
     VUI.Print(AH.TAG, "  |cFFFFFF00/ah find|r         — search the last scan's raw data for a shift-clicked item")
@@ -1082,6 +1083,10 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
         if not ok then
             VUI.Print(AH.TAG, reason or "Sweep could not start.")
         end
+
+    elseif cmd == "stripdiag" then
+        -- Hover a dead sell-strip icon first. See AH.SellStrip.Diag.
+        if AH.SellStrip and AH.SellStrip.Diag then AH.SellStrip.Diag() end
 
     elseif cmd == "blocked" then
         if AH.SellStrip then

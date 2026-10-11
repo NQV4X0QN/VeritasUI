@@ -730,6 +730,76 @@ local function Build()
     UpdateVisibility()
 end
 
+----------------------------------------------------------------
+--  /ah stripdiag — why is a strip right-click dead? (owner report 2026-10-11:
+--  the strip "randomly becomes unclickable" with bags open, surviving AH close/reopen)
+--
+--  Hover the dead icon, then run it. Short lines on purpose: the owner plays on a PC
+--  and reports by screenshot. Every line separates one hypothesis:
+--    under cursor   -> something is covering the strip (frame level), or not
+--    canLoad/target -> no bag button found, or a STALE one (wrong bag/slot, hidden)
+--    gated          -> Blizzard's secure "click" action refuses the target
+--                      (HasAccessConstraints / ForbiddenAspect.ScriptedInput,
+--                      SecureTemplates.lua:560-566) — nothing happens, no error
+--    merchant/list  -> ContainerFrame.lua:1376-1393 routes the click elsewhere
+--  Then it RE-WIRES the strip, so "does a right-click work now?" says whether the
+--  wiring had gone stale. Reads only, apart from that re-wire.
+----------------------------------------------------------------
+function AH.SellStrip.Diag()
+    local P = function(s) VUI.Print(AH.TAG, s) end
+    local function yn(v) return v and "|cFF00FF00Y|r" or "|cFFFF4444N|r" end
+    local function nm(f)
+        if not f then return "none" end
+        local ok, n = pcall(f.GetName, f)
+        return (ok and n) or "<anon>"
+    end
+    if not state.built then P("Strip not built yet — open the auction house."); return end
+
+    local item = AuctionHouseFrame.ItemSellFrame
+    local comm = AuctionHouseFrame.CommoditiesSellFrame
+    local function lvl(f) return f and f.GetFrameLevel and f:GetFrameLevel() or "-" end
+    P(("strip: open=%s sell=%s shown=%s lvl=%s | overlay lvl item=%s comm=%s"):format(
+        yn(AH.isOpen), yn(IsSellMode()), yn(state.strip:IsShown()), lvl(state.strip),
+        lvl(item and item.Overlay), lvl(comm and comm.Overlay)))
+
+    local focus = GetMouseFoci and GetMouseFoci()
+    focus = focus and focus[1]
+    local hovered, idx
+    for i = 1, VISIBLE do
+        if state.buttons[i] == focus then hovered, idx = focus, i end
+    end
+    P("under cursor: " .. (idx and ("strip icon #" .. idx) or nm(focus)))
+
+    local b = hovered or state.buttons[1]
+    local d = b and b.data
+    if not d then P("no item on that icon."); return end
+    P(("item: %s bag %s slot %s canLoad=%s type2=%s"):format(
+        tostring(d.link), tostring(d.bag), tostring(d.slot), yn(b.canLoad),
+        tostring(b:GetAttribute("type2"))))
+
+    local t = b:GetAttribute("clickbutton2")
+    if t then
+        local tb = t.GetBagID and t:GetBagID()
+        local ts = t.GetID and t:GetID()
+        local okC, constrained = pcall(t.HasAccessConstraints, t)
+        local okF, forbidden = pcall(t.HasAnyForbiddenAspects, t,
+            Enum and Enum.ForbiddenAspect and Enum.ForbiddenAspect.ScriptedInput)
+        P(("target: %s shown=%s bag %s slot %s match=%s"):format(nm(t), yn(t:IsVisible()),
+            tostring(tb), tostring(ts), yn(tb == d.bag and ts == d.slot)))
+        P(("gated: constraints=%s forbidden=%s"):format(
+            okC and tostring(constrained) or "?", okF and tostring(forbidden) or "?"))
+    else
+        P("target: none")
+    end
+    local now = ContainerFrameUtil_GetItemButtonAndContainer
+        and ContainerFrameUtil_GetItemButtonAndContainer(d.bag, d.slot)
+    P(("fresh lookup: %s same=%s | merchant=%s combat=%s"):format(nm(now), yn(now == t),
+        yn(MerchantFrame and MerchantFrame:IsShown()), yn(InCombatLockdown())))
+
+    Render()
+    P("Re-wired the strip. Right-click the icon again and note whether it works now.")
+end
+
 -- TEST SEAM. Returns the REAL state table (not a copy), so a suite drives the same table
 -- the module reads — the qol_ilvl_test lesson: a test that toggles a parallel copy makes
 -- its own assertions unfalsifiable. Exists because Build() does live frame geometry that
