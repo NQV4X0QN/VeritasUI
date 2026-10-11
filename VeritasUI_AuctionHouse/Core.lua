@@ -419,6 +419,19 @@ AH.Events.On("AH_SCAN_COMPLETE", function()
         ReportComparison()
     end
 end)
+-- Closing the AH aborts a browse scan WITHOUT firing AH_SCAN_FAILED (Browse.lua AH_CLOSED), so
+-- a diagnostic armed by /ah compare or /ah browseprobe would otherwise stay pending and report
+-- against the NEXT, unrelated scan (audit A5). Cancel both, and discard any dry result and probe
+-- watch they left behind.
+AH.Events.On("AH_CLOSED", function()
+    AH.comparePending = false
+    AH.browseProbePending = false
+    if AH.Browse then
+        if AH.Browse.TakeDryResult then AH.Browse.TakeDryResult() end
+        if AH.Browse.SetWatch then AH.Browse.SetWatch(nil) end
+    end
+end)
+
 AH.Events.On("AH_SCAN_FAILED", function()
     if AH.comparePending then
         AH.comparePending = false
