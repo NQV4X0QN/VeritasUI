@@ -82,6 +82,9 @@ read_globals = {
     "SELL_PRICE", "ContainerFrameUtil_GetItemButtonAndContainer",
     -- QualityOfLife (audit Q2, Q5)
     "MAP_PIN_INVALID_MAP", "GameTime_GetLocalTime", "LEVEL", "STAT_AVERAGE_ITEM_LEVEL",
+    -- AdvancedOptions (audit O1)
+    "COLORBLIND_OPTION_NONE", "COLORBLIND_OPTION_PROTANOPIA", "COLORBLIND_OPTION_DEUTERANOPIA",
+    "COLORBLIND_OPTION_TRITANOPIA", "OPTION_TOOLTIP_USE_COLORBLIND_MODE",
     "Mixin", "SHOW_FACTION_ON_MAINSCREEN", "WatchedFactionToggleFrameMixin", "Minimap", "wipe",
     "UISpecialFrames", "ShowUIPanel", "HideUIPanel",
     "PanelTemplates_SetTab", "PanelTemplates_SetNumTabs",

@@ -33,6 +33,18 @@ local InCombatLockdown = InCombatLockdown
 --  type = "checkbox" | "slider" | "dropdown"
 --  (plus any fields the factory expects — see Controls.lua)
 ----------------------------------------------------------------
+-- Soft-target CVars take Enum.SoftTargetEnableFlags: None 0 / Gamepad 1 / Kbm 2 / Any 3
+-- (SoftTargetConstantsDocumentation.lua:13-16; Blizzard writes Any/Gamepad at
+-- Blizzard_SettingsDefinitions_Frame/Combat.lua:185-189 and Controls.lua:75-79). Until v1.17.13
+-- these were labelled "Icon" / "Icon + Nameplate" / "Full", so "Enabled (Icon)" really set
+-- controller-only and switched soft targeting OFF for keyboard players (audit O1).
+local SOFT_TARGET_OPTIONS = {
+    { value = "0", text = "Off" },
+    { value = "1", text = "Controller only" },
+    { value = "2", text = "Keyboard & mouse only" },
+    { value = "3", text = "Always" },
+}
+
 AO.FEATURED_CATEGORIES = {
     {
         key   = "camera",
@@ -186,37 +198,25 @@ AO.FEATURED_CATEGORIES = {
                 type    = "dropdown",
                 cvar    = "SoftTargetEnemy",
                 label   = "Soft Target Enemy",
-                tooltip = "Controls automatic enemy targeting assistance.",
-                options = {
-                    { value = "0", text = "Off" },
-                    { value = "1", text = "Enabled (Icon)" },
-                    { value = "2", text = "Enabled (Icon + Nameplate)" },
-                    { value = "3", text = "Enabled (Full)" },
-                },
+                tooltip = "Who gets automatic enemy targeting assistance: controller players, keyboard and "
+                       .. "mouse players, or both.",
+                options = SOFT_TARGET_OPTIONS,
             },
             {
                 type    = "dropdown",
                 cvar    = "SoftTargetFriend",
                 label   = "Soft Target Friendly",
-                tooltip = "Controls automatic friendly targeting assistance.",
-                options = {
-                    { value = "0", text = "Off" },
-                    { value = "1", text = "Enabled (Icon)" },
-                    { value = "2", text = "Enabled (Icon + Nameplate)" },
-                    { value = "3", text = "Enabled (Full)" },
-                },
+                tooltip = "Who gets automatic friendly targeting assistance: controller players, keyboard and "
+                       .. "mouse players, or both.",
+                options = SOFT_TARGET_OPTIONS,
             },
             {
                 type    = "dropdown",
                 cvar    = "SoftTargetInteract",
                 label   = "Soft Target Interact",
-                tooltip = "Controls automatic NPC/object interaction targeting.",
-                options = {
-                    { value = "0", text = "Off" },
-                    { value = "1", text = "Enabled (Icon)" },
-                    { value = "2", text = "Enabled (Icon + Nameplate)" },
-                    { value = "3", text = "Enabled (Full)" },
-                },
+                tooltip = "Who gets automatic NPC/object interaction targeting: controller players, keyboard and "
+                       .. "mouse players, or both.",
+                options = SOFT_TARGET_OPTIONS,
             },
         },
     },
@@ -365,16 +365,27 @@ AO.FEATURED_CATEGORIES = {
         key   = "accessibility",
         title = "Accessibility",
         controls = {
+            -- In 12.1 colorblindMode is on/off and the filter is a separate CVar,
+            -- colorblindSimulator 0-3 (Blizzard_SettingsDefinitions_Frame/Colorblind.lua:7-20).
+            -- Until v1.17.13 the filter names were written into colorblindMode, which only
+            -- switched the mode on (audit O1). Labels are Blizzard's own strings.
             {
-                type    = "dropdown",
+                type    = "checkbox",
                 cvar    = "colorblindMode",
                 label   = "Colorblind Mode",
-                tooltip = "Applies a color correction filter for different types of color vision deficiency.",
+                -- Blizzard's own tooltip text for this checkbox (Colorblind.lua:7).
+                tooltip = OPTION_TOOLTIP_USE_COLORBLIND_MODE or "Turns on WoW's colorblind mode.",
+            },
+            {
+                type    = "dropdown",
+                cvar    = "colorblindSimulator",
+                label   = "Colorblind Filter",
+                tooltip = "Applies a color correction filter for a type of color vision deficiency.",
                 options = {
-                    { value = "0", text = "Off" },
-                    { value = "1", text = "Protanopia (Red-Weak)" },
-                    { value = "2", text = "Deuteranopia (Green-Weak)" },
-                    { value = "3", text = "Tritanopia (Blue-Weak)" },
+                    { value = "0", text = COLORBLIND_OPTION_NONE         or "None" },
+                    { value = "1", text = COLORBLIND_OPTION_PROTANOPIA   or "Protanopia" },
+                    { value = "2", text = COLORBLIND_OPTION_DEUTERANOPIA or "Deuteranopia" },
+                    { value = "3", text = COLORBLIND_OPTION_TRITANOPIA   or "Tritanopia" },
                 },
             },
             {
