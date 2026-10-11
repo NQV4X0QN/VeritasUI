@@ -58,6 +58,7 @@ local GetMacroIndexByName = GetMacroIndexByName
 ----------------------------------------------------------------
 PR.VERSION          = VUI.VERSION
 PR.MAX_SLOTS        = 10
+PR.MAX_ACTION_SLOT  = 180   -- Action Bar 8 ends at slot 180 (page 15 x 12)
 PR.MACRO_NAME       = "Attack"
 PR.BUTTON_NAME      = "PRAttackButton"
 PR.compiledSequence = {}
@@ -563,9 +564,13 @@ end
 --  keybind clicks rotBtn instead. Works with any bar — visible,
 --  hidden, or tucked away.
 --
---  Slot mapping covers Blizzard bars 1-9 (slots 1-12, 25-120).
---  Slots 13-24 are action bar pages 2+ (stance/stealth) and are
---  intentionally unmapped — macros are not placed there.
+--  Slot mapping (audit P3, v1.17.10 — sourced, Blizzard_ActionBar/Shared/MultiActionBars.lua:1-8
+--  and MultiActionBars.xml actionpage attributes): Action Bar 1 = slots 1-12; Bars 2-5 =
+--  pages 6/5/3/4 = slots 61-72, 49-60, 25-36, 37-48; Bars 6-8 = pages 13/14/15 = slots
+--  145-180. UNMAPPED on purpose: 13-24 (main bar page 2) and 73-144 (the bonus pages WoW swaps
+--  in for druid forms, stealth, etc.) -- a key bound there belongs to the main bar, so no
+--  binding of ours can stand in for it. Until v1.17.10 slots 73-120 were mapped to Bars 6-8
+--  (wrong: that bound the rotation to an unrelated Bar 6-8 key) and 121-180 were never scanned.
 --
 --  Direct mouse clicks still work via the macro's /click PRAttackButton.
 --
@@ -585,10 +590,9 @@ local BIND_DEFS = {
     { base =  36, bind = "MULTIACTIONBAR4BUTTON" },
     { base =  48, bind = "MULTIACTIONBAR2BUTTON" },
     { base =  60, bind = "MULTIACTIONBAR1BUTTON" },
-    { base =  72, bind = "MULTIACTIONBAR5BUTTON" },
-    { base =  84, bind = "MULTIACTIONBAR6BUTTON" },
-    { base =  96, bind = "MULTIACTIONBAR7BUTTON" },
-    { base = 108, bind = "MULTIACTIONBAR8BUTTON" },
+    { base = 144, bind = "MULTIACTIONBAR5BUTTON" },
+    { base = 156, bind = "MULTIACTIONBAR6BUTTON" },
+    { base = 168, bind = "MULTIACTIONBAR7BUTTON" },
 }
 for _, def in ipairs(BIND_DEFS) do
     for i = 1, 12 do
@@ -632,14 +636,16 @@ function PR:ScanAndOverrideBarButton(macroName, verbose)
     -- raid/M+ zones; pcall each slot and count failures. Verbose callers
     -- (user-initiated /pr scan and "Scan & Bind" button) surface the
     -- diagnostic so the user knows what to do.
+    -- A bindable copy wins over an unbindable one found earlier (e.g. Attack on a form page AND
+    -- on Bar 6), so the scan does not stop at the first match.
     local foundSlot
     local unreadableSlots = 0
-    for slot = 1, 120 do
+    for slot = 1, PR.MAX_ACTION_SLOT do
         local ok, actionType, id = pcall(GetActionInfo, slot)
         if ok then
             if actionType == "macro" and id == macroIdx then
-                foundSlot = slot
-                break
+                if SLOT_TO_BIND[slot] then foundSlot = slot; break end
+                foundSlot = foundSlot or slot
             end
         else
             unreadableSlots = unreadableSlots + 1
@@ -799,7 +805,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
                 "Keybind |cFF00FF00" .. tconcat(override.keys, ", ")
                 .. "|r override active — spam the key to play.")
         elseif override and not SLOT_TO_BIND[override.slot] then
-            -- Slots 13-24 are action bar pages 2+ and the stance/stealth bars, which
+            -- Slots 13-24 (main bar page 2) and 73-144 (form/stealth bonus pages), which
             -- SLOT_TO_BIND deliberately does not map. They arrive here in the same
             -- keys == nil state as an unbound main-bar slot, but the advice below is
             -- useless for them: no key assigned to such a slot produces a binding this
@@ -951,14 +957,14 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         end
 
         VUI.Print("Priority Rotation", "─────────────────────────────────────────")
-        VUI.Print("Priority Rotation", "  Scanning slots 1-120 with GetActionInfo:")
+        VUI.Print("Priority Rotation", "  Scanning slots 1-" .. PR.MAX_ACTION_SLOT .. " with GetActionInfo:")
         local macroIdx    = macroOk and macroResult or 0
         local foundSlots  = 0
         local macroSlots  = {}
         local secretSlots = 0
         local errorSlots  = 0
 
-        for slot = 1, 120 do
+        for slot = 1, PR.MAX_ACTION_SLOT do
             local ok, actionType, id = pcall(GetActionInfo, slot)
             if ok then
                 if actionType then
