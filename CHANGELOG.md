@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.17.13] - 2026-10-11
+
+### Fixed
+
+- `VeritasUI_AdvancedOptions` — **Soft Target choices now say what they do.** The Soft Target Enemy, Friendly and Interact dropdowns offered "Enabled (Icon)", "Enabled (Icon + Nameplate)" and "Enabled (Full)", but the setting really chooses who gets soft targeting — so "Enabled (Icon)" meant controller only and turned it off for keyboard and mouse players. The choices are now Off, Controller only, Keyboard & mouse only and Always (`Featured.lua`)
+- `VeritasUI_AdvancedOptions` — **Colorblind Mode applies the filter you pick.** In WoW 12.1 colorblind mode is on/off and the filter is a separate setting; picking a filter in the old dropdown only switched the mode on. It is now a Colorblind Mode checkbox plus a Colorblind Filter dropdown, using Blizzard's own names, matching WoW's own colorblind settings (`Featured.lua`)
+
+
 ## [1.17.12] - 2026-10-11
 
 ### Fixed
