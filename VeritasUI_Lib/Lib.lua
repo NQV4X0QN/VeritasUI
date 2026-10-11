@@ -142,7 +142,7 @@ function VUI.SuppressFrame(f)
     if not f or f._vui_suppressed then return end
     f._vui_suppressed = true
     VUI.SafeHide(f)
-    hooksecurefunc(f, "Show", function(self)
+    local function Rehide(self)
         self:SetAlpha(0)
         if not InCombatLockdown() then
             self:Hide()
@@ -156,7 +156,17 @@ function VUI.SuppressFrame(f)
                 if self:IsShown() then self:Hide() end
             end)
         end
-    end)
+    end
+    hooksecurefunc(f, "Show", Rehide)
+    -- ⚠ SetShown is a SEPARATE route: it does not call the frame's Show, so the hook above never
+    -- sees it. Blizzard's property buttons (voice/channels, mute, deafen) re-show themselves this
+    -- way (PropertyBindingMixin.lua:120-123), and until v1.17.14 they came back at alpha 0 --
+    -- invisible but still clickable (suite-wide audit S1).
+    if f.SetShown then
+        hooksecurefunc(f, "SetShown", function(self, shown)
+            if shown then Rehide(self) end
+        end)
+    end
 end
 
 ----------------------------------------------------------------
