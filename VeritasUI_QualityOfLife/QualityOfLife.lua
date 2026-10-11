@@ -102,7 +102,6 @@ local UNIVERSAL = {
     autoSellJunk   = true,
     autoRepair     = true,
     showItemLevels = true,
-    showMapCoords  = true,
     showMinimapCoords = true,
     afkScreen      = true,
     -- Paints the Nemesis groups-remaining count on the Delve plaque icon that
@@ -144,21 +143,18 @@ local UNIVERSAL = {
     -- Stored as the literal SetFont flag string so nothing has to map it.
     delveCountOutline = "OUTLINE",
 }
--- ⚠ ACCOUNT-WIDE BUT DELIBERATELY UNSEEDED. `mapCoordsPos` is written only when the coordinate
--- readout is dragged, and nil is MEANINGFUL: SetupMapCoordinates reads `if saved then ... else
--- default anchor`, so seeding it with {} would anchor the readout at nil,nil. It therefore cannot
--- live in UNIVERSAL, which is a defaults table and gets seeded.
---
--- But it MUST still be MIGRATED, or the dragged position -- a value the user actually set -- is
--- silently lost when the key stops being per-character. That is exactly the failure an earlier
--- version of this plan would have shipped, by deriving the migration list from the defaults table.
-local UNIVERSAL_NO_DEFAULT = { mapCoordsPos = true }
+-- RETIRED keys (audit Q1, v1.17.9): the world-map coordinate readout was removed in favour of
+-- Blizzard's own. They are no longer defaults -- nothing seeds them -- but they stay in the
+-- MIGRATION list so a value still sitting in a pre-scope per-character slot is promoted to the
+-- account root first, where RetireWorldMapCoords reads it and hands the player Blizzard's
+-- option. Remove them from here only together with RetireWorldMapCoords.
+local RETIRED_UNIVERSAL = { showMapCoords = true, mapCoordsPos = true }
 
--- The migration list is UNIVERSAL plus the unseeded keys, BUILT from them rather than restated, so
+-- The migration list is UNIVERSAL plus the retired keys, BUILT from them rather than restated, so
 -- it cannot drift from either. VUI.MigrateScopedDB only reads the KEYS of this table.
 local MIGRATE_UNIVERSAL = {}
-for k, v in pairs(UNIVERSAL)            do MIGRATE_UNIVERSAL[k] = v    end
-for k    in pairs(UNIVERSAL_NO_DEFAULT) do MIGRATE_UNIVERSAL[k] = true end
+for k, v in pairs(UNIVERSAL)         do MIGRATE_UNIVERSAL[k] = v    end
+for k    in pairs(RETIRED_UNIVERSAL) do MIGRATE_UNIVERSAL[k] = true end
 
 -- ⚠ PER-CHARACTER -- exactly two keys, for two different reasons.
 local PERCHAR = {
@@ -183,9 +179,6 @@ local settingsCategoryID
 local frame = CreateFrame("Frame")
 
 local itemLevelsSetup   = false  -- guards SetupItemLevels() re-entry
-local coordsInitialized = false  -- guards InitCoords() re-entry
-local mapCoordsSetup    = false  -- guards SetupMapCoordinates() re-entry
-local mapCoordsAnchor   = nil    -- reference for mid-session show/hide
 local miniCoordsSetup   = false  -- guards SetupMinimapCoordinates() re-entry
 local miniCoordsFrame   = nil    -- reference for mid-session show/hide
 
@@ -1032,253 +1025,34 @@ local function SetupItemLevels()
     end)
 end
 
--- ── Feature: Map Coordinates ────────────────────────────────
--- Shows player and cursor coordinates side-by-side on the World Map.
--- No backdrop or border — just two fontstrings with a drop shadow.
--- Hides the quest log side panel toggle button.
--- Right-click toggles lock/unlock; left-drag repositions when unlocked.
--- When locked, the frame is mouse-transparent (map clicks pass through).
--- Handles WorldMapFrame being load-on-demand (Blizzard_WorldMap).
--- Gracefully shows "—" in instances or areas without position data.
-local function SetupMapCoordinates()
-    -- Own re-entry guard, matching SetupItemLevels. Distinct from
-    -- coordsInitialized, which means "the anchor exists" and is only set once
-    -- InitCoords actually runs. When Blizzard_WorldMap is not loaded yet this
-    -- function creates an ADDON_LOADED loader frame and returns with
-    -- coordsInitialized still false, so the settings toggle re-entered on
-    -- exactly the condition that was still unmet and stacked another loader
-    -- frame on every off/on cycle.
-    if mapCoordsSetup then return end
-    mapCoordsSetup = true
-
-    local THROTTLE = 0.033   -- ~30 fps
-
-    -- Normal colours
-    local PLAYER_R, PLAYER_G, PLAYER_B = 1, 0.82, 0        -- gold
-    local CURSOR_R, CURSOR_G, CURSOR_B = 0.75, 0.75, 0.75  -- light gray
-    -- Unlocked-mode tint (cyan)
-    local UNLOCK_R, UNLOCK_G, UNLOCK_B = 0.2, 0.8, 1.0
-
-    local function InitCoords()
-        if coordsInitialized then return end
-        if not WorldMapFrame or not WorldMapFrame.ScrollContainer then return end
-        coordsInitialized = true
-        local container = WorldMapFrame.ScrollContainer
-
-        -- Hide the quest log show/hide toggle button in the bottom-right.
-        local toggle = WorldMapFrame.SidePanelToggle
-        if toggle then VUI.SuppressFrame(toggle) end
-
-        -- Invisible container button — no backdrop, no border, no tint.
-        -- Must be a Button (not Frame) so RegisterForClicks works.
-        local anchor = CreateFrame("Button", nil, container)
-        mapCoordsAnchor = anchor
-        anchor:SetSize(1, 1)  -- auto-sized by content; initial 1×1 is a placeholder
-        anchor:SetFrameStrata("DIALOG")
-        anchor:SetFrameLevel(container:GetFrameLevel() + 10)
-
-        -- Restore saved position or default to bottom-right.
-        local saved = db.mapCoordsPos
-        if saved then
-            anchor:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", saved.x, saved.y)
-        else
-            anchor:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -6, 4)
-        end
-
-        -- ── Lock / unlock state ──
-        local locked = true
-
-        -- Always accept mouse input so right-click (un)lock works in
-        -- either state.  Left-clicks pass through to the map because we
-        -- only RegisterForClicks("RightButtonUp"), never LeftButton.
-        anchor:EnableMouse(true)
-        anchor:SetMovable(false)
-        anchor:SetClampedToScreen(true)
-
-        local function SavePosition()
-            anchor:StopMovingOrSizing()
-            local aScale = anchor:GetEffectiveScale()
-            local cScale = container:GetEffectiveScale()
-            if cScale == 0 then return end
-            local x = ((anchor:GetLeft()   or 0) * aScale
-                       - (container:GetLeft()   or 0) * cScale) / cScale
-            local y = ((anchor:GetBottom() or 0) * aScale
-                       - (container:GetBottom() or 0) * cScale) / cScale
-            db.mapCoordsPos = { x = x, y = y }
-            -- Re-anchor to the container immediately: StartMoving() silently
-            -- re-anchors the frame to screen coordinates, so without this the
-            -- coords stop tracking the map frame (move/rescale the windowed
-            -- map and they float) until the next login. This is the exact
-            -- restore path already used at init, applied live.
-            anchor:ClearAllPoints()
-            anchor:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", x, y)
-        end
-
-        -- Player coords (gold) — left side.
-        local playerText = anchor:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        playerText:SetPoint("LEFT", anchor, "LEFT", 0, 0)
-        playerText:SetJustifyH("LEFT")
-        playerText:SetTextColor(PLAYER_R, PLAYER_G, PLAYER_B)
-        playerText:SetShadowColor(0, 0, 0, 1)
-        playerText:SetShadowOffset(1, -1)
-        playerText:SetText("Player: —")
-
-        -- Cursor coords (light gray) — right of player, separated by a gap.
-        -- Starts EMPTY, not at a "Cursor: —" placeholder: the label and the
-        -- numbers appear together only while the pointer is over the map
-        -- canvas, and vanish together when it leaves (matching the behaviour
-        -- of Blizzard's own 12.1 map readout). Anchoring is unaffected by the
-        -- empty state — playerText owns the left edge, so nothing shifts.
-        local mouseText = anchor:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        mouseText:SetPoint("LEFT", playerText, "RIGHT", 12, 0)
-        mouseText:SetJustifyH("LEFT")
-        mouseText:SetTextColor(CURSOR_R, CURSOR_G, CURSOR_B)
-        mouseText:SetShadowColor(0, 0, 0, 1)
-        mouseText:SetShadowOffset(1, -1)
-        mouseText:SetText("")
-
-        -- Resize the invisible hit frame to wrap both fontstrings.
-        -- The 12px gap is only reserved when there IS cursor text; otherwise the
-        -- drag target would keep a 12px dead strip to the right of "Player: …"
-        -- for the whole time the pointer is off the map.
-        local function ResizeAnchor()
-            local pw = playerText:GetStringWidth() or 0
-            local mw = mouseText:GetStringWidth()  or 0
-            local h  = playerText:GetStringHeight() or 14
-            anchor:SetSize(pw + ((mw > 0) and 12 or 0) + mw, h)
-        end
-        ResizeAnchor()
-
-        local function SetTextColors(unlocked)
-            if unlocked then
-                playerText:SetTextColor(UNLOCK_R, UNLOCK_G, UNLOCK_B)
-                mouseText:SetTextColor(UNLOCK_R, UNLOCK_G, UNLOCK_B)
-            else
-                playerText:SetTextColor(PLAYER_R, PLAYER_G, PLAYER_B)
-                mouseText:SetTextColor(CURSOR_R, CURSOR_G, CURSOR_B)
-            end
-        end
-
-        local function SetLocked(lock)
-            locked = lock
-            anchor:SetMovable(not lock)
-            if lock then
-                anchor:RegisterForDrag()          -- clear drag registration
-            else
-                anchor:RegisterForDrag("LeftButton")
-            end
-            SetTextColors(not lock)
-        end
-
-        -- Right-click toggles lock/unlock.
-        anchor:RegisterForClicks("RightButtonUp")
-        anchor:SetScript("OnClick", function(_, button)
-            if button ~= "RightButton" then return end
-            if locked then
-                SetLocked(false)
-                VUI.Print("Quality of Life",
-                    "Coordinates |cFF00CCFFunlocked|r — drag to reposition. "
-                    .. "Right-click to lock.")
-            else
-                SavePosition()
-                SetLocked(true)
-                VUI.Print("Quality of Life", "Coordinates |cFF00FF00locked.|r")
-            end
-        end)
-
-        -- Left-drag to reposition when unlocked.
-        -- Drag registration is managed by SetLocked(); starts unregistered
-        -- because locked=true at init.
-        anchor:SetScript("OnDragStart", function(self)
-            if not locked then self:StartMoving() end
-        end)
-        anchor:SetScript("OnDragStop", function(self)
-            self:StopMovingOrSizing()
-            SavePosition()
-        end)
-
-        -- Tooltip hint on hover — provides discoverability for the
-        -- right-click lock/unlock interaction.
-        anchor:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            if locked then
-                GameTooltip:AddLine("Right-click to unlock and reposition", 0.7, 0.7, 0.7)
-            else
-                GameTooltip:AddLine("Drag to reposition", 0.2, 0.8, 1)
-                GameTooltip:AddLine("Right-click to lock", 0.7, 0.7, 0.7)
-            end
-            GameTooltip:Show()
-        end)
-        anchor:SetScript("OnLeave", function()
-            GameTooltip:Hide()
-        end)
-
-        anchor:SetScript("OnUpdate", function(self, elapsed)
-            if not db or not db.showMapCoords then self:Hide(); return end
-            self._t = (self._t or 0) + elapsed
-            if self._t < THROTTLE then return end
-            self._t = 0
-
-            local mapID = C_Map.GetBestMapForUnit("player")
-            local dirty = false
-
-            -- Player position
-            local pStr = "Player: —"
-            if mapID then
-                local ok, pos = pcall(C_Map.GetPlayerMapPosition, mapID, "player")
-                if ok and pos then
-                    local x, y = pos:GetXY()
-                    if x and y and (x > 0 or y > 0) then
-                        pStr = format("Player: %.1f, %.1f", x * 100, y * 100)
-                    end
-                end
-            end
-            if pStr ~= self._lastPlayer then
-                playerText:SetText(pStr)
-                self._lastPlayer = pStr
-                dirty = true
-            end
-
-            -- Cursor position (only while hovering the map canvas). OFF the
-            -- canvas the string is EMPTY, so the "Cursor:" label disappears
-            -- along with the numbers instead of leaving a dangling "Cursor: —".
-            -- ON the canvas with no readable position we still show "Cursor: —",
-            -- which is a different state worth distinguishing: it means the
-            -- pointer is over the map but the API gave us nothing.
-            local cStr = ""
-            if container:IsMouseOver() then
-                cStr = "Cursor: —"
-                local ok, cx, cy = pcall(container.GetNormalizedCursorPosition, container)
-                if ok and cx and cy and cx >= 0 and cx <= 1 and cy >= 0 and cy <= 1 then
-                    cStr = format("Cursor: %.1f, %.1f", cx * 100, cy * 100)
-                end
-            end
-            if cStr ~= self._lastCursor then
-                mouseText:SetText(cStr)
-                self._lastCursor = cStr
-                dirty = true
-            end
-
-            -- Only reflow the invisible hit rect when the text actually
-            -- changed. GetStringWidth/Height + SetSize 30×/sec on unchanged
-            -- text was wasteful.
-            if dirty then ResizeAnchor() end
-        end)
+-- ── Retired: World Map Coordinates (audit Q1, v1.17.9) ───────
+-- WoW 12.1 ships its own readout (Options > Interface, map coordinates section: "Player Coordinates" and
+-- "Cursor Coordinates", CVars worldMapShowPlayerCoords / worldMapShowCursorCoords,
+-- WorldMapCoordsPanelMixin in Blizzard_WorldMapTemplates.lua). Ours duplicated it and was
+-- less correct: its player numbers came from the zone you stand in even while the map showed
+-- another one, and it hid the map's quest-log toggle until /reload. So it is gone, and a
+-- player who had ours on is handed Blizzard's, once.
+--
+-- ⚠ The keys are cleared only AFTER the CVars are written. At a /reload in combat the write
+-- waits on the combat queue; clearing first would lose the intent if the player logged out
+-- before combat ended. Running again is harmless: with the keys gone there is nothing to do.
+local function RetireWorldMapCoords()
+    if not db or db.showMapCoords == nil and db.mapCoordsPos == nil then return end
+    if db.showMapCoords ~= true then
+        db.showMapCoords, db.mapCoordsPos = nil, nil
+        return
     end
-
-    -- WorldMapFrame is load-on-demand; hook its load event if not yet available.
-    if WorldMapFrame then
-        InitCoords()
-    else
-        local loader = CreateFrame("Frame")
-        loader:RegisterEvent("ADDON_LOADED")
-        loader:SetScript("OnEvent", function(self, _, addon)
-            if addon == "Blizzard_WorldMap" then
-                C_Timer.After(0, InitCoords)   -- defer one frame for full init
-                self:UnregisterAllEvents()
-            end
-        end)
-    end
+    VUI.CombatQueue.Add(function()
+        local cv  = _G.C_CVar
+        local set = cv and cv.SetCVar
+        if set then
+            pcall(set, "worldMapShowPlayerCoords", "1")
+            pcall(set, "worldMapShowCursorCoords", "1")
+        end
+        db.showMapCoords, db.mapCoordsPos = nil, nil
+        VUI.Print("Quality of Life", "Map coordinates now use WoW's own option "
+            .. "(Options > Interface) and have been turned on for you.")
+    end)
 end
 
 -- ── Feature: Minimap Coordinates ────────────────────────────
@@ -1289,16 +1063,16 @@ end
 -- Hidden automatically wherever the API returns no position (dungeons,
 -- raids, arenas), so it never displays a stale value.
 --
--- Uses the same C_Map path as the world-map readout above:
+-- Reads position through C_Map:
 -- C_Map.GetBestMapForUnit -> GetPlayerMapPosition, x/y in 0-1 scaled to
--- 0-100. Reuses its nil-guards (pcall, x>0 or y>0) verbatim.
+-- 0-100, nil-guarded (pcall, x>0 or y>0).
 local function SetupMinimapCoordinates()
     if miniCoordsSetup then return end
     if not Minimap then return end
     miniCoordsSetup = true
 
     local THROTTLE = 0.1   -- 10 Hz; coordinates change slowly, 30 fps is wasteful here
-    local PLAYER_R, PLAYER_G, PLAYER_B = 1, 0.82, 0   -- gold, matching the world-map readout
+    local PLAYER_R, PLAYER_G, PLAYER_B = 1, 0.82, 0   -- gold
 
     local holder = CreateFrame("Frame", nil, Minimap)
     miniCoordsFrame = holder
@@ -2940,17 +2714,6 @@ local function InitializeOptions()
         Settings.CreateCheckbox(category, setting, tip)
     end
 
-    AddCheckbox("showMapCoords", "Show Map Coordinates",
-        "Displays player and cursor coordinates on the World Map. Right-click the coordinates to unlock and reposition. Hides the quest log toggle button.",
-        function(value)
-            if value then
-                if not coordsInitialized then SetupMapCoordinates()
-                elseif mapCoordsAnchor then mapCoordsAnchor:Show() end
-            else
-                if mapCoordsAnchor then mapCoordsAnchor:Hide() end
-            end
-        end)
-
     AddCheckbox("showMinimapCoords", "Show Minimap Coordinates",
         "Displays your current coordinates directly below the minimap. Hidden automatically in dungeons, raids, and other areas without a position.",
         function(value)
@@ -2967,7 +2730,7 @@ local function InitializeOptions()
         function(value)
             -- Live-apply BOTH ways. Enable-only was the bug: the module's stated contract is
             -- that every QoL toggle applies mid-session, and this one needed a /reload to take
-            -- effect in the off direction. Mirrors showMapCoords directly above.
+            -- effect in the off direction. Mirrors showMinimapCoords directly above.
             if value then
                 SetupItemLevels()
             elseif HideAllItemLevelOverlays then
@@ -3075,9 +2838,9 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         db, cdb = VUI.BindScopedDB("VeritasUI_QualityOfLifeDB", UNIVERSAL, PERCHAR)
 
         -- ⚠ MUST run before any universal read below, or every feature acts on the pre-migration
-        -- value for the whole session. Note MIGRATE_UNIVERSAL, not UNIVERSAL: mapCoordsPos has no
-        -- default and so is absent from UNIVERSAL, but the dragged position must still be carried
-        -- across or it is silently lost.
+        -- value for the whole session. Note MIGRATE_UNIVERSAL, not UNIVERSAL: the retired map-coordinate
+        -- keys are absent from UNIVERSAL but must still be promoted, so RetireWorldMapCoords sees a
+        -- pre-scope player's real choice.
         --
         -- THIS IS WHERE AUDIT FINDING D8 DISSOLVES. The Delve placement keys stop being
         -- per-character at all, so nothing can pin a stale copy of a shipped default ever again --
@@ -3121,7 +2884,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         end
 
         if db.showItemLevels then SetupItemLevels()     end
-        if db.showMapCoords  then SetupMapCoordinates() end
+        RetireWorldMapCoords()
         if db.showMinimapCoords then SetupMinimapCoordinates() end
 
         if db.autoSellJunk or db.autoRepair then
