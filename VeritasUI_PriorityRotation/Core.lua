@@ -436,6 +436,10 @@ function PR:CompileSequence()
     self.compiledNames    = names
     self:InjectSequence(seq)
     self:ScheduleScan(0.5)
+    -- The editor redraws the instant a change is made, but the compile it triggers is debounced
+    -- (ScheduleCompile, 0.3 s), so without this the preview showed the PREVIOUS sequence until
+    -- something else redrew it (audit P4).
+    self:RefreshUI()
     DebugPrint("Compiled " .. #seq .. " step(s)")
 end
 
