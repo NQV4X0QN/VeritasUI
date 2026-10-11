@@ -26,19 +26,20 @@ local UNIVERSAL = {
     pinRepeatable = true,
 }
 
--- ⚠ PER-CHARACTER, and not a preference: `manualWatched` is a snapshot of THIS character's
--- quest log ({ [questID] = true }). Sharing it would restore watch state for quests an alt has
--- never picked up.
+-- ⚠ PER-CHARACTER, and not a preference: `untrackedBeforeFilter` records THIS character's
+-- quest log ({ [questID] = true } for quests the player had NOT tracked when filtering was
+-- switched on; `false` = no record). Sharing it would apply one character's choices to quests
+-- an alt has never picked up. Replaced `manualWatched` in v1.17.12 (audit Z1).
 local PERCHAR = {
-    manualWatched = {},
+    untrackedBeforeFilter = false,
 }
 
 local db  = nil  -- ACCOUNT-wide table; assigned at ADDON_LOADED
 -- ⚠ Declared HERE, above every function that reads it. `cdb` is the PER-CHARACTER table and is
--- nil until PLAYER_LOGIN. SnapshotWatched/RestoreWatched reference it ~200 lines below this
+-- nil until PLAYER_LOGIN. RecordTrackingBeforeFilter/RestoreTracking reference it below this
 -- point but are DEFINED above the assignment, so without this declaration the assignment would
 -- create a global and those reads would silently resolve to it -- the /way v1.6.33 trap.
-local cdb = nil  -- PER-CHARACTER table (manualWatched only); nil until PLAYER_LOGIN
+local cdb = nil  -- PER-CHARACTER table (untrackedBeforeFilter only); nil until PLAYER_LOGIN
 
 -- ── No hot-global localization block here, on purpose ─────────────
 -- Most modules in the suite open with a block of `local x = x` upvalues; this one
@@ -262,40 +263,45 @@ local function SyncTracking(verbose)
     if verbose then print("[ZQ sync] Done. removed=" .. removed .. " added=" .. added) end
 end
 
--- ── Snapshot / restore (uses questID for reliable matching) ───────
--- NOTE: Midnight removed IsQuestWatched(), so there is no API to
--- query which quests the player had manually tracked.  The snapshot
--- records ALL non-hidden quests at the moment ZQ is enabled or at
--- login, not at the moment it is disabled.  RestoreWatched restores
--- that snapshot state, not the player's original pre-enable tracking.
--- This is an accepted Midnight limitation.
-local function SnapshotWatched()
-    -- Guards on cdb, not db: manualWatched lives in the per-character table, which is nil
-    -- until PLAYER_LOGIN. Both callers already run after that, but a nil guard on the wrong
-    -- table is the kind of thing that only shows up when someone adds an earlier caller.
+-- ── Remember / restore the player's own tracking (audit Z1, v1.17.12) ──
+-- C_QuestLog.GetQuestWatchType(questID) reports whether a quest is watched (nil = not watched;
+-- QuestLogDocumentation.lua:555-566). Until v1.17.12 this file claimed Midnight had removed any
+-- way to ask, snapshotted EVERY quest at every login, and on "off" tracked that list and
+-- UNtracked everything else -- so untracked quests came back and quests picked up since login
+-- vanished from the tracker.
+--
+-- Now the record is taken only at the off -> on moment, and holds just the quests the player
+-- had chosen NOT to track. Turning filtering off untracks those and tracks everything else
+-- (new quests included, which is what Blizzard does with a freshly accepted quest). No record
+-- (filtering was already on before this version) -> track everything, once.
+local function RecordTrackingBeforeFilter()
     if not cdb then return end
-    cdb.manualWatched = {}
+    local rec = {}
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
         local ok, info = pcall(C_QuestLog.GetInfo, i)
         if ok and info and not info.isHeader and not info.isHidden and info.questID then
-            cdb.manualWatched[info.questID] = true
+            local okW, watchType = pcall(C_QuestLog.GetQuestWatchType, info.questID)
+            if okW and watchType == nil then rec[info.questID] = true end
         end
     end
+    cdb.untrackedBeforeFilter = rec
 end
 
-local function RestoreWatched()
+local function RestoreTracking()
     if not cdb then return end
+    local rec = type(cdb.untrackedBeforeFilter) == "table" and cdb.untrackedBeforeFilter or nil
     local watchType = GetWatchType()
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
         local ok, info = pcall(C_QuestLog.GetInfo, i)
-        if ok and info and not info.isHeader and info.questID then
-            if cdb.manualWatched[info.questID] then
-                pcall(C_QuestLog.AddQuestWatch, info.questID, watchType)
-            else
+        if ok and info and not info.isHeader and not info.isHidden and info.questID then
+            if rec and rec[info.questID] then
                 pcall(C_QuestLog.RemoveQuestWatch, info.questID)
+            else
+                pcall(C_QuestLog.AddQuestWatch, info.questID, watchType)
             end
         end
     end
+    cdb.untrackedBeforeFilter = false
 end
 
 local function ZoneName()
@@ -332,17 +338,18 @@ local function InitializeOptions()
     )
     enableSetting:SetValueChangedCallback(function(_, value)
         if value then
-            SnapshotWatched()
+            RecordTrackingBeforeFilter()
             SyncTracking(false)
             VUI.Print("Zone Quests", "|cFF00FF00On.|r Filtering to |cFFFFCC00" .. ZoneName() .. "|r")
         else
-            RestoreWatched()
-            VUI.Print("Zone Quests", "|cFFFF4444Off.|r All quests shown.")
+            RestoreTracking()
+            VUI.Print("Zone Quests", "|cFFFF4444Off.|r Your own quest tracking is back.")
         end
     end)
     Settings.CreateCheckbox(category, enableSetting,
         "When enabled, only quests in your current zone appear in the Objective Tracker. "
-        .. "Disabling will re-track all quests (Midnight removed the API to remember your original tracking state).")
+        .. "Disabling puts back the tracking you had chosen before you enabled it; quests picked up "
+        .. "in between are tracked.")
 
     local pins = {
         { key = "pinCampaign",
@@ -432,13 +439,13 @@ ef:SetScript("OnEvent", function(_, event, arg1)
 
     if event == "PLAYER_LOGIN" then
         -- Identity is available: bind BOTH tables. `db` is account-wide (every universal read
-        -- below is unchanged); `cdb` is this character's slot and holds manualWatched only.
+        -- below is unchanged); `cdb` is this character's slot and holds untrackedBeforeFilter only.
         db, cdb = VUI.BindScopedDB("VeritasUI_ZoneQuestsDB", UNIVERSAL, PERCHAR)
 
         -- ⚠ MIGRATION MUST RUN HERE: after the char table exists, and BEFORE anything reads a
         -- universal key. Read first and the feature acts on the pre-migration value for the
         -- whole session. Promotes this character's stored values for the newly-universal keys
-        -- and clears the vestigial account-wide copy of manualWatched.
+        -- and clears the vestigial account-wide copies of per-character keys.
         local promoted = VUI.MigrateScopedDB("VeritasUI_ZoneQuestsDB", UNIVERSAL, PERCHAR,
                                             "__vuiScopeMigrated")
         if promoted then
@@ -449,21 +456,14 @@ ef:SetScript("OnEvent", function(_, event, arg1)
                 .. table.concat(names, ", ") .. "  (taken from this character)")
         end
 
-        -- Old title-based snapshots migrate to questID-based. RE-POINTED at the per-character
-        -- table: it used to run at ADDON_LOADED against the account root, which is where the
-        -- key no longer lives. The root copy was migrated before any slot was ever seeded from
-        -- it, so existing slots are already clean -- this now covers the one case the old
-        -- placement never did, a slot created before the migration existed.
-        if cdb and cdb.manualWatched then
-            local first = next(cdb.manualWatched)
-            if first and type(cdb.manualWatched[first]) == "table" then
-                cdb.manualWatched = {}
-            end
-        end
+        -- Retire the pre-v1.17.12 login snapshot (audit Z1): it listed every quest, not the
+        -- player's choices, so it cannot seed the new record.
+        if cdb then cdb.manualWatched = nil end
+        db.manualWatched = nil
 
         InitializeOptions()
         C_Timer.After(2.0, function()
-            SnapshotWatched()
+            -- No snapshot here: the record is taken only when filtering is switched on.
             SyncTracking(false)
             if db.enabled then
                 VUI.Print("Zone Quests", "v" .. VUI.VERSION .. " active for |cFFFFCC00"
@@ -516,14 +516,14 @@ SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
         if not db then VUI.Print("Zone Quests", "Not ready."); return end
         if not db.enabled then VUI.Print("Zone Quests", "Already off."); return end
         db.enabled = false
-        RestoreWatched()
+        RestoreTracking()
         VUI.Print("Zone Quests", "|cFFFF4444Off.|r  /zq on to re-enable.")
 
     elseif msg == "on" or msg == "enable" then
         if not db then VUI.Print("Zone Quests", "Not ready."); return end
         if db.enabled then VUI.Print("Zone Quests", "Already on."); return end
         db.enabled = true
-        SnapshotWatched()
+        RecordTrackingBeforeFilter()
         SyncTracking(false)
         VUI.Print("Zone Quests", "|cFF00FF00On.|r  " .. ZoneName())
 
