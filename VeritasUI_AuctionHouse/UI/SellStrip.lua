@@ -370,14 +370,27 @@ end
 ----------------------------------------------------------------
 --  Wire one reusable button to an item (or hide it if data == nil)
 ----------------------------------------------------------------
--- MIDNIGHT reagent-quality tier atlases (verified via live-bag introspection — NOT a
--- formula; the DF/TWW "-Small"/plain names still exist in GetAtlasInfo but render OLD
--- art). Note the irregular T3 name (no "-12-" infix) — a real Midnight quirk.
-local TIER_ATLAS = {
-    [1] = "Professions-Icon-Quality-12-Tier1-Inv",
-    [2] = "Professions-Icon-Quality-12-Tier2-Inv",
-    [3] = "Professions-Icon-Quality-Tier3-Inv",
-}
+-- Profession-quality marker: asked of Blizzard per item, exactly as the bag buttons do.
+-- SetItemCraftingQualityOverlay (Blizzard_ItemButton/Mainline/ItemButtonTemplate.lua:323-349)
+-- tries C_TradeSkillUI.GetItemReagentQualityInfo, then GetItemCraftedQualityInfo, and draws
+-- `qualityInfo.iconInventory` at its native atlas size at TOPLEFT -3,2 (:300-316). Until v1.17.8
+-- this file kept its own table of three atlas names found by probing (with an irregular tier-3
+-- name) and asked only the reagent API, so crafted items showed no marker here while the bags
+-- showed one (audit A4). We call the APIs, not SetItemCraftingQualityOverlay itself: that
+-- helper registers our button on Blizzard's EventRegistry, which the strip does not need.
+local function QualityMarkerAtlas(link)
+    if not (C_TradeSkillUI and link) then return nil end
+    for _, fn in ipairs({ C_TradeSkillUI.GetItemReagentQualityInfo,
+                          C_TradeSkillUI.GetItemCraftedQualityInfo }) do
+        if fn then
+            local ok, info = pcall(fn, link)
+            if ok and type(info) == "table" and type(info.iconInventory) == "string" then
+                return info.iconInventory
+            end
+        end
+    end
+    return nil
+end
 
 ----------------------------------------------------------------
 --  Secure click wiring — the whole taint fix lives here.
@@ -468,22 +481,14 @@ local function SetButton(button, data)
     else
         button.border:Hide()
     end
-    -- Profession reagent-quality tier marker (upper-left), e.g. crafted reagents.
-    -- API verified (design doc): C_TradeSkillUI.GetItemReagentQualityByItemInfo -> 1/2/3.
-    -- Atlases in TIER_ATLAS (file scope) are the verified Midnight names. Guard with
-    -- GetAtlasInfo so any unmapped tier renders nothing instead of erroring.
-    local tierAtlas
-    if C_TradeSkillUI and C_TradeSkillUI.GetItemReagentQualityByItemInfo then
-        local ok, tier = pcall(C_TradeSkillUI.GetItemReagentQualityByItemInfo, data.itemID)
-        if ok and tier then
-            local name = TIER_ATLAS[tier]
-            if name and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) then
-                tierAtlas = name
-            end
-        end
+    -- Profession-quality marker (upper-left), from Blizzard (see QualityMarkerAtlas). Guarded
+    -- with GetAtlasInfo so an atlas the client does not have renders nothing instead of blank.
+    local tierAtlas = QualityMarkerAtlas(data.link)
+    if tierAtlas and C_Texture and C_Texture.GetAtlasInfo and not C_Texture.GetAtlasInfo(tierAtlas) then
+        tierAtlas = nil
     end
     if tierAtlas then
-        button.tier:SetAtlas(tierAtlas)
+        button.tier:SetAtlas(tierAtlas, true)   -- native size, as Blizzard's TextureKitConstants.UseAtlasSize
         button.tier:Show()
     else
         button.tier:Hide()
@@ -519,12 +524,11 @@ local function MakeButton(parent, index)
     b.border:SetPoint("BOTTOMRIGHT", 0, 0)
     b.border:Hide()
 
-    -- Profession reagent-quality tier icon (the diamond/pennant marker Blizzard shows
-    -- in bag slots), upper-left. 22w x 20h — the atlas isn't square; matching Blizzard's
-    -- wider-than-tall aspect (a square size stretched it vertically).
-    b.tier = b:CreateTexture(nil, "OVERLAY", nil, 1)
-    b.tier:SetPoint("TOPLEFT", -3, 3)
-    b.tier:SetSize(22, 20)
+    -- Profession-quality marker, upper-left. Sized by its atlas (SetAtlas(..., true) in
+    -- SetButton) and placed where Blizzard places its own: TOPLEFT -3,2 at OVERLAY 7
+    -- (ItemButtonTemplate.lua:306-308). Was a fixed 22x20 at -3,3 until v1.17.8.
+    b.tier = b:CreateTexture(nil, "OVERLAY", nil, 7)
+    b.tier:SetPoint("TOPLEFT", -3, 2)
     b.tier:Hide()
 
     b.count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
