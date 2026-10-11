@@ -1,5 +1,10 @@
 # VeritasUI — Probe Library & Verified Blizzard Reference
 
+> **Developer notebook — not needed to use VeritasUI.** It records in-game measurement
+> scripts and Blizzard values gathered while building the suite. Its entries were last
+> refreshed at v1.7.17 (patch 12.0.7); treat any value here as a starting point to
+> re-measure on the current client, not as current fact.
+
 **Status:** LIVING DOCUMENT — append-only reference, never "done."
 **Target:** WoW Midnight retail, Interface `120005` (12.0.7).
 **Last updated:** 2026-06-27, suite at **v1.7.17**, `main` @ `3993ad0`.
