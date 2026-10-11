@@ -80,21 +80,35 @@ local function DebugPrint(msg)
 end
 
 ----------------------------------------------------------------
---  CVar management — idempotent, value-checks before writing.
+--  "Cast on key down" — NOT ours to change (audit P2, v1.17.10)
 --
---  Reads the current CVar value and skips the write if it already
---  matches the target. Safe to call from any number of code paths
---  without worrying about redundant writes or ordering.
+--  The rotation needs ITS button to act on key release (see the PARITY note on the
+--  WrapScript below). Until v1.17.9 that was done by forcing WoW's account-wide
+--  ActionButtonUseKeyDown CVar to "0" at every login -- which changes every action bar for
+--  every VeritasUI player, rotation user or not -- and to "1" when PR was disabled.
+--  Blizzard lets each secure button decide for itself: SecureActionButton_ShouldUseOnKeyDown
+--  reads the button's `useOnKeyDown` attribute and falls back to the CVar only when it is nil
+--  (Blizzard_FrameXML/SecureTemplates.lua:795-803, used at :813-814). So rotBtn sets that
+--  attribute below and the CVar is left to the player.
+--
+--  Because every user's value had been overwritten since PR existed, no personal choice
+--  survives in it; it is put back to WoW's default ONCE (db.keyDownRestored), after combat if
+--  needed. After that the player's own setting is never touched again.
 ----------------------------------------------------------------
-function PR:EnsureActionBarCVar(enabled)
-    local target = enabled and "0" or "1"
-    if C_CVar.GetCVar("ActionButtonUseKeyDown") == target then return end
-    local ok, err = pcall(C_CVar.SetCVar, "ActionButtonUseKeyDown", target)
-    if not ok then
-        VUI.Print("Priority Rotation",
-            "|cFFFF8800ActionButtonUseKeyDown CVar could not be set — "
-            .. "key-up firing may not work correctly. (" .. tostring(err) .. ")|r")
-    end
+function PR:RestoreKeyDownSettingOnce()
+    if not self.db or self.db.keyDownRestored then return end
+    VUI.CombatQueue.Add(function()
+        local cv  = C_CVar
+        local def = cv and cv.GetCVarDefault and cv.GetCVarDefault("ActionButtonUseKeyDown")
+        if def and cv.GetCVar("ActionButtonUseKeyDown") ~= def then
+            local ok = pcall(cv.SetCVar, "ActionButtonUseKeyDown", def)
+            if not ok then return end   -- try again next login
+            VUI.Print("Priority Rotation", "WoW's |cFFFFFF00cast on key down|r setting has been "
+                .. "put back to its default. VeritasUI no longer changes it; set it in WoW's options "
+                .. "as you like.")
+        end
+        PR.db.keyDownRestored = true
+    end)
 end
 
 ----------------------------------------------------------------
@@ -120,6 +134,9 @@ end
 local rotBtn = CreateFrame("Button", PR.BUTTON_NAME, UIParent,
     "SecureActionButtonTemplate,SecureHandlerBaseTemplate")
 rotBtn:SetAttribute("type", "macro")
+-- Act on key RELEASE for this button only, whatever the player's account-wide setting says
+-- (see RestoreKeyDownSettingOnce above for why the CVar is no longer used).
+rotBtn:SetAttribute("useOnKeyDown", false)
 rotBtn:SetAttribute("step", 1)
 rotBtn:SetAttribute("macrotext", "")
 rotBtn:RegisterForClicks("AnyUp", "AnyDown")
@@ -137,8 +154,8 @@ rotBtn:Execute("macros = newtable(); macros[1] = ''")
 -- PARITY BUG (found 2026-07-11, latent since inception): the keybind path
 -- (SetOverrideBindingClick) delivers TWO clicks per physical press — key-down
 -- and key-up — and this wrap ran on both, advancing two steps per press while
--- the cast fires only on the UP edge (ActionButtonUseKeyDown=0, which
--- EnsureActionBarCVar enforces whenever PR is enabled). Result: every other
+-- the cast fires only on the UP edge (this button's useOnKeyDown=false attribute;
+-- until v1.17.10 the account-wide ActionButtonUseKeyDown=0). Result: every other
 -- compiled step was silently discarded. The old clumping compiler masked it
 -- (consecutive duplicate steps put every spell in both parity classes); the
 -- v1.9.6 smooth-weave compiler exposed it as hard starvation — with an
@@ -701,7 +718,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         ef:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
-        PR:EnsureActionBarCVar(PR:IsEnabled())
+        PR:RestoreKeyDownSettingOnce()
         PR:SwitchToCurrentSpec()
         PR:CompileSequence()
         PR._lastProfileKey = PR:GetProfileKey()
@@ -896,12 +913,9 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         VUI.Print("Priority Rotation", "  C_RestrictedActions:       " .. (hasRestrict and G.."available"..E or R.."NOT FOUND"..E))
 
         VUI.Print("Priority Rotation", "─────────────────────────────────────────")
-        -- Write-permission probe: write back the CVar's CURRENT value.  The
-        -- old hardcoded "0" silently flipped a user-facing setting — with PR
-        -- disabled, EnsureActionBarCVar keeps this CVar at "1" (Press-and-
-        -- Hold Casting), and a diagnostic must never mutate that.  A same-
-        -- value SetCVar still exercises write lockdown, which is all this
-        -- probe exists to test.
+        -- Write-permission probe: write back the CVar's CURRENT value. It is the
+        -- player's own setting, so a diagnostic must never change it; a same-value
+        -- SetCVar still exercises write lockdown, which is all this probe tests.
         local cvarCur = C_CVar.GetCVar("ActionButtonUseKeyDown")
         local cvarOk, cvarErr = pcall(C_CVar.SetCVar, "ActionButtonUseKeyDown", cvarCur or "0")
         if cvarOk then

@@ -545,13 +545,11 @@ local function BuildNativeSettingsPanel()
     )
     enableSetting:SetValueChangedCallback(function(_, value)
         if value then
-            PR:EnsureActionBarCVar(true)
             PR:CompileSequence()
             PR:ScheduleScan(0.5)
             VUI.Print("Priority Rotation", "|cFF00FF00Enabled.|r")
         else
             PR:ClearOverride()
-            PR:EnsureActionBarCVar(false)
             VUI.Print("Priority Rotation", "|cFFFF4444Disabled.|r")
         end
     end)
