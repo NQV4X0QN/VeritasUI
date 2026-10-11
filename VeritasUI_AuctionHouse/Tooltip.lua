@@ -275,7 +275,23 @@ local COIN_C = "|A:coin-copper:14:14:2:0|a"
 -- site runs at hover time. Two guards that could never fire were removed in v1.9.13 - do not
 -- re-add them; the load order is the guarantee. The `or tostring(price)` fallbacks stay,
 -- since those cover Format returning nil, which is a different risk.
+--
+-- ⚠ BLIZZARD'S FORMATTER FIRST (v1.17.8, audit A3). Blizzard's own Sell Price line is
+-- `string.format("%s: %s", SELL_PRICE, MoneyFormatterUtil.FormatMoney(cost, GameTooltipMoneyFormat))`
+-- (Blizzard_GameTooltip/Mainline/GameTooltip.lua:327). That config adds thousands separators to
+-- gold (BreakUpLargeNumbers) and drops to g/s/c letters under Colorblind Mode
+-- (Blizzard_SharedXML/MoneyFormatter.lua:134-142, 256-262); the hand-built markup below did
+-- neither, so "12345g" sat under Blizzard's "12,345g". Its atlas markup defaults are the same
+-- 14x14 / 2,0 we probe-matched (MoneyFormatter.lua:43-50), so glyph size and baseline do not
+-- move. Safe from addon execution: the only Blizzard state it reads is the colorblind CVar, and
+-- CVarCallbackRegistry:GetCVarValue caches only `if issecure()` (CvarUtil.lua:145-158).
+-- The hand-built body stays as the fallback for a client without the formatter.
 local function CoinMarkup(copper)
+    if _G.MoneyFormatterUtil and _G.MoneyFormatterUtil.FormatMoney and _G.GameTooltipMoneyFormat then
+        local ok, text = pcall(_G.MoneyFormatterUtil.FormatMoney,
+            math.floor(tonumber(copper) or 0), _G.GameTooltipMoneyFormat)
+        if ok and type(text) == "string" and text ~= "" and text ~= " " then return text end
+    end
     local g, s, c = AH.Money.Breakdown(copper)
     local parts = {}
     if g > 0 then parts[#parts + 1] = g .. COIN_G end
