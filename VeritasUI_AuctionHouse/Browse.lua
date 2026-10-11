@@ -378,6 +378,8 @@ local function Finish()
         -- so switching engines must not hand out a fresh allowance. Replicate owns the
         -- canonical reader, AH.Replicate.SecondsUntilReady.
         if AH.db then AH.db.lastScan = time() end
+        -- Drop items this auction house no longer lists (audit A1; see AH.DB.PruneUnseen).
+        AH.DB.PruneUnseen(AH.DB.Today())
     end
 
     local rows = seenCount

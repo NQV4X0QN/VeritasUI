@@ -878,6 +878,10 @@ local function EnsureDriver()
             driver:Hide()
             progress = 1
             SetLastScanTime(time())
+            -- Drop items this auction house no longer lists (audit A1; see AH.DB.PruneUnseen).
+            -- Only on this full-completion path: a scan that ended in the finalize-error branch
+            -- above, or was aborted by AH_CLOSED, removes nothing.
+            AH.DB.PruneUnseen(AH.DB.Today())
             if trace then
                 trace.outcome   = "complete"
                 trace.committed = a or 0

@@ -359,7 +359,8 @@ local function ReportComparison()
         end
     end
 
-    -- Coverage the other way. ⚠ Split by FRESHNESS: the price store keeps 14 days, so a
+    -- Coverage the other way. ⚠ Split by FRESHNESS: the price store keeps records for 30 days
+    -- after they were last seen (AH.DB.PruneUnseen), so a
     -- stored key browse did not return is usually just an expired listing, not a browse
     -- gap. Only a key the MOST RECENT scan touched (age 0) is a real gap — conflating
     -- the two is what made the first run's "browse missed 6028" uninterpretable.

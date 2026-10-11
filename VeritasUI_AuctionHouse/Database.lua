@@ -35,7 +35,12 @@ local GetDetailedItemLevelInfo = C_Item and C_Item.GetDetailedItemLevelInfo or G
 
 AH.DB = {}
 
-local DEFAULT_RETENTION_DAYS = 14
+local DEFAULT_RETENTION_DAYS = 14   -- per-item DAY HISTORY kept inside a record (Record below)
+-- Whole RECORDS are dropped once unseen for this long before a successful scan (PruneUnseen).
+-- Until v1.17.8 nothing ever removed a record: the per-day prune above only runs for an item
+-- that is being recorded again, so an item that left the auction house kept its last price, its
+-- days and its key forever (measured 2026-10-10: 30,027 records / 5.1 MB, 8,103 unseen >60 days).
+local RECORD_RETENTION_DAYS = 30
 
 -- Current absolute Unix day.
 local function Today()
@@ -258,6 +263,25 @@ function AH.DB.GetPriceAge(key)
     local rec = AH.db and key and AH.db.prices[key]
     if not rec or not rec.seen then return nil end
     return Today() - rec.seen
+end
+
+-- Remove every record not seen within RECORD_RETENTION_DAYS of `refDay`. Returns the count.
+--
+-- ⚠ `refDay` is the day of the SUCCESSFUL SCAN that is calling this, never "today at login":
+-- a character that has not scanned for months must not lose its whole database by logging in.
+-- Called only from each engine's committed (non-dry) completion -- Browse.lua Finish and the
+-- Replicate driver's completion -- so a failed, aborted or dry scan removes nothing.
+function AH.DB.PruneUnseen(refDay)
+    if not (AH.db and AH.db.prices) then return 0 end
+    local cutoff = (refDay or Today()) - RECORD_RETENTION_DAYS
+    local removed = 0
+    for key, rec in pairs(AH.db.prices) do
+        if type(rec) ~= "table" or type(rec.seen) ~= "number" or rec.seen < cutoff then
+            AH.db.prices[key] = nil
+            removed = removed + 1
+        end
+    end
+    return removed
 end
 
 -- Wipe the entire price store (diagnostic / user reset).
