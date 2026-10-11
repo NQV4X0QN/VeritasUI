@@ -93,7 +93,7 @@ end
 -- Saved settings, split by SCOPE. Authority: references/setting-scope-map.md in the skill
 -- directory; enforced by scope_map_test and module_scope_test.
 --
--- ⚠ ALL TWELVE of these are shared across characters. That is the point of the refactor: the
+-- ⚠ ALL of these are shared across characters. That is the point of the refactor: the
 -- Delve count's placement in particular was per-character purely as a side effect of the whole
 -- module being per-character, so a value tuned and confirmed on one character never reached any
 -- other -- and a later change to the shipped default could never reach a character that already
@@ -116,7 +116,8 @@ local UNIVERSAL = {
     -- ⚠ THIRD ORIGIN THIS SETTING HAS USED. Replaces delveCountCenterY/X (from the icon's
     -- CENTRE), which replaced delveCountOffsetY (from its BOTTOM EDGE). All superseded keys
     -- are dropped at login rather than reinterpreted -- see DELVE_COUNT_INSET_X.
-    -- -1/-1 is owner-confirmed in game; NEGATIVE means 1px outside the icon's corner.
+    -- 0/0 is owner-settled in game (2026-08-15, see DELVE_COUNT_INSET_X); NEGATIVE values
+    -- push the digit outside the icon's corner.
     delveCountInsetX = 0,
     delveCountInsetY = 0,
     -- Horizontal inset used ONLY when the count reads 1, overriding delveCountInsetX. Live
@@ -129,17 +130,17 @@ local UNIVERSAL = {
     -- Points added to Blizzard's number font for the count. Live via /qol delvesize.
     delveFontDelta = -3,
     -- TYPEFACE for the count. Live via /qol delveface. Two values, both SOURCED:
-    --   "plaque"   — the widget's own Text face (Friz Quadrata). CURRENT DEFAULT, and it is
-    --                the default because the owner reported ARIALN looked "weird" next to
-    --                everything else on the plaque (2026-08-05).
+    --   "plaque"   — the widget's own Text face (Friz Quadrata). Formerly the default, chosen
+    --                when the owner reported ARIALN looked "weird" next to the plaque
+    --                (2026-08-05); the shipped default is now "blizzard".
     --   "blizzard" — StackCount's own face, i.e. what Blizzard draws its count in:
     --                NumberFontNormal -> NumberFont_Outline_Med -> Fonts\ARIALN.TTF.
-    -- ⚠ The default is deliberately UNCHANGED. This key exists so the two can be compared
-    -- in game without a release round trip, NOT to quietly reverse that decision.
+    -- This key exists so the two can be compared in game without a release round trip.
     delveCountFace = "blizzard",
     -- OUTLINE weight for the count. Live via /qol delveoutline. WoW has no bold flag, so the
-    -- outline IS the weight knob. "THICKOUTLINE" is ours and is the current default;
-    -- "OUTLINE" is what Blizzard's NumberFont_Outline_Med declares (outline="NORMAL").
+    -- outline IS the weight knob. "OUTLINE" is the shipped default and
+    -- is what Blizzard's NumberFont_Outline_Med declares (outline="NORMAL"); "THICKOUTLINE" is
+    -- the heavier option.
     -- Stored as the literal SetFont flag string so nothing has to map it.
     delveCountOutline = "OUTLINE",
 }
@@ -1026,8 +1027,8 @@ local function SetupItemLevels()
 end
 
 -- ── Retired: World Map Coordinates (audit Q1, v1.17.9) ───────
--- WoW 12.1 ships its own readout (Options > Interface, map coordinates section: "Player Coordinates" and
--- "Cursor Coordinates", CVars worldMapShowPlayerCoords / worldMapShowCursorCoords,
+-- WoW 12.1 ships its own readout (Options > Interface, map coordinates section; CVars
+-- worldMapShowPlayerCoords / worldMapShowCursorCoords,
 -- WorldMapCoordsPanelMixin in Blizzard_WorldMapTemplates.lua). Ours duplicated it and was
 -- less correct: its player numbers came from the zone you stand in even while the map showed
 -- another one, and it hid the map's quest-log toggle until /reload. So it is gone, and a
@@ -1111,8 +1112,6 @@ local function SetupMinimapCoordinates()
             self._last = str
         end
     end)
-
-    frame:Show()
 end
 
 -- ── Feature: AFK Screen ─────────────────────────────────────
@@ -1618,13 +1617,12 @@ local DELVE_POLL_RATE = 0.5
 -- default first on an unstated assumption that the owner's hand-dialled position was
 -- equivalent to theirs; it was not -- he reported it "too close to the center". Evidence for
 -- the construction is not evidence for the constants, and adopting both from one reading was
--- the error. -1/-1 is CONFIRMED GOOD IN GAME (2026-08-07): "sets it exactly where I want".
+-- the error. (-1/-1 was confirmed in game 2026-08-07, then superseded by 0/0 on 2026-08-15.)
 --
 -- Insets are stored POSITIVE-inward (in from the right edge, up from the bottom edge) so the
--- numbers read the same as the /qol delvenudge arguments. These being NEGATIVE therefore
--- means the digit sits 1px OUTSIDE the icon's bottom-right corner -- a deliberate departure
--- from Blizzard's inset placement, in the same spirit as the checkmark departing from their
--- 16x16 corner EarnedCheck. Do not "correct" them back to 2/2 on the grounds that Blizzard
+-- numbers read the same as the /qol delvenudge arguments; NEGATIVE pushes the digit outside
+-- the icon's bottom-right corner. 0/0 is a deliberate departure from Blizzard's inset
+-- placement, in the same spirit as the checkmark departing from their 16x16 corner EarnedCheck. Do not "correct" them back to 2/2 on the grounds that Blizzard
 -- uses 2/2: that exact move is what this comment exists to prevent.
 local DELVE_COUNT_INSET_X = 0
 local DELVE_COUNT_INSET_Y = 0
@@ -2055,7 +2053,7 @@ local DELVE_FALLBACK_FONT_FILE = "Fonts\\FRIZQT__.TTF"
 --
 -- ⚠ As of v1.14.11 this is SWITCHABLE via db.delveCountFace ("plaque" | "blizzard"), so the
 -- owner can A/B it in game against the number Blizzard itself draws on the pre-entry
--- placard. The DEFAULT is unchanged ("plaque"). See the key's comment in the defaults table.
+-- placard. The shipped default is "blizzard". See the key's comment in the defaults table.
 --
 -- ⚠ CORRECTION (sourced 2026-08-15, Blizzard_UIWidgetTemplateBase.lua:531): the old comment
 -- here said the template "declares it inherits=GameFontNormal, so reading its file gives us
@@ -2399,7 +2397,7 @@ local function DumpDelvePlacardProbe()
             f and ("face=%s size=%.0f flags=%q color=%s")
                 :format(f.face, f.size, f.flags, tostring(f.color)) or "ABSENT"))
     end
-    local face = (db and db.delveCountFace) or "plaque"
+    local face = (db and db.delveCountFace) or "blizzard"
     local outl = (db and db.delveCountOutline) or "?"
     print(("  our settings:    face=%s outline=%s sizeDelta=%s inset=%s,%s inset1=%s")
         :format(face, outl, tostring(db and db.delveFontDelta),
@@ -2844,8 +2842,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         self:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
-        -- Identity is available: bind BOTH tables. `db` is account-wide, so all twelve universal
-        -- read sites below are unchanged; `cdb` holds repairFunding and afkUIDirty.
+        -- Identity is available: bind BOTH tables. `db` is account-wide, so every universal
+        -- read site below is unchanged; `cdb` holds repairFunding and afkUIDirty.
         db, cdb = VUI.BindScopedDB("VeritasUI_QualityOfLifeDB", UNIVERSAL, PERCHAR)
 
         -- ⚠ MUST run before any universal read below, or every feature acts on the pre-migration
@@ -3211,10 +3209,13 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
                 .. "digits share a baseline, so the vertical never differs.",
                 d1, g + d1, g))
         else
-            db.delveCountInsetX1 = tonumber(one)
+            db.delveCountInsetX1 = tonumber(one) or 0
+            -- Worded as the status line above words it: a DELTA relative to the other digits.
+            -- The old "N px in from the right edge" described the pre-v1.14.14 absolute model.
+            local g = tonumber(db.delveCountInsetX) or DELVE_COUNT_INSET_X
             VUI.Print("Quality of Life", format(
-                "The digit |cFFFFFF001|r set to |cFFFFFF00%d|r px in from the right edge.",
-                db.delveCountInsetX1))
+                "The digit |cFFFFFF001|r is now nudged |cFFFFFF00%+d|r px relative to the other "
+                .. "digits (|cFFFFFF00%d|r px in).", db.delveCountInsetX1, g + db.delveCountInsetX1))
         end
         return
     end
