@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.17.18] - 2026-10-14
+
+### Changed
+
+- **Interface bumped to `120105` for WoW patch 12.1.5.** All seven module TOCs updated so the suite is not flagged out of date on the 12.1.5 client — no code changes (all `.toc` files)
+
+### Internal
+
+- **The 12.1.0 and 12.1.5 UI source trees were diffed to bound the patch's impact.** None of the 15 Lua functions, 1 global, 34 mixin methods or 13 API-documentation names that 12.1.5 removed are referenced by the suite; the API changes touching namespaces we call (`C_ActionBar`, `C_ClassColor`, `C_LFGInfo`, `C_Timer`) are additions only. This does not cover changed behaviour of surviving functions, which only surfaces in play
+
+
 ## [1.17.17] - 2026-10-11
 
 ### Changed
