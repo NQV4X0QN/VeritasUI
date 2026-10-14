@@ -1,5 +1,5 @@
 -- VeritasUI_QualityOfLife / QualityOfLife.lua
--- Functional enhancements: map coordinates, item levels, auto-repair, auto-sell, AFK screen.
+-- Functional enhancements: item levels, auto-repair, auto-sell, AFK screen.
 -- Settings: Options → AddOns → Quality of Life  |  /qol
 
 local ADDON_NAME     = "VeritasUI_QualityOfLife"
@@ -102,7 +102,6 @@ local UNIVERSAL = {
     autoSellJunk   = true,
     autoRepair     = true,
     showItemLevels = true,
-    showMinimapCoords = true,
     afkScreen      = true,
     -- Paints the Nemesis groups-remaining count on the Delve plaque icon that
     -- otherwise only reveals it on hover, and a checkmark once all groups are down.
@@ -149,7 +148,9 @@ local UNIVERSAL = {
 -- MIGRATION list so a value still sitting in a pre-scope per-character slot is promoted to the
 -- account root first, where RetireWorldMapCoords reads it and hands the player Blizzard's
 -- option. Remove them from here only together with RetireWorldMapCoords.
-local RETIRED_UNIVERSAL = { showMapCoords = true, mapCoordsPos = true }
+-- showMinimapCoords joined them in v1.17.19 (WoW 12.1.5 ships its own minimap readout), read
+-- once by RetireMinimapCoords on the same terms.
+local RETIRED_UNIVERSAL = { showMapCoords = true, mapCoordsPos = true, showMinimapCoords = true }
 
 -- The migration list is UNIVERSAL plus the retired keys, BUILT from them rather than restated, so
 -- it cannot drift from either. VUI.MigrateScopedDB only reads the KEYS of this table.
@@ -180,8 +181,6 @@ local settingsCategoryID
 local frame = CreateFrame("Frame")
 
 local itemLevelsSetup   = false  -- guards SetupItemLevels() re-entry
-local miniCoordsSetup   = false  -- guards SetupMinimapCoordinates() re-entry
-local miniCoordsFrame   = nil    -- reference for mid-session show/hide
 
 -- ── /way — proximity auto-clear state ───────────────────────
 local wayTicker        = nil
@@ -1056,62 +1055,25 @@ local function RetireWorldMapCoords()
     end)
 end
 
--- ── Feature: Minimap Coordinates ────────────────────────────
--- Player coordinates shown directly under the minimap. Display-only:
--- a plain FontString on an insecure frame, no protected actions, so it
--- adds no taint surface. Parented to Minimap, so it inherits the map's
--- show/hide (e.g. it vanishes with the minimap during the AFK screen).
--- Hidden automatically wherever the API returns no position (dungeons,
--- raids, arenas), so it never displays a stale value.
---
--- Reads position through C_Map:
--- C_Map.GetBestMapForUnit -> GetPlayerMapPosition, x/y in 0-1 scaled to
--- 0-100, nil-guarded (pcall, x>0 or y>0).
-local function SetupMinimapCoordinates()
-    if miniCoordsSetup then return end
-    if not Minimap then return end
-    miniCoordsSetup = true
-
-    local THROTTLE = 0.1   -- 10 Hz; coordinates change slowly, 30 fps is wasteful here
-
-    local holder = CreateFrame("Frame", nil, Minimap)
-    miniCoordsFrame = holder
-    holder:SetSize(80, 12)
-    holder:SetPoint("TOP", Minimap, "BOTTOM", 0, -6)
-    holder:SetFrameStrata(Minimap:GetFrameStrata())
-    holder:SetFrameLevel(Minimap:GetFrameLevel() + 5)
-
-    -- GameFontHighlightSmall (white): the font Blizzard's own World Map coordinates use
-    -- (Blizzard_WorldMapTemplates.xml:206, 217), so the two readouts match. Was gold
-    -- GameFontNormalSmall to match VeritasUI's retired map readout (owner request 2026-10-11).
-    local text = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    text:SetPoint("CENTER", holder, "CENTER", 0, 0)
-    text:SetJustifyH("CENTER")
-    text:SetShadowColor(0, 0, 0, 1)
-    text:SetShadowOffset(1, -1)
-    holder.text = text
-
-    holder:SetScript("OnUpdate", function(self, elapsed)
-        if not db or not db.showMinimapCoords then self:Hide(); return end
-        self._t = (self._t or 0) + elapsed
-        if self._t < THROTTLE then return end
-        self._t = 0
-
-        local str = ""
-        local mapID = C_Map.GetBestMapForUnit("player")
-        if mapID then
-            local ok, pos = pcall(C_Map.GetPlayerMapPosition, mapID, "player")
-            if ok and pos then
-                local x, y = pos:GetXY()
-                if x and y and (x > 0 or y > 0) then
-                    str = format("%.1f, %.1f", x * 100, y * 100)
-                end
-            end
-        end
-        if str ~= self._last then
-            self.text:SetText(str)
-            self._last = str
-        end
+-- ── Retired: Minimap Coordinates (v1.17.19) ─────────────────
+-- WoW 12.1.5 ships its own readout under the minimap (Options > Interface, map coordinates
+-- section; CVar minimapShowPlayerCoords, MinimapPlayerCoordsMixin in
+-- Blizzard_Minimap/Mainline/Minimap.lua). It reads the same C_Map position at the same 10 Hz
+-- ours did, so ours is gone and a player who had it on is handed Blizzard's, once. Same shape
+-- and same combat-queue ordering as RetireWorldMapCoords above.
+local function RetireMinimapCoords()
+    if not db or db.showMinimapCoords == nil then return end
+    if db.showMinimapCoords ~= true then
+        db.showMinimapCoords = nil
+        return
+    end
+    VUI.CombatQueue.Add(function()
+        local cv  = _G.C_CVar
+        local set = cv and cv.SetCVar
+        if set then pcall(set, "minimapShowPlayerCoords", "1") end
+        db.showMinimapCoords = nil
+        VUI.Print("Quality of Life", "Minimap coordinates now use WoW's own option "
+            .. "(Options > Interface) and have been turned on for you.")
     end)
 end
 
@@ -2724,23 +2686,12 @@ local function InitializeOptions()
         Settings.CreateCheckbox(category, setting, tip)
     end
 
-    AddCheckbox("showMinimapCoords", "Show Minimap Coordinates",
-        "Displays your current coordinates directly below the minimap. Hidden automatically in dungeons, raids, and other areas without a position.",
-        function(value)
-            if value then
-                if not miniCoordsSetup then SetupMinimapCoordinates()
-                elseif miniCoordsFrame then miniCoordsFrame:Show() end
-            else
-                if miniCoordsFrame then miniCoordsFrame:Hide() end
-            end
-        end)
-
     AddCheckbox("showItemLevels", "Show Item Levels",
         "Displays item level numbers on equipment in bags, bank, character panel, and merchants. Quest rewards are excluded.",
         function(value)
             -- Live-apply BOTH ways. Enable-only was the bug: the module's stated contract is
             -- that every QoL toggle applies mid-session, and this one needed a /reload to take
-            -- effect in the off direction. Mirrors showMinimapCoords directly above.
+            -- effect in the off direction.
             if value then
                 SetupItemLevels()
             elseif HideAllItemLevelOverlays then
@@ -2895,7 +2846,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 
         if db.showItemLevels then SetupItemLevels()     end
         RetireWorldMapCoords()
-        if db.showMinimapCoords then SetupMinimapCoordinates() end
+        RetireMinimapCoords()
 
         if db.autoSellJunk or db.autoRepair then
             self:RegisterEvent("MERCHANT_SHOW")

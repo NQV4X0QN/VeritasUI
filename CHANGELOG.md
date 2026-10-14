@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.19] - 2026-10-14
+
+### Removed
+
+- `VeritasUI_QualityOfLife` — **Minimap coordinates, now built into WoW.** Patch 12.1.5 added its own coordinates under the minimap (Options → Interface, map coordinates section), reading the same position at the same rate ours did. If you had ours on, WoW's is turned on for you once at your next login; if you had it off, nothing changes. WoW's "coordinates by tenths" option in the same section controls whether decimals are shown (`QualityOfLife.lua`, `VeritasUI_QualityOfLife.toc`, `README.md`)
+
+
 ## [1.17.18] - 2026-10-14
 
 ### Changed

@@ -20,11 +20,12 @@ Settings: **Options → AddOns → Clean Solo**, or `/cs`. Changes apply after a
 ### Quality of Life — small conveniences
 - **Item levels** on gear in your bags, bank, warband bank, character panel and at merchants
 - **Auto sell junk** and **auto repair** at merchants, with a choice of paying repairs from guild funds or your own gold
-- **Minimap coordinates** under the minimap (for World Map coordinates, use WoW's own option in Options → Interface)
 - **`/way` waypoints** in the format most guides use, e.g. `/way #2351 45.2 56.3`, placing WoW's own map pin and arrow (if TomTom is installed, it keeps `/way`)
 - **AFK screen**: a slow camera orbit with your name, level, item level and zone while you're away, which also helps against screen burn-in
 - **Delve Nemesis count** shown right on the Delve objective icon instead of only in its tooltip
 - **Journeys**: adds the "Show as Experience Bar" checkbox to Delves and Prey cards, and lets you click the reputation or honor bar to open that faction's page or the PvP window
+
+For map and minimap coordinates, use WoW's own options in **Options → Interface**.
 
 Settings: **Options → AddOns → Quality of Life**, or `/qol`.
 
