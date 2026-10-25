@@ -1141,6 +1141,11 @@ local function AddSpecFlyout(_, root)
             -- Same WoWUIBugs #783 defence as the Tools dropdown (Settings.lua): a submenu built by
             -- addon code must not leave the menu compositor a tainted nil minimum width.
             desc:SetMinimumWidth(1)
+            -- A submenu parent's click keeps the menu OPEN by default: the default (nil)
+            -- response only closes menus when the element has no children, unless the element
+            -- opts in (Menu.lua:2233-2243, flag at :742-748). Without this the AddOns menu stayed
+            -- on screen after the click opened our window, unlike every other entry.
+            desc:SetShouldRespondIfSubmenu(true)
             for i = 1, n do
                 local id, name = C_SpecializationInfo.GetSpecializationInfo(i)
                 if id and name then

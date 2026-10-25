@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.2] - 2026-10-24
+
+### Fixed
+
+- `VeritasUI_PriorityRotation` — **Clicking Priority Rotation in the minimap AddOns menu closes the menu again.** Since the spec list was added in 1.19.0, the menu stayed open after the click opened Priority Rotation; it now closes like every other entry. Hovering still opens the spec list (`Core.lua`)
+
+
 ## [1.19.1] - 2026-10-24
 
 ### Changed
