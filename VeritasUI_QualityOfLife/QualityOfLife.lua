@@ -146,6 +146,8 @@ local UNIVERSAL = {
     -- the toggles above: it overrides a faction the player chose to watch, and the suite ships
     -- to other players who never asked for that.
     followReputationGains = false,
+    -- The icon the next /note starts with: the last one chosen from a note's menu.
+    mapNoteIcon = "Waypoint-MapPin-Untracked",
 }
 -- RETIRED keys (audit Q1, v1.17.9): the world-map coordinate readout was removed in favour of
 -- Blizzard's own. They are no longer defaults -- nothing seeds them -- but they stay in the
@@ -2810,18 +2812,36 @@ end
 -- (WoWUIBugs #783, same defence as the PR Tools dropdown).
 -- MEASURED (owner, 2026-10-25): the World Map and WoW's coordinates work inside a Labyrinth,
 -- i.e. the player has a map position there.
--- NOT MEASURED: which pin atlas looks right -- the first that resolves in MAP_NOTE_ATLASES is
--- used, ending on Blizzard's own map-pin art, which is sourced from their XML.
 local MAP_NOTE_TEMPLATE = "VeritasUI_MapNotePinTemplate"
-local MAP_NOTE_ATLASES  = { "VignetteLoot", "Waypoint-MapPin-Untracked" }
 local MAP_NOTE_MAX_TEXT = 120
 local mapNotesProvider
 
-local function MapNoteAtlas()
-    for i = 1, #MAP_NOTE_ATLASES do
-        if DelveAtlasExists(MAP_NOTE_ATLASES[i]) then return MAP_NOTE_ATLASES[i] end
-    end
-    return MAP_NOTE_ATLASES[#MAP_NOTE_ATLASES]
+-- The icons a note can use, chosen from its menu. Every atlas except the first was READ OFF A
+-- LIVE BLIZZARD PIN with /qol mappins (owner, 2026-10-25: Labyrinth of Kindo'jan map 2647 and
+-- Silvermoon map 2393), so each is art Blizzard draws on the World Map itself. The first is
+-- Blizzard's own map-pin art, sourced from WaypointLocationDataProvider.xml, and is the default
+-- and the fallback for an atlas this client no longer has. Labels are ours.
+-- ⚠ A key icon was asked for but none was seen on a live map, so none is offered: do not add an
+-- atlas name to this list without a /qol mappins (or GetAtlasInfo) measurement behind it.
+local MAP_NOTE_ICONS = {
+    { atlas = "Waypoint-MapPin-Untracked", label = "Map Pin" },
+    { atlas = "labyrinth-locked-64x64",    label = "Locked Door" },
+    { atlas = "labyrinth-active-64x64",    label = "Open Door" },
+    { atlas = "VignetteLoot",              label = "Treasure" },
+    { atlas = "QuestNormal",               label = "Quest" },
+    { atlas = "Dungeon",                   label = "Dungeon" },
+    { atlas = "delves-regular",            label = "Delve" },
+    { atlas = "Quartermaster",             label = "Vendor" },
+    { atlas = "TaxiNode_Neutral",          label = "Flight Point" },
+    { atlas = "poi-hub",                   label = "Quest Hub" },
+}
+local MAP_NOTE_DEFAULT_ICON = MAP_NOTE_ICONS[1].atlas
+
+-- The atlas a note draws with: its own if this client has it, else the default.
+local function MapNoteAtlas(note)
+    local a = note and note.icon
+    if a and DelveAtlasExists(a) then return a end
+    return MAP_NOTE_DEFAULT_ICON
 end
 
 local function MapNotesRefresh()
@@ -2879,7 +2899,9 @@ local function AddMapNote(text)
     -- "|" starts an escape sequence in a tooltip; doubling it shows it literally.
     text = text:sub(1, MAP_NOTE_MAX_TEXT):gsub("|", "||")
     cdb.mapNotes = cdb.mapNotes or {}
+    -- A new note starts with the icon last chosen, so a run of door notes needs one pick.
     table.insert(cdb.mapNotes, { mapID = mapID, x = x, y = y, text = text,
+                                 icon = (db and db.mapNoteIcon) or MAP_NOTE_DEFAULT_ICON,
                                  instance = CurrentInstanceID() })
     VUI.Print("Quality of Life", "Map note added: " .. text)
     MapNotesRefresh()
@@ -2889,7 +2911,8 @@ local function MapNoteCommand(msg)
     local text = strtrim(msg or "")
     if text == "" then
         VUI.Print("Quality of Life", "|cFFFFFF00/note <text>|r leaves a note on the map where you're "
-            .. "standing. Click a note on the map to remove it. |cFFFFFF00/note clear|r removes "
+            .. "standing. Click a note on the map to change its icon or remove it. "
+            .. "|cFFFFFF00/note clear|r removes "
             .. "the notes on your current map.")
         return
     end
@@ -2925,7 +2948,7 @@ function VeritasUI_MapNotePinMixin:OnAcquired(note)
     -- Exactly VignettePinBaseMixin:ApplyTextures (VignetteDataProvider.lua:280-290): the atlas
     -- at its native size on both textures, the pin sized to it, and the highlight desaturated
     -- .75 as their in-view vignettes are (:381).
-    local atlas = MapNoteAtlas()
+    local atlas = MapNoteAtlas(note)
     self.Icon:SetAtlas(atlas, true)
     self.HighlightTexture:SetAtlas(atlas, true)
     local w, h = self.Icon:GetSize()
@@ -2938,7 +2961,7 @@ function VeritasUI_MapNotePinMixin:OnMouseEnter()
     if not self.note then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT", -16, -4)
     GameTooltip_SetTitle(GameTooltip, self.note.text)
-    GameTooltip_AddColoredLine(GameTooltip, "Click to remove this note.", GREEN_FONT_COLOR)
+    GameTooltip_AddColoredLine(GameTooltip, "Click to change its icon or remove it.", GREEN_FONT_COLOR)
     GameTooltip:Show()
 end
 
@@ -2952,6 +2975,21 @@ function VeritasUI_MapNotePinMixin:OnMouseClickAction(button)
     MenuUtil.CreateContextMenu(self, function(_, root)
         root:SetMinimumWidth(1)
         root:CreateTitle(note.text)
+        local icons = root:CreateButton("Change Icon")
+        icons:SetMinimumWidth(1)   -- an addon-built submenu, same WoWUIBugs #783 defence
+        for _, choice in ipairs(MAP_NOTE_ICONS) do
+            if DelveAtlasExists(choice.atlas) then
+                -- |A:atlas:h:w|a draws the icon itself beside its label, so the choice is seen.
+                icons:CreateRadio(("|A:%s:16:16|a %s"):format(choice.atlas, choice.label),
+                    function() return MapNoteAtlas(note) == choice.atlas end,
+                    function()
+                        note.icon = choice.atlas
+                        if db then db.mapNoteIcon = choice.atlas end
+                        MapNotesRefresh()
+                        return MenuResponse.Close
+                    end)
+            end
+        end
         root:CreateButton("Remove Note", function() RemoveMapNote(note) end)
     end)
 end
