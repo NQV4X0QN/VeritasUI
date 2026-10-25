@@ -1,25 +1,27 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
 ..\FrameXML\UI.xsd">
-	<!-- Map note pin (/note). Mirrors Blizzard's WaypointLocationPinTemplate
-	     (Blizzard_SharedMapDataProviders/WaypointLocationDataProvider.xml): same size, same
-	     Icon/Highlight layout. The atlas is set in VeritasUI_MapNotePinMixin:OnAcquired. -->
+	<!-- Map note pin (/note). Layers copied from Blizzard's VignettePinTemplate
+	     (Blizzard_SharedMapDataProviders/VignetteDataProvider.xml:5-25), the template behind the
+	     map's own treasure/door/rare icons: the icon in ARTWORK, and as the hover highlight THE SAME
+	     ATLAS again in an ADD-blend HIGHLIGHT layer at 0.2 alpha. Both atlases are set in
+	     VeritasUI_MapNotePinMixin:OnAcquired, as VignettePinMixin does (VignetteDataProvider.lua:283-287). -->
 	<Frame name="VeritasUI_MapNotePinTemplate" enableMouse="true" enableMouseClicks="true" mixin="VeritasUI_MapNotePinMixin" virtual="true">
 		<Size x="30" y="30"/>
 		<Layers>
-			<Layer level="BACKGROUND">
-				<Texture parentKey="Icon" atlas="Waypoint-MapPin-Untracked">
-					<Size x="30" y="30"/>
+			<Layer level="ARTWORK">
+				<Texture parentKey="Icon">
 					<Anchors>
-						<Anchor point="CENTER"/>
+						<Anchor point="CENTER" x="0" y="0"/>
 					</Anchors>
 				</Texture>
 			</Layer>
 			<Layer level="HIGHLIGHT">
-				<Texture parentKey="Highlight" atlas="Waypoint-MapPin-Highlight">
-					<Size x="30" y="30"/>
+				<Texture parentKey="HighlightTexture" alphaMode="ADD">
 					<Anchors>
-						<Anchor point="CENTER" relativeKey="$parent.Icon"/>
+						<Anchor point="TOPLEFT" relativeKey="$parent.Icon"/>
+						<Anchor point="BOTTOMRIGHT" relativeKey="$parent.Icon"/>
 					</Anchors>
+					<Color r="1.0" g="1.0" b="1.0" a="0.2"/>
 				</Texture>
 			</Layer>
 		</Layers>

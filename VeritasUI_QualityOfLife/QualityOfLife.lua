@@ -2922,7 +2922,16 @@ end
 function VeritasUI_MapNotePinMixin:OnAcquired(note)
     self.note = note
     self:UseFrameLevelType("PIN_FRAME_LEVEL_WAYPOINT_LOCATION")
-    self.Icon:SetAtlas(MapNoteAtlas())
+    -- Exactly VignettePinBaseMixin:ApplyTextures (VignetteDataProvider.lua:280-290): the atlas
+    -- at its native size on both textures, the pin sized to it, and the highlight desaturated
+    -- .75 as their in-view vignettes are (:381).
+    local atlas = MapNoteAtlas()
+    self.Icon:SetAtlas(atlas, true)
+    self.HighlightTexture:SetAtlas(atlas, true)
+    local w, h = self.Icon:GetSize()
+    self.HighlightTexture:SetSize(w, h)
+    self:SetSize(w, h)
+    self.HighlightTexture:SetDesaturation(.75)
 end
 
 function VeritasUI_MapNotePinMixin:OnMouseEnter()
@@ -3393,8 +3402,33 @@ end
 ----------------------------------------------------------------
 SLASH_VERITASUI_QOL1 = "/qol"
 SLASH_VERITASUI_QOL2 = "/qualityoflife"
+-- /qol mappins -- probe: the atlas of every icon on the World Map's displayed map, so the
+-- note icon set is chosen from art Blizzard actually uses there rather than guessed names.
+local function DumpMapPins()
+    local map = _G.WorldMapFrame
+    if not (map and map:IsShown() and map.EnumerateAllPins) then
+        VUI.Print("Quality of Life", "Open the World Map (M) first, then run /qol mappins.")
+        return
+    end
+    print(("|cFF00CCFF[VeritasUI map pins]|r map %s"):format(tostring(map:GetMapID())))
+    local seen = {}
+    for pin in map:EnumerateAllPins() do
+        local atlases = {}
+        for _, region in ipairs({ pin:GetRegions() }) do
+            local a = region.GetAtlas and region:GetAtlas()
+            if a and a ~= "" and not atlases[a] then atlases[a] = true; atlases[#atlases + 1] = a end
+        end
+        local key = tostring(pin.pinTemplate) .. " " .. table.concat(atlases, ", ")
+        if #atlases > 0 and not seen[key] then
+            seen[key] = true
+            print(("  %s: %s"):format(tostring(pin.pinTemplate), table.concat(atlases, ", ")))
+        end
+    end
+end
+
 SlashCmdList["VERITASUI_QOL"] = function(msg)
     local arg = (msg and strtrim(msg)) or ""
+    if arg:lower() == "mappins" then DumpMapPins(); return end
     local ntail = arg:lower():match("^delvenudge%s*(.*)$")
     if ntail then
         -- Guarded: these branches return before the handler's own db nil-check below,
