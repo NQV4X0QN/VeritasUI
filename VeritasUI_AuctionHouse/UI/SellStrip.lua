@@ -95,6 +95,15 @@ local Refresh, UpdateVisibility, Render, ScheduleRefresh   -- forward decls
 ----------------------------------------------------------------
 local function ShowButtonTooltip(button)
     if not (button and button.data) then return end
+    -- No tooltip on the stack that is LOADED in the sell slot: that is the icon hovered to
+    -- left-click Create Auction, and its tooltip rose over Deposit / Total Price -- the numbers
+    -- being checked at that moment. The same item's tooltip is one hover away on Blizzard's own
+    -- sell-slot icon. Every other strip icon keeps its tooltip, anchored as before. IsOwned, so
+    -- the hide only ever removes OUR tooltip (the Render path re-calls this after a load).
+    if button.isPosted then
+        if GameTooltip:IsOwned(button) then GameTooltip:Hide() end
+        return
+    end
     GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
     pcall(GameTooltip.SetHyperlink, GameTooltip, button.data.link)
     GameTooltip:AddLine(" ")
@@ -459,6 +468,7 @@ local function SetButton(button, data)
     local isPosted = state.posted
         and state.posted.bag == data.bag and state.posted.slot == data.slot
     button.icon:SetDesaturated(isPosted and true or false)
+    button.isPosted = isPosted and true or false   -- read by ShowButtonTooltip
     WireSecureClicks(button, data, isPosted)
     if data.count and data.count > 1 then
         button.count:SetText(data.count)
@@ -707,6 +717,23 @@ local function Build()
                 state.posted = nil
                 Render()
             end)
+        end
+        -- ⚠ Removing the item FROM the sell slot (right-click on Blizzard's slot icon) goes
+        -- through neither hook above: the slot's OnItemChangedCallback calls the sell frame's
+        -- own SetItem(nil, fromItemDisplay) directly (Blizzard_AuctionHouseSellFrame.lua:271-
+        -- 275, :374), so until v1.18.1 the stack stayed greyed out with no tooltip. Hooked on
+        -- both sell frames (ClearPostItem's own list, Blizzard_AuctionHouseFrame.lua:633-638);
+        -- only the nil case is ours, loads stay with the SetPostItem hook.
+        for _, key in ipairs({ "ItemSellFrame", "CommoditiesSellFrame" }) do
+            local sellFrame = AuctionHouseFrame[key]
+            if sellFrame and sellFrame.SetItem then
+                hooksecurefunc(sellFrame, "SetItem", function(_, itemLocation)
+                    if itemLocation == nil and state.posted then
+                        state.posted = nil
+                        Render()
+                    end
+                end)
+            end
         end
         state.hooked = true
     end

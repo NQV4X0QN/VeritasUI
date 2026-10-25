@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.18.1] - 2026-10-24
+
+### Changed
+
+- `VeritasUI_AuctionHouse` — **No tooltip on the stack loaded in the Create Auction slot.** Its tooltip rose over Deposit and Total Price while you hovered it to post. Every other sell-strip icon keeps its tooltip, and the loaded item's tooltip is still on Blizzard's own sell-slot icon (`UI/SellStrip.lua`)
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **Removing an item from the Create Auction slot puts its sell-strip icon back in colour.** Right-clicking the item out of the slot left its strip icon greyed out, as if still loaded; it now returns to colour and shows its tooltip again (`UI/SellStrip.lua`)
+
+
 ## [1.18.0] - 2026-10-24
 
 ### Added
