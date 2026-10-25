@@ -3405,14 +3405,26 @@ SLASH_VERITASUI_QOL2 = "/qualityoflife"
 -- /qol mappins -- probe: the atlas of every icon on the World Map's displayed map, so the
 -- note icon set is chosen from art Blizzard actually uses there rather than guessed names.
 local function DumpMapPins()
+    -- ⚠ v1 of this probe tested for a map:EnumerateAllPins() that DOES NOT EXIST and reported
+    -- the missing method as "open the map". The canvas only has EnumeratePinsByTemplate
+    -- (Blizzard_MapCanvas.lua:344-349) over its pinPools table (:12, :252-255), so walk that,
+    -- and report each failure as itself.
     local map = _G.WorldMapFrame
-    if not (map and map:IsShown() and map.EnumerateAllPins) then
+    if not (map and map:IsShown()) then
         VUI.Print("Quality of Life", "Open the World Map (M) first, then run /qol mappins.")
         return
     end
+    if type(map.pinPools) ~= "table" or not map.EnumeratePinsByTemplate then
+        VUI.Print("Quality of Life", "mappins: this client's map has no pin pools to read.")
+        return
+    end
     print(("|cFF00CCFF[VeritasUI map pins]|r map %s"):format(tostring(map:GetMapID())))
+    local all = {}
+    for template in pairs(map.pinPools) do
+        for pin in map:EnumeratePinsByTemplate(template) do all[#all + 1] = pin end
+    end
     local seen = {}
-    for pin in map:EnumerateAllPins() do
+    for _, pin in ipairs(all) do
         local atlases = {}
         for _, region in ipairs({ pin:GetRegions() }) do
             local a = region.GetAtlas and region:GetAtlas()
