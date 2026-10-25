@@ -347,9 +347,8 @@ local function InitializeOptions()
         end
     end)
     Settings.CreateCheckbox(category, enableSetting,
-        "When enabled, only quests in your current zone appear in the Objective Tracker. "
-        .. "Disabling puts back the tracking you had chosen before you enabled it; quests picked up "
-        .. "in between are tracked.")
+        "Shows only quests for your current zone in the Objective Tracker. Turning it off "
+        .. "puts back the tracking you had before.")
 
     local pins = {
         { key = "pinCampaign",

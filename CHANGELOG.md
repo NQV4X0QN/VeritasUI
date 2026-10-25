@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.1] - 2026-10-24
+
+### Changed
+
+- **Shorter setting descriptions.** The tooltips in Options → AddOns now say what each setting does in a sentence or two, without the technical detail — Quality of Life, Auction House, Clean Solo and Zone Quests (`VeritasUI_QualityOfLife/QualityOfLife.lua`, `VeritasUI_AuctionHouse/Settings.lua`, `VeritasUI_CleanSolo/CleanSolo.lua`, `VeritasUI_ZoneQuests/ZoneQuests.lua`)
+
+
 ## [1.19.0] - 2026-10-24
 
 ### Added

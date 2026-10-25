@@ -499,10 +499,8 @@ local function InitializeOptions()
           tip = "Chat tabs fade out with the chat window and reappear on mouseover. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "transparentChatBG",   name = "Transparent Chat Background",
-          tip = "Sets the chat window background to fully transparent so only the text is visible when idle. "
-             .. "Blizzard's built-in hover behavior reveals the background on mouseover. "
-             .. "The transparency is never saved, so after turning this off and reloading, "
-             .. "your own background comes back. "
+          tip = "Makes the chat background transparent until you mouse over it. Turn it off and "
+             .. "reload, and your own background comes back. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideSocialButton",    name = "Hide Social Button",
           tip = "Hides the Quick Join / Communities toast button. "
@@ -527,8 +525,7 @@ local function InitializeOptions()
           tip = "Hides the macro name text displayed on action bar buttons. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideErrorText",       name = "Hide Error Text",
-          tip = "Hides the red error messages like 'Not enough energy' and 'You're facing the wrong way', "
-             .. "and the spoken error lines that go with them, the same way WoW's own /uierrorsoff does. "
+          tip = "Hides red error messages such as 'Not enough energy', and the spoken lines that go with them. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
     }
 
@@ -624,8 +621,7 @@ local function InitializeOptions()
     end)
 
     Settings.CreateDropdown(category, fadeSetting, GetBarOptions,
-        "Select a bar to toggle its hover-fade. Faded bars become "
-        .. "transparent when idle and reappear on mouseover. "
+        "Pick a bar to fade it out when idle; it reappears on mouseover. "
         .. "Requires |cFFFFFF00/reload|r to apply.")
 
     Settings.RegisterAddOnCategory(category)

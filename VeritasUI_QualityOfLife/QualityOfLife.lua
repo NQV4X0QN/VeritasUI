@@ -2763,7 +2763,7 @@ local function InitializeOptions()
     end
 
     AddCheckbox("showItemLevels", "Show Item Levels",
-        "Displays item level numbers on equipment in bags, bank, character panel, and merchants. Quest rewards are excluded.",
+        "Shows item levels on gear in your bags, bank, character panel and at merchants.",
         function(value)
             -- Live-apply BOTH ways. Enable-only was the bug: the module's stated contract is
             -- that every QoL toggle applies mid-session, and this one needed a /reload to take
@@ -2789,11 +2789,11 @@ local function InitializeOptions()
     end
 
     AddCheckbox("autoSellJunk", "Auto Sell Junk",
-        "Automatically sells all grey items when you visit a merchant.",
+        "Sells your grey items when you visit a merchant.",
         EnsureMerchantEvents)
 
     AddCheckbox("autoRepair", "Auto Repair",
-        "Automatically repairs all equipment at repair vendors. Funding source is selected below.",
+        "Repairs your gear at repair vendors. Choose who pays under Repair Funding.",
         EnsureMerchantEvents)
 
     -- Repair Funding dropdown — appears directly below the Auto Repair checkbox.
@@ -2820,32 +2820,26 @@ local function InitializeOptions()
         return container:GetData()
     end
     Settings.CreateDropdown(category, repairSetting, GetRepairFundingOptions,
-        "How repair costs are funded. 'Guild + Personal' uses guild bank funds first (requires guild membership, guild repair permission, and guild info must not contain [noautorepair]), then covers any remainder with personal gold. 'Personal Only' always uses personal gold.")
+        "Guild + Personal uses guild funds first when your guild allows it, then your own gold. Personal Only always uses your own gold.")
 
     AddCheckbox("afkScreen", "AFK Screen",
-        "Shows a cinematic overlay when you go AFK — your character name, level, item level, and zone over a slow camera orbit. Helps minimize OLED burn-in by hiding static UI elements and keeping the screen moving.",
+        "When you go AFK, hides the UI and slowly circles the camera, showing your name, level, item level and zone. Also helps prevent screen burn-in.",
         function(value)
             if value then AFK_StartPoll() end
         end)
 
     AddCheckbox("delveNemesisCount", "Show Delve Nemesis Count",
-        "Shows how many Nemesis enemy groups are left directly on the icon on the Delve "
-        .. "plaque, instead of only revealing it when you hover the icon. The count sits "
-        .. "in the icon's lower-right corner, where the default UI puts a stack count, and "
-        .. "is replaced by a checkmark once every group is defeated. Adjust the position with "
-        .. "/qol delvenudge, the digit 1 relative to the others with /qol delveone, and the "
-        .. "checkmark "
-        .. "size with /qol delvecheck. Typeface and outline weight are /qol delveface and "
-        .. "/qol delveoutline; /qol delveplacard measures the number Blizzard draws itself "
-        .. "on the placard at a Delve entrance, for comparison.",
+        -- The /qol delve* tuning commands are deliberately not listed here: they are the
+        -- owner's placement knobs, and the shipped defaults are already tuned.
+        "Shows how many Nemesis enemy groups are left on the Delve objective icon, without "
+        .. "hovering it. A checkmark replaces the number once they're all defeated.",
         function(value)
             if value then DelveStartCount() else DelveStopCount() end
         end)
 
     AddCheckbox("followReputationGains", "Track Latest Reputation",
-        "Switches the reputation bar to whichever faction you most recently gained "
-        .. "reputation with. A faction you choose to watch yourself stays shown only until "
-        .. "your next reputation gain. During combat the switch waits until combat ends.",
+        "The reputation bar switches to whichever faction you most recently earned "
+        .. "reputation with. During combat, it switches once combat ends.",
         function(value)
             if value then RepFollowStart() else RepFollowStop() end
         end)

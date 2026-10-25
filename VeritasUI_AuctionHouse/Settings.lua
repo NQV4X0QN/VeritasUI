@@ -40,30 +40,22 @@ local function BuildNativeSettingsPanel()
         end
 
         AddCheckbox("ttShowPrice", true, "Show Auction Price in Tooltips",
-            "Appends the last-scanned market price (per unit) to item tooltips. "
-            .. "Pure database read — works away from the Auction House. "
-            .. "Run |cFFFFFF00/ah scan|r at the AH to refresh prices.")
+            "Adds the item's auction price to its tooltip, anywhere in the game. "
+            .. "Scan at the Auction House to update prices.")
 
         AddCheckbox("ttShowQty", true, "Show Quantity Seen",
-            "Adds the quantity seen at the last scan beneath the price line.")
+            "Adds how many were listed at the last scan.")
 
         AddCheckbox("ttShowAge", true, "Show Price Age",
-            "Annotates how many days old the stored price is when it isn't from today's scan.")
+            "Shows how many days old the price is, when it isn't from today.")
 
         AddCheckbox("craftShowReagentValue", true, "Show Reagents Value on Crafting Orders",
-            "Adds a |cFFFFFF00Reagents Value:|r line under the reagent list on Blizzard's "
-            .. "Place Crafting Order form, totalling what the recipe's reagents are worth at "
-            .. "the last-scanned auction price. Allocated reagents are priced at the quality "
-            .. "chosen; unfilled basic slots at their cheapest quality. Auction prices only — "
-            .. "it does not consider vendor cost, so it is a sale value, not a sourcing cost.")
+            "Adds a |cFFFFFF00Reagents Value:|r line to the Place Crafting Order form: what "
+            .. "the recipe's reagents would sell for at the Auction House.")
 
         AddCheckbox("liveSearchPrices", true, "Correct Prices from Live Searches",
-            "When you open an item on the Buy or Sell tab, the Auction House has already "
-            .. "fetched that item's real listings — it is where Blizzard's own suggested "
-            .. "Unit Price comes from. This records it, overwriting the scanned price. "
-            .. "Sends no requests of its own and never touches the scan cooldown. "
-            .. "It fixes the items you actually open; a full |cFFFFFF00/ah scan|r is still "
-            .. "what prices everything else. See |cFFFFFF00/ah live|r for what it has corrected.")
+            "When you look at an item on the Buy or Sell tab, its saved price is updated from "
+            .. "the current listings. It doesn't affect the scan cooldown.")
 
         -- Auto-scan on AH open: REMOVED (2026-07-02). Scans are user-initiated via
         -- the Scan button (UI/ScanButton.lua) or /ah scan. The auto-fire-on-open
