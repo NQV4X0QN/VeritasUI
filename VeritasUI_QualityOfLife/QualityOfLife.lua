@@ -142,6 +142,10 @@ local UNIVERSAL = {
     -- the heavier option.
     -- Stored as the literal SetFont flag string so nothing has to map it.
     delveCountOutline = "OUTLINE",
+    -- Moves the reputation bar to the faction most recently gained with. OFF by default, unlike
+    -- the toggles above: it overrides a faction the player chose to watch, and the suite ships
+    -- to other players who never asked for that.
+    followReputationGains = false,
 }
 -- RETIRED keys (audit Q1, v1.17.9): the world-map coordinate readout was removed in favour of
 -- Blizzard's own. They are no longer defaults -- nothing seeds them -- but they stay in the
@@ -2669,6 +2673,78 @@ local function DumpDelveProbe()
     end
 end
 
+-- ── Follow Reputation Gains ─────────────────────────────────
+-- Switches the reputation status bar to whichever faction the player most recently gained
+-- reputation with: earn Hara'ti rep and the bar shows Hara'ti; move on and earn Singularity
+-- rep and it shows The Singularity.
+--
+-- MEASURED IN GAME 2026-10-24 (temporary RepProbe addon on the owner's client; Hara'ti 2704
+-- and The Singularity 2699, both major factions at paragon):
+--   * FACTION_STANDING_CHANGED (factionID, updatedStanding) fires on EVERY gain -- +10 and
+--     +50 alike, not only on a rank change -- in the same frame as the "reputation with X
+--     increased by N" chat line. Payload documented in ReputationInfoDocumentation.lua.
+--   * Blizzard does not switch the bar itself: gaining Singularity rep left Hara'ti watched.
+-- SOURCED (wow-ui-source live):
+--   * StatusTrackingManagerMixin registers UPDATE_FACTION (StatusTrackingManagerOverrides.lua:3)
+--     and rebuilds every bar from its own OnEvent (Shared/StatusTrackingManager.lua:36-47).
+--     So we make ONE call, SetWatchedFactionByID, and let Blizzard's event redraw the bar.
+--     ⚠ Never call StatusTrackingBarManager:UpdateBarsShown() from here: those bars are Edit
+--     Mode system frames, and driving them from our execution is the shape that tainted Edit
+--     Mode at v1.15.1 (landmine 114).
+--   * SetWatchedFactionByID is not protected (Journeys probe, 2026-08-24) and is ASYNC: the
+--     watched faction must never be read back in the same frame to "confirm" the write
+--     (landmine 110). The equality check below only skips a redundant call.
+-- NOT MEASURED, so handled conservatively instead of assumed:
+--   * Calling it in combat. Deferred to PLAYER_REGEN_ENABLED, keeping only the LATEST faction,
+--     so a fight spanning several factions ends on the last one -- what it would be out of combat.
+--   * Order when one reward touches several factions: whichever is reported last wins.
+local repFollowFrame
+local repPendingID
+local repDrainQueued = false
+
+local function RepFollowApply()
+    repDrainQueued = false
+    local id = repPendingID
+    repPendingID = nil
+    if not id or not (db and db.followReputationGains) then return end
+    -- Resolved per call, same reasoning as Journeys.lua's Rep(): pcall(C_Reputation.Foo)
+    -- evaluates the index before pcall, so a missing namespace would error outside it.
+    local ns  = _G.C_Reputation
+    local set = ns and ns.SetWatchedFactionByID
+    if not set then return end
+    local get = ns.GetWatchedFactionData
+    if get then
+        local ok, watched = pcall(get)
+        if ok and watched and watched.factionID == id then return end
+    end
+    pcall(set, id)
+end
+
+local function RepFollowOnEvent(_, _, factionID)
+    -- Secret values cannot be compared or passed on from tainted code; skip rather than error.
+    if issecretvalue and issecretvalue(factionID) then return end
+    if type(factionID) ~= "number" or factionID <= 0 then return end
+    repPendingID = factionID
+    if repDrainQueued then return end
+    repDrainQueued = true
+    VUI.CombatQueue.Add(RepFollowApply)   -- runs now out of combat, else on PLAYER_REGEN_ENABLED
+end
+
+local function RepFollowStart()
+    if not repFollowFrame then
+        repFollowFrame = CreateFrame("Frame")
+        repFollowFrame:SetScript("OnEvent", RepFollowOnEvent)
+    end
+    repFollowFrame:RegisterEvent("FACTION_STANDING_CHANGED")
+end
+
+local function RepFollowStop()
+    if repFollowFrame then repFollowFrame:UnregisterEvent("FACTION_STANDING_CHANGED") end
+    -- A queued drain still runs after combat but finds nothing to do: the db gate in
+    -- RepFollowApply refuses, and the pending ID is cleared here.
+    repPendingID = nil
+end
+
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
@@ -2766,6 +2842,14 @@ local function InitializeOptions()
             if value then DelveStartCount() else DelveStopCount() end
         end)
 
+    AddCheckbox("followReputationGains", "Track Latest Reputation",
+        "Switches the reputation bar to whichever faction you most recently gained "
+        .. "reputation with. A faction you choose to watch yourself stays shown only until "
+        .. "your next reputation gain. During combat the switch waits until combat ends.",
+        function(value)
+            if value then RepFollowStart() else RepFollowStop() end
+        end)
+
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
     VUI.RegisterSettingsLabel(SETTINGS_LABEL)
@@ -2859,6 +2943,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- early-outs unless a Delve plaque is on screen, so there is nothing to
         -- register or unregister on zone changes.
         if db.delveNemesisCount then DelveStartCount() end
+
+        if db.followReputationGains then RepFollowStart() end
 
         -- Register /way only if TomTom is absent; both addons claim this command.
         if not (_G.TomTom or (IsAddOnLoaded and IsAddOnLoaded("TomTom"))) then

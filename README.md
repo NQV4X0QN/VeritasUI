@@ -23,6 +23,7 @@ Settings: **Options → AddOns → Clean Solo**, or `/cs`. Changes apply after a
 - **`/way` waypoints** in the format most guides use, e.g. `/way #2351 45.2 56.3`, placing WoW's own map pin and arrow (if TomTom is installed, it keeps `/way`)
 - **AFK screen**: a slow camera orbit with your name, level, item level and zone while you're away, which also helps against screen burn-in
 - **Delve Nemesis count** shown right on the Delve objective icon instead of only in its tooltip
+- **Track latest reputation** (off until you turn it on): the reputation bar switches to whichever faction you most recently earned reputation with
 - **Journeys**: adds the "Show as Experience Bar" checkbox to Delves and Prey cards, and lets you click the reputation or honor bar to open that faction's page or the PvP window
 
 For map and minimap coordinates, use WoW's own options in **Options → Interface**.

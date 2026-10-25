@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.0] - 2026-10-24
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Track Latest Reputation.** The reputation bar switches to whichever faction you most recently earned reputation with — earn Hara'ti reputation and the bar shows Hara'ti, then earn reputation with The Singularity in Voidstorm and it shows The Singularity. Works for factions at max renown that still earn paragon reputation. During combat the switch waits until combat ends, then shows the last faction you earned with. A faction you pick by hand stays shown only until your next reputation gain. Off by default; turn it on in Options → AddOns → Quality of Life (`QualityOfLife.lua`, `README.md`)
+
+
 ## [1.17.19] - 2026-10-14
 
 ### Removed
