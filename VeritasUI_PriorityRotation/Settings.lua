@@ -434,33 +434,10 @@ local function BuildMainWindow()
                             name,
                             function() return C_SpecializationInfo.GetSpecialization() == i end,
                             function()
-                                if InCombatLockdown() then
-                                    VUI.Print("Priority Rotation",
-                                        "|cFFFF4444Can't switch spec in combat.|r")
+                                -- Shared with the AddOns-menu flyout (Core.lua PR.SwitchSpec):
+                                -- combat refusal keeps the menu open, anything else closes it.
+                                if PR.SwitchSpec(i) == "combat" then
                                     return MenuResponse.Refresh
-                                end
-                                if i ~= C_SpecializationInfo.GetSpecialization() then
-                                    -- Midnight refactored the spec API into
-                                    -- C_SpecializationInfo; the global
-                                    -- SetSpecialization may be absent or shimmed.
-                                    -- Try the modern namespace first, fall back
-                                    -- to the global, surface the actual error
-                                    -- if both fail so we can diagnose. err is
-                                    -- seeded because if neither API exists no
-                                    -- pcall runs and it would stay nil, printing
-                                    -- "failed: nil" - the exact diagnostic dead
-                                    -- end this block was written to prevent.
-                                    local ok, err = false, "no spec-switch API on this client"
-                                    if C_SpecializationInfo and C_SpecializationInfo.SetSpecialization then
-                                        ok, err = pcall(C_SpecializationInfo.SetSpecialization, i)
-                                    end
-                                    if not ok and SetSpecialization then
-                                        ok, err = pcall(SetSpecialization, i)
-                                    end
-                                    if not ok then
-                                        VUI.Print("Priority Rotation",
-                                            "|cFFFF4444Spec switch failed:|r " .. tostring(err))
-                                    end
                                 end
                                 return MenuResponse.Close
                             end

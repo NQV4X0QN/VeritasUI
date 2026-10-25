@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.0] - 2026-10-24
+
+### Added
+
+- `VeritasUI_PriorityRotation` — **Switch specialization from the minimap AddOns menu.** Hover **VeritasUI — Priority Rotation** in the AddOns menu by the minimap and a list of your specializations opens beside it, with the current one marked; click one to switch. Two steps, against three through Talents and Spellbook. Clicking the entry itself still opens Priority Rotation. As with the Settings tab's spec dropdown, switching is refused in combat (`Core.lua`, `Settings.lua`, `README.md`)
+
+
 ## [1.18.1] - 2026-10-24
 
 ### Changed

@@ -48,6 +48,8 @@ An accessibility tool: press one key, or hold it with your keyboard or mouse sof
 
 To set it up, open `/pr`, click **Create / Update Macro**, drag the `Attack` macro onto any action bar (1–8), bind a key to it, and click **Scan & Bind**.
 
+To switch specialization quickly, hover **VeritasUI — Priority Rotation** in the AddOns menu by the minimap and pick a spec from the list that opens.
+
 Settings: `/pr` (the rotation editor), and an on/off switch under **Options → AddOns → Priority Rotation**.
 
 ### Advanced Options — WoW's hidden settings

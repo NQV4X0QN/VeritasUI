@@ -1085,7 +1085,78 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
     end
 end
 
+-- ── Spec switching ──────────────────────────────────────────
+-- Shared by the Settings tab's Tools dropdown and the AddOns-menu flyout below, so both
+-- switch the same way. Returns "combat" when refused for combat, true when a switch was
+-- requested, false when there was nothing to do or the call failed.
+function PR.SwitchSpec(i)
+    if InCombatLockdown() then
+        VUI.Print("Priority Rotation", "|cFFFF4444Can't switch spec in combat.|r")
+        return "combat"
+    end
+    if i == C_SpecializationInfo.GetSpecialization() then return false end
+    -- Midnight refactored the spec API into C_SpecializationInfo; the global
+    -- SetSpecialization may be absent or shimmed. Try the modern namespace first, fall back
+    -- to the global, surface the actual error if both fail so we can diagnose. err is
+    -- seeded because if neither API exists no pcall runs and it would stay nil, printing
+    -- "failed: nil" - the exact diagnostic dead end this block was written to prevent.
+    local ok, err = false, "no spec-switch API on this client"
+    if C_SpecializationInfo and C_SpecializationInfo.SetSpecialization then
+        ok, err = pcall(C_SpecializationInfo.SetSpecialization, i)
+    end
+    if not ok and SetSpecialization then
+        ok, err = pcall(SetSpecialization, i)
+    end
+    if not ok then
+        VUI.Print("Priority Rotation", "|cFFFF4444Spec switch failed:|r " .. tostring(err))
+        return false
+    end
+    return true
+end
+
 -- ── Addon Compartment (minimap dropdown) ────────────────────
 function VeritasUI_PriorityRotation_OnAddonCompartmentClick()
     C_Timer.After(0, function() SlashCmdList["VERITASUI_PR"]("") end)
+end
+
+-- Hovering our entry in the minimap AddOns menu opens a flyout of this character's specs.
+-- SOURCED (wow-ui-source live): Blizzard builds that menu itself, one plain button per addon,
+-- and tags its root "MENU_ADDON_COMPARTMENT" (Blizzard_Minimap/Mainline/AddonCompartment.lua:23,
+-- :33). Menu.ModifyMenu is Blizzard's extension point for tagged menus: our callback runs after
+-- their generator on EVERY open, with the freshly built descriptions (Blizzard_Menu/Menu.lua:
+-- 2623-2660), so the flyout is rebuilt each time and never duplicates. Our entry is found by its
+-- text, which MenuUtil stores on the description (MenuUtil.lua:172-178) and which Blizzard sets
+-- from our TOC Title (AddonCompartment.lua:85). Adding children to a button turns it into a
+-- submenu parent.
+-- UNMEASURED: whether a left-click on the parent still opens the window once it has a flyout.
+local function AddSpecFlyout(_, root)
+    if not (root and root.EnumerateElementDescriptions) then return end
+    local title = C_AddOns and C_AddOns.GetAddOnMetadata
+        and C_AddOns.GetAddOnMetadata(ADDON_NAME, "Title")
+    if not title then return end
+    local n = GetNumSpecializations and GetNumSpecializations() or 0
+    if n < 2 then return end
+    for _, desc in root:EnumerateElementDescriptions() do
+        if MenuUtil.GetElementText(desc) == title then
+            -- Same WoWUIBugs #783 defence as the Tools dropdown (Settings.lua): a submenu built by
+            -- addon code must not leave the menu compositor a tainted nil minimum width.
+            desc:SetMinimumWidth(1)
+            for i = 1, n do
+                local id, name = C_SpecializationInfo.GetSpecializationInfo(i)
+                if id and name then
+                    desc:CreateRadio(name,
+                        function() return C_SpecializationInfo.GetSpecialization() == i end,
+                        function()
+                            if PR.SwitchSpec(i) == "combat" then return MenuResponse.Refresh end
+                            return MenuResponse.Close
+                        end)
+                end
+            end
+            return
+        end
+    end
+end
+
+if Menu and Menu.ModifyMenu and MenuUtil and MenuUtil.GetElementText then
+    Menu.ModifyMenu("MENU_ADDON_COMPARTMENT", AddSpecFlyout)
 end
