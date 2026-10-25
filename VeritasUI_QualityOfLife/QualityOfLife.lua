@@ -1872,6 +1872,35 @@ local function DelveParseRemaining(tooltip)
     return last and tonumber(last) or nil
 end
 
+-- ── Labyrinth Treasure Room (WoW 12.1.5) ────────────────────
+-- A Labyrinth uses the SAME Delve plaque, so it is found by the same widget walk above.
+-- MEASURED (/qol delve inside The Labyrinth of Kindo'jan, owner, 2026-10-25): two icons; the
+-- Treasure Room is spellID 1318775, stackDisplay 0, empty widget tooltip, and its spell
+-- description begins "Chambers Completed: 0" followed by prose that contains more numbers
+-- ("Complete 3 more Chambers...", "Small Trunks: 0"). It carries NO "N / M" pair, which is
+-- why the Nemesis parser leaves it alone.
+-- The count runs UP and the run is complete at 9 chambers (the 10th, the boss, is not
+-- counted); 9 is the owner's figure, not sourced from the client.
+local LABYRINTH_TREASURE_SPELLS = { [1318775] = true }
+local LABYRINTH_CHAMBERS_TOTAL  = 9
+
+-- Returns the chambers completed, or nil if this icon is not a Treasure Room.
+-- Identified by spellID first (locale-independent), with the English label as the fallback
+-- for a Labyrinth whose Treasure Room uses a spell we have not seen. For a known spellID the
+-- count is the FIRST number in the description -- it is the first line -- after stripping
+-- escape sequences, whose hex colour codes can contain digits.
+local function LabyrinthChambers(info, text)
+    if type(text) ~= "string" then return nil end
+    local plain = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
+    local labelled = plain:match("Chambers Completed:%s*(%d+)")
+    if labelled then return tonumber(labelled) end
+    if type(info) == "table" and LABYRINTH_TREASURE_SPELLS[info.spellID] then
+        local first = plain:match("(%d+)")
+        return first and tonumber(first) or nil
+    end
+    return nil
+end
+
 -- Our own fontstring, never Blizzard's StackCount. StackCount is hidden on every
 -- Setup pass while stackDisplay is 0, so writing to it would be a fight we lose
 -- on the next widget update -- and would also destroy the native path if
@@ -2159,7 +2188,18 @@ local function DelveUpdate()
     for i = 1, #spells do
         local f    = spells[i]
         local info = f and f.spellInfo
-        local left = info and DelveParseRemaining(DelveCountText(info))
+        local text = info and DelveCountText(info)
+        -- `left` is the number drawn; `done` selects the checkmark. A Labyrinth Treasure Room
+        -- counts chambers UP to LABYRINTH_CHAMBERS_TOTAL; a Nemesis icon counts groups DOWN
+        -- to 0. Treasure Room is tested first so its prose can never reach the Nemesis parser.
+        local left, done
+        local chambers = info and LabyrinthChambers(info, text)
+        if chambers then
+            left, done = chambers, chambers >= LABYRINTH_CHAMBERS_TOTAL
+        else
+            left = info and DelveParseRemaining(text)
+            done = left == 0
+        end
 
         -- Prefer the numeric field the moment Blizzard ever populates it, and
         -- stand down entirely in that case: their StackCount is then already
@@ -2170,7 +2210,7 @@ local function DelveUpdate()
         -- Three states, mutually exclusive: nothing / number / checkmark.
         local showCount, showCheck = false, false
         if left and not nativeShows then
-            if left == 0 then showCheck = true else showCount = true end
+            if done then showCheck = true else showCount = true end
         end
 
         -- Cleared: the checkmark stands alone, replacing the digit rather than joining it.
@@ -2543,10 +2583,11 @@ local function DumpDelveProbe()
                 local okd, d = pcall(C_Spell.GetSpellDescription, info.spellID)
                 if okd and type(d) == "string" then desc = d end
             end
-            print(("   [%d] spellID=%s stackDisplay=%s text=%q parsed=%s")
+            print(("   [%d] spellID=%s stackDisplay=%s text=%q parsed=%s chambers=%s")
                 :format(i, tostring(info.spellID), tostring(info.stackDisplay),
                         tostring(info.text or ""),
-                        tostring(DelveParseRemaining(DelveCountText(info)))))
+                        tostring(DelveParseRemaining(DelveCountText(info))),
+                        tostring(LabyrinthChambers(info, DelveCountText(info)))))
             print(("        tooltip=%q"):format(tostring(info.tooltip or ""):sub(1, 120)))
             -- The field the count actually comes from; see DelveCountText.
             print(("        spellDesc=%q"):format(desc:gsub("\n", " | "):sub(1, 200)))
@@ -2828,11 +2869,14 @@ local function InitializeOptions()
             if value then AFK_StartPoll() end
         end)
 
-    AddCheckbox("delveNemesisCount", "Show Delve Nemesis Count",
+    -- Key stays `delveNemesisCount` (saved on every account); only the label widened when
+    -- Labyrinth chambers joined it in v1.20.0.
+    AddCheckbox("delveNemesisCount", "Show Delve Counts",
         -- The /qol delve* tuning commands are deliberately not listed here: they are the
         -- owner's placement knobs, and the shipped defaults are already tuned.
-        "Shows how many Nemesis enemy groups are left on the Delve objective icon, without "
-        .. "hovering it. A checkmark replaces the number once they're all defeated.",
+        "Shows the count on the objective icon without hovering it: Nemesis groups left in "
+        .. "a Delve, or chambers completed in a Labyrinth. A checkmark replaces the number "
+        .. "when you're done.",
         function(value)
             if value then DelveStartCount() else DelveStopCount() end
         end)
