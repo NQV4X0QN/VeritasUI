@@ -1128,7 +1128,8 @@ end
 -- text, which MenuUtil stores on the description (MenuUtil.lua:172-178) and which Blizzard sets
 -- from our TOC Title (AddonCompartment.lua:85). Adding children to a button turns it into a
 -- submenu parent.
--- UNMEASURED: whether a left-click on the parent still opens the window once it has a flyout.
+-- MEASURED IN GAME (owner, 2026-10-24, Mac and PC): hovering opens the flyout, a spec click
+-- switches, and a click on the parent still runs our compartment function and opens the window.
 local function AddSpecFlyout(_, root)
     if not (root and root.EnumerateElementDescriptions) then return end
     local title = C_AddOns and C_AddOns.GetAddOnMetadata

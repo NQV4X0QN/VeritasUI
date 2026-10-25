@@ -91,7 +91,7 @@ read_globals = {
     "PanelTemplates_TabResize", "PanelTemplates_GetSelectedTab",
     -- Scroll / data-provider system
     "CreateScrollBoxListLinearView", "CreateDataProvider", "ScrollUtil",
-    "MenuResponse", "MenuUtil",
+    "Menu", "MenuResponse", "MenuUtil",
     -- Tooltips
     "GameTooltip", "ItemRefTooltip", "TooltipDataProcessor", "TooltipUtil",
     "C_TooltipInfo", "ITEM_LEVEL",
