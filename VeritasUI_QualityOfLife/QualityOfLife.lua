@@ -162,7 +162,7 @@ local MIGRATE_UNIVERSAL = {}
 for k, v in pairs(UNIVERSAL)         do MIGRATE_UNIVERSAL[k] = v    end
 for k    in pairs(RETIRED_UNIVERSAL) do MIGRATE_UNIVERSAL[k] = true end
 
--- ⚠ PER-CHARACTER -- exactly two keys, for two different reasons.
+-- ⚠ PER-CHARACTER -- exactly three keys, for two different reasons.
 local PERCHAR = {
     -- A genuine per-character CHOICE: guild membership differs, and whether guild funds should be
     -- spent on repairs is a decision you may want to make differently on an alt.
@@ -173,6 +173,11 @@ local PERCHAR = {
     -- Persisted so a crash or disconnect during AFK can be recovered at the next
     -- PLAYER_LOGIN without force-restoring the UI on every ordinary login.
     afkUIDirty     = false,
+
+    -- Map notes (/note). CHARACTER DATA, like ZoneQuests' tracking: a note made inside an
+    -- instance belongs to that character's run and is deleted when that character leaves it, so
+    -- sharing the list would let an alt's login wipe a run still in progress on another.
+    mapNotes       = {},
 }
 
 
@@ -2785,6 +2790,207 @@ local function RepFollowStop()
     -- RepFollowApply refuses, and the pending ID is cleared here.
     repPendingID = nil
 end
+
+-- ── Map Notes (/note) ───────────────────────────────────────
+-- `/note <text>` drops a note where the player is standing; it shows as a pin on the World Map
+-- with the text in its tooltip, and a click on the pin offers "Remove Note". Notes made inside
+-- an instance (Labyrinths, Delves, dungeons) are deleted when the character leaves it, because
+-- those layouts change between runs; open-world notes stay until removed.
+--
+-- BUILT THE WAY BLIZZARD BUILDS ITS OWN MAP PIN (wow-ui-source live,
+-- Blizzard_SharedMapDataProviders/WaypointLocationDataProvider.lua + .xml): a data provider
+-- from MapCanvasDataProviderMixin whose RefreshAllData removes our pins by template and
+-- re-acquires one per note on the displayed map, and a pin mixin from MapCanvasPinMixin
+-- declared by an XML virtual template (MapNotes.xml) -- AcquirePin needs a real template
+-- because it builds a frame pool from it (Blizzard_MapCanvas.lua:251-255).
+-- ⚠ Clicks: the map canvas routes pin clicks through OnMouseClickAction (MapCanvas_
+-- DataProviderBase.lua:234-243); RIGHT-click passes through to the map by default (:284-286),
+-- which is Blizzard's zoom-out, so the menu is on LEFT-click and right-click is left alone.
+-- ⚠ The menu is an addon-built MenuUtil menu, so its generator sets a minimum width first
+-- (WoWUIBugs #783, same defence as the PR Tools dropdown).
+-- MEASURED (owner, 2026-10-25): the World Map and WoW's coordinates work inside a Labyrinth,
+-- i.e. the player has a map position there.
+-- NOT MEASURED: which pin atlas looks right -- the first that resolves in MAP_NOTE_ATLASES is
+-- used, ending on Blizzard's own map-pin art, which is sourced from their XML.
+local MAP_NOTE_TEMPLATE = "VeritasUI_MapNotePinTemplate"
+local MAP_NOTE_ATLASES  = { "VignetteLoot", "Waypoint-MapPin-Untracked" }
+local MAP_NOTE_MAX_TEXT = 120
+local mapNotesProvider
+
+local function MapNoteAtlas()
+    for i = 1, #MAP_NOTE_ATLASES do
+        if DelveAtlasExists(MAP_NOTE_ATLASES[i]) then return MAP_NOTE_ATLASES[i] end
+    end
+    return MAP_NOTE_ATLASES[#MAP_NOTE_ATLASES]
+end
+
+local function MapNotesRefresh()
+    if mapNotesProvider and mapNotesProvider:GetMap() then mapNotesProvider:RefreshAllData() end
+end
+
+-- The instance the player is in, or nil in the open world. GetInstanceInfo also answers in
+-- the open world (with the continent), so IsInInstance decides.
+local function CurrentInstanceID()
+    if not (IsInInstance and IsInInstance()) then return nil end
+    local id = select(8, GetInstanceInfo())
+    return id
+end
+
+local function RemoveMapNote(note)
+    local list = cdb and cdb.mapNotes
+    if not list then return end
+    for i = #list, 1, -1 do
+        if list[i] == note then table.remove(list, i) end
+    end
+    MapNotesRefresh()
+end
+
+-- Drops instance notes for any instance the player is no longer in. Run on every
+-- PLAYER_ENTERING_WORLD: a /reload inside the run keeps them; walking out deletes them, so
+-- a new run of the same Labyrinth starts clean.
+local function PruneInstanceNotes()
+    local list = cdb and cdb.mapNotes
+    if not list then return end
+    local here = CurrentInstanceID()
+    local removed = 0
+    for i = #list, 1, -1 do
+        local inst = list[i].instance
+        if inst and inst ~= here then
+            table.remove(list, i)
+            removed = removed + 1
+        end
+    end
+    if removed > 0 then MapNotesRefresh() end
+end
+
+local function AddMapNote(text)
+    if not cdb then
+        VUI.Print("Quality of Life", "Still loading — try again in a moment.")
+        return
+    end
+    local mapID = C_Map.GetBestMapForUnit("player")
+    local pos = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
+    local x, y
+    if pos then x, y = pos:GetXY() end
+    if not (x and y) or (issecretvalue and (issecretvalue(x) or issecretvalue(y))) then
+        VUI.Print("Quality of Life", "Can't read your position here, so no note was added.")
+        return
+    end
+    -- "|" starts an escape sequence in a tooltip; doubling it shows it literally.
+    text = text:sub(1, MAP_NOTE_MAX_TEXT):gsub("|", "||")
+    cdb.mapNotes = cdb.mapNotes or {}
+    table.insert(cdb.mapNotes, { mapID = mapID, x = x, y = y, text = text,
+                                 instance = CurrentInstanceID() })
+    VUI.Print("Quality of Life", "Map note added: " .. text)
+    MapNotesRefresh()
+end
+
+local function MapNoteCommand(msg)
+    local text = strtrim(msg or "")
+    if text == "" then
+        VUI.Print("Quality of Life", "|cFFFFFF00/note <text>|r leaves a note on the map where you're "
+            .. "standing. Click a note on the map to remove it. |cFFFFFF00/note clear|r removes "
+            .. "the notes on your current map.")
+        return
+    end
+    if text:lower() == "clear" then
+        local list = cdb and cdb.mapNotes
+        local mapID = C_Map.GetBestMapForUnit("player")
+        if list and mapID then
+            for i = #list, 1, -1 do
+                if list[i].mapID == mapID then table.remove(list, i) end
+            end
+        end
+        VUI.Print("Quality of Life", "Map notes on this map removed.")
+        MapNotesRefresh()
+        return
+    end
+    AddMapNote(text)
+end
+
+-- Pin mixin: a GLOBAL because the XML template names it (mixin="..."), as Blizzard's does.
+-- ⚠ Starts as a plain table holding only OUR methods: MapCanvasPinMixin lives in Blizzard's
+-- map code, which is load-on-demand with the World Map, so it may not exist yet. MapNotesInstall
+-- copies the base methods in underneath ours -- before any pin can be created, since pins only
+-- come from the provider it installs.
+VeritasUI_MapNotePinMixin = {}
+
+function VeritasUI_MapNotePinMixin:OnLoad()
+    self:SetScalingLimits(1, 1.0, 1.2)   -- Blizzard's waypoint pin values
+end
+
+function VeritasUI_MapNotePinMixin:OnAcquired(note)
+    self.note = note
+    self:UseFrameLevelType("PIN_FRAME_LEVEL_WAYPOINT_LOCATION")
+    self.Icon:SetAtlas(MapNoteAtlas())
+end
+
+function VeritasUI_MapNotePinMixin:OnMouseEnter()
+    if not self.note then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT", -16, -4)
+    GameTooltip_SetTitle(GameTooltip, self.note.text)
+    GameTooltip_AddColoredLine(GameTooltip, "Click to remove this note.", GREEN_FONT_COLOR)
+    GameTooltip:Show()
+end
+
+function VeritasUI_MapNotePinMixin:OnMouseLeave()
+    GameTooltip:Hide()
+end
+
+function VeritasUI_MapNotePinMixin:OnMouseClickAction(button)
+    if button ~= "LeftButton" or not self.note then return end
+    local note = self.note
+    MenuUtil.CreateContextMenu(self, function(_, root)
+        root:SetMinimumWidth(1)
+        root:CreateTitle(note.text)
+        root:CreateButton("Remove Note", function() RemoveMapNote(note) end)
+    end)
+end
+
+local function MapNotesInstall()
+    if mapNotesProvider or not (_G.WorldMapFrame and WorldMapFrame.AddDataProvider) then return end
+    if not (_G.MapCanvasPinMixin and _G.MapCanvasDataProviderMixin) then return end
+    for k, v in pairs(MapCanvasPinMixin) do
+        if VeritasUI_MapNotePinMixin[k] == nil then VeritasUI_MapNotePinMixin[k] = v end
+    end
+    mapNotesProvider = CreateFromMixins(MapCanvasDataProviderMixin)
+    function mapNotesProvider:RemoveAllData()
+        self:GetMap():RemoveAllPinsByTemplate(MAP_NOTE_TEMPLATE)
+    end
+    function mapNotesProvider:RefreshAllData()
+        self:RemoveAllData()
+        local list = cdb and cdb.mapNotes
+        if not list then return end
+        local mapID = self:GetMap():GetMapID()
+        for _, note in ipairs(list) do
+            if note.mapID == mapID then
+                local pin = self:GetMap():AcquirePin(MAP_NOTE_TEMPLATE, note)
+                pin:SetPosition(note.x, note.y)
+            end
+        end
+    end
+    WorldMapFrame:AddDataProvider(mapNotesProvider)
+end
+
+-- WorldMapFrame is load-on-demand (landmine 35): install when it arrives, one frame later,
+-- through Blizzard's own helper (Blizzard_SharedXML/EventUtil.lua:67-75), which also runs at
+-- once if the map is already loaded.
+if EventUtil and EventUtil.ContinueOnAddOnLoaded then
+    EventUtil.ContinueOnAddOnLoaded("Blizzard_WorldMap", function()
+        C_Timer.After(0, MapNotesInstall)
+    end)
+end
+
+local mapNotesFrame = CreateFrame("Frame")
+mapNotesFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+mapNotesFrame:SetScript("OnEvent", function()
+    MapNotesInstall()
+    PruneInstanceNotes()
+end)
+
+SLASH_VERITASUI_MAPNOTE1 = "/note"
+SLASH_VERITASUI_MAPNOTE2 = "/mapnote"
+SlashCmdList["VERITASUI_MAPNOTE"] = MapNoteCommand
 
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()

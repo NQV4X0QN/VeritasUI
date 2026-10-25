@@ -10,3 +10,4 @@
 
 QualityOfLife.lua
 Journeys.lua
+MapNotes.xml

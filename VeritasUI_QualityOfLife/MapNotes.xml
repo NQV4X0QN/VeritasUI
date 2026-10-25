@@ -1,0 +1,27 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\FrameXML\UI.xsd">
+	<!-- Map note pin (/note). Mirrors Blizzard's WaypointLocationPinTemplate
+	     (Blizzard_SharedMapDataProviders/WaypointLocationDataProvider.xml): same size, same
+	     Icon/Highlight layout. The atlas is set in VeritasUI_MapNotePinMixin:OnAcquired. -->
+	<Frame name="VeritasUI_MapNotePinTemplate" enableMouse="true" enableMouseClicks="true" mixin="VeritasUI_MapNotePinMixin" virtual="true">
+		<Size x="30" y="30"/>
+		<Layers>
+			<Layer level="BACKGROUND">
+				<Texture parentKey="Icon" atlas="Waypoint-MapPin-Untracked">
+					<Size x="30" y="30"/>
+					<Anchors>
+						<Anchor point="CENTER"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+			<Layer level="HIGHLIGHT">
+				<Texture parentKey="Highlight" atlas="Waypoint-MapPin-Highlight">
+					<Size x="30" y="30"/>
+					<Anchors>
+						<Anchor point="CENTER" relativeKey="$parent.Icon"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+		</Layers>
+	</Frame>
+</Ui>

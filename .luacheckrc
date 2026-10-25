@@ -49,6 +49,7 @@ globals = {
     "SLASH_VERITASUI_CLEANSOLO1", "SLASH_VERITASUI_CLEANSOLO2",
     "SLASH_VERITASUI_PR1", "SLASH_VERITASUI_PR2",
     "SLASH_VERITASUI_QOL1", "SLASH_VERITASUI_QOL2", "SLASH_VERITASUI_WAY1",
+    "SLASH_VERITASUI_MAPNOTE1", "SLASH_VERITASUI_MAPNOTE2", "VeritasUI_MapNotePinMixin",
     "SLASH_VERITASUI_ZONEQUESTS1", "SLASH_VERITASUI_ZONEQUESTS2",
     "SlashCmdList",
     -- Addon-compartment callbacks (WoW calls these by global name from the TOC)
@@ -92,6 +93,8 @@ read_globals = {
     -- Scroll / data-provider system
     "CreateScrollBoxListLinearView", "CreateDataProvider", "ScrollUtil",
     "Menu", "MenuResponse", "MenuUtil",
+    "IsInInstance", "GetInstanceInfo", "CreateFromMixins", "MapCanvasPinMixin",
+    "MapCanvasDataProviderMixin", "GameTooltip_SetTitle", "GameTooltip_AddColoredLine", "EventUtil",
     -- Tooltips
     "GameTooltip", "ItemRefTooltip", "TooltipDataProcessor", "TooltipUtil",
     "C_TooltipInfo", "ITEM_LEVEL",
