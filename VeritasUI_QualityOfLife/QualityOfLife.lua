@@ -2971,11 +2971,56 @@ function VeritasUI_MapNotePinMixin:OnMouseLeave()
     GameTooltip:Hide()
 end
 
+-- ── Destination on maps that refuse map pins (Labyrinths) ──
+-- MEASURED (owner, 2026-10-25): a Labyrinth refuses Blizzard's own map pin, but its door icons
+-- can still be made the destination. Those icons are VIGNETTES (VignettePinTemplate in
+-- /qol mappins), tracked through C_SuperTrack.SetSuperTrackedVignette -- a public call with no
+-- restriction beyond secret arguments (SuperTrackManagerDocumentation.lua:179-186). An addon
+-- cannot create a vignette, so on such a map a note's destination is THE BLIZZARD ICON NEAREST
+-- THE NOTE, if one is within MAP_NOTE_VIGNETTE_RADIUS -- which for a note left at a door is that
+-- door. Positions come from C_VignetteInfo.GetVignettes / GetVignettePosition(guid, mapID)
+-- (VignetteInfoDocumentation.lua:73-96).
+-- UNTUNED: the radius is a fraction of the map's width and height, not yards; 0.04 is a first
+-- guess sized for "standing at the door", to be confirmed in a Labyrinth.
+local MAP_NOTE_VIGNETTE_RADIUS = 0.04
+
+local function MapNoteNearestVignette(note)
+    local vi = _G.C_VignetteInfo
+    if not (vi and vi.GetVignettes and vi.GetVignettePosition) then return nil end
+    local okList, guids = pcall(vi.GetVignettes)
+    if not (okList and type(guids) == "table") then return nil end
+    local best, bestD
+    for _, guid in ipairs(guids) do
+        if not (issecretvalue and issecretvalue(guid)) then
+            local info = vi.GetVignetteInfo and vi.GetVignetteInfo(guid)
+            if info and info.onWorldMap and not info.isDead then
+                local okPos, pos = pcall(vi.GetVignettePosition, guid, note.mapID)
+                if okPos and pos then
+                    local x, y = pos:GetXY()
+                    if x and y then
+                        local d = math.sqrt((x - note.x) ^ 2 + (y - note.y) ^ 2)
+                        if d <= MAP_NOTE_VIGNETTE_RADIUS and (not bestD or d < bestD) then
+                            best, bestD = guid, d
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
 -- Is the player's destination (Blizzard's one user waypoint, super-tracked) this note?
 -- Compared at 1/1000 of the map: SetUserWaypoint stores what it was given, so an exact float
 -- compare would work today, but a stored point round-tripping through the client is not
 -- something to bet the toggle on.
 local function MapNoteIsDestination(note)
+    -- The vignette fallback counts too: the note "is" the destination when its door is.
+    local tracked = C_SuperTrack.GetSuperTrackedVignette and C_SuperTrack.GetSuperTrackedVignette()
+    if tracked and not (issecretvalue and issecretvalue(tracked))
+       and tracked == MapNoteNearestVignette(note) then
+        return true
+    end
     if not (C_SuperTrack.IsSuperTrackingUserWaypoint and C_SuperTrack.IsSuperTrackingUserWaypoint()) then
         return false
     end
@@ -2992,6 +3037,13 @@ end
 local function MapNoteToggleDestination(note)
     local sounds = _G.SOUNDKIT or {}
     if MapNoteIsDestination(note) then
+        if C_SuperTrack.GetSuperTrackedVignette and C_SuperTrack.GetSuperTrackedVignette()
+           and C_SuperTrack.ClearAllSuperTracked then
+            -- Exactly Blizzard's vignette-pin untrack (SharedMapPoiTemplates.lua:533-535).
+            C_SuperTrack.ClearAllSuperTracked()
+            if sounds.IG_MAINMENU_OPTION_CHECKBOX_OFF then PlaySound(sounds.IG_MAINMENU_OPTION_CHECKBOX_OFF) end
+            return
+        end
         C_Map.ClearUserWaypoint()
         C_SuperTrack.SetSuperTrackedUserWaypoint(false)
         StopWaypointTracking()
@@ -3001,6 +3053,14 @@ local function MapNoteToggleDestination(note)
     local ok = not C_Map.CanSetUserWaypointOnMap or C_Map.CanSetUserWaypointOnMap(note.mapID)
     ok = ok and C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(note.mapID, note.x, note.y))
     if not ok then
+        -- The map refuses pins: track the Blizzard icon at the note instead, if there is one.
+        local guid = MapNoteNearestVignette(note)
+        if guid and C_SuperTrack.SetSuperTrackedVignette then
+            -- Exactly Blizzard's vignette-pin track (SharedMapPoiTemplates.lua:537-538).
+            if sounds.IG_MAINMENU_OPTION_CHECKBOX_ON then PlaySound(sounds.IG_MAINMENU_OPTION_CHECKBOX_ON) end
+            C_SuperTrack.SetSuperTrackedVignette(guid)
+            return
+        end
         -- Blizzard's own refusal, worded and coloured as their pin does it (:101-102).
         if UIErrorsFrame and MAP_PIN_INVALID_MAP then
             UIErrorsFrame:AddMessage(MAP_PIN_INVALID_MAP, RED_FONT_COLOR:GetRGBA())
