@@ -95,6 +95,8 @@ read_globals = {
     "Menu", "MenuResponse", "MenuUtil",
     "IsInInstance", "GetInstanceInfo", "CreateFromMixins", "MapCanvasPinMixin",
     "MapCanvasDataProviderMixin", "GameTooltip_SetTitle", "GameTooltip_AddColoredLine", "EventUtil",
+    "UIErrorsFrame", "MAP_PIN_INVALID_MAP", "RED_FONT_COLOR", "PlaySound", "SOUNDKIT", "UiMapPoint",
+    "IsShiftKeyDown",
     -- Tooltips
     "GameTooltip", "ItemRefTooltip", "TooltipDataProcessor", "TooltipUtil",
     "C_TooltipInfo", "ITEM_LEVEL",

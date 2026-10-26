@@ -2911,7 +2911,8 @@ local function MapNoteCommand(msg)
     local text = strtrim(msg or "")
     if text == "" then
         VUI.Print("Quality of Life", "|cFFFFFF00/note <text>|r leaves a note on the map where you're "
-            .. "standing. Click a note on the map to change its icon or remove it. "
+            .. "standing. Click a note on the map to set it as your destination; Shift-click it "
+            .. "to change its icon or remove it. "
             .. "|cFFFFFF00/note clear|r removes "
             .. "the notes on your current map.")
         return
@@ -2961,7 +2962,8 @@ function VeritasUI_MapNotePinMixin:OnMouseEnter()
     if not self.note then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT", -16, -4)
     GameTooltip_SetTitle(GameTooltip, self.note.text)
-    GameTooltip_AddColoredLine(GameTooltip, "Click to change its icon or remove it.", GREEN_FONT_COLOR)
+    GameTooltip_AddColoredLine(GameTooltip, "Click to set as your destination.", GREEN_FONT_COLOR)
+    GameTooltip_AddColoredLine(GameTooltip, "Shift-click to change its icon or remove it.", GREEN_FONT_COLOR)
     GameTooltip:Show()
 end
 
@@ -2969,9 +2971,54 @@ function VeritasUI_MapNotePinMixin:OnMouseLeave()
     GameTooltip:Hide()
 end
 
+-- Is the player's destination (Blizzard's one user waypoint, super-tracked) this note?
+-- Compared at 1/1000 of the map: SetUserWaypoint stores what it was given, so an exact float
+-- compare would work today, but a stored point round-tripping through the client is not
+-- something to bet the toggle on.
+local function MapNoteIsDestination(note)
+    if not (C_SuperTrack.IsSuperTrackingUserWaypoint and C_SuperTrack.IsSuperTrackingUserWaypoint()) then
+        return false
+    end
+    local wp = C_Map.GetUserWaypoint and C_Map.GetUserWaypoint()
+    if not (wp and wp.uiMapID == note.mapID and wp.position) then return false end
+    local x, y = wp.position:GetXY()
+    return math.abs(x - note.x) < 0.001 and math.abs(y - note.y) < 0.001
+end
+
+-- Left-click = set as destination, as on every Blizzard map icon. Uses Blizzard's own user
+-- waypoint and super-tracking, the same calls and checks as their map pin (WaypointLocation
+-- DataProvider.lua:84-104 and :146-155) and as /way, including the 10-yard arrival auto-clear.
+-- Clicking the note that is already the destination clears it, as Blizzard's pin toggles.
+local function MapNoteToggleDestination(note)
+    local sounds = _G.SOUNDKIT or {}
+    if MapNoteIsDestination(note) then
+        C_Map.ClearUserWaypoint()
+        C_SuperTrack.SetSuperTrackedUserWaypoint(false)
+        StopWaypointTracking()
+        if sounds.UI_MAP_WAYPOINT_SUPER_TRACK_OFF then PlaySound(sounds.UI_MAP_WAYPOINT_SUPER_TRACK_OFF) end
+        return
+    end
+    local ok = not C_Map.CanSetUserWaypointOnMap or C_Map.CanSetUserWaypointOnMap(note.mapID)
+    ok = ok and C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(note.mapID, note.x, note.y))
+    if not ok then
+        -- Blizzard's own refusal, worded and coloured as their pin does it (:101-102).
+        if UIErrorsFrame and MAP_PIN_INVALID_MAP then
+            UIErrorsFrame:AddMessage(MAP_PIN_INVALID_MAP, RED_FONT_COLOR:GetRGBA())
+        end
+        return
+    end
+    C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+    StartWaypointTracking()
+    if sounds.UI_MAP_WAYPOINT_SUPER_TRACK_ON then PlaySound(sounds.UI_MAP_WAYPOINT_SUPER_TRACK_ON) end
+end
+
 function VeritasUI_MapNotePinMixin:OnMouseClickAction(button)
     if button ~= "LeftButton" or not self.note then return end
     local note = self.note
+    if not IsShiftKeyDown() then
+        MapNoteToggleDestination(note)
+        return
+    end
     MenuUtil.CreateContextMenu(self, function(_, root)
         root:SetMinimumWidth(1)
         root:CreateTitle(note.text)
