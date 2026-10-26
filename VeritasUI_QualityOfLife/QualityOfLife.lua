@@ -3010,6 +3010,41 @@ local function MapNoteNearestVignette(note)
     return best
 end
 
+-- /qol vignettes -- probe: every vignette the client reports on the player's map, and for each
+-- map note the distance to each one, so the vignette fallback is judged on measured data.
+local function DumpVignettes()
+    local vi = _G.C_VignetteInfo
+    local mapID = C_Map.GetBestMapForUnit("player")
+    print(("|cFF00CCFF[VeritasUI vignettes]|r map %s  radius %.3f  pinsAllowed=%s")
+        :format(tostring(mapID), MAP_NOTE_VIGNETTE_RADIUS,
+                tostring(C_Map.CanSetUserWaypointOnMap and C_Map.CanSetUserWaypointOnMap(mapID))))
+    if not (vi and vi.GetVignettes) then print("  C_VignetteInfo absent"); return end
+    local okList, guids = pcall(vi.GetVignettes)
+    if not (okList and type(guids) == "table") then print("  GetVignettes failed"); return end
+    print(("  vignettes reported: %d"):format(#guids))
+    local notesHere = {}
+    for _, n in ipairs((cdb and cdb.mapNotes) or {}) do
+        if n.mapID == mapID then notesHere[#notesHere + 1] = n end
+    end
+    for _, guid in ipairs(guids) do
+        local secret = issecretvalue and issecretvalue(guid)
+        local info = (not secret) and vi.GetVignetteInfo and vi.GetVignetteInfo(guid)
+        local okPos, pos = false, nil
+        if not secret then okPos, pos = pcall(vi.GetVignettePosition, guid, mapID) end
+        local x, y
+        if okPos and pos then x, y = pos:GetXY() end
+        local dists = {}
+        for _, n in ipairs(notesHere) do
+            if x then dists[#dists + 1] = ("%s=%.3f"):format(n.text, math.sqrt((x - n.x) ^ 2 + (y - n.y) ^ 2)) end
+        end
+        print(("  %s atlas=%s onMap=%s dead=%s pos=%s  %s"):format(
+            secret and "<secret guid>" or tostring(info and info.name),
+            tostring(info and info.atlasName), tostring(info and info.onWorldMap),
+            tostring(info and info.isDead), x and ("%.3f,%.3f"):format(x, y) or "none",
+            table.concat(dists, " ")))
+    end
+end
+
 -- Is the player's destination (Blizzard's one user waypoint, super-tracked) this note?
 -- Compared at 1/1000 of the map: SetUserWaypoint stores what it was given, so an exact float
 -- compare would work today, but a stored point round-tripping through the client is not
@@ -3586,6 +3621,7 @@ end
 SlashCmdList["VERITASUI_QOL"] = function(msg)
     local arg = (msg and strtrim(msg)) or ""
     if arg:lower() == "mappins" then DumpMapPins(); return end
+    if arg:lower() == "vignettes" then DumpVignettes(); return end
     local ntail = arg:lower():match("^delvenudge%s*(.*)$")
     if ntail then
         -- Guarded: these branches return before the handler's own db nil-check below,
