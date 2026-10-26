@@ -2865,14 +2865,16 @@ local function RemoveMapNote(note)
     MapNotesRefresh()
 end
 
--- Drops instance notes for any instance the player is no longer in. Run on every
--- PLAYER_ENTERING_WORLD: a /reload inside the run keeps them; walking out deletes them, so
--- a new run of the same Labyrinth starts clean.
--- PROBE (2026-10-25): owner left a Labyrinth note, walked out and back in, and it was still
--- there. pruneLog records each prune this session so /qol notes shows whether one ran outside.
+-- Drops instance notes for any instance the player is no longer in: a /reload inside the run
+-- keeps them; walking out deletes them, so a new run of the same Labyrinth starts clean.
+-- MEASURED (owner, /qol notes, 2026-10-25): walking out of a Labyrinth fires NO
+-- PLAYER_ENTERING_WORLD -- the only prune logged was the login one, while outside the game
+-- already reported inInstance=false. So prune also runs on ZONE_CHANGED_NEW_AREA and
+-- GROUP_ROSTER_UPDATE (the companion "has left the instance group" on exit). EXPERIMENT: which
+-- of those fires on exit is not yet measured; pruneLog names the event, read with /qol notes.
 local pruneLog = {}
 
-local function PruneInstanceNotes()
+local function PruneInstanceNotes(event)
     local list = cdb and cdb.mapNotes
     local here = CurrentInstanceID()
     local removed = 0
@@ -2883,9 +2885,9 @@ local function PruneInstanceNotes()
             removed = removed + 1
         end
     end
-    pruneLog[#pruneLog + 1] = ("%s here=%s removed=%d%s"):format(date("%H:%M:%S"), tostring(here),
-        removed, list and "" or " (no notes table)")
-    if #pruneLog > 6 then table.remove(pruneLog, 1) end
+    pruneLog[#pruneLog + 1] = ("%s %s here=%s removed=%d%s"):format(date("%H:%M:%S"),
+        tostring(event), tostring(here), removed, list and "" or " (no notes table)")
+    if #pruneLog > 8 then table.remove(pruneLog, 1) end
     if removed > 0 then MapNotesRefresh() end
 end
 
@@ -3048,10 +3050,12 @@ if EventUtil and EventUtil.ContinueOnAddOnLoaded then
 end
 
 local mapNotesFrame = CreateFrame("Frame")
-mapNotesFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-mapNotesFrame:SetScript("OnEvent", function()
-    MapNotesInstall()
-    PruneInstanceNotes()
+for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA", "GROUP_ROSTER_UPDATE" }) do
+    pcall(mapNotesFrame.RegisterEvent, mapNotesFrame, ev)
+end
+mapNotesFrame:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_ENTERING_WORLD" then MapNotesInstall() end
+    PruneInstanceNotes(event)
 end)
 
 SLASH_VERITASUI_MAPNOTE1 = "/note"
