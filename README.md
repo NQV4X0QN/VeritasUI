@@ -22,7 +22,8 @@ Settings: **Options → AddOns → Clean Solo**, or `/cs`. Changes apply after a
 - **Auto sell junk** and **auto repair** at merchants, with a choice of paying repairs from guild funds or your own gold
 - **`/way` waypoints** in the format most guides use, e.g. `/way #2351 45.2 56.3`, placing WoW's own map pin and arrow (if TomTom is installed, it keeps `/way`)
 - **AFK screen**: a slow camera orbit with your name, level, item level and zone while you're away, which also helps against screen burn-in
-- **Delve Nemesis count** shown right on the Delve objective icon instead of only in its tooltip
+- **Delve counts** shown right on the Delve objective icon instead of only in its tooltip: the Nemesis count, and in a Labyrinth the Treasure Room chambers completed, with a checkmark at 9
+- **Map notes**: `/note <text>` leaves a note on the map where you're standing. Click a note to change its icon or remove it; `/note clear` removes the notes on your current map. Notes left inside a Labyrinth or other instance are removed when you leave it
 - **Track latest reputation** (off until you turn it on): the reputation bar switches to whichever faction you most recently earned reputation with
 - **Journeys**: adds the "Show as Experience Bar" checkbox to Delves and Prey cards, and lets you click the reputation or honor bar to open that faction's page or the PvP window
 
@@ -66,7 +67,7 @@ Required by every other module. It also provides:
 
 ## Settings across characters
 
-Most settings are shared by all your characters, so you set them up once. A few are naturally per-character: which action bars fade, the player frame fade, how repairs are paid, and Priority Rotation lists, which are per character and per specialization.
+Most settings are shared by all your characters, so you set them up once. A few are naturally per-character: which action bars fade, the player frame fade, how repairs are paid, map notes, and Priority Rotation lists, which are per character and per specialization.
 
 Most modules are also listed in the minimap's addon menu (the addon compartment) for quick access to their settings.
 

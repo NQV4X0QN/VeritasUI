@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.20.0] - 2026-10-25
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Labyrinth Treasure Room count on the Delve objective icon.** In a Labyrinth the icon shows the chambers completed, counting up from 0, with Blizzard's checkmark once all 9 are done. The setting is now called **Show Delve Counts** and covers both this and the Nemesis count (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Map notes.** `/note <text>` (or `/mapnote`) leaves a note on the World Map where you're standing, drawn like one of Blizzard's own map icons. Click a note to change its icon (map pin, doors, treasure, quest, dungeon, Delve, vendor, flight point, quest hub) or remove it; `/note clear` removes the notes on your current map. Notes are per character, and notes left inside a Labyrinth or other instance are removed when you leave it (`QualityOfLife.lua`, `MapNotes.xml`, new)
+
+
 ## [1.19.2] - 2026-10-24
 
 ### Fixed

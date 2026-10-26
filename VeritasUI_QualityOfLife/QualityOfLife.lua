@@ -2870,8 +2870,9 @@ end
 -- MEASURED (owner, /qol notes, 2026-10-25): walking out of a Labyrinth fires NO
 -- PLAYER_ENTERING_WORLD -- the only prune logged was the login one, while outside the game
 -- already reported inInstance=false. So prune also runs on ZONE_CHANGED_NEW_AREA and
--- GROUP_ROSTER_UPDATE (the companion "has left the instance group" on exit). EXPERIMENT: which
--- of those fires on exit is not yet measured; pruneLog names the event, read with /qol notes.
+-- GROUP_ROSTER_UPDATE. MEASURED (same day): on exit GROUP_ROSTER_UPDATE fires first while the
+-- game still reports the Labyrinth, then ZONE_CHANGED_NEW_AREA with here=nil does the removal.
+-- pruneLog names the event; read it with /qol notes.
 local pruneLog = {}
 
 local function PruneInstanceNotes(event)
