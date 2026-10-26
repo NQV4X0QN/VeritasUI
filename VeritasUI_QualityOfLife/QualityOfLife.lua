@@ -2868,19 +2868,38 @@ end
 -- Drops instance notes for any instance the player is no longer in. Run on every
 -- PLAYER_ENTERING_WORLD: a /reload inside the run keeps them; walking out deletes them, so
 -- a new run of the same Labyrinth starts clean.
+-- PROBE (2026-10-25): owner left a Labyrinth note, walked out and back in, and it was still
+-- there. pruneLog records each prune this session so /qol notes shows whether one ran outside.
+local pruneLog = {}
+
 local function PruneInstanceNotes()
     local list = cdb and cdb.mapNotes
-    if not list then return end
     local here = CurrentInstanceID()
     local removed = 0
-    for i = #list, 1, -1 do
+    for i = #(list or {}), 1, -1 do
         local inst = list[i].instance
         if inst and inst ~= here then
             table.remove(list, i)
             removed = removed + 1
         end
     end
+    pruneLog[#pruneLog + 1] = ("%s here=%s removed=%d%s"):format(date("%H:%M:%S"), tostring(here),
+        removed, list and "" or " (no notes table)")
+    if #pruneLog > 6 then table.remove(pruneLog, 1) end
     if removed > 0 then MapNotesRefresh() end
+end
+
+-- /qol notes -- probe: what the game says about where you are, each note's instance tag, and
+-- the prunes run since login.
+local function DumpMapNotes()
+    local name, instType, _, _, _, _, _, instID = GetInstanceInfo()
+    print(("|cFF00CCFF[VeritasUI notes]|r inInstance=%s type=%s instanceID=%s name=%s map=%s")
+        :format(tostring(IsInInstance()), tostring(instType), tostring(instID), tostring(name),
+                tostring(C_Map.GetBestMapForUnit("player"))))
+    for _, n in ipairs((cdb and cdb.mapNotes) or {}) do
+        print(("  note %q map=%s instance=%s"):format(n.text, tostring(n.mapID), tostring(n.instance)))
+    end
+    for _, line in ipairs(pruneLog) do print("  prune " .. line) end
 end
 
 local function AddMapNote(text)
@@ -2911,8 +2930,7 @@ local function MapNoteCommand(msg)
     local text = strtrim(msg or "")
     if text == "" then
         VUI.Print("Quality of Life", "|cFFFFFF00/note <text>|r leaves a note on the map where you're "
-            .. "standing. Click a note on the map to set it as your destination; Shift-click it "
-            .. "to change its icon or remove it. "
+            .. "standing. Click a note on the map to change its icon or remove it. "
             .. "|cFFFFFF00/note clear|r removes "
             .. "the notes on your current map.")
         return
@@ -3480,6 +3498,7 @@ end
 SlashCmdList["VERITASUI_QOL"] = function(msg)
     local arg = (msg and strtrim(msg)) or ""
     if arg:lower() == "mappins" then DumpMapPins(); return end
+    if arg:lower() == "notes" then DumpMapNotes(); return end
     local ntail = arg:lower():match("^delvenudge%s*(.*)$")
     if ntail then
         -- Guarded: these branches return before the handler's own db nil-check below,
