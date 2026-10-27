@@ -75,19 +75,23 @@ local UNIVERSAL = {
     fadeMicroMenu       = true,
     hideBagButtons      = true,
     hideMacroNames      = true,
-    hideErrorText       = true,
+    hideErrorText       = true,   -- the "All" row of the Hide Error Text dropdown (was its own checkbox)
+    -- [groupId] = true. TABLE-typed. Overridden while hideErrorText ("All") is on.
+    -- PAIRED: hideErrorTypesMask (the dropdown's tick-box value) is derived from this and
+    -- hideErrorText, and must share their scope; like fadeActionBarsMask it has no default
+    -- here because the Settings registration seeds it.
+    hideErrorTypes      = {},
 }
 
 -- ⚠ PER-CHARACTER. These two are the reason per-character storage was requested in the first
 -- place: action bars are laid out and used differently from character to character, so an alt
 -- inheriting a main's bar-fade choices was the original complaint.
 --
--- PAIRED CONSTRAINT: fadeActionBarsLabel is the composite display string for the dropdown
--- ("Bars 2, 5") and is recomputed from fadeActionBars. It MUST share that key's scope, or the
--- label shown in the panel would describe a different character's bars. It has no default here
--- on purpose -- Blizzard's Settings framework seeds it via the "None" default passed at
--- registration, which is why it never appeared in a defaults table and why the scope audit
--- missed it on the first pass.
+-- PAIRED CONSTRAINT: fadeActionBarsMask is the dropdown's tick-box value and is recomputed from
+-- fadeActionBars. It MUST share that key's scope, or the ticks shown in the panel would describe
+-- a different character's bars. It has no default here on purpose -- Blizzard's Settings
+-- framework seeds it via the default passed at registration. (Until v1.21.0 the same role was
+-- played by the display string fadeActionBarsLabel, retired at login in InitializeOptions.)
 local PERCHAR = {
     fadeActionBars  = {},     -- [barIndex] = true; TABLE-typed, so it needs a per-character copy
     fadePlayerFrame = true,
@@ -435,6 +439,138 @@ local function HideErrorText()
     end
 end
 
+-- ── Feature: Hide Error Text, by type ──────────────────────
+-- Used only when "All" (hideErrorText) is off. Each red error carries a numeric type
+-- (LE_GAME_ERR_*), and Blizzard keeps a per-type hidden list with a setter for it:
+-- UIErrorsMixin:SetMessageTypeEnabled, Blizzard_UIErrorsFrame/Mainline/UIErrorsFrame.lua.
+-- The list is checked before the message is shown AND before its voice line plays.
+--
+-- ⚠ That list is shared with the yellow UI_INFO_MESSAGE path (same file, OnEvent), so
+-- hiding a type hides it in yellow too. That is why these are hand-picked failure
+-- messages and there is no "everything else" group: quest progress, "Mail sent.", friend
+-- online and the like are message types too, and a catch-all would swallow them.
+--
+-- ⚠ We only ever write `true` into Blizzard's list. Un-hiding is done by /reload, which
+-- rebuilds the list from Blizzard's own file, so no value of ours is left behind to be read
+-- on a message we meant to show.
+--
+-- Names, not numbers: the numbers are assigned by the client and resolved through _G at
+-- login, so a type Blizzard removes is skipped instead of hiding the wrong message.
+local ERROR_TYPE_GROUPS = {
+    { id = "combat", label = "Combat: Range, Facing & Targets",
+      types = {
+        "BADATTACKPOS", "BADATTACKFACING", "OUT_OF_RANGE", "SPELL_OUT_OF_RANGE",
+        "PET_SPELL_OUT_OF_RANGE", "NO_ATTACK_TARGET", "GENERIC_NO_TARGET",
+        "GENERIC_NO_VALID_TARGETS", "INVALID_ATTACK_TARGET", "COMMAND_NEEDS_TARGET",
+        "UNIT_NOT_FOUND", "ATTACK_CHANNEL", "ATTACK_CHARMED", "ATTACK_CONFUSED",
+        "ATTACK_DEAD", "ATTACK_FLEEING", "ATTACK_MOUNTED", "ATTACK_NO_ACTIONS",
+        "ATTACK_PACIFIED", "ATTACK_PREVENTED_BY_MECHANIC_S",
+        "ATTACK_PVP_TARGET_WHILE_UNFLAGGED", "ATTACK_STUNNED", "PET_SPELL_NOT_BEHIND",
+        "PET_SPELL_TARGETS_DEAD", "PET_SPELL_DEAD", "PET_SPELL_ROOTED", "PET_SPELL_NOPATH",
+        "PET_SPELL_AFFECTING_COMBAT", "TARGET_STUNNED", "CANT_TARGET_UNFRIENDLY_IN_OVERWORLD",
+      } },
+    { id = "spells", label = "Spells & Cooldowns",
+      types = {
+        "ABILITY_COOLDOWN", "SPELL_COOLDOWN", "ITEM_COOLDOWN", "POTION_COOLDOWN",
+        "FOOD_COOLDOWN", "SPELL_FAILED_ALREADY_AT_FULL_HEALTH",
+        "SPELL_FAILED_ALREADY_AT_FULL_MANA", "SPELL_FAILED_ALREADY_AT_FULL_POWER_S",
+        "SPELL_FAILED_ANOTHER_IN_PROGRESS", "SPELL_FAILED_CANT_FLY_HERE",
+        "SPELL_FAILED_EQUIPPED_ITEM", "SPELL_FAILED_EQUIPPED_ITEM_CLASS_S",
+        "SPELL_FAILED_EQUIPPED_SPECIFIC_ITEM", "SPELL_FAILED_LEVEL_REQUIREMENT",
+        "SPELL_FAILED_NOTUNSHEATHED", "SPELL_FAILED_OPTIONAL_REAGENTS",
+        "SPELL_FAILED_REAGENTS", "SPELL_FAILED_REAGENTS_GENERIC", "SPELL_FAILED_S",
+        "SPELL_FAILED_SHAPESHIFT_FORM_S", "SPELL_FAILED_TOTEMS",
+        "OUT_OF_ALTERNATE_ENCOUNTER", "OUT_OF_ALTERNATE_MOUNT", "OUT_OF_ALTERNATE_QUEST",
+        "OUT_OF_ARCANE_CHARGES", "OUT_OF_BALANCE", "OUT_OF_CHI", "OUT_OF_COMBO_POINTS",
+        "OUT_OF_ENERGY", "OUT_OF_ESSENCE", "OUT_OF_FOCUS", "OUT_OF_FURY",
+        "OUT_OF_HAPPINESS", "OUT_OF_HEALTH", "OUT_OF_HOLY_POWER", "OUT_OF_INSANITY",
+        "OUT_OF_LUNAR_POWER", "OUT_OF_MAELSTROM", "OUT_OF_MANA", "OUT_OF_PAIN",
+        "OUT_OF_POWER_DISPLAY", "OUT_OF_RAGE", "OUT_OF_RUNES", "OUT_OF_RUNE_BLOOD",
+        "OUT_OF_RUNE_CHROMATIC", "OUT_OF_RUNE_FROST", "OUT_OF_RUNE_UNHOLY",
+        "OUT_OF_RUNIC_POWER", "OUT_OF_SHADOW_ORBS", "OUT_OF_SOUL_SHARDS",
+        "NOT_WHILE_DISARMED", "NOT_WHILE_FALLING", "NOT_WHILE_FATIGUED",
+        "NOT_WHILE_MOUNTED", "NOT_WHILE_MOVING", "NOT_WHILE_SHAPESHIFTED",
+        "NOT_IN_COMBAT", "AFFECTING_COMBAT", "GENERIC_STUNNED", "CANT_USE_DISARMED",
+        "CANT_DO_THAT_RIGHT_NOW", "PASSIVE_ABILITY", "NOAMMO_S",
+      } },
+    { id = "items", label = "Items & Bags",
+      types = {
+        "INV_FULL", "BAG_FULL", "CANT_USE_ITEM", "CANT_USE_ITEM_IN_ARENA",
+        "CANT_USE_ITEM_IN_RATED_BATTLEGROUND", "CANT_EQUIP_EVER", "CANT_EQUIP_LEVEL_I",
+        "CANT_EQUIP_NEED_TALENT", "CANT_EQUIP_RANK", "CANT_EQUIP_RATING",
+        "CANT_EQUIP_REPUTATION", "CANT_EQUIP_SKILL", "CANT_STACK", "CANT_SWAP",
+        "WRONG_SLOT", "WRONG_BAG_TYPE", "WRONG_BAG_TYPE_SUBCLASS", "NOT_EQUIPPABLE",
+        "ITEM_LOCKED", "ITEM_MAX_COUNT", "ITEM_MAX_COUNT_EQUIPPED_SOCKETED",
+        "ITEM_MAX_COUNT_SOCKETED", "ITEM_MAX_LIMIT_CATEGORY_COUNT_EXCEEDED_IS",
+        "ITEM_MAX_LIMIT_CATEGORY_EQUIPPED_EXCEEDED_IS",
+        "ITEM_MAX_LIMIT_CATEGORY_SOCKETED_EXCEEDED_IS", "ITEM_UNIQUE_EQUIPPABLE",
+        "ITEM_UNIQUE_EQUIPPABLE_SOCKETED", "ITEM_CANT_BE_DESTROYED", "2HANDED_EQUIPPED",
+        "2HSKILLNOTFOUND", "SPLIT_FAILED", "TOO_FEW_TO_SPLIT", "DESTROY_NONEMPTY_BAG",
+        "BAG_IN_BAG", "NOT_A_BAG", "SLOT_EMPTY", "MUST_EQUIP_ITEM",
+        "EQUIPMENT_MANAGER_BAGS_FULL", "INTERNAL_BAG_ERROR", "NO_SLOT_AVAILABLE",
+        "REAGENTBAG_ITEM_TYPE", "REAGENTBAG_WRONG_SLOT", "SLOT_ONLY_REAGENTBAG",
+        "NO_ITEMS_WHILE_SHAPESHIFTED", "SHAPESHIFT_FORM_CANNOT_EQUIP",
+        "TOO_MANY_SPECIAL_BAGS", "ONLY_ONE_AMMO", "ONLY_ONE_BOLT", "ONLY_ONE_QUIVER",
+        "AMMO_ONLY",
+      } },
+    -- ITEM_NOT_FOUND sits here, not under Items: Open All at a mailbox raises it alongside
+    -- MAIL_DATABASE_ERROR (reported in game 2026-10-26). Its exact in-game wording is not yet
+    -- matched to this type -- if "Item is not found" still shows with this group on, it is a
+    -- different type.
+    { id = "mail", label = "Mail, Vendors & Bank",
+      types = {
+        "MAIL_DATABASE_ERROR", "ITEM_NOT_FOUND", "MAIL_ATTACHMENT_EXPIRED", "MAIL_BAG",
+        "MAIL_BOUND_ITEM", "MAIL_CANT_SEND_REALM", "MAIL_CONJURED_ITEM",
+        "MAIL_DELETE_ITEM_ERROR", "MAIL_INVALID_ATTACHMENT", "MAIL_INVALID_ATTACHMENT_SLOT",
+        "MAIL_LIMITED_DURATION_ITEM", "MAIL_QUEST_ITEM", "MAIL_REACHED_CAP",
+        "MAIL_RECEPIENT_CANT_RECEIVE_MAIL", "MAIL_RECEPIENT_IS_SELF_FOUND_CANNOT_RECEIVE_MAIL",
+        "MAIL_TARGET_CANNOT_RECEIVE_MAIL", "MAIL_TARGET_IS_TRIAL", "MAIL_TARGET_NOT_FOUND",
+        "MAIL_TEMP_RETURN_OUTAGE", "MAIL_TOO_MANY_ATTACHMENTS", "MAIL_TO_SELF",
+        "MAIL_WRAPPED_COD", "VENDOR_DOESNT_BUY", "VENDOR_HATES_YOU", "VENDOR_MISSING_TURNINS",
+        "VENDOR_NOT_INTERESTED", "VENDOR_REFUSE_SCRAPPABLE_AZERITE", "VENDOR_SOLD_OUT",
+        "VENDOR_TOO_FAR", "NOT_ENOUGH_MONEY", "CANT_BUY_QUANTITY",
+        "CANT_BULK_SELL_ITEM_WITH_REFUND", "NO_BANK_HERE", "NO_ACCOUNT_BANK_HERE",
+        "BANK_FULL", "BANK_NOT_ACCESSIBLE", "REAGENT_BANK_FULL", "AUCTION_DATABASE_ERROR",
+      } },
+    { id = "loot", label = "Looting & Objects",
+      types = {
+        "LOOT_BAD_FACING", "LOOT_CANT_LOOT_THAT", "LOOT_CANT_LOOT_THAT_NOW",
+        "LOOT_DIDNT_KILL", "LOOT_GONE", "LOOT_LOCKED", "LOOT_NOTSTANDING", "LOOT_NO_UI",
+        "LOOT_STUNNED", "LOOT_TOO_FAR", "LOOT_WHILE_INVULNERABLE", "NO_LOOT",
+        "ALREADY_PICKPOCKETED", "USE_BAD_ANGLE", "USE_CANT_IMMUNE", "USE_CANT_OPEN",
+        "USE_DESTROYED", "USE_LOCKED", "USE_LOCKED_WITH_ITEM_S",
+        "USE_LOCKED_WITH_SPELL_KNOWN_SI", "USE_LOCKED_WITH_SPELL_S", "USE_OBJECT_MOVING",
+        "USE_PREVENTED_BY_MECHANIC_S", "USE_SPELL_FOCUS", "USE_TOO_FAR",
+        "TOO_FAR_TO_INTERACT", "OBJECT_IS_BUSY", "CHEST_IN_USE", "DOOR_LOCKED",
+        "CANT_INTERACT_SHAPESHIFTED", "FISH_ESCAPED", "FISH_NOT_HOOKED",
+      } },
+    { id = "travel", label = "Mounts & Flight Paths",
+      types = {
+        "MOUNT_ALREADYMOUNTED", "MOUNT_INVALIDMOUNTEE", "MOUNT_LOOTING",
+        "MOUNT_NOTMOUNTABLE", "MOUNT_NOTYOURPET", "MOUNT_NO_FAVORITES", "MOUNT_NO_MOUNTS",
+        "MOUNT_OTHER", "MOUNT_RACECANTMOUNT", "MOUNT_SHAPESHIFTED", "MOUNT_TOOFARAWAY",
+        "DISMOUNT_NOPET", "DISMOUNT_NOTMOUNTED", "DISMOUNT_NOTYOURPET", "TAXIINCOMBAT",
+        "TAXINOPATHS", "TAXINOSUCHPATH", "TAXINOTELIGIBLE", "TAXINOTENOUGHMONEY",
+        "TAXINOTSTANDING", "TAXINOTVISITED", "TAXINOVENDORNEARBY",
+        "TAXIPLAYERALREADYMOUNTED", "TAXIPLAYERBUSY", "TAXIPLAYERMOVING",
+        "TAXIPLAYERSHAPESHIFTED", "TAXISAMENODE", "TAXITOOFARAWAY",
+        "TAXIUNSPECIFIEDSERVERERROR",
+      } },
+}
+
+local function HideErrorTypes()
+    local f = UIErrorsFrame
+    if not (f and f.SetMessageTypeEnabled) then return end
+    for _, g in ipairs(ERROR_TYPE_GROUPS) do
+        if db.hideErrorTypes[g.id] then
+            for _, name in ipairs(g.types) do
+                local t = _G["LE_GAME_ERR_" .. name]
+                if type(t) == "number" then f:SetMessageTypeEnabled(t, false) end
+            end
+        end
+    end
+end
+
 -- ── Feature: Fade Action Bars ──────────────────────────────
 -- Hover-reveal for designated action bars: faded to alpha 0 when
 -- idle, reappear on mouseover.  Uses VUI.HookHoverFade which
@@ -491,6 +627,57 @@ local function SetupActionBarFading()
 end
 
 -- ── Options Panel ───────────────────────────────────────────
+-- The two multi-select dropdowns (Hide Error Text, Fade Action Bars) use Blizzard's own
+-- tick-box rows, the control its Nameplates "Cast Bar Information" option uses:
+-- container:AddCheckbox, with the setting's value a bitmask in which option value v is bit
+-- v-1 (Blizzard_Settings.lua:254-258 and 519-533). Blizzard owns ticking, the bar text (the
+-- ticked rows joined by commas, MenuTemplates.lua:775-794) and the absence of the arrow
+-- buttons (shown only when a menu has radio rows, Blizzard_SettingControls.lua:780-785).
+--
+-- ⛔ NO getSelectionTextFunc. Nameplates sets one to show "None", but the Settings list
+-- recycles control frames across every category and only ever SETS that function on the
+-- recycled dropdown, never clears it (Blizzard_SettingControls.lua:787-790; MenuTemplates.lua
+-- :747-748). Ours then ran inside Blizzard's Game > Social page, which next calls the
+-- restricted C_Discord.IsUserOAuthed() (Social.lua:341): ADDON_ACTION_FORBIDDEN under Clean
+-- Solo's name, 5 times in the owner's /vui taint (v1.21.0 test build). "None" is therefore
+-- a real row instead: ticked exactly when nothing else is, so Blizzard's own text shows it.
+--
+-- Bits are plain arithmetic, not bit.*: the values are small powers of two.
+local function Bit(v) return 2 ^ (v - 1) end
+local function HasBit(mask, v) return math.floor((mask or 0) / Bit(v)) % 2 == 1 end
+local function ChangedBits(old, new, maxV)
+    local changed = {}
+    for v = 1, maxV do
+        if HasBit(old, v) ~= HasBit(new, v) then changed[#changed + 1] = v end
+    end
+    return changed
+end
+
+-- Hide Error Text rows: None, All, then the groups in ERROR_TYPE_GROUPS order.
+local ERR_NONE, ERR_ALL, ERR_FIRST_GROUP = 1, 2, 3
+local ERR_MAX = ERR_FIRST_GROUP + #ERROR_TYPE_GROUPS - 1
+
+local function ErrorTypesMask()
+    local mask = 0
+    if db.hideErrorText then mask = Bit(ERR_ALL) end
+    for i, g in ipairs(ERROR_TYPE_GROUPS) do
+        if db.hideErrorText or db.hideErrorTypes[g.id] then mask = mask + Bit(ERR_FIRST_GROUP + i - 1) end
+    end
+    return mask > 0 and mask or Bit(ERR_NONE)
+end
+
+-- Fade Action Bars rows: None is value 1 (bar 1 is Blizzard-protected and never listed), and
+-- bar N is value N, so the bar number IS the option value.
+local BAR_NONE, BAR_MAX = 1, 8
+
+local function ActionBarsMask()
+    local mask = 0
+    for i = 2, BAR_MAX do
+        if cdb.fadeActionBars[i] then mask = mask + Bit(i) end
+    end
+    return mask > 0 and mask or Bit(BAR_NONE)
+end
+
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
 
@@ -524,14 +711,11 @@ local function InitializeOptions()
         { key = "hideMacroNames",      name = "Hide Macro Names",
           tip = "Hides the macro name text displayed on action bar buttons. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
-        { key = "hideErrorText",       name = "Hide Error Text",
-          tip = "Hides red error messages such as 'Not enough energy', and the spoken lines that go with them. "
-             .. "Requires |cFFFFFF00/reload|r to apply." },
     }
 
-    -- ⚠ THIS LOOP IS MIXED-SCOPE. Nine of these ten keys are account-wide and one
+    -- ⚠ THIS LOOP IS MIXED-SCOPE. Eight of these nine keys are account-wide and one
     -- (fadePlayerFrame) is per-character, so the table handed to Settings AND the table the
-    -- default is read from must both be resolved PER KEY. Passing one table for all ten -- which
+    -- default is read from must both be resolved PER KEY. Passing one table for all nine -- which
     -- is what this did before v1.14.4 -- would store fadePlayerFrame at account scope, and the
     -- panel would then read and write a value the runtime code never looks at. Blizzard captures
     -- the table by reference (Blizzard_Setting.lua:420), so getting this wrong stays invisible
@@ -555,68 +739,153 @@ local function InitializeOptions()
         Settings.CreateCheckbox(category, setting, opt.tip)
     end
 
-    -- ── Action Bar Fading — native Settings dropdown ───────
-    -- Uses Settings.CreateDropdown so the control is part of the
-    -- layout system — correct modern style, instant positioning,
-    -- no floating frames or deferred anchoring.
+    -- ── Hide Error Text — tick-box dropdown (see the Options Panel note above). UNIVERSAL:
+    -- hideErrorText, hideErrorTypes and the mask all live on `db`.
     --
-    -- Multi-select via single-select dropdown: each option toggles
-    -- a bar, then the value is reset to a composite display label
-    -- ("Bars 2, 5") via a re-entry-guarded SetValue.
-    do
-        cdb.fadeActionBars[1] = nil  -- Bar 1 is Blizzard-protected
-        local bars = {}
-        for i = 2, 8 do
-            if cdb.fadeActionBars[i] then bars[#bars + 1] = tostring(i) end
+    -- "All" is stored in hideErrorText, the key the old Hide Error Text checkbox used, so a
+    -- saved "on" from before this dropdown carries straight over as All. All is an override,
+    -- not a seventh group: it hides EVERY red error (not just the six groups) the way the
+    -- checkbox did. While it is on every group row is ticked too, and the individual picks
+    -- underneath it are kept, so unticking All restores them. Unticking a group while All is
+    -- on means "all but this one".
+    --
+    -- The mask is DERIVED from those two keys on every login and every change; they are the
+    -- truth, the mask only feeds the control.
+    db.hideErrorTypesLabel = nil   -- left by the unreleased v1.21.0 test builds
+    db.hideErrorTypesMask = ErrorTypesMask()
+    local lastErrMask = db.hideErrorTypesMask
+
+    local errSetting = Settings.RegisterAddOnSetting(
+        category,
+        ADDON_NAME .. "_hideErrorTypes",
+        "hideErrorTypesMask",
+        db,                          -- UNIVERSAL: paired with hideErrorTypes
+        "number",
+        "Hide Error Text",
+        Bit(ERR_ALL) + (2 ^ ERR_MAX - 2 ^ (ERR_FIRST_GROUP - 1))   -- default: All, as before
+    )
+
+    local ignoreErrCallback = false
+
+    local function GetErrorTypeOptions()
+        local container = Settings.CreateControlTextContainer()
+        container:AddCheckbox(ERR_NONE, "None")
+        container:AddCheckbox(ERR_ALL, "All")
+        for i, g in ipairs(ERROR_TYPE_GROUPS) do
+            local row = container:AddCheckbox(ERR_FIRST_GROUP + i - 1, g.label)
+            -- While All is on the group rows are ticked but must not be listed in the bar,
+            -- which should read just "All". A row's `text` feeds only the bar text; the menu
+            -- draws the row from `label` (CreateTextContainerData, Blizzard_Settings.lua:244-
+            -- 246; the row initializer captures its label, MenuTemplates.lua:330-333). A nil
+            -- text adds nothing to the bar's list (MenuTemplates.lua:775-791).
+            if db.hideErrorText then row.text = nil end
         end
-        cdb.fadeActionBarsLabel = #bars > 0
-            and ((#bars == 1 and "Bar " or "Bars ") .. table.concat(bars, ", ")) or "None"
+        return container:GetData()
     end
+
+    local function ErrorSummary()
+        if db.hideErrorText then return "All" end
+        local names = {}
+        for _, g in ipairs(ERROR_TYPE_GROUPS) do
+            if db.hideErrorTypes[g.id] then names[#names + 1] = g.label end
+        end
+        return #names > 0 and table.concat(names, ", ") or "None"
+    end
+
+    errSetting:SetValueChangedCallback(function(_, val)
+        if ignoreErrCallback or type(val) ~= "number" then return end
+        local changed = ChangedBits(lastErrMask, val, ERR_MAX)
+        if #changed == 1 then
+            local v, on = changed[1], HasBit(val, changed[1])
+            if v == ERR_NONE then
+                if on then
+                    db.hideErrorText = false
+                    for k in pairs(db.hideErrorTypes) do db.hideErrorTypes[k] = nil end
+                end                                   -- unticking None alone changes nothing
+            elseif v == ERR_ALL then
+                db.hideErrorText = on
+            else
+                local g = ERROR_TYPE_GROUPS[v - ERR_FIRST_GROUP + 1]
+                if on then
+                    db.hideErrorTypes[g.id] = true
+                elseif db.hideErrorText then
+                    db.hideErrorText = false
+                    for _, other in ipairs(ERROR_TYPE_GROUPS) do
+                        db.hideErrorTypes[other.id] = (other.id ~= g.id) or nil
+                    end
+                else
+                    db.hideErrorTypes[g.id] = nil
+                end
+            end
+        elseif #changed > 1 then                      -- e.g. the Defaults button
+            db.hideErrorText = HasBit(val, ERR_ALL)
+            if not db.hideErrorText then
+                for i, g in ipairs(ERROR_TYPE_GROUPS) do
+                    db.hideErrorTypes[g.id] = HasBit(val, ERR_FIRST_GROUP + i - 1) or nil
+                end
+            end
+        end
+        if #changed > 0 then
+            VUI.Print("Clean Solo", "Hide Error Text: " .. ErrorSummary()
+                .. " — |cFFFFFF00/reload|r to apply.")
+        end
+        db.hideErrorTypesMask = ErrorTypesMask()
+        lastErrMask = db.hideErrorTypesMask
+        ignoreErrCallback = true
+        pcall(errSetting.SetValue, errSetting, db.hideErrorTypesMask)
+        ignoreErrCallback = false
+    end)
+
+    Settings.CreateDropdown(category, errSetting, GetErrorTypeOptions,
+        "Pick the kinds of red error message to hide, and the spoken lines that go with them; "
+        .. "the rest still show. All hides every error message. Combat holds messages like "
+        .. "'You are too far away!' and 'You are facing the wrong way!'; Mail, Vendors & Bank "
+        .. "holds 'Internal mail database error.' Requires |cFFFFFF00/reload|r to apply.")
+
+    -- ── Fade Action Bars — tick-box dropdown, PER-CHARACTER (mask paired with fadeActionBars).
+    cdb.fadeActionBars[1] = nil  -- Bar 1 is Blizzard-protected
+    cdb.fadeActionBarsLabel = nil  -- RETIRED v1.21.0: the old display string, now the mask
+    cdb.fadeActionBarsMask = ActionBarsMask()
+    local lastBarMask = cdb.fadeActionBarsMask
 
     local fadeSetting = Settings.RegisterAddOnSetting(
         category,
         ADDON_NAME .. "_fadeActionBars",
-        "fadeActionBarsLabel",
+        "fadeActionBarsMask",
         cdb,                         -- PER-CHARACTER: paired with fadeActionBars
-        "string",
+        "number",
         "Fade Action Bars",
-        "None"
+        Bit(BAR_NONE)
     )
 
     local ignoreFadeCallback = false
 
     local function GetBarOptions()
         local container = Settings.CreateControlTextContainer()
-        -- Current composite label as the "selected" display option.
-        container:Add(cdb.fadeActionBarsLabel, cdb.fadeActionBarsLabel)
-        -- Individual bar toggle actions.
-        for i = 2, 8 do
-            local label = cdb.fadeActionBars[i]
-                and ("|cFF00FF00" .. ACTION_BAR_LABELS[i] .. "|r")
-                or ACTION_BAR_LABELS[i]
-            container:Add("toggle:" .. i, label)
-        end
+        container:AddCheckbox(BAR_NONE, "None")
+        for i = 2, BAR_MAX do container:AddCheckbox(i, ACTION_BAR_LABELS[i]) end
         return container:GetData()
     end
 
     fadeSetting:SetValueChangedCallback(function(_, val)
-        if ignoreFadeCallback or type(val) ~= "string" then return end
-        local barNum = tonumber(val:match("^toggle:(%d+)$") or "")
-        if barNum and barNum >= 2 and barNum <= 8 then
-            cdb.fadeActionBars[barNum] = not cdb.fadeActionBars[barNum] or nil
-            VUI.Print("Clean Solo", ACTION_BAR_LABELS[barNum] .. " fade "
-                .. (cdb.fadeActionBars[barNum] and "enabled" or "disabled")
-                .. " — |cFFFFFF00/reload|r to apply.")
+        if ignoreFadeCallback or type(val) ~= "number" then return end
+        local changed = ChangedBits(lastBarMask, val, BAR_MAX)
+        if #changed == 1 then
+            local v, on = changed[1], HasBit(val, changed[1])
+            if v == BAR_NONE then
+                if on then for i = 2, BAR_MAX do cdb.fadeActionBars[i] = nil end end
+            else
+                cdb.fadeActionBars[v] = on or nil
+                VUI.Print("Clean Solo", ACTION_BAR_LABELS[v] .. " fade "
+                    .. (on and "enabled" or "disabled") .. " — |cFFFFFF00/reload|r to apply.")
+            end
+        elseif #changed > 1 then
+            for i = 2, BAR_MAX do cdb.fadeActionBars[i] = HasBit(val, i) or nil end
         end
-        -- Recompute display label and reset value.
-        local b = {}
-        for i = 2, 8 do
-            if cdb.fadeActionBars[i] then b[#b + 1] = tostring(i) end
-        end
-        cdb.fadeActionBarsLabel = #b > 0
-            and ((#b == 1 and "Bar " or "Bars ") .. table.concat(b, ", ")) or "None"
+        cdb.fadeActionBarsMask = ActionBarsMask()
+        lastBarMask = cdb.fadeActionBarsMask
         ignoreFadeCallback = true
-        pcall(fadeSetting.SetValue, fadeSetting, cdb.fadeActionBarsLabel)
+        pcall(fadeSetting.SetValue, fadeSetting, cdb.fadeActionBarsMask)
         ignoreFadeCallback = false
     end)
 
@@ -681,7 +950,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if cdb.fadePlayerFrame    then SetupPlayerFrameFade() end
         if db.hideBagButtons      then HideBagButtons()      end
         if db.hideMacroNames      then HideMacroNames()      end
-        if db.hideErrorText       then HideErrorText()       end
+        if db.hideErrorText       then HideErrorText()
+        else                           HideErrorTypes()      end
         SetupActionBarFading()
 
         self:UnregisterEvent("PLAYER_LOGIN")

@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.21.0] - 2026-10-26
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Hide Error Text by kind.** Hide Error Text is now a tick-box dropdown: **All**, or any of Combat: Range, Facing & Targets; Spells & Cooldowns; Items & Bags; Mail, Vendors & Bank; Looting & Objects; Mounts & Flight Paths. Hide the mailbox's "Internal mail database error." and keep "You are too far away!" and "You are facing the wrong way!" in combat. Uses Blizzard's own per-message-type switch, so the spoken line is hidden with the text. If your old Hide Error Text checkbox was on, it carries over as All (`CleanSolo.lua`, `README.md`)
+
+### Changed
+
+- `VeritasUI_CleanSolo` — **Fade Action Bars uses Blizzard's tick-box dropdown.** Both Clean Solo dropdowns now look and work like the Nameplates "Cast Bar Information" option: a tick box on each row, a None row, and the ticked names in the bar. Your chosen bars carry over (`CleanSolo.lua`)
+
+### Removed
+
+- `VeritasUI_CleanSolo` — **The separate Hide Error Text checkbox.** Its job is the dropdown's All row (`CleanSolo.lua`)
+
+
 ## [1.20.0] - 2026-10-25
 
 ### Added

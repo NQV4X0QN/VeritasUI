@@ -13,7 +13,8 @@ Hides or fades the parts of the interface you don't need most of the time.
 
 - Chat tabs and the chat background fade away when you're not using chat, and come back on mouseover
 - The micro menu, chosen action bars (2–8) and your player frame fade out when idle and reappear on mouseover, in combat, or when you take damage
-- Optionally hides the social button, the chat menu and voice buttons, the bag bar, macro names on action buttons, and the red error text ("Not enough energy")
+- Optionally hides the social button, the chat menu and voice buttons, the bag bar, and macro names on action buttons
+- Hides red error text — all of it, or only the kinds you pick (combat, spells and cooldowns, items and bags, mail/vendors/bank, looting, mounts and flight paths), so "Internal mail database error." can go while "You are too far away!" stays
 
 Settings: **Options → AddOns → Clean Solo**, or `/cs`. Changes apply after a `/reload`.
 
