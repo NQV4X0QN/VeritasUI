@@ -1410,8 +1410,49 @@ local function AFK_StopReveal()
     end
 end
 
+-- ── AFK jump watch ───────────────────────────────────────────
+-- A jump in place does not fire PLAYER_STARTED_MOVING (the owner saw walking dismiss the screen
+-- at once while jumping waited the 1-2 s server round-trip for PLAYER_FLAGS_CHANGED), so jumping
+-- is read directly: IsFalling() is true while airborne, rising or falling (UnitDocumentation.lua
+-- "IsFalling"; Blizzard's own UI reads it, e.g. PaperDollFrame.lua). A read-only poll, AFK-only.
+-- The jump key's own function (JumpOrAscendStart, Bindings_Standard.xml:53-55) is deliberately
+-- NOT hooked: code of ours on Blizzard's movement path is what this suite has learned not to add.
+-- Only a grounded -> airborne change counts, so going AFK in mid-air does not dismiss at once.
+local AFK_JUMP_POLL_RATE = 0.1
+local afkJumpTicker
+local AFK_Exit   -- forward: the jump watch, started in AFK_Enter, calls it
+
+-- Set when WE drop the screen ahead of the server (walking or jumping); cleared the moment the
+-- AFK flag is seen off. Without it the 5 s fallback poll, landing in the 1-2 s before the server
+-- clears the flag, still reads UnitIsAFK == true and brings the screen straight back.
+local afkAwaitingServerClear = false
+local function AFK_DismissLocally()
+    if not afkActive then return end
+    afkAwaitingServerClear = true
+    AFK_Exit()
+end
+
+local function AFK_StartJumpWatch()
+    if afkJumpTicker or not IsFalling then return end
+    local grounded = false
+    afkJumpTicker = C_Timer.NewTicker(AFK_JUMP_POLL_RATE, function()
+        if not afkActive then return end
+        local ok, falling = pcall(IsFalling, "player")
+        if not ok or (issecretvalue and issecretvalue(falling)) then return end
+        if not falling then
+            grounded = true
+        elseif grounded then
+            AFK_DismissLocally()
+        end
+    end)
+end
+
+local function AFK_StopJumpWatch()
+    if afkJumpTicker then afkJumpTicker:Cancel(); afkJumpTicker = nil end
+end
+
 local function AFK_Enter()
-    if afkActive then return end
+    if afkActive or afkAwaitingServerClear then return end
     if not db or not db.afkScreen then return end
     afkActive = true
 
@@ -1443,6 +1484,7 @@ local function AFK_Enter()
     -- Watch for panels the player opens while the screen is up, so they become
     -- visible instead of being invisible-but-functional. See AFK_ScanPanels.
     AFK_StartReveal()
+    AFK_StartJumpWatch()
 
     -- Clock refresh every 30s
     if afkClockTicker then afkClockTicker:Cancel() end
@@ -1453,9 +1495,10 @@ local function AFK_Enter()
     end)
 end
 
-local function AFK_Exit()
+function AFK_Exit()
     if not afkActive then return end
     afkActive = false
+    AFK_StopJumpWatch()
 
     -- Stop camera orbit
     pcall(MoveViewRightStop)
@@ -1494,6 +1537,7 @@ local function AFK_StartPoll()
         if not db or not db.afkScreen then return end
         local ok, afk = pcall(UnitIsAFK, "player")
         if not ok or (issecretvalue and issecretvalue(afk)) then return end
+        if not afk then afkAwaitingServerClear = false end
         if afk and not afkActive then
             AFK_Enter()
         elseif not afk and afkActive then
@@ -3335,6 +3379,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if afk then
             AFK_Enter()
         elseif afk == false then
+            afkAwaitingServerClear = false
             AFK_Exit()
         end
 
@@ -3348,7 +3393,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- the server to confirm. Not keyboard capture (no EnableKeyboard
         -- on the frame), so this doesn't touch the combat-protection issue
         -- that got the old OnKeyDown handler removed in v1.9.2.
-        if afkActive then AFK_Exit() end
+        AFK_DismissLocally()
 
     elseif event == "USER_WAYPOINT_UPDATED" then
         -- Fired when the waypoint is cleared externally (e.g. map right-click UI).

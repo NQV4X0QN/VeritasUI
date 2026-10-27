@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.21.1] - 2026-10-27
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **Jumping dismisses the AFK screen as fast as walking.** A jump in place left the screen up for the 1–2 seconds the server takes to clear AFK; it now drops the moment you leave the ground (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **The AFK screen no longer comes back right after you dismiss it.** The 5-second backup check could land before the server had cleared AFK and bring the screen straight back after you walked or jumped; it now waits for the server to confirm you are back (`QualityOfLife.lua`)
+
+
 ## [1.21.0] - 2026-10-26
 
 ### Added

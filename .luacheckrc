@@ -134,7 +134,7 @@ read_globals = {
     "GetGuildBankWithdrawMoney",
     "SetItemButtonQuality",
     -- Player / unit / AFK
-    "UnitName", "UnitClass", "UnitLevel", "UnitIsAFK", "UnitExists", "GetAverageItemLevel",
+    "UnitName", "UnitClass", "UnitLevel", "UnitIsAFK", "IsFalling", "UnitExists", "GetAverageItemLevel",
     "GetRealmName",
     "MoveViewRightStart", "MoveViewRightStop", "MinimapCluster",
     "NumberFontNormal", "NumberFontNormalRight",
