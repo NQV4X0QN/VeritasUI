@@ -41,7 +41,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.22.0"
+VUI.VERSION = "1.22.1"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -578,8 +578,8 @@ end
 --    4) Open / close through the helpers (combat-safe + pcall):
 --           VUI.OpenManagedPanel(frame)
 --           VUI.CloseManagedPanel(frame)
---    5) Wire the X button to call HideUIPanel(self:GetParent())
---       so the manager is notified and frees the slot.
+--    5) Wire the X button to call VUI.CloseManagedPanel(self:GetParent())
+--       so the manager is notified and frees the slot (and it still closes in combat).
 --
 --  Defaults:
 --    area      = "left"   ("left" | "doublewide" | "center")
@@ -649,10 +649,16 @@ function VUI.OpenManagedPanel(frame)
     end
 end
 
+-- ⚠ In combat Blizzard refuses HideUIPanel from addon code: CheckProtectedFunctionsAllowed shows
+-- "Interface action failed because of an AddOn" and returns (UIParentPanelManager.lua:844-848,
+-- :895-897) -- owner hit it closing Priority Rotation mid-fight, 2026-10-29. Our panels are plain
+-- insecure frames, so in combat they are simply hidden. The manager tidies the freed slot itself:
+-- every ShowUIPanel starts with RepairUIPanelState, which releases slots whose frame is no longer
+-- shown (:156-183, called at :195). A protected frame is never hidden this way.
 function VUI.CloseManagedPanel(frame)
     if not frame then return end
     if InCombatLockdown() then
-        VUI.CombatQueue.Add(function() pcall(HideUIPanel, frame) end)
+        if not (frame.IsProtected and frame:IsProtected()) then frame:Hide() end
     else
         pcall(HideUIPanel, frame)
     end

@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.22.1] - 2026-10-29
+
+### Fixed
+
+- `VeritasUI_PriorityRotation` — **Spells cast from a spellbook opened by Priority Rotation are no longer blocked.** Opening the spellbook from an empty rotation slot or the Spellbook button made WoW refuse spells clicked in it ("VeritasUI_PriorityRotation has been blocked from an action only available to the Blizzard UI"). Priority Rotation now passes your click to the menu bar's spellbook button, so Blizzard opens it exactly as the menu bar does, on the Spellbook tab while Priority Rotation is open. Shift-click for Macros and dropping spells onto slots work as before (`SpellbookOpener.lua`, new; `Editor.lua`, `Settings.lua`)
+- `VeritasUI_PriorityRotation`, `VeritasUI_AdvancedOptions` — **Their windows close in combat.** The close button gave "Interface action failed because of an AddOn" during a fight; it now closes at once, and the window reopens normally afterwards (`Lib.lua`, `Settings.lua`)
+
+
 ## [1.22.0] - 2026-10-28
 
 ### Added

@@ -50,7 +50,7 @@ local function BuildMainWindow()
     -- Wire close button through UIPanel manager
     if win.CloseButton then
         win.CloseButton:SetScript("OnClick", function(self)
-            HideUIPanel(self:GetParent())
+            VUI.CloseManagedPanel(self:GetParent())
         end)
     end
 

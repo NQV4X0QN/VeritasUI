@@ -9,26 +9,20 @@ if not VUI then return end   -- Core.lua already printed the error
 local ICON_SZ = 28
 local ROW_H   = 38
 
--- Spellbook / Macro toggles — mirror the Settings-tab buttons exactly so
--- click behavior on empty rotation slots is consistent with the Tools
--- section. Combat-guarded because ShowUIPanel / HideUIPanel mutate
--- UIPanelWindows bookkeeping that can taint during lockdown.
+-- Spellbook / Macro toggles, shared by empty rotation slots and the Settings-tab buttons.
+--
+-- ⛔ PRIORITY ROTATION NEVER OPENS THE SPELLBOOK ITSELF (v1.22.1). Opening it from this code made
+-- the spellbook set itself up as addon code, so a spell clicked in it was refused
+-- (CastSpellBookItem, ADDON_ACTION_FORBIDDEN). The click is now forwarded to Blizzard's menu-bar
+-- button by SpellbookOpener.lua's secure overlay, which sits on top of the slot or button and gets
+-- the click before this runs. This function is only reached when the overlay is not there -- in
+-- combat (it is hidden then) or if the menu-bar button is missing -- and it only explains.
 local function ToggleSpellBookPanel()
     if InCombatLockdown() then
         VUI.Print("Priority Rotation", "|cFFFF4444Can't toggle Spellbook in combat.|r")
         return
     end
-    if PlayerSpellsFrame and PlayerSpellsFrame:IsShown() then
-        pcall(HideUIPanel, PlayerSpellsFrame)
-        return
-    end
-    local opened = false
-    if PlayerSpellsUtil and PlayerSpellsUtil.OpenToSpellBookTab then
-        opened = pcall(PlayerSpellsUtil.OpenToSpellBookTab)
-    end
-    if not opened and ToggleSpellBook then
-        pcall(ToggleSpellBook, BOOKTYPE_SPELL or "spell")
-    end
+    VUI.Print("Priority Rotation", "Open your spellbook from the menu bar or its key binding.")
 end
 
 local function ToggleMacroPanel()
@@ -295,6 +289,14 @@ function PR:BuildEditor(parent, contentWidth)
             end
         end)
         row:SetScript("OnReceiveDrag", function() HandleDrop(i) end)
+        -- An empty slot opens the spellbook through the secure overlay (see ToggleSpellBookPanel).
+        if PR.SpellbookOpener then
+            PR.SpellbookOpener.AddTarget(row, {
+                isActive = function() return not PR:CurrentProfile().spells[i] end,
+                onDrop   = function() HandleDrop(i) end,
+                onShift  = function() ToggleMacroPanel() end,
+            })
+        end
 
         -- Card treatment: dark fill (BACKGROUND) + warm 1px border (BORDER).
         -- BACKGROUND/BORDER draw layers ensure all child frames (icon, text,

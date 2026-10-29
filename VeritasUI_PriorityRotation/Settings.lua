@@ -99,12 +99,12 @@ local function BuildMainWindow()
     win:SetToplevel(true)
 
     -- Wire the PortraitFrameTemplate close button through the UIPanel
-    -- manager so the slot is released; a bare :Hide() leaves the manager
-    -- thinking the panel is still occupying the slot and corrupts stacking
-    -- on the next open.
+    -- manager so the slot is released. VUI.CloseManagedPanel uses HideUIPanel
+    -- out of combat and a plain Hide in combat, where Blizzard refuses
+    -- HideUIPanel from addon code (see the note on CloseManagedPanel in Lib.lua).
     if win.CloseButton then
         win.CloseButton:SetScript("OnClick", function(self)
-            HideUIPanel(self:GetParent())
+            VUI.CloseManagedPanel(self:GetParent())
         end)
     end
 
@@ -482,6 +482,7 @@ local function BuildMainWindow()
         spellBtn:SetScript("OnClick", function()
             PR.ToggleSpellBookPanel()
         end)
+        if PR.SpellbookOpener then PR.SpellbookOpener.AddTarget(spellBtn) end
 
         -- Macros toggle. ShowMacroFrame opens (and load-on-demands the
         -- Blizzard_MacroUI addon). Once loaded, MacroFrame is the global
