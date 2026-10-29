@@ -60,6 +60,10 @@ local PERCHAR = {
     cacheVersion = 0,         -- AO.VERSION the cache was last built for. Previously UNDECLARED,
                               -- which is how the scope map missed it on the first pass: it is a
                               -- live saved key that never appeared in a defaults table.
+    -- "Changed by ElvUI" (ElvUIChanges.lua). Per-character because ElvUI's own enable state is:
+    -- the AddOns list can enable it for one character and not another.
+    elvuiSeen      = false,   -- ElvUI has run on this character; offer the All CVars filter
+    elvuiNoticeDue = false,   -- ElvUI ran last login; tell the player once when it is gone
 }
 
 local db     -- ACCOUNT-wide table (collapsed/favorites/lastTab). Also exposed as AO.db.
@@ -257,6 +261,9 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         -- the root -- VUI.BindScopedDB never copies root keys into a slot, because that copy is
         -- what pinned a shipped default per character.
         AO:InitDB()
+        -- Before Settings.lua builds the window (this frame registered first), so the All CVars
+        -- tab knows whether to offer the ElvUI filter.
+        if AO.ElvUI_OnLogin then AO:ElvUI_OnLogin(cdb) end
         -- Login line removed (suite-wide audit S2): Lib prints the one "VeritasUI vX loaded" line.
         ef:UnregisterEvent("PLAYER_LOGIN")
     end
@@ -279,6 +286,14 @@ SlashCmdList["VERITASUI_AO"] = function(msg)
         VUI.Print("Advanced Options", "Commands:")
         VUI.Print("Advanced Options", "  |cFFFFFF00/ao|r           — toggle window")
         VUI.Print("Advanced Options", "  |cFFFFFF00/ao help|r      — show this help")
+        VUI.Print("Advanced Options", "  |cFFFFFF00/ao elvui|r     — settings ElvUI changed")
+
+    elseif cmd == "elvui" then
+        if AO.ShowElvUIChanges then
+            AO:ShowElvUIChanges()
+        else
+            VUI.Print("Advanced Options", "|cFFFF4444Window failed to load. Try /reload|r")
+        end
 
     else
         -- Default: toggle main window

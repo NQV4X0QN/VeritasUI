@@ -59,6 +59,8 @@ WoW has many settings (CVars) that its Options panel doesn't show. The **Feature
 
 Open it with `/ao`. It has its own window rather than an Options panel.
 
+Stopped using ElvUI? ElvUI changes a number of these settings (nameplates for every NPC among them) and they stay changed after it is turned off. Type `/ao elvui`, or tick **Changed by ElvUI** on the All CVars tab, to see the ones that differ from Blizzard's defaults and reset them, one at a time or all at once. VeritasUI mentions it once, on your first login without ElvUI.
+
 ### VeritasUI Lib — shared core
 Required by every other module. It also provides:
 

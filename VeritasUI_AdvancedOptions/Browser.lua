@@ -241,12 +241,16 @@ local function EnumerateCVars()
         end
     end
 
-    -- Ensure every CVar in the Featured tab is also present in the browser,
-    -- regardless of which enumeration strategy fired. Featured.lua loads before
-    -- Browser.lua so AO.FEATURED_CATEGORIES is always populated at this point.
+    -- Ensure every CVar in the Featured tab, and every CVar ElvUI sets (ElvUIChanges.lua), is also
+    -- present in the browser, regardless of which enumeration strategy fired. Both files load
+    -- before Browser.lua, so the lists are always populated at this point.
+    local extra = {}
     for _, cat in ipairs(AO.FEATURED_CATEGORIES) do
-        for _, ctrl in ipairs(cat.controls) do
-            local name = ctrl.cvar
+        for _, ctrl in ipairs(cat.controls) do extra[#extra + 1] = ctrl.cvar end
+    end
+    for _, name in ipairs(AO.ELVUI_CVARS or {}) do extra[#extra + 1] = name end
+    do
+        for _, name in ipairs(extra) do
             if name and not cvarByName[name] then
                 local val, def, server, locked = AO:GetCVarInfo(name)
                 if val ~= nil then
@@ -300,6 +304,10 @@ end
 ----------------------------------------------------------------
 --  Search / filter
 ----------------------------------------------------------------
+-- elvuiOnly: the "Changed by ElvUI" checkbox -- only CVars ElvUI sets that currently differ from
+-- Blizzard's default. Values are re-read first so a row reset a moment ago drops out.
+local elvuiOnly = false
+
 local function ApplyFilter(searchText)
     filteredList = {}
     if not cvarList then return end
@@ -309,6 +317,14 @@ local function ApplyFilter(searchText)
 
     for _, entry in ipairs(cvarList) do
         local match = (query == "") or strfind(strlower(entry.name), query, 1, true)
+        if match and elvuiOnly then
+            if AO:IsElvUICVar(entry.name) then
+                RefreshEntry(entry)
+                match = entry.value ~= entry.default
+            else
+                match = false
+            end
+        end
         if match then
             if AO:IsFavorite(entry.name) then
                 favs[#favs + 1] = entry
@@ -358,7 +374,28 @@ function AO:BuildBrowserContent(parent)
     local searchBox = CreateFrame("EditBox", nil, parent, "SearchBoxTemplate")
     searchBox:SetHeight(22)
     searchBox:SetPoint("TOPLEFT",  parent, "TOPLEFT",  INSET, -INSET)
-    searchBox:SetPoint("RIGHT",    parent, "RIGHT",   -INSET,  0)
+
+    -- "Changed by ElvUI" filter, offered once ElvUI has run on this character (ElvUIChanges.lua).
+    -- Sits to the right of the search box, which then ends at its left edge. Built always and shown
+    -- per refresh (LayoutTop), so it does not depend on which login handler ran first.
+    local elvuiCheck = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    elvuiCheck:SetSize(24, 24)
+    local elvuiLabel = elvuiCheck.Text or elvuiCheck.text
+    if elvuiLabel then elvuiLabel:SetText("Changed by ElvUI") end
+    local elvuiTextW = (elvuiLabel and tonumber(elvuiLabel:GetStringWidth())) or 100
+    elvuiCheck:SetPoint("RIGHT", parent, "TOPRIGHT", -INSET - elvuiTextW - 4, -INSET - 11)
+    elvuiCheck:Hide()
+
+    local function LayoutTop()
+        local offer = AO.elvuiRelevant and true or false
+        elvuiCheck:SetShown(offer)
+        if offer then
+            searchBox:SetPoint("RIGHT", elvuiCheck, "LEFT", -10, 0)
+        else
+            searchBox:SetPoint("RIGHT", parent, "RIGHT", -INSET, 0)
+        end
+    end
+    LayoutTop()
     searchBox:SetAutoFocus(false)
     if searchBox.Instructions then
         searchBox.Instructions:SetText("Search CVars...")
@@ -415,6 +452,55 @@ function AO:BuildBrowserContent(parent)
     local scrollBar = CreateFrame("EventFrame", nil, parent, "MinimalScrollBar")
     scrollBar:SetPoint("TOPLEFT",    scrollBox, "TOPRIGHT",    4, 0)
     scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", 4, 0)
+
+    -- ── "Changed by ElvUI" footer: explanation + Reset All ───
+    local FOOTER_H = 58
+    local footer, footerText, resetAllBtn
+    do
+        footer = CreateFrame("Frame", nil, parent)
+        footer:SetPoint("BOTTOMLEFT",  parent, "BOTTOMLEFT",  INSET, 4)
+        footer:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -INSET, 4)
+        footer:SetHeight(FOOTER_H)
+        footer:Hide()
+
+        resetAllBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+        resetAllBtn:SetSize(150, 22)
+        resetAllBtn:SetPoint("BOTTOMRIGHT", footer, "BOTTOMRIGHT", 0, 2)
+        resetAllBtn:SetText("Reset All to Default")
+        resetAllBtn:SetScript("OnClick", function()
+            local n = #AO:ElvUIChangedCVars()
+            if n > 0 then StaticPopup_Show("VERITASUI_AO_RESET_ELVUI", n, n == 1 and "" or "s") end
+        end)
+
+        footerText = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        footerText:SetPoint("TOPLEFT", footer, "TOPLEFT", 0, -2)
+        footerText:SetPoint("BOTTOMRIGHT", resetAllBtn, "BOTTOMLEFT", -10, 0)
+        footerText:SetJustifyH("LEFT")
+        footerText:SetJustifyV("TOP")
+        footerText:SetWordWrap(true)
+    end
+
+    -- Blizzard's own chat reset: chat tab menu > Settings (CHAT_CONFIGURATION, FloatingChatFrame.lua
+    -- :504-505) > Chat Defaults (CHAT_DEFAULTS, ChatConfigFrame.xml:1506), which asks before resetting.
+    local CHAT_HINT = format("Chat windows: right-click a chat tab, choose %s, then %s.",
+        CHAT_CONFIGURATION or "Settings", CHAT_DEFAULTS or "Chat Defaults")
+
+    local function UpdateFooter(shown)
+        footer:SetShown(elvuiOnly)
+        scrollBox:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SB_INSET, elvuiOnly and (FOOTER_H + 8) or 4)
+        if not elvuiOnly then return end
+        local lead
+        if AO.ElvUILoaded() then
+            lead = "|cFFFF4444ElvUI is running|r and sets its nameplate settings again at every login. "
+                .. "Turn it off in the AddOns list before resetting."
+        elseif shown == 0 then
+            lead = "Everything ElvUI changed is back at Blizzard's defaults."
+        else
+            lead = "These settings differ from Blizzard's defaults. Right-click a row to reset just that one."
+        end
+        footerText:SetText(lead .. "\n" .. CHAT_HINT)
+        resetAllBtn:SetEnabled(shown > 0)
+    end
 
     -- ── Inline edit state ────────────────────────────────────
     local editingRow = nil   -- the row frame currently being edited
@@ -647,11 +733,30 @@ function AO:BuildBrowserContent(parent)
             dataProvider:Insert(entry)
         end
         scrollBox:SetDataProvider(dataProvider)
+        LayoutTop()
+        UpdateFooter(#filteredList)
     end
 
     function AO:RefreshBrowser()
         CloseInlineEdit()
         FullRefresh()
+    end
+
+    elvuiCheck:SetScript("OnClick", function(self)
+        elvuiOnly = self:GetChecked() and true or false
+        AO:RefreshBrowser()
+    end)
+
+    -- /ao elvui: the All CVars tab with the filter on.
+    function AO:ShowElvUIChanges()
+        if not AO.elvuiRelevant then
+            VUI.Print("Advanced Options", "ElvUI has not run on this character, so there is nothing to undo.")
+            return
+        end
+        elvuiCheck:SetChecked(true)
+        elvuiOnly = true
+        if AO.MainWindow then AO.MainWindow:ShowTab("browser") end
+        AO:RefreshBrowser()
     end
 
     -- ── Debounced search ────────────────────────────────────

@@ -34,6 +34,7 @@ globals = {
     "StaticPopupDialogs.VERITASUI_COPY_SETTINGS",
     "StaticPopupDialogs.VERITASUI_COPY_RELOAD",
     "StaticPopupDialogs.VERITASUI_UNDO_COPY",
+    "StaticPopupDialogs.VERITASUI_AO_RESET_ELVUI",   -- AdvancedOptions/ElvUIChanges.lua
     -- SavedVariables (declared in each .toc; WoW injects/reads these as globals)
     "VeritasUI_AdvancedOptionsDB",
     "VeritasUI_AuctionHouseDB",
@@ -73,7 +74,7 @@ read_globals = {
     "CreateFrame", "UIParent", "C_Timer", "hooksecurefunc", "InCombatLockdown",
     "issecretvalue", "debugprofilestop", "GetTime", "time", "date",
     "ReloadUI", "C_AddOns", "IsAddOnLoaded", "GetBuildInfo", "geterrorhandler",
-    "StaticPopup_Show", "ACCEPT", "CANCEL",
+    "StaticPopup_Show", "ACCEPT", "CANCEL", "CHAT_CONFIGURATION", "CHAT_DEFAULTS",
     -- Strings / math helpers WoW exposes globally
     "strtrim", "strsplit", "strjoin", "strlower", "strfind", "format",
     "CreateColor", "CreateVector2D", "C_ClassColor",

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.2] - 2026-10-29
+
+### Added
+
+- `VeritasUI_AdvancedOptions` — **Changed by ElvUI: put back the settings ElvUI changed.** ElvUI changes a number of WoW settings on its own, among them nameplates for every NPC, cast on key down and the camera distance, and they stay changed after ElvUI is turned off. Tick **Changed by ElvUI** on the All CVars tab, or type `/ao elvui`, to list the ones that differ from Blizzard's defaults; right-click a row to reset it or use **Reset All to Default**. On the first login without ElvUI, one chat line says how many there are. Chat windows are reset with Blizzard's own Chat Defaults, and the panel shows where to find it (`ElvUIChanges.lua`, new; `Browser.lua`, `Core.lua`, `README.md`)
+
+
 ## [1.22.1] - 2026-10-29
 
 ### Fixed
