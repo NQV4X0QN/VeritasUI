@@ -253,6 +253,7 @@ local function Build()
     state.btn = btn
     state.built = true
     RefreshLabel()
+    VUI.AnnounceFrame("AuctionHouse.ScanButton", btn)
 end
 
 ----------------------------------------------------------------

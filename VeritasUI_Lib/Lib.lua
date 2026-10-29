@@ -41,7 +41,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.21.1"
+VUI.VERSION = "1.22.0"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -496,6 +496,61 @@ cqFrame:SetScript("OnEvent", function()
     end
 end)
 
+----------------------------------------------------------------
+--  Built frames — lets an optional module restyle frames the suite creates
+----------------------------------------------------------------
+-- A module calls VUI.AnnounceFrame(key, frame) once it has finished building a frame that
+-- another addon might want to restyle. VUI.OnFrameBuilt(key, fn) runs fn(frame) for every
+-- frame announced under `key`, including any announced before it was called, so neither side
+-- depends on load or login order. Nothing listens unless an optional module registers (today
+-- only VeritasUI_ElvUI), so without one an announcement is a table insert.
+--
+-- A listener error is reported through WoW's error handler and does not interrupt the module
+-- that announced the frame.
+local builtFrames, builtListeners = {}, {}
+
+local function RunListener(fn, frame)
+    local handler = geterrorhandler and geterrorhandler()
+    if handler then xpcall(fn, handler, frame) else pcall(fn, frame) end
+end
+
+function VUI.AnnounceFrame(key, frame)
+    if not (key and frame) then return end
+    local list = builtFrames[key]
+    if not list then list = {}; builtFrames[key] = list end
+    list[#list + 1] = frame
+    for _, fn in ipairs(builtListeners[key] or {}) do RunListener(fn, frame) end
+end
+
+function VUI.OnFrameBuilt(key, fn)
+    if not (key and type(fn) == "function") then return end
+    local list = builtListeners[key]
+    if not list then list = {}; builtListeners[key] = list end
+    list[#list + 1] = fn
+    for _, frame in ipairs(builtFrames[key] or {}) do RunListener(fn, frame) end
+end
+
+----------------------------------------------------------------
+--  Unavailable options — another addon owns the part of the screen an option changes
+----------------------------------------------------------------
+-- An optional module (today VeritasUI_ElvUI) calls VUI.SetOptionUnavailable before
+-- PLAYER_LOGIN to say an option of `addonName` cannot work alongside it. The owning module
+-- then skips that feature and shows the option greyed out with `reason` in its tooltip. The
+-- saved value is never touched, so the option comes back as it was without that addon.
+local unavailableOptions = {}
+
+function VUI.SetOptionUnavailable(addonName, key, reason)
+    if not (addonName and key) then return end
+    unavailableOptions[addonName] = unavailableOptions[addonName] or {}
+    unavailableOptions[addonName][key] = reason or true
+end
+
+-- Returns the reason (or true) when the option is unavailable, nil when it is available.
+function VUI.OptionUnavailable(addonName, key)
+    local list = unavailableOptions[addonName]
+    return list and list[key] or nil
+end
+
 -- NOTE: VUI.AttachSlimScrollbar was removed in v1.6.18.
 -- Both AO tabs now use Blizzard's native ScrollBox + MinimalScrollBar.
 -- If a future module needs a scrollbar, use ScrollBox + MinimalScrollBar
@@ -855,6 +910,8 @@ function VUI._InitReloadButton()
             copyBtn:SetScript("OnClick", function(self) VUI.ShowCopyMenu(self) end)
         end
         copyBtn:Hide()
+        VUI.AnnounceFrame("Lib.SettingsButton", reloadBtn)
+        VUI.AnnounceFrame("Lib.SettingsButton", copyBtn)
     end
 
     -- Shown only while a VeritasUI category is the current one. Driven by Blizzard's own

@@ -600,6 +600,9 @@ function AO:BuildFeaturedContent(parent)
                 end)
 
                 headerCache[catIdx] = h
+                -- Arrows kept on the button for a restyling addon (VeritasUI_ElvUI).
+                h.btn.arrowDown, h.btn.arrowRight = h.arrowDown, h.arrowRight
+                VUI.AnnounceFrame("AdvancedOptions.FeaturedHeader", h.btn)
             end
 
             local h        = headerCache[catIdx]

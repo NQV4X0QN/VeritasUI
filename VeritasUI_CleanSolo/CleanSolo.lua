@@ -678,6 +678,25 @@ local function ActionBarsMask()
     return mask > 0 and mask or Bit(BAR_NONE)
 end
 
+-- An option another addon has taken over (VUI.SetOptionUnavailable, today only VeritasUI_ElvUI,
+-- which draws its own chat, bars and unit frames). Its feature is skipped at login and its control
+-- is greyed out with the reason added to the tooltip; the saved value is left alone.
+local function Unavailable(key)
+    return VUI.OptionUnavailable and VUI.OptionUnavailable(ADDON_NAME, key) or nil
+end
+
+local function TipWithReason(tip, key)
+    local reason = Unavailable(key)
+    if type(reason) ~= "string" then return tip end
+    return tip .. "\n\n|cFFFF4444" .. reason .. "|r"
+end
+
+local function GreyIfUnavailable(initializer, key)
+    if Unavailable(key) and initializer and initializer.AddModifyPredicate then
+        initializer:AddModifyPredicate(function() return false end)
+    end
+end
+
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
 
@@ -736,7 +755,8 @@ local function InitializeOptions()
         setting:SetValueChangedCallback(function(_, value)
             VUI.PrintOnOff("Clean Solo", opt.name, value)
         end)
-        Settings.CreateCheckbox(category, setting, opt.tip)
+        local init = Settings.CreateCheckbox(category, setting, TipWithReason(opt.tip, opt.key))
+        GreyIfUnavailable(init, opt.key)
     end
 
     -- ── Hide Error Text — tick-box dropdown (see the Options Panel note above). UNIVERSAL:
@@ -889,9 +909,10 @@ local function InitializeOptions()
         ignoreFadeCallback = false
     end)
 
-    Settings.CreateDropdown(category, fadeSetting, GetBarOptions,
+    local fadeInit = Settings.CreateDropdown(category, fadeSetting, GetBarOptions, TipWithReason(
         "Pick a bar to fade it out when idle; it reappears on mouseover. "
-        .. "Requires |cFFFFFF00/reload|r to apply.")
+        .. "Requires |cFFFFFF00/reload|r to apply.", "fadeActionBars"))
+    GreyIfUnavailable(fadeInit, "fadeActionBars")
 
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
@@ -941,18 +962,18 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         end
 
         InitializeOptions()
-        if db.hideSocialButton    then HideSocialButton()    end
-        if db.fadeChatTabs        then SetupChatTabFading()  end
-        if db.transparentChatBG   then SetupTransparentChatBG() end
-        if db.hideChatButtons     then HideChatButtons()     end
-        if db.hideVoiceChatButton then HideVoiceChatButton() end
-        if db.fadeMicroMenu       then SetupMicroMenuFade()  end
-        if cdb.fadePlayerFrame    then SetupPlayerFrameFade() end
-        if db.hideBagButtons      then HideBagButtons()      end
-        if db.hideMacroNames      then HideMacroNames()      end
+        if db.hideSocialButton and not Unavailable("hideSocialButton") then HideSocialButton() end
+        if db.fadeChatTabs      and not Unavailable("fadeChatTabs")      then SetupChatTabFading()  end
+        if db.transparentChatBG and not Unavailable("transparentChatBG") then SetupTransparentChatBG() end
+        if db.hideChatButtons and not Unavailable("hideChatButtons") then HideChatButtons() end
+        if db.hideVoiceChatButton and not Unavailable("hideVoiceChatButton") then HideVoiceChatButton() end
+        if db.fadeMicroMenu    and not Unavailable("fadeMicroMenu")    then SetupMicroMenuFade()  end
+        if cdb.fadePlayerFrame and not Unavailable("fadePlayerFrame")  then SetupPlayerFrameFade() end
+        if db.hideBagButtons and not Unavailable("hideBagButtons") then HideBagButtons() end
+        if db.hideMacroNames and not Unavailable("hideMacroNames") then HideMacroNames() end
         if db.hideErrorText       then HideErrorText()
         else                           HideErrorTypes()      end
-        SetupActionBarFading()
+        if not Unavailable("fadeActionBars") then SetupActionBarFading() end
 
         self:UnregisterEvent("PLAYER_LOGIN")
         -- Login line removed (suite-wide audit S2): Lib prints the one "VeritasUI vX loaded" line.

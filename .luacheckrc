@@ -72,7 +72,7 @@ read_globals = {
     -- Core frame / system
     "CreateFrame", "UIParent", "C_Timer", "hooksecurefunc", "InCombatLockdown",
     "issecretvalue", "debugprofilestop", "GetTime", "time", "date",
-    "ReloadUI", "C_AddOns", "IsAddOnLoaded", "GetBuildInfo",
+    "ReloadUI", "C_AddOns", "IsAddOnLoaded", "GetBuildInfo", "geterrorhandler",
     "StaticPopup_Show", "ACCEPT", "CANCEL",
     -- Strings / math helpers WoW exposes globally
     "strtrim", "strsplit", "strjoin", "strlower", "strfind", "format",

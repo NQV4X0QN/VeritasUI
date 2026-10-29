@@ -66,6 +66,14 @@ Required by every other module. It also provides:
 - **Copy settings** from another of your characters (`/vui copy`, or the **Copy From…** button on VeritasUI's Options panels)
 - A **Reload UI** button on those panels
 
+### VeritasUI ElvUI — for ElvUI users
+Optional, and loads only when ElvUI is installed. VeritasUI keeps looking like the game's own interface; with ElvUI, it looks like ElvUI's version of it:
+
+- VeritasUI's windows, buttons, sell strip, scan bar and rotation editor take ElvUI's look, and follow ElvUI's Blizzard skin switch
+- Clean Solo options that ElvUI handles itself (its fades and button hides) are greyed out; your choices come back if you turn ElvUI off
+- If you turn on ElvUI's own Auto Repair or Vendor Grays, Quality of Life's matching option is greyed so the two don't both act
+- Clicking ElvUI's reputation bar opens the faction's page, as it does with Blizzard's bar
+
 ## Settings across characters
 
 Most settings are shared by all your characters, so you set them up once. A few are naturally per-character: which action bars fade, the player frame fade, how repairs are paid, map notes, and Priority Rotation lists, which are per character and per specialization.
@@ -75,19 +83,19 @@ Most modules are also listed in the minimap's addon menu (the addon compartment)
 ## Installation
 
 1. Download the latest `VeritasUI-vX.Y.Z.zip` from the [Releases page](https://github.com/NQV4X0QN/VeritasUI/releases/latest).
-2. Extract it and copy all seven `VeritasUI_*` folders into:
+2. Extract it and copy all eight `VeritasUI_*` folders into:
    ```
    World of Warcraft/_retail_/Interface/AddOns/
    ```
 3. Keep the folder names exactly as they are.
 4. Restart the game, or type `/reload` if it's already running.
 
-Install all seven folders together. They share one version number, and every module needs `VeritasUI_Lib`. Don't want a module? Disable it in the AddOns list on the character screen.
+Install all eight folders together. They share one version number, and every module needs `VeritasUI_Lib`. `VeritasUI_ElvUI` only loads when ElvUI is installed; without ElvUI the AddOns list shows it as missing a dependency, which is expected. Don't want a module? Disable it in the AddOns list on the character screen.
 
 ## Requirements
 
 - World of Warcraft: Midnight, patch 12.1.0
-- No other addons or libraries needed
+- No other addons or libraries needed (ElvUI is optional)
 
 ## Design principles
 

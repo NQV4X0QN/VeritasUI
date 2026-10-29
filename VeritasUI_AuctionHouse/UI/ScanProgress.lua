@@ -225,6 +225,9 @@ local state = {
     sliceFrame = false,-- ...and on the frame texture?
     sliceFill  = false,-- ...and on the FILL (the one that was missing until v1.14.18)
     sweep     = nil,   -- texture (indeterminate animation)
+    track     = nil,   -- rounded Journeys track texture (hidden by UsePlainTexture)
+    frameArt  = nil,   -- rounded Journeys frame texture (nil without the art; hidden likewise)
+    lastPhase = nil,   -- PHASE key last applied, so UsePlainTexture can re-tint at once
     label     = nil,   -- centred FontString
     sweepX    = 0,
     hideTimer = nil,
@@ -240,6 +243,7 @@ local function ApplyPhase(name)
     if not bar then return end
     local spec = PHASE[name]
     if not spec then return end
+    state.lastPhase = name
     local c = state.journeyArt and spec.journey or spec.legacy
     local tex = state.fillTex
     -- SetDesaturated is a real Texture method, but it is only meaningful for the
@@ -341,6 +345,26 @@ local function ApplySlice(tex, margin)
 end
 
 ----------------------------------------------------------------
+--  Plain-texture mode, for an addon that restyles the AH to a flat look (VeritasUI_ElvUI)
+----------------------------------------------------------------
+-- Hides the rounded Journeys track and frame, gives the fill and the sweep one plain texture,
+-- and switches PHASE to its `legacy` tints, which are written for a neutral texture. The
+-- `journey` tints cannot be reused: they leave the green phases at 1,1,1 because the Journeys
+-- fill is baked green, so on a plain texture the bar would turn white.
+local function UsePlainTexture(texture)
+    if not (state.built and texture) then return end
+    state.journeyArt = false
+    if state.track then state.track:Hide() end
+    if state.frameArt then state.frameArt:Hide() end
+    for _, tex in ipairs({ state.fillTex, state.sweep }) do
+        if tex.SetTextureSliceMargins then pcall(tex.SetTextureSliceMargins, tex, 0, 0, 0, 0) end
+        if tex.SetDesaturated then pcall(tex.SetDesaturated, tex, false) end
+        tex:SetTexture(texture)
+    end
+    if state.lastPhase then ApplyPhase(state.lastPhase) end
+end
+
+----------------------------------------------------------------
 --  Build once (lazy — AuctionHouseFrame must exist, same gate as SellStrip)
 ----------------------------------------------------------------
 local function Build()
@@ -400,6 +424,7 @@ local function Build()
     -- Rounded dark track, behind the fill (Blizzard: BACKGROUND layer).
     local track = bar:CreateTexture(nil, "BACKGROUND")
     track:SetAllPoints(bar)
+    state.track = track
     if haveArt then
         track:SetAtlas(ATLAS_TRACK, false)
         state.sliceTrack = ApplySlice(track, slice)
@@ -442,6 +467,7 @@ local function Build()
         frameArt:SetAllPoints(bar)
         frameArt:SetAtlas(ATLAS_FRAME, false)
         state.sliceFrame = ApplySlice(frameArt, slice)
+        state.frameArt = frameArt
     end
 
     -- Status text.
@@ -495,6 +521,9 @@ local function Build()
     f:Hide()
     state.frame = f
     state.built = true
+    f.bar = bar
+    f.UsePlainTexture = UsePlainTexture
+    VUI.AnnounceFrame("AuctionHouse.ScanProgress", f)
 end
 
 ----------------------------------------------------------------

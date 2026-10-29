@@ -188,6 +188,15 @@ local db   -- ACCOUNT-wide table
 -- afkUIDirty only) and is nil until PLAYER_LOGIN: VUI.BindScopedDB deliberately does not fall
 -- back to the account root.
 local cdb  -- PER-CHARACTER table; nil before PLAYER_LOGIN
+
+-- Merchant features another addon may have taken over (VUI.SetOptionUnavailable, set before
+-- PLAYER_LOGIN by VeritasUI_ElvUI when ElvUI's own repair / grey-selling is on). The saved
+-- value is left alone; only whether the feature runs this session changes.
+local function OptionUnavailable(key)
+    return VUI.OptionUnavailable and VUI.OptionUnavailable(ADDON_NAME, key) or nil
+end
+local function SellJunkOn() return db and db.autoSellJunk and not OptionUnavailable("autoSellJunk") end
+local function RepairOn()   return db and db.autoRepair   and not OptionUnavailable("autoRepair")   end
 local settingsCategoryID
 local frame = CreateFrame("Frame")
 
@@ -461,7 +470,7 @@ ScheduleColdSellRetry = function()
         coldSellTimer = nil
         if saleTotal then return end
         if not (MerchantFrame and MerchantFrame:IsShown()) then return end
-        if db and db.autoSellJunk then AutoSellJunk() end
+        if SellJunkOn() then AutoSellJunk() end
     end)
 end
 
@@ -3111,6 +3120,20 @@ SlashCmdList["VERITASUI_MAPNOTE"] = MapNoteCommand
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
 
+    -- An option another addon has taken over (VUI.SetOptionUnavailable; today VeritasUI_ElvUI,
+    -- when ElvUI's own repair or grey-selling is switched on): greyed, with the reason added to
+    -- the tooltip. The runtime gates are SellJunkOn / RepairOn.
+    local function TipWithReason(tip, key)
+        local reason = OptionUnavailable(key)
+        if type(reason) ~= "string" then return tip end
+        return tip .. "\n\n|cFFFF4444" .. reason .. "|r"
+    end
+    local function GreyIfUnavailable(initializer, key)
+        if OptionUnavailable(key) and initializer and initializer.AddModifyPredicate then
+            initializer:AddModifyPredicate(function() return false end)
+        end
+    end
+
     local function AddCheckbox(key, name, tip, onChange)
         local setting = Settings.RegisterAddOnSetting(
             category, ADDON_NAME .. "_" .. key, key,
@@ -3121,7 +3144,7 @@ local function InitializeOptions()
             VUI.PrintOnOffLive("Quality of Life", name, value)
             if onChange then onChange(value) end
         end)
-        Settings.CreateCheckbox(category, setting, tip)
+        GreyIfUnavailable(Settings.CreateCheckbox(category, setting, TipWithReason(tip, key)), key)
     end
 
     AddCheckbox("showItemLevels", "Show Item Levels",
@@ -3181,8 +3204,9 @@ local function InitializeOptions()
         container:Add("personal", "Personal Only")
         return container:GetData()
     end
-    Settings.CreateDropdown(category, repairSetting, GetRepairFundingOptions,
-        "Guild + Personal uses guild funds first when your guild allows it, then your own gold. Personal Only always uses your own gold.")
+    GreyIfUnavailable(Settings.CreateDropdown(category, repairSetting, GetRepairFundingOptions,
+        TipWithReason("Guild + Personal uses guild funds first when your guild allows it, then your "
+            .. "own gold. Personal Only always uses your own gold.", "autoRepair")), "autoRepair")
 
     AddCheckbox("afkScreen", "AFK Screen",
         "When you go AFK, hides the UI and slowly circles the camera, showing your name, level, item level and zone. Also helps prevent screen burn-in.",
@@ -3291,7 +3315,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         RetireWorldMapCoords()
         RetireMinimapCoords()
 
-        if db.autoSellJunk or db.autoRepair then
+        if SellJunkOn() or RepairOn() then
             self:RegisterEvent("MERCHANT_SHOW")
             self:RegisterEvent("MERCHANT_CLOSED")
         end
@@ -3336,12 +3360,12 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- GET_ITEM_INFO_RECEIVED is registered only for the merchant visit:
         -- it fires far too often to listen to globally, and it's only needed
         -- to catch greys whose item data was cold when ScanJunk ran.
-        if db.autoSellJunk then
+        if SellJunkOn() then
             self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
         end
         C_Timer.After(0, function()
-            if db.autoRepair   then AutoRepair()  end
-            if db.autoSellJunk then AutoSellJunk() end
+            if RepairOn()   then AutoRepair()  end
+            if SellJunkOn() then AutoSellJunk() end
         end)
 
     elseif event == "MERCHANT_CLOSED" then

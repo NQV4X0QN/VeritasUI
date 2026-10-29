@@ -595,6 +595,9 @@ local function MakeButton(parent, index)
             .. "  |cFF888888(/ah blocked to manage)|r")
         Refresh()
     end)
+    -- A restyling addon may change b.icon and b.border (textures only). The button's secure
+    -- attributes and scripts are never offered: they are what keeps the strip taint-free.
+    VUI.AnnounceFrame("AuctionHouse.SellStripButton", b)
     return b
 end
 
@@ -679,6 +682,7 @@ local function Build()
     cardArt:SetAtlas("auctionhouse-itemheaderframe")   -- native AH item-card frame art
     card:Hide()
     state.card = card
+    VUI.AnnounceFrame("AuctionHouse.SellStripCard", card)
 
     -- Reusable button row.
     for i = 1, VISIBLE do

@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.22.0] - 2026-10-28
+
+### Added
+
+- `VeritasUI_ElvUI` — **New optional module: VeritasUI matches ElvUI.** Loads only when ElvUI is installed; without ElvUI it shows as missing a dependency in the AddOns list and nothing changes. VeritasUI's windows, tabs, buttons, checkboxes, sliders, dropdowns, search boxes and scroll bars take ElvUI's look, using ElvUI's own skin functions, and follow ElvUI's Blizzard skin switch (`Core.lua`, `Standard.lua`, new)
+- `VeritasUI_ElvUI` — **VeritasUI's own widgets restyled to match.** Sell strip card and item icons (quality-coloured border), Scan button and a flat scan progress bar, Priority Rotation's rotation rows, arrows, icon slots and Compiled Sequence box, and Advanced Options' section arrows, each styled the way ElvUI styles the nearest Blizzard equivalent (`Custom.lua`, new)
+- `VeritasUI_ElvUI` — **Clean Solo options ElvUI handles are greyed out.** With ElvUI loaded, Clean Solo's fades (chat tabs, chat background, micro menu, player frame, action bars) and hides (social, chat and voice buttons, bag buttons, macro names) are skipped and greyed, with "Not available with ElvUI (handled by ElvUI)." in the tooltip. Your saved choices are kept for when ElvUI is off (`Behaviour.lua`, new)
+- `VeritasUI_ElvUI` — **Quality of Life defers to ElvUI's own repair and junk selling.** When ElvUI's Auto Repair or Vendor Grays is switched on, Quality of Life's Auto Repair (and Repair Funding) or Auto Sell Junk is greyed so both don't act at the same merchant. With ElvUI's left off, its default, Quality of Life's keep working (`Behaviour.lua`)
+- `VeritasUI_ElvUI` — **Clicking ElvUI's reputation bar opens the faction's page,** as Blizzard's bar does with Quality of Life. Other buttons and clicks in combat still do what ElvUI does (`Behaviour.lua`)
+
+### Changed
+
+- `VeritasUI_Lib` — **Optional modules can restyle frames and set options aside.** `VUI.AnnounceFrame`/`VUI.OnFrameBuilt` hand built frames to a restyling module; `VUI.SetOptionUnavailable`/`VUI.OptionUnavailable` let one mark another module's option as unavailable. Nothing changes without such a module (`Lib.lua`)
+- `VeritasUI_AuctionHouse`, `VeritasUI_PriorityRotation`, `VeritasUI_AdvancedOptions`, `VeritasUI_QualityOfLife`, `VeritasUI_CleanSolo` — **Hooks for the ElvUI module.** Each announces the frames it builds and honours unavailable options; the scan progress bar gains a plain-texture mode. No change without ElvUI (`ScanButton.lua`, `ScanProgress.lua`, `SellStrip.lua`, `Settings.lua`, `Editor.lua`, `Featured.lua`, `Journeys.lua`, `QualityOfLife.lua`, `CleanSolo.lua`)
+
+
 ## [1.21.1] - 2026-10-27
 
 ### Fixed

@@ -139,6 +139,7 @@ local function BuildMainWindow()
     end)
 
     AO.MainWindow = win
+    VUI.AnnounceFrame("AdvancedOptions.Window", win)
 end
 
 ----------------------------------------------------------------

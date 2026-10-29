@@ -504,6 +504,7 @@ local function BuildMainWindow()
     end)
 
     PR.MainWindow = win
+    VUI.AnnounceFrame("PriorityRotation.Window", win)
 end
 
 -- ── Native Settings Panel ────────────────────────────────────────

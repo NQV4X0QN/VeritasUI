@@ -177,6 +177,7 @@ local function Attach(card)
 
     container.WatchFactionCheckbox = cb
     card.WatchedFactionToggleFrame = container
+    VUI.AnnounceFrame("QualityOfLife.JourneysCheckbox", cb)
 end
 
 ----------------------------------------------------------------
@@ -372,6 +373,16 @@ local function OpenFactionPage(factionID)
     OpenReputationPane(factionID)
 end
 
+-- The reputation bar's click: the watched faction's page. `bar` is optional -- its factionID is
+-- only a fallback for when the watched-faction lookup fails. Published on VUI so an addon that
+-- replaces the reputation bar (VeritasUI_ElvUI) can give its own bar the same click.
+local function OpenWatchedFactionPage(bar)
+    local okData, watched = pcall(Rep("GetWatchedFactionData"))
+    local factionID = (okData and watched and watched.factionID) or (bar and bar.factionID)
+    OpenFactionPage(factionID)
+end
+VUI.OpenWatchedFactionPage = OpenWatchedFactionPage
+
 ----------------------------------------------------------------
 --  Honor bar -> the PvP UI (v1.15.1).
 --
@@ -473,11 +484,7 @@ local function AttachStatusBarOverlays()
     if not (manager and manager.barContainers and info and info.BarsEnum) then return false end
 
     local actions = {
-        [info.BarsEnum.Reputation] = function(bar)
-            local okData, watched = pcall(Rep("GetWatchedFactionData"))
-            local factionID = (okData and watched and watched.factionID) or bar.factionID
-            OpenFactionPage(factionID)
-        end,
+        [info.BarsEnum.Reputation] = OpenWatchedFactionPage,
         [info.BarsEnum.Honor] = ToggleHonorUI,
     }
 

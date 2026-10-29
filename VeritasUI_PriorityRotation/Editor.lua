@@ -324,6 +324,8 @@ function PR:BuildEditor(parent, contentWidth)
         bRgt:SetPoint("TOPRIGHT",    row, "TOPRIGHT",    0, 0)
         bRgt:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
         bRgt:SetWidth(1)
+        -- Kept for a restyling addon (VeritasUI_ElvUI), which swaps the card for its own panel.
+        row.cardArt = { cardFill, bTop, bBot, bLft, bRgt }
 
         local numLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         numLbl:SetPoint("LEFT", row, "LEFT", 4, 0)
@@ -354,6 +356,7 @@ function PR:BuildEditor(parent, contentWidth)
         end)
         moveUpBtn:SetScript("OnEnter", function() upArrow:SetTexture("Interface\\Buttons\\Arrow-Up-Down") end)
         moveUpBtn:SetScript("OnLeave", function() upArrow:SetTexture("Interface\\Buttons\\Arrow-Up-Up") end)
+        moveUpBtn.arrow = upArrow
         row.moveUpBtn = moveUpBtn
 
         local moveDownBtn = CreateFrame("Button", nil, moveCol)
@@ -372,6 +375,7 @@ function PR:BuildEditor(parent, contentWidth)
         end)
         moveDownBtn:SetScript("OnEnter", function() downArrow:SetTexture("Interface\\Buttons\\Arrow-Down-Down") end)
         moveDownBtn:SetScript("OnLeave", function() downArrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up") end)
+        moveDownBtn.arrow = downArrow
         row.moveDownBtn = moveDownBtn
         row.moveCol = moveCol
 
@@ -517,6 +521,7 @@ function PR:BuildEditor(parent, contentWidth)
             PR:SaveCurrentProfile(); editor:Refresh()
         end)
 
+        decBtn.arrow, incBtn.arrow = decArrow, incArrow
         row.decBtn, row.incBtn = decBtn, incBtn
 
         -- "After" (follows) button — shows the icon of the ability this one
@@ -639,6 +644,7 @@ function PR:BuildEditor(parent, contentWidth)
         row.combatChk = combatChk
 
         rows[i] = row
+        VUI.AnnounceFrame("PriorityRotation.EditorRow", row)
     end
 
     -- ── Column headers ───────────────────────────────────────────────
@@ -716,6 +722,8 @@ function PR:BuildEditor(parent, contentWidth)
     sBRgt:SetPoint("TOPRIGHT",    seqCard, "TOPRIGHT",    0, 0)
     sBRgt:SetPoint("BOTTOMRIGHT", seqCard, "BOTTOMRIGHT", 0, 0)
     sBRgt:SetWidth(1)
+    seqCard.cardArt = { seqFill, sBTop, sBBot, sBLft, sBRgt }
+    VUI.AnnounceFrame("PriorityRotation.SequenceCard", seqCard)
 
     -- Header at top of card with padding.
     local seqHeader = seqCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
