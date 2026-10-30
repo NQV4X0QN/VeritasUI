@@ -162,6 +162,7 @@ local UNIVERSAL = {
     charEnchants      = false,   -- each slot's enchant beside it
     charDurability    = false,   -- each slot's durability %, below 100%
     charMythicRating  = false,   -- Mythic+ rating under the item level
+    charLabelClassColor = false, -- sub-option: "Enchant:" / "Gem:" in class colour (owner, 2026-10-30)
     -- Phase 5 (v1.31.0): Blizzard's timestamp on system/loot/money/... lines too. Off by default.
     timestampAllMessages = false,
     -- The icon the next /note starts with: the last one chosen from a note's menu.
@@ -3547,7 +3548,9 @@ local SetupCharacterSheet
                 local text = line.leftText
                 local prefix = ENCHANTED_TOOLTIP_LINE and ENCHANTED_TOOLTIP_LINE:match("^(.-)%%s")
                 if prefix and prefix ~= "" and text:sub(1, #prefix) == prefix then text = text:sub(#prefix + 1) end
-                return text
+                -- The line's own colour, exactly as the item tooltip draws it (TooltipDataHandler.lua
+                -- :340: lineData.leftColor) -- green for most enchants, purple for some.
+                return text, line.leftColor
             end
         end
         return nil
@@ -3607,10 +3610,10 @@ local SetupCharacterSheet
             f:SetScript("OnEnter", function(self)
                 if not self._tip or #self._tip == 0 then return end
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                for i, line in ipairs(self._tip) do
-                    if i == 1 then GameTooltip:SetText(line[1], line[2], line[3], line[4])
-                    else GameTooltip:AddLine(line[1], line[2], line[3], line[4]) end
-                end
+                -- The item's name is the title (Blizzard's tooltip draws line 1 in its larger
+                -- header font), so every Enchant / Gem line below is the same body size.
+                GameTooltip:SetText(self._title or " ", self._tr or 1, self._tg or 1, self._tb or 1)
+                for _, line in ipairs(self._tip) do GameTooltip:AddLine(line, 1, 1, 1) end
                 GameTooltip:Show()
             end)
             f:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -3627,8 +3630,23 @@ local SetupCharacterSheet
         return f
     end
 
-    local RED, WHITE = { 1, 0.13, 0.13 }, { 1, 1, 1 }
-    local function Line(text, c) return { text, c[1], c[2], c[3] } end
+    local RED = "ffff2222"
+    local function Wrap(hex, text) return "|c" .. hex .. text .. "|r" end
+    local function ColorHex(c)
+        if c and c.GenerateHexColor then return c:GenerateHexColor() end
+        if c and c.r then return string.format("ff%02x%02x%02x", math.floor(c.r * 255 + 0.5), math.floor(c.g * 255 + 0.5), math.floor(c.b * 255 + 0.5)) end
+        return "ffffffff"
+    end
+    -- "Enchant:" / "Gem:" -- in your class colour when the sub-option is on.
+    local function Label(word)
+        if db and db.charLabelClassColor then
+            local _, class = UnitClass("player")
+            local c = class and C_ClassColor and C_ClassColor.GetClassColor and C_ClassColor.GetClassColor(class)
+            if c then return Wrap(ColorHex(c), word) end
+        end
+        return word
+    end
+    local ENCHANT_GREEN = { r = 0.1, g = 1, b = 0.1 }
 
     PaintStatus = function(btn, slotID)
         local f = StatusIcon(btn)
@@ -3638,22 +3656,22 @@ local SetupCharacterSheet
         -- Enchant. The game can say an item IS enchanted, not whether a slot could be, so a missing
         -- enchant only counts on the ENCHANTABLE list; an enchant anywhere else (12.1.5's glove
         -- scrolls) still counts as present.
-        local enchant = EnchantText(slotID)
+        local enchant, enchantColor = EnchantText(slotID)
         if enchant then
             applies = true
-            present[#present + 1] = Line("Enchant: " .. enchant, WHITE)
+            present[#present + 1] = Label("Enchant:") .. " " .. Wrap(ColorHex(enchantColor or ENCHANT_GREEN), enchant)
         elseif SlotIsEnchantable(slotID) then
             applies = true
-            missing[#missing + 1] = Line("Enchant Missing", RED)
+            missing[#missing + 1] = Wrap(RED, "Enchant Missing")
         end
         -- Gems, read the way Blizzard's own socket display reads them.
         local n, filled, names = GemState(slotID)
         if n > 0 then
             applies = true
-            for _, g in ipairs(names) do present[#present + 1] = Line("Gem: " .. g, WHITE) end
+            for _, g in ipairs(names) do present[#present + 1] = Label("Gem:") .. " " .. g end
             local empty = n - filled
-            if empty == 1 then missing[#missing + 1] = Line("Gem Missing", RED)
-            elseif empty > 1 then missing[#missing + 1] = Line(empty .. " Gems Missing", RED) end
+            if empty == 1 then missing[#missing + 1] = Wrap(RED, "Gem Missing")
+            elseif empty > 1 then missing[#missing + 1] = Wrap(RED, empty .. " Gems Missing") end
         end
         if not applies then f:Hide(); return end
         local tip = {}
@@ -3661,6 +3679,12 @@ local SetupCharacterSheet
         for _, l in ipairs(present) do tip[#tip + 1] = l end
         f._tex:SetAtlas(#missing == 0 and ICON_OK or ICON_MISSING)
         f._tip = tip
+        -- Title: the item's own name in its quality colour.
+        local link = GetInventoryItemLink("player", slotID)
+        local okI, itemName, _, quality = pcall(C_Item.GetItemInfo, link)
+        local qc = okI and quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+        f._title = (okI and itemName) or " "
+        f._tr, f._tg, f._tb = qc and qc.r or 1, qc and qc.g or 1, qc and qc.b or 1
         f:Show()
     end
 
@@ -3786,7 +3810,9 @@ local function InitializeOptions()
             VUI.PrintOnOffLive("Quality of Life", name, value)
             if onChange then onChange(value) end
         end)
-        GreyIfUnavailable(Settings.CreateCheckbox(category, setting, TipWithReason(tip, key)), key)
+        local init = Settings.CreateCheckbox(category, setting, TipWithReason(tip, key))
+        GreyIfUnavailable(init, key)
+        return init
     end
 
     AddCheckbox("showItemLevels", "Show Item Levels",
@@ -3927,10 +3953,19 @@ local function InitializeOptions()
     -- Each one repaints the open character window at once; the hooks are installed on first use.
     local function CharSheetChanged() SetupCharacterSheet() end
 
-    AddCheckbox("charEnchants", "Show Enchants and Gems on Character Sheet",
+    local enchantsInit = AddCheckbox("charEnchants", "Show Enchants and Gems on Character Sheet",
         "Beside each slot on the character window that can hold an enchant or gems: a green check "
         .. "when they are all there, a red X when one is missing. Hover it to see which.",
         CharSheetChanged)
+
+    -- Sub-option, indented under its parent and greyed while the parent is off -- Blizzard's own
+    -- nesting (SettingsElementHierarchyMixin:SetParentInitializer, Blizzard_SettingControls.lua:120).
+    local labelInit = AddCheckbox("charLabelClassColor", "Class-Colored Labels",
+        "In that icon's tooltip, shows the words \"Enchant:\" and \"Gem:\" in your class colour.",
+        CharSheetChanged)
+    if labelInit and labelInit.SetParentInitializer and enchantsInit then
+        labelInit:SetParentInitializer(enchantsInit, function() return db.charEnchants end)
+    end
 
     AddCheckbox("charDurability", "Show Durability on Character Sheet",
         "Shows each item's durability on its slot when it is below 100%, in yellow when it is low "
