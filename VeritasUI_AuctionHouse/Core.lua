@@ -436,6 +436,10 @@ AH.Events.On("AH_SCAN_FAILED", function()
         AH.comparePending = false
         VUI.Print(AH.TAG, "Comparison aborted — the browse scan did not complete.")
     end
+    -- A refused browse query fails the scan without closing the AH, so the AH_CLOSED handler
+    -- above never runs; without this the probe stays armed and reports after the next scan.
+    AH.browseProbePending = false
+    if AH.Browse and AH.Browse.SetWatch then AH.Browse.SetWatch(nil) end
 end)
 
 ----------------------------------------------------------------
