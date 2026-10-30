@@ -849,7 +849,7 @@ local function InitializeOptions()
 
     local FADE_OPTIONS = {
         { key = "fadeChatTabs",        name = "Fade Chat Tabs",
-          tip = "Chat tabs fade out with the chat window and reappear on mouseover. "
+          tip = "Chat tabs stay hidden until the chat window appears, then fade in and out with it. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "transparentChatBG",   name = "Transparent Chat Background",
           tip = "Makes the chat background transparent until you mouse over it. Turn it off and "
