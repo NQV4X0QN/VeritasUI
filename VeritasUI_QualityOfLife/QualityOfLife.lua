@@ -3495,8 +3495,9 @@ end
 
 -- ── Character sheet details (v1.32.0, EllesmereUI-inspired plan phase 6) ──
 -- Three independent options for the character window:
---   charEnchants   -- enchant and gem status icons beside each slot (check / red X; hover for names).
---                     Owner's redesign 2026-10-30: enchant NAMES beside the slots were unreadable.
+--   charEnchants   -- ONE enchant-and-gem status icon beside each slot (check / red X; hover says
+--                     what is there or missing). Owner's redesign 2026-10-30: enchant NAMES beside
+--                     the slots were unreadable, and two icons per slot looked busy.
 --   charDurability -- each slot's durability %, when below 100%
 --   charMythicRating -- your Mythic+ rating, just below the item level
 -- Sources (Blizzard_UIPanels_Game/Mainline):
@@ -3531,7 +3532,7 @@ local SetupCharacterSheet
     local ENCHANTABLE = { [16] = true, [1] = true, [3] = true, [5] = true, [7] = true, [8] = true,
                           [11] = true, [12] = true, [17] = "weapon" }
     local ICON_OK, ICON_MISSING = "common-icon-checkmark", "common-icon-redx"   -- Blizzard's own atlases
-    local ICON_SIZE, ICON_GAP = 14, 2
+    local ICON_SIZE = 14
     local charHooked = false
     local PaintStatus   -- assigned below, used by PaintSlot
     local ratingFrame
@@ -3591,93 +3592,82 @@ local SetupCharacterSheet
         return n, filled, names
     end
 
-    -- Icon 1 = enchant, icon 2 = gems. They are PACKED against the slot: only the icons that apply
-    -- are shown, nearest the slot first, so an item with no enchant has no gap (owner, 2026-10-30;
-    -- fixed positions left a hole). Hovering says which is which.
-    local function StatusIcon(holder, index)
-        holder._icons = holder._icons or {}
-        local f = holder._icons[index]
+    -- ONE status icon per slot (owner's design, 2026-10-30; two icons side by side looked busy):
+    -- it covers everything the item can carry -- its enchant (slot on the ENCHANTABLE list, or the
+    -- item already has one) and its gems (any sockets). Green check = all of it there; red X = any
+    -- of it missing. Nothing applies -> no icon. The tooltip leads with what is missing, in red
+    -- ("Enchant Missing", "Gem Missing"), then lists what is there ("Enchant: ...", "Gem: ...").
+    local function StatusIcon(btn)
+        local f = btn._vui_status
         if not f then
-            f = CreateFrame("Frame", nil, holder)
+            f = CreateFrame("Frame", nil, btn)
             f:SetSize(ICON_SIZE, ICON_SIZE)
             f._tex = f:CreateTexture(nil, "OVERLAY")
             f._tex:SetAllPoints()
             f:SetScript("OnEnter", function(self)
-                if not self._tip then return end
+                if not self._tip or #self._tip == 0 then return end
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(self._tip[1])
-                for i = 2, #self._tip do GameTooltip:AddLine(self._tip[i], 1, 1, 1) end
+                for i, line in ipairs(self._tip) do
+                    if i == 1 then GameTooltip:SetText(line[1], line[2], line[3], line[4])
+                    else GameTooltip:AddLine(line[1], line[2], line[3], line[4]) end
+                end
                 GameTooltip:Show()
             end)
             f:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            holder._icons[index] = f
+            -- Beside the slot on the side facing the model. Left column: to its right; right column
+            -- and the main hand: to its left; the off-hand: to its right.
+            local outward = (btn.IsLeftSide == true or (btn.IsLeftSide == nil and btn:GetID() ~= 16))
+            if outward then
+                f:SetPoint("LEFT", btn, "RIGHT", 8, 0)
+            else
+                f:SetPoint("RIGHT", btn, "LEFT", -8, 0)
+            end
+            btn._vui_status = f
         end
         return f
     end
 
-    -- Place the shown icons, in order, from the slot outward. Left column: they run right, away
-    -- from the slot. Right column and the main hand: left.
-    local function PlaceIcons(btn, shown)
-        local outward = (btn.IsLeftSide == true or (btn.IsLeftSide == nil and btn:GetID() ~= 16)) and 1 or -1
-        for k, f in ipairs(shown) do
-            f:ClearAllPoints()
-            local offset = 8 + (k - 1) * (ICON_SIZE + ICON_GAP)
-            if outward == 1 then
-                f:SetPoint("LEFT", btn, "RIGHT", offset, 0)
-            else
-                f:SetPoint("RIGHT", btn, "LEFT", -offset, 0)
-            end
-        end
-    end
-
-    local function SetIcon(f, ok, tip)
-        f._tex:SetAtlas(ok and ICON_OK or ICON_MISSING)
-        f._tip = tip
-        f:Show()
-    end
+    local RED, WHITE = { 1, 0.13, 0.13 }, { 1, 1, 1 }
+    local function Line(text, c) return { text, c[1], c[2], c[3] } end
 
     PaintStatus = function(btn, slotID)
-        local holder = btn._vui_status
-        if not holder then
-            holder = CreateFrame("Frame", nil, btn)
-            holder:SetAllPoints(btn)
-            btn._vui_status = holder
+        local f = StatusIcon(btn)
+        if not GetInventoryItemLink("player", slotID) then f:Hide(); return end
+        local missing, present = {}, {}
+        local applies = false
+        -- Enchant. The game can say an item IS enchanted, not whether a slot could be, so a missing
+        -- enchant only counts on the ENCHANTABLE list; an enchant anywhere else (12.1.5's glove
+        -- scrolls) still counts as present.
+        local enchant = EnchantText(slotID)
+        if enchant then
+            applies = true
+            present[#present + 1] = Line("Enchant: " .. enchant, WHITE)
+        elseif SlotIsEnchantable(slotID) then
+            applies = true
+            missing[#missing + 1] = Line("Enchant Missing", RED)
         end
-        holder:Show()
-        local hasItem = GetInventoryItemLink("player", slotID) ~= nil
-        local enchantIcon, gemIcon = StatusIcon(holder, 1), StatusIcon(holder, 2)
-        local shown = {}
-        -- Any item that HAS an enchant gets a green check, whatever the slot: the game can say an
-        -- item is enchanted, but not whether a slot could be, so a red X is only ever shown on the
-        -- ENCHANTABLE list. Covers 12.1.5's glove enchant scrolls and anything a later patch adds
-        -- (owner, 2026-10-30).
-        local name = hasItem and EnchantText(slotID) or nil
-        if name then
-            SetIcon(enchantIcon, true, { "Enchanted", name })
-            shown[#shown + 1] = enchantIcon
-        elseif hasItem and SlotIsEnchantable(slotID) then
-            SetIcon(enchantIcon, false, { "Not enchanted" })
-            shown[#shown + 1] = enchantIcon
-        else
-            enchantIcon:Hide()
-        end
-        local n, filled, names = 0, 0, {}
-        if hasItem then n, filled, names = GemState(slotID) end
+        -- Gems, read the way Blizzard's own socket display reads them.
+        local n, filled, names = GemState(slotID)
         if n > 0 then
-            local tip = { filled == n and "Gems" or string.format("%d of %d sockets empty", n - filled, n) }
-            for _, g in ipairs(names) do tip[#tip + 1] = g end
-            SetIcon(gemIcon, filled == n, tip)
-            shown[#shown + 1] = gemIcon
-        else
-            gemIcon:Hide()
+            applies = true
+            for _, g in ipairs(names) do present[#present + 1] = Line("Gem: " .. g, WHITE) end
+            local empty = n - filled
+            if empty == 1 then missing[#missing + 1] = Line("Gem Missing", RED)
+            elseif empty > 1 then missing[#missing + 1] = Line(empty .. " Gems Missing", RED) end
         end
-        PlaceIcons(btn, shown)
+        if not applies then f:Hide(); return end
+        local tip = {}
+        for _, l in ipairs(missing) do tip[#tip + 1] = l end
+        for _, l in ipairs(present) do tip[#tip + 1] = l end
+        f._tex:SetAtlas(#missing == 0 and ICON_OK or ICON_MISSING)
+        f._tip = tip
+        f:Show()
     end
 
     local function PaintSlot(btn)
         if not (btn and btn.GetID) then return end
         local slotID = btn:GetID()
-        -- Enchant and gem status icons, beside the slot on the side facing the model.
+        -- The enchant-and-gem status icon, beside the slot on the side facing the model.
         if db and db.charEnchants then
             PaintStatus(btn, slotID)
         elseif btn._vui_status then
@@ -3938,9 +3928,8 @@ local function InitializeOptions()
     local function CharSheetChanged() SetupCharacterSheet() end
 
     AddCheckbox("charEnchants", "Show Enchants and Gems on Character Sheet",
-        "Beside each slot on the character window: a green check or red X for its enchant (on slots "
-        .. "that take one) and for its gems (on items with sockets). Hover an icon to see the enchant "
-        .. "or gem, or what is missing.",
+        "Beside each slot on the character window that can hold an enchant or gems: a green check "
+        .. "when they are all there, a red X when one is missing. Hover it to see which.",
         CharSheetChanged)
 
     AddCheckbox("charDurability", "Show Durability on Character Sheet",
