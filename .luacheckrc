@@ -98,7 +98,7 @@ read_globals = {
     "Menu", "MenuResponse", "MenuUtil",
     "IsInInstance", "GetInstanceInfo", "CreateFromMixins", "MapCanvasPinMixin",
     "MapCanvasDataProviderMixin", "GameTooltip_SetTitle", "GameTooltip_AddColoredLine", "EventUtil",
-    "UIErrorsFrame", "MAP_PIN_INVALID_MAP", "RED_FONT_COLOR", "PlaySound", "StopSound", "C_UnitAuras", "SOUNDKIT", "UiMapPoint",
+    "UIErrorsFrame", "MAP_PIN_INVALID_MAP", "RED_FONT_COLOR", "PlaySound", "StopSound", "C_UnitAuras", "StaticPopup_FindVisible", "DELETE_ITEM_CONFIRM_STRING", "CinematicFrame", "StopCinematic", "MovieFrame", "SOUNDKIT", "UiMapPoint",
     "IsShiftKeyDown",
     -- Tooltips
     "GameTooltip", "ItemRefTooltip", "TooltipDataProcessor", "TooltipUtil",

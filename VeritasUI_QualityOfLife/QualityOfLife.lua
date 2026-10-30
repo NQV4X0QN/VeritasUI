@@ -146,6 +146,10 @@ local UNIVERSAL = {
     -- the toggles above: it overrides a faction the player chose to watch, and the suite ships
     -- to other players who never asked for that.
     followReputationGains = false,
+    -- EllesmereUI-inspired plan, phase 2 (v1.28.0). OFF by default for the same reason: they
+    -- change how two of Blizzard's own confirmations behave.
+    fillDeleteConfirm = false,   -- types DELETE into the delete-item confirmation
+    skipCinematics    = false,   -- Escape skips a cinematic or movie without asking
     -- The icon the next /note starts with: the last one chosen from a note's menu.
     mapNoteIcon = "Waypoint-MapPin-Untracked",
 }
@@ -3116,6 +3120,64 @@ SLASH_VERITASUI_MAPNOTE1 = "/note"
 SLASH_VERITASUI_MAPNOTE2 = "/mapnote"
 SlashCmdList["VERITASUI_MAPNOTE"] = MapNoteCommand
 
+-- ── Fill In DELETE (v1.28.0, EllesmereUI-inspired plan phase 2) ──
+-- Deleting a rare-or-better item opens DELETE_GOOD_ITEM / DELETE_GOOD_QUEST_ITEM, which make you
+-- type DELETE (Blizzard_Game/Mainline/EventImplementation.lua:315-329). This types it for you, so
+-- Yes is enabled and Enter confirms. Nothing is deleted without your own click or key press: the
+-- delete is still Blizzard's own OnAccept / EditBoxOnEnterPressed (GameDialogDefs.lua:583-652).
+--
+-- Mechanism, from source: a post-hook on the global StaticPopup_Show (StaticPopup.lua:300) finds
+-- the shown dialog with Blizzard's StaticPopup_FindVisible (:148) and sets its edit box text to
+-- DELETE_ITEM_CONFIRM_STRING. Blizzard's own EditBoxOnTextChanged then enables Yes
+-- (StaticPopup_StandardConfirmationTextHandler, :132-136). The dialog's OnHide clears the box with
+-- Blizzard's own SetText("") (GameDialogDefs.lua:620), so the text we wrote does not outlive it.
+-- ⚠ Never hook the dialog DEFINITION (StaticPopupDialogs[...].OnShow): that rewrites Blizzard's
+-- table from addon code, the shape of the v1.12.5 taint.
+local DELETE_POPUPS = { DELETE_GOOD_ITEM = true, DELETE_GOOD_QUEST_ITEM = true }
+local deleteHooked = false
+
+local function SetupDeleteFill()
+    if deleteHooked or not StaticPopup_Show then return end
+    deleteHooked = true
+    hooksecurefunc("StaticPopup_Show", function(which)
+        if not (db and db.fillDeleteConfirm and DELETE_POPUPS[which]) then return end
+        local dialog = StaticPopup_FindVisible and StaticPopup_FindVisible(which)
+        local box = dialog and dialog.GetEditBox and dialog:GetEditBox()
+        if box and DELETE_ITEM_CONFIRM_STRING then box:SetText(DELETE_ITEM_CONFIRM_STRING) end
+    end)
+end
+
+-- ── Skip Cinematics (v1.28.0) ───────────────────────────────
+-- Escape during a cinematic or movie normally asks "are you sure?"; this skips straight away.
+--   In-game cinematics (Blizzard_FrameXML/Shared/CinematicFrame.lua): Escape shows closeDialog
+--   (:117-130). When it shows for a REAL cinematic (isRealCinematic) we call StopCinematic(), the
+--   call Blizzard's own confirm makes (:136-138). Scenes and vehicle "cinematics" keep the
+--   question: their confirm exits a vehicle or cancels a scene, which this leaves alone.
+--   Movies (MovieFrame.lua): Escape, Space or Enter calls ShowCloseDialog (:86-90, :100-112).
+--   We call the frame's own StopMovie() rather than its confirm (FinishMovie, :52-57): FinishMovie
+--   hides the frame, and its OnHide shows UIParent (:67-75) -- doing that from addon code would
+--   run every UIParent child's OnShow tainted. If StopMovie does not end the movie, the question
+--   is simply still there.
+local cinematicHooked = false
+
+local function SetupSkipCinematics()
+    if cinematicHooked then return end
+    cinematicHooked = true
+    local dlg = CinematicFrame and CinematicFrame.closeDialog
+    if dlg and dlg.HookScript then
+        dlg:HookScript("OnShow", function()
+            if db and db.skipCinematics and CinematicFrame.isRealCinematic and StopCinematic then
+                StopCinematic()
+            end
+        end)
+    end
+    if MovieFrame and MovieFrame.ShowCloseDialog then
+        hooksecurefunc(MovieFrame, "ShowCloseDialog", function(self)
+            if db and db.skipCinematics and self.StopMovie then self:StopMovie() end
+        end)
+    end
+end
+
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
@@ -3233,6 +3295,18 @@ local function InitializeOptions()
             if value then RepFollowStart() else RepFollowStop() end
         end)
 
+    -- Both hooks check the saved value each time, so turning either off applies at once; turning
+    -- one on installs its hook the first time.
+    AddCheckbox("fillDeleteConfirm", "Fill In DELETE",
+        "When you delete a valuable item, types DELETE into the confirmation for you, so you only "
+        .. "have to press Enter or click Yes.",
+        function(value) if value then SetupDeleteFill() end end)
+
+    AddCheckbox("skipCinematics", "Skip Cinematics",
+        "Pressing Escape during a cinematic or movie skips it straight away instead of asking "
+        .. "first. Scenes you can only leave by exiting a vehicle still ask.",
+        function(value) if value then SetupSkipCinematics() end end)
+
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
     VUI.RegisterSettingsLabel(SETTINGS_LABEL)
@@ -3328,6 +3402,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.delveNemesisCount then DelveStartCount() end
 
         if db.followReputationGains then RepFollowStart() end
+        if db.fillDeleteConfirm then SetupDeleteFill() end
+        if db.skipCinematics then SetupSkipCinematics() end
 
         -- Register /way only if TomTom is absent; both addons claim this command.
         if not (_G.TomTom or (IsAddOnLoaded and IsAddOnLoaded("TomTom"))) then
