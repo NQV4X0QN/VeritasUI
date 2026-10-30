@@ -189,9 +189,10 @@ local HOVER_FADE_POLL_RATE = 0.1    -- ~10 Hz always
 local HOVER_LEAVE_GRACE = 0.15 -- seconds after last "not over" before fading
 
 -- Fade Delay (CleanSolo's slider, v1.25.0): how long a faded element stays up after it no longer
--- needs to show, before it starts fading. ONE value for every fader so they behave alike. Each
--- fader keeps its own built-in delay as a floor (hover 0.15 s, player frame 0.5 s, chat tabs
--- Blizzard's CHAT_TAB_HIDE_DELAY), so 0 means exactly the behaviour before the slider existed.
+-- needs to show, before it starts fading. ONE value for the hover and player-frame faders so they
+-- behave alike. Each keeps its own built-in delay as a floor (hover 0.15 s, player frame 0.5 s),
+-- so 0 means exactly the behaviour before the slider existed. CleanSolo's chat tabs are left off
+-- it on purpose: Blizzard fades the chat window on its own timing (CleanSolo.lua, HideAllTabs).
 -- Read at the moment a fade is about to start, so a change applies at once, without /reload.
 local FADE_DELAY_MAX = 5
 local fadeDelay = 0

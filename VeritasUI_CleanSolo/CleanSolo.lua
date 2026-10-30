@@ -267,9 +267,10 @@ local function SetupChatTabFading()
 
     local function HideAllTabs()
         CancelTimers()
-        -- Fade Delay slider (VUI.SetFadeDelay): Blizzard's own tab delay stays the floor.
-        local delay = math.max(FADE_DELAY, VUI.GetFadeDelay and VUI.GetFadeDelay() or 0)
-        hideTimer = C_Timer.NewTimer(delay, function()
+        -- ⚠ Deliberately NOT on the Fade Delay slider (owner, 2026-10-29). Blizzard fades the chat
+        -- window itself on its own timing, so a longer tab delay left the tabs floating over an
+        -- empty space after the window had gone. The tabs stay in step with the window instead.
+        hideTimer = C_Timer.NewTimer(FADE_DELAY, function()
             hideTimer = nil
             if not IsOverAnyChatElement() then
                 for _, tab in ipairs(tabs) do
@@ -944,9 +945,9 @@ local function InitializeOptions()
         end)
     end
     local delayInit = Settings.CreateSlider(category, delaySetting, delayOptions, TipWithReason(
-        "How long the faded chat tabs, micro menu, player frame and action bars stay visible "
-        .. "after you move the mouse away, before they fade. 0 keeps the usual short delay. "
-        .. "Applies at once.", "fadeDelay"))
+        "How long the faded micro menu, player frame and action bars stay visible after you move "
+        .. "the mouse away, before they fade. 0 keeps the usual short delay. The chat window and "
+        .. "its tabs keep Blizzard's own timing. Applies at once.", "fadeDelay"))
     GreyIfUnavailable(delayInit, "fadeDelay")
 
     Settings.RegisterAddOnCategory(category)
