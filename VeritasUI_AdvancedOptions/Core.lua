@@ -287,10 +287,18 @@ SlashCmdList["VERITASUI_AO"] = function(msg)
         VUI.Print("Advanced Options", "  |cFFFFFF00/ao|r           — toggle window")
         VUI.Print("Advanced Options", "  |cFFFFFF00/ao help|r      — show this help")
         VUI.Print("Advanced Options", "  |cFFFFFF00/ao elvui|r     — settings ElvUI changed")
+        VUI.Print("Advanced Options", "  |cFFFFFF00/ao changed|r   — every setting not at Blizzard's default")
 
     elseif cmd == "elvui" then
         if AO.ShowElvUIChanges then
             AO:ShowElvUIChanges()
+        else
+            VUI.Print("Advanced Options", "|cFFFF4444Window failed to load. Try /reload|r")
+        end
+
+    elseif cmd == "changed" then
+        if AO.ShowChangedCVars then
+            AO:ShowChangedCVars()
         else
             VUI.Print("Advanced Options", "|cFFFF4444Window failed to load. Try /reload|r")
         end

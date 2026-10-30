@@ -241,14 +241,15 @@ local function EnumerateCVars()
         end
     end
 
-    -- Ensure every CVar in the Featured tab, and every CVar ElvUI sets (ElvUIChanges.lua), is also
-    -- present in the browser, regardless of which enumeration strategy fired. Both files load
-    -- before Browser.lua, so the lists are always populated at this point.
+    -- Ensure every CVar in the Featured tab, and every CVar ElvUI or EllesmereUI sets
+    -- (ElvUIChanges.lua, EllesmereUIChanges.lua), is also present in the browser, regardless of
+    -- which enumeration strategy fired. All load before Browser.lua, so the lists are populated.
     local extra = {}
     for _, cat in ipairs(AO.FEATURED_CATEGORIES) do
         for _, ctrl in ipairs(cat.controls) do extra[#extra + 1] = ctrl.cvar end
     end
     for _, name in ipairs(AO.ELVUI_CVARS or {}) do extra[#extra + 1] = name end
+    for _, name in ipairs(AO.ELLESMEREUI_CVARS or {}) do extra[#extra + 1] = name end
     do
         for _, name in ipairs(extra) do
             if name and not cvarByName[name] then
@@ -306,7 +307,10 @@ end
 ----------------------------------------------------------------
 -- elvuiOnly: the "Changed by ElvUI" checkbox -- only CVars ElvUI sets that currently differ from
 -- Blizzard's default. Values are re-read first so a row reset a moment ago drops out.
+-- changedOnly: the "Changed" checkbox -- every indexed CVar that differs from its default, whoever
+-- changed it. The two are exclusive (the checkbox handlers clear each other).
 local elvuiOnly = false
+local changedOnly = false
 
 local function ApplyFilter(searchText)
     filteredList = {}
@@ -324,6 +328,9 @@ local function ApplyFilter(searchText)
             else
                 match = false
             end
+        elseif match and changedOnly then
+            RefreshEntry(entry)
+            match = entry.value ~= entry.default
         end
         if match then
             if AO:IsFavorite(entry.name) then
@@ -338,6 +345,40 @@ local function ApplyFilter(searchText)
     for _, e in ipairs(favs)    do filteredList[#filteredList + 1] = e end
     for _, e in ipairs(nonFavs) do filteredList[#filteredList + 1] = e end
 end
+
+-- "Changed" Reset All: resets exactly the rows on screen, so the search box decides the scope --
+-- searching "nameplate" first resets only nameplate settings. The names are taken when the button
+-- is clicked and held here until the confirm popup is accepted.
+local pendingReset
+
+local function ShownChangedNames()
+    local names = {}
+    for _, e in ipairs(filteredList) do
+        if e.value ~= e.default then names[#names + 1] = e.name end
+    end
+    return names
+end
+
+function AO:ResetCVarList(names)
+    names = names or {}
+    for _, name in ipairs(names) do AO:ResetCVar(name) end
+    VUI.Print("Advanced Options", format("Reset %d setting%s to Blizzard's defaults.",
+        #names, #names == 1 and "" or "s"))
+    if AO.RefreshBrowser then AO:RefreshBrowser() end
+end
+
+StaticPopupDialogs["VERITASUI_AO_RESET_SHOWN"] = {
+    text = "Reset the %d setting%s listed to Blizzard's defaults?",
+    button1 = ACCEPT or "Accept",
+    button2 = CANCEL or "Cancel",
+    timeout = 0, whileDead = 1, hideOnEscape = 1,
+    OnAccept = function()
+        local names = pendingReset
+        pendingReset = nil
+        AO:ResetCVarList(names)
+    end,
+    OnCancel = function() pendingReset = nil end,
+}
 
 ----------------------------------------------------------------
 --  Browser UI — Blizzard ScrollBox + MinimalScrollBar
@@ -386,14 +427,24 @@ function AO:BuildBrowserContent(parent)
     elvuiCheck:SetPoint("RIGHT", parent, "TOPRIGHT", -INSET - elvuiTextW - 4, -INSET - 11)
     elvuiCheck:Hide()
 
+    -- "Changed" filter: always offered. Sits left of the ElvUI checkbox when that is shown,
+    -- otherwise at the right edge; the search box ends at its left edge.
+    local changedCheck = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    changedCheck:SetSize(24, 24)
+    local changedLabel = changedCheck.Text or changedCheck.text
+    if changedLabel then changedLabel:SetText("Changed") end
+    local changedTextW = (changedLabel and tonumber(changedLabel:GetStringWidth())) or 60
+
     local function LayoutTop()
         local offer = AO.elvuiRelevant and true or false
         elvuiCheck:SetShown(offer)
+        changedCheck:ClearAllPoints()
         if offer then
-            searchBox:SetPoint("RIGHT", elvuiCheck, "LEFT", -10, 0)
+            changedCheck:SetPoint("RIGHT", elvuiCheck, "LEFT", -changedTextW - 12, 0)
         else
-            searchBox:SetPoint("RIGHT", parent, "RIGHT", -INSET, 0)
+            changedCheck:SetPoint("RIGHT", parent, "TOPRIGHT", -INSET - changedTextW - 4, -INSET - 11)
         end
+        searchBox:SetPoint("RIGHT", changedCheck, "LEFT", -10, 0)
     end
     LayoutTop()
     searchBox:SetAutoFocus(false)
@@ -453,8 +504,9 @@ function AO:BuildBrowserContent(parent)
     scrollBar:SetPoint("TOPLEFT",    scrollBox, "TOPRIGHT",    4, 0)
     scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", 4, 0)
 
-    -- ── "Changed by ElvUI" footer: explanation + Reset All ───
+    -- ── Filter footer ("Changed by ElvUI" / "Changed"): explanation + Reset All ───
     local FOOTER_H = 58
+    local FOOTER_CHANGED_H = 70   -- the "Changed" explanation runs a line longer
     local footer, footerText, resetAllBtn
     do
         footer = CreateFrame("Frame", nil, parent)
@@ -468,6 +520,15 @@ function AO:BuildBrowserContent(parent)
         resetAllBtn:SetPoint("BOTTOMRIGHT", footer, "BOTTOMRIGHT", 0, 2)
         resetAllBtn:SetText("Reset All to Default")
         resetAllBtn:SetScript("OnClick", function()
+            if changedOnly then
+                local names = ShownChangedNames()
+                local n = #names
+                if n > 0 then
+                    pendingReset = names
+                    StaticPopup_Show("VERITASUI_AO_RESET_SHOWN", n, n == 1 and "" or "s")
+                end
+                return
+            end
             local n = #AO:ElvUIChangedCVars()
             if n > 0 then StaticPopup_Show("VERITASUI_AO_RESET_ELVUI", n, n == 1 and "" or "s") end
         end)
@@ -485,12 +546,36 @@ function AO:BuildBrowserContent(parent)
     local CHAT_HINT = format("Chat windows: right-click a chat tab, choose %s, then %s.",
         CHAT_CONFIGURATION or "Settings", CHAT_DEFAULTS or "Chat Defaults")
 
+    -- UI suites known to write CVars again when they load (ElvUIChanges.lua, EllesmereUIChanges.lua).
+    local REWRITERS = { "ElvUI", "EllesmereUI" }
+    local function RunningRewriter()
+        if not (C_AddOns and C_AddOns.IsAddOnLoaded) then return nil end
+        for _, name in ipairs(REWRITERS) do
+            if C_AddOns.IsAddOnLoaded(name) then return name end
+        end
+        return nil
+    end
+
     local function UpdateFooter(shown)
-        footer:SetShown(elvuiOnly)
-        scrollBox:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SB_INSET, elvuiOnly and (FOOTER_H + 8) or 4)
-        if not elvuiOnly then return end
+        local on = elvuiOnly or changedOnly
+        footer:SetShown(on)
+        local h = changedOnly and FOOTER_CHANGED_H or FOOTER_H
+        footer:SetHeight(h)
+        scrollBox:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SB_INSET, on and (h + 8) or 4)
+        if not on then return end
         local lead
-        if AO.ElvUILoaded() then
+        if changedOnly then
+            local running = RunningRewriter()
+            if running then
+                lead = format("|cFFFF4444%s is running|r and may set some of these again when it loads. "
+                    .. "Turn it off in the AddOns list before resetting.", running)
+            elseif shown == 0 then
+                lead = "Every setting listed here is at Blizzard's default."
+            else
+                lead = "These differ from Blizzard's defaults, including changes you made yourself. "
+                    .. "Reset All resets only the rows listed, so search first to narrow it."
+            end
+        elseif AO.ElvUILoaded() then
             lead = "|cFFFF4444ElvUI is running|r and sets its nameplate settings again at every login. "
                 .. "Turn it off in the AddOns list before resetting."
         elseif shown == 0 then
@@ -744,8 +829,25 @@ function AO:BuildBrowserContent(parent)
 
     elvuiCheck:SetScript("OnClick", function(self)
         elvuiOnly = self:GetChecked() and true or false
+        if elvuiOnly then changedOnly = false; changedCheck:SetChecked(false) end
         AO:RefreshBrowser()
     end)
+
+    changedCheck:SetScript("OnClick", function(self)
+        changedOnly = self:GetChecked() and true or false
+        if changedOnly then elvuiOnly = false; elvuiCheck:SetChecked(false) end
+        AO:RefreshBrowser()
+    end)
+
+    -- /ao changed: the All CVars tab with the "Changed" filter on.
+    function AO:ShowChangedCVars()
+        changedCheck:SetChecked(true)
+        changedOnly = true
+        elvuiCheck:SetChecked(false)
+        elvuiOnly = false
+        if AO.MainWindow then AO.MainWindow:ShowTab("browser") end
+        AO:RefreshBrowser()
+    end
 
     -- /ao elvui: the All CVars tab with the filter on.
     function AO:ShowElvUIChanges()
@@ -755,6 +857,8 @@ function AO:BuildBrowserContent(parent)
         end
         elvuiCheck:SetChecked(true)
         elvuiOnly = true
+        changedCheck:SetChecked(false)
+        changedOnly = false
         if AO.MainWindow then AO.MainWindow:ShowTab("browser") end
         AO:RefreshBrowser()
     end
