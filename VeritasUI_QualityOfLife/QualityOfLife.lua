@@ -158,6 +158,8 @@ local UNIVERSAL = {
     -- Phase 4 (v1.30.0): extra unit tooltip lines, off by default, independent.
     tooltipTarget     = false,   -- "Target: <name>", green "You" when it is you
     tooltipMount      = false,   -- the mount a player rides, check or red X for owned
+    -- Phase 5 (v1.31.0): Blizzard's timestamp on system/loot/money/... lines too. Off by default.
+    timestampAllMessages = false,
     -- The icon the next /note starts with: the last one chosen from a note's menu.
     mapNoteIcon = "Waypoint-MapPin-Untracked",
 }
@@ -3435,6 +3437,51 @@ local function SetupTooltipLines()
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, OnUnitTooltip)
 end
 
+-- ── Timestamp Every Message (v1.31.0, EllesmereUI-inspired plan phase 5) ──
+-- Blizzard timestamps player chat itself (Blizzard_ChatFrameBase/Mainline/ChatFrameOverrides.lua
+-- :659-663) but adds system, loot, money, currency, skill, achievement, XP/reputation and similar
+-- lines with no timestamp (:402-417). This adds Blizzard's OWN timestamp to those, in the format
+-- chosen in Blizzard's Chat Timestamps option (ChatFrameUtil.GetTimestampFormat, ChatFrameUtil.lua
+-- :845-851; TimeUtil.BetterDate, as Blizzard uses). With that option at None, nothing is added.
+--
+-- Mechanism: Blizzard's message filter registry (ChatFrameUtil.AddMessageEventFilter,
+-- Shared/ChatFrameFilters.lua). Blizzard calls every filter through securecallfunction and SKIPS
+-- it entirely when any argument is a hidden value (canaccessvalue), so a hidden encounter line
+-- never reaches this code. The filter only returns a new first argument; it never touches a chat
+-- frame. Messages addons print straight to chat are not chat events and are not covered.
+local STAMP_EVENTS = {
+    "CHAT_MSG_SYSTEM", "CHAT_MSG_LOOT", "CHAT_MSG_MONEY", "CHAT_MSG_CURRENCY", "CHAT_MSG_SKILL",
+    "CHAT_MSG_OPENING", "CHAT_MSG_TRADESKILLS", "CHAT_MSG_PET_INFO", "CHAT_MSG_TARGETICONS",
+    "CHAT_MSG_ACHIEVEMENT", "CHAT_MSG_GUILD_ACHIEVEMENT",
+    "CHAT_MSG_COMBAT_XP_GAIN", "CHAT_MSG_COMBAT_HONOR_GAIN", "CHAT_MSG_COMBAT_FACTION_CHANGE",
+    "CHAT_MSG_COMBAT_MISC_INFO", "CHAT_MSG_COMBAT_GUILD_XP_GAIN",
+    "CHAT_MSG_BG_SYSTEM_NEUTRAL", "CHAT_MSG_BG_SYSTEM_ALLIANCE", "CHAT_MSG_BG_SYSTEM_HORDE",
+}
+local stampsOn = false
+
+local function StampFilter(_, _, msg, ...)
+    if not (db and db.timestampAllMessages) or type(msg) ~= "string" then return false end
+    local fmt = ChatFrameUtil and ChatFrameUtil.GetTimestampFormat and ChatFrameUtil.GetTimestampFormat()
+    if not fmt or not (TimeUtil and TimeUtil.BetterDate) then return false end
+    local ok, stamp = pcall(TimeUtil.BetterDate, fmt, time())
+    if not ok or type(stamp) ~= "string" then return false end
+    -- Achievement lines are a format string Blizzard fills in afterwards (:413-417); a timestamp
+    -- has no "%", so prepending to it is safe.
+    return false, stamp .. msg, ...
+end
+
+local function SetTimestampAll(on)
+    local add = ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter
+    local remove = ChatFrameUtil and ChatFrameUtil.RemoveMessageEventFilter
+    if not (add and remove) then return end
+    if on and not stampsOn then
+        for _, ev in ipairs(STAMP_EVENTS) do add(ev, StampFilter) end
+    elseif not on and stampsOn then
+        for _, ev in ipairs(STAMP_EVENTS) do remove(ev, StampFilter) end
+    end
+    stampsOn = on and true or false
+end
+
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
@@ -3594,6 +3641,12 @@ local function InitializeOptions()
         .. "if you don't. Left out where the game hides buffs from addons, such as in instances.",
         function(value) if value then SetupTooltipLines() end end)
 
+    AddCheckbox("timestampAllMessages", "Timestamp Every Message",
+        "Adds the chat timestamp to system, loot, money, achievement, experience and reputation "
+        .. "messages too, not just player chat. Uses the format chosen in Options > Social > Chat "
+        .. "Timestamps; with that at None, nothing is added.",
+        SetTimestampAll)
+
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
     VUI.RegisterSettingsLabel(SETTINGS_LABEL)
@@ -3694,6 +3747,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         UpdateNpcEvents()
         if db.trainAllButton then SetupTrainAll() end
         if db.tooltipTarget or db.tooltipMount then SetupTooltipLines() end
+        if db.timestampAllMessages then SetTimestampAll(true) end
 
         -- Register /way only if TomTom is absent; both addons claim this command.
         if not (_G.TomTom or (IsAddOnLoaded and IsAddOnLoaded("TomTom"))) then
