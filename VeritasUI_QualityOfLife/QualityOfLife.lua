@@ -155,6 +155,9 @@ local UNIVERSAL = {
     autoAcceptQuest   = false,   -- take offered quests (separate from turn-in, owner's request)
     autoTurnInQuest   = false,   -- hand in completed quests
     trainAllButton    = false,   -- Train All button on the trainer window
+    -- Phase 4 (v1.30.0): extra unit tooltip lines, off by default, independent.
+    tooltipTarget     = false,   -- "Target: <name>", green "You" when it is you
+    tooltipMount      = false,   -- the mount a player rides, check or red X for owned
     -- The icon the next /note starts with: the last one chosen from a note's menu.
     mapNoteIcon = "Waypoint-MapPin-Untracked",
 }
@@ -3342,6 +3345,96 @@ local function SetupTrainAll()
     if ClassTrainerFrame then CreateTrainAll() else trainerLoader:RegisterEvent("ADDON_LOADED") end
 end
 
+-- ── Tooltip lines: Target and Mount (v1.30.0, EllesmereUI-inspired plan phase 4) ──
+-- Two independent options adding a line to unit tooltips:
+--   tooltipTarget -- who the hovered unit is targeting; "You" in green when it is you.
+--   tooltipMount  -- the mount a player is riding, with a check if you own it, a red X if not.
+-- Hook: TooltipDataProcessor.AddTooltipPostCall(Unit) -- Blizzard's insulated path (landmine:
+-- never HookScript a shared tooltip). The unit comes from the tooltip data's GUID the way
+-- Blizzard's own TooltipUtil.GetDisplayedUnit does (Blizzard_SharedXMLGame/Tooltip/TooltipUtil.lua
+-- :34-42). Mount: the player's buffs are matched to a mount with C_MountJournal.GetMountFromSpell,
+-- then GetMountInfoByID's isCollected (MountJournalDocumentation).
+-- ⚠ WoW 12 hides much of this from addons in combat and in instances (Secret Values: aura data is
+-- "SecretWhenUnitAuraRestricted"; GetMountInfoByID refuses a secret argument from addon code).
+-- EVERY value is pcall'd and issecretvalue-checked BEFORE any test, and the line is simply left
+-- out when it cannot be read -- never an error, never a guess.
+local tooltipHooked = false
+local MOUNT_OWNED   = "|A:common-icon-checkmark:14:14|a"   -- both atlases are Blizzard's own
+local MOUNT_MISSING = "|A:common-icon-redx:14:14|a"        -- (Blizzard_GuildRename.lua)
+local MAX_BUFFS = 40
+local unpack = unpack or table.unpack   -- luacheck: ignore 143 (WoW's Lua 5.1 global; tests run 5.4)
+
+local function Readable(...)
+    if not issecretvalue then return true end
+    for i = 1, select("#", ...) do
+        if issecretvalue((select(i, ...))) then return false end
+    end
+    return true
+end
+
+-- pcall + secret check in one: returns the call's results only when every one is readable.
+local function Read(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local res = { pcall(fn, ...) }
+    if not res[1] then return nil end
+    for i = 2, #res do if not Readable(res[i]) then return nil end end
+    return select(2, unpack(res))
+end
+
+local function TargetLine(tooltip, unit)
+    local t = unit .. "target"
+    if not Read(UnitExists, t) then return end
+    if Read(UnitIsUnit, t, "player") then
+        tooltip:AddLine((TARGET or "Target") .. ": You", 0.1, 1, 0.1)
+        return
+    end
+    local name = Read(UnitName, t)
+    if not name then return end
+    local r, g, b = 1, 1, 1
+    if Read(UnitIsPlayer, t) then
+        local _, class = Read(UnitClass, t)
+        local c = class and C_ClassColor and C_ClassColor.GetClassColor and Read(C_ClassColor.GetClassColor, class)
+        if c then r, g, b = c.r, c.g, c.b end
+    end
+    tooltip:AddLine((TARGET or "Target") .. ": " .. name, r, g, b)
+end
+
+local function MountLine(tooltip, unit)
+    if not Read(UnitIsPlayer, unit) then return end
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex and C_MountJournal) then return end
+    for i = 1, MAX_BUFFS do
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HELPFUL")
+        if not ok or not aura or not Readable(aura) then return end
+        local spellID = aura.spellId
+        if not (spellID and Readable(spellID)) then return end
+        local mountID = Read(C_MountJournal.GetMountFromSpell, spellID)
+        if mountID then
+            local name, _, icon, _, _, _, _, _, _, _, isCollected = Read(C_MountJournal.GetMountInfoByID, mountID)
+            if not name then return end
+            tooltip:AddLine(string.format("%s: |T%s:0|t %s %s", MOUNT or "Mount", tostring(icon), name,
+                isCollected and MOUNT_OWNED or MOUNT_MISSING), 1, 1, 1)
+            return
+        end
+    end
+end
+
+local function OnUnitTooltip(tooltip, data)
+    if not db or not (db.tooltipTarget or db.tooltipMount) then return end
+    if tooltip ~= GameTooltip or not (data and data.guid) or not Readable(data.guid) then return end
+    local unit = Read(UnitTokenFromGUID, data.guid)
+    if not unit then return end
+    if db.tooltipTarget then pcall(TargetLine, tooltip, unit) end
+    if db.tooltipMount then pcall(MountLine, tooltip, unit) end
+end
+
+local function SetupTooltipLines()
+    if tooltipHooked then return end
+    if not (TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall
+            and Enum and Enum.TooltipDataType and Enum.TooltipDataType.Unit) then return end
+    tooltipHooked = true
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, OnUnitTooltip)
+end
+
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
@@ -3491,6 +3584,16 @@ local function InitializeOptions()
         .. "can afford. Learning a new profession still asks first.",
         function(value) if value then SetupTrainAll() else RefreshTrainAll() end end)
 
+    AddCheckbox("tooltipTarget", "Show Target in Tooltips",
+        "Adds who a player or NPC is targeting to their tooltip, in green when it's you. Left out "
+        .. "where the game hides it from addons, such as some fights in instances.",
+        function(value) if value then SetupTooltipLines() end end)
+
+    AddCheckbox("tooltipMount", "Show Mount in Tooltips",
+        "Adds the mount a player is riding to their tooltip, with a check if you own it and a red X "
+        .. "if you don't. Left out where the game hides buffs from addons, such as in instances.",
+        function(value) if value then SetupTooltipLines() end end)
+
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
     VUI.RegisterSettingsLabel(SETTINGS_LABEL)
@@ -3590,6 +3693,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.skipCinematics then SetupSkipCinematics() end
         UpdateNpcEvents()
         if db.trainAllButton then SetupTrainAll() end
+        if db.tooltipTarget or db.tooltipMount then SetupTooltipLines() end
 
         -- Register /way only if TomTom is absent; both addons claim this command.
         if not (_G.TomTom or (IsAddOnLoaded and IsAddOnLoaded("TomTom"))) then
