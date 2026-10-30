@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.34.3] - 2026-10-30
+
+### Changed
+
+- `VeritasUI_Lib` — **All VeritasUI options under one entry.** On the AddOns tab of the Options window, Auction House, Clean Solo, Priority Rotation, Quality of Life and Zone Quests now sit together under a single **VeritasUI** entry, which you can fold away. Clicking VeritasUI itself shows the version and each installed module with a short description (`Lib.lua`, every module's options file, `README.md`)
+
+
 ## [1.34.2] - 2026-10-30
 
 ### Changed

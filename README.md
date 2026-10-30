@@ -2,7 +2,7 @@
 
 A World of Warcraft addon suite for **Midnight** (patch 12.1.0) that makes the default interface cleaner and more convenient, especially for solo play.
 
-VeritasUI doesn't replace Blizzard's interface. It works inside it: its settings live in the normal **Options → AddOns** panel, its windows look and behave like Blizzard's own, and anything WoW already does well is left to WoW. If you didn't know VeritasUI was installed, most of it should just feel like the game.
+VeritasUI doesn't replace Blizzard's interface. It works inside it: its settings live in the normal **Options → AddOns** panel, all under one **VeritasUI** entry, its windows look and behave like Blizzard's own, and anything WoW already does well is left to WoW. If you didn't know VeritasUI was installed, most of it should just feel like the game.
 
 The suite is split into modules. Each one does one job and has its own settings, and almost everything can be switched off individually.
 
@@ -20,7 +20,7 @@ Hides or fades the parts of the interface you don't need most of the time.
 - Optionally **hides profession gear**: keeps your own outfit on while you craft, gather or fish, instead of the profession outfit the game puts on you. If one still shows, `/cs gear` lists what you're wearing
 - Hides red error text — all of it, or only the kinds you pick (combat, spells and cooldowns, items and bags, mail/vendors/bank, looting, mounts and flight paths), so "Internal mail database error." can go while "You are too far away!" stays
 
-Settings: **Options → AddOns → Clean Solo**, or `/cs`, grouped under **Fade** and **Hide**. Changes apply after a `/reload`, except Fade Delay, which applies at once.
+Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped under **Fade** and **Hide**. Changes apply after a `/reload`, except Fade Delay, which applies at once.
 
 ### Quality of Life — small conveniences
 - **Item levels** on gear in your bags, bank, warband bank, character panel and at merchants
@@ -43,7 +43,7 @@ Settings: **Options → AddOns → Clean Solo**, or `/cs`, grouped under **Fade*
 
 For map and minimap coordinates, use WoW's own options in **Options → Interface**.
 
-Settings: **Options → AddOns → Quality of Life**, or `/qol`.
+Settings: **Options → AddOns → VeritasUI → Quality of Life**, or `/qol`.
 
 ### Auction House — prices and faster selling
 - A **Scan** button records current prices across the whole auction house
@@ -51,12 +51,12 @@ Settings: **Options → AddOns → Quality of Life**, or `/qol`.
 - A **sell strip** on the Sell tab lists your sellable bag items: right-click one to load it, then left-click it again to post (Shift-click hides an item from the strip). Your bags need to be open.
 - **Reagents value** on the Place Crafting Order form, so you can weigh a commission against the cost of materials
 
-Settings: **Options → AddOns → Auction House**, or `/ah`.
+Settings: **Options → AddOns → VeritasUI → Auction House**, or `/ah`.
 
 ### Zone Quests — a tidy quest tracker
 Shows only quests for the zone you're in, updating as you travel. Campaign, important, legendary, meta and daily/weekly quests can be kept visible everywhere, and the quest you're navigating to always stays. Turning it off puts back the tracking you had chosen before.
 
-Settings: **Options → AddOns → Zone Quests**, or `/zq`.
+Settings: **Options → AddOns → VeritasUI → Zone Quests**, or `/zq`.
 
 ### Priority Rotation — one-button play
 An accessibility tool: press one key, or hold it with your keyboard or mouse software's key repeat, to step through a list of spells, macros and trinkets that **you** choose. You decide how often each ability comes up, which ones follow others, and which only fire in combat. Each specialization keeps its own list, and starter lists are included for many specs.
@@ -65,7 +65,7 @@ To set it up, open `/pr`, click **Create / Update Macro**, drag the `Attack` mac
 
 To switch specialization quickly, hover **VeritasUI — Priority Rotation** in the AddOns menu by the minimap and pick a spec from the list that opens.
 
-Settings: `/pr` (the rotation editor), and an on/off switch under **Options → AddOns → Priority Rotation**.
+Settings: `/pr` (the rotation editor), and an on/off switch under **Options → AddOns → VeritasUI → Priority Rotation**.
 
 ### Advanced Options — WoW's hidden settings
 WoW has many settings (CVars) that its Options panel doesn't show. The **Featured** tab gathers useful ones (camera distance, nameplates, combat text, soft targeting, graphics and more) as ordinary checkboxes, sliders and dropdowns, each with a reset button. The **All CVars** tab lets you search and edit every setting your client has, and star favourites.

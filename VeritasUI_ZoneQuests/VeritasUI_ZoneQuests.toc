@@ -1,7 +1,7 @@
 ## Interface: 120105
 ## Title: VeritasUI — Zone Quests
 ## Notes: Shows only quests for your current zone in the quest tracker. |cFF888888by NQV4X0QN|r
-## Version: 1.34.2
+## Version: 1.34.3
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
 ## SavedVariables: VeritasUI_ZoneQuestsDB
