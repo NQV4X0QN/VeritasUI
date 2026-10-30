@@ -148,6 +148,9 @@ local UNIVERSAL = {
     followReputationGains = false,
     repBarRenownLevel = false,    -- "[18/20]" beside the name on the reputation bar (owner, 2026-10-30)
     greatVaultButton  = false,    -- Great Vault button by the minimap's mail icon (owner, 2026-10-30)
+    -- /way was always on and had no option until v1.34.4 (owner: a feature we mention must be one the
+    -- player can see and switch). ON by default, unlike the options above, so nobody loses it.
+    wayCommand        = true,
     -- EllesmereUI-inspired plan, phase 2 (v1.28.0). OFF by default for the same reason: they
     -- change how two of Blizzard's own confirmations behave.
     fillDeleteConfirm = false,   -- types DELETE into the delete-item confirmation
@@ -227,6 +230,21 @@ local itemLevelsSetup   = false  -- guards SetupItemLevels() re-entry
 local wayTicker        = nil
 local WAY_ARRIVAL_YARDS = 10
 local WayCommand                       -- forward declaration; defined below frame:SetScript
+
+-- The /way Waypoints option. Turning it on registers the command; turning it off mid-session leaves
+-- the registration in place (the chat frame caches slash commands, so removing ours cleanly is not
+-- possible) and the handler then answers that it is off. At the next login it is not registered.
+local function SetWayCommand(on)
+    if not on or OptionUnavailable("wayCommand") then return end
+    SLASH_VERITASUI_WAY1 = "/way"
+    SlashCmdList["VERITASUI_WAY"] = function(msg)
+        if not (db and db.wayCommand) then
+            VUI.Print("Quality of Life", "|cFFFFFF00/way|r is turned off in Quality of Life's options.")
+            return
+        end
+        WayCommand(msg)
+    end
+end
 
 local function StopWaypointTracking()
     if wayTicker then wayTicker:Cancel(); wayTicker = nil end
@@ -4277,6 +4295,12 @@ local function InitializeOptions()
         .. "have to press Enter or click Yes.",
         function(value) if value then SetupDeleteFill() end end)
 
+    AddCheckbox("wayCommand", "/way Waypoints",
+        "Type /way and map coordinates, such as /way 45.2 56.3, to place WoW's own map pin and "
+        .. "arrow there. Add a map number for another zone, such as /way #2351 45.2 56.3, and type "
+        .. "/way clear to remove it.",
+        SetWayCommand)
+
     AddCheckbox("timestampAllMessages", "Timestamp Every Message",
         "Adds the chat timestamp to system, loot, money, achievement, experience and reputation "
         .. "messages, and VeritasUI's own messages, not just player chat. Uses the format chosen in "
@@ -4348,6 +4372,9 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         db.delveCountCenterX  = nil
         db.delveCountCenterX1 = nil
         db.delveTintAlpha     = nil
+        if _G.TomTom or (IsAddOnLoaded and IsAddOnLoaded("TomTom")) then
+            VUI.SetOptionUnavailable(ADDON_NAME, "wayCommand", "TomTom is installed and handles /way.")
+        end
         InitializeOptions()
         -- Belt-and-suspenders: if we crashed or disconnected while the AFK
         -- screen was up, UIParent alpha and MinimapCluster are left hidden.
@@ -4389,13 +4416,12 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.timestampAllMessages then SetTimestampAll(true) end
         if db.charEnchants or db.charDurability or db.charMythicRating then SetupCharacterSheet() end
 
-        -- Register /way only if TomTom is absent; both addons claim this command.
-        if not (_G.TomTom or (IsAddOnLoaded and IsAddOnLoaded("TomTom"))) then
-            SLASH_VERITASUI_WAY1 = "/way"
-            SlashCmdList["VERITASUI_WAY"] = WayCommand
-        else
+        -- /way: registered only while the option is on and TomTom is absent (both addons claim it).
+        if OptionUnavailable("wayCommand") then
             VUI.Print("Quality of Life",
                 "TomTom detected — |cFFFFFF00/way|r is handled by TomTom.")
+        elseif db.wayCommand then
+            SetWayCommand(true)
         end
 
         self:UnregisterEvent("PLAYER_LOGIN")

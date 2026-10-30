@@ -855,7 +855,7 @@ end
 ----------------------------------------------------------------
 local settingsParent
 local SUITE_MODULES = {   -- folder, shown name; Lib and the ElvUI layer have no page of their own
-    { "VeritasUI_AdvancedOptions",  "Advanced Options", "/ao" },
+    { "VeritasUI_AdvancedOptions",  "Advanced Options" },
     { "VeritasUI_AuctionHouse",     "Auction House" },
     { "VeritasUI_CleanSolo",        "Clean Solo" },
     { "VeritasUI_PriorityRotation", "Priority Rotation" },
@@ -895,7 +895,7 @@ local function BuildSuitePage()
                     rows[n] = row
                 end
                 row.name:SetPoint("TOPLEFT", 20, y)
-                row.name:SetText(m[3] and (m[2] .. "  |cFFFFFFFF(" .. m[3] .. ")|r") or m[2])
+                row.name:SetText(m[2])   -- no slash commands: owner, none or all, and none reads cleaner
                 local okN, notes = pcall(meta, m[1], "Notes")
                 notes = (okN and type(notes) == "string") and notes:gsub("%s*|c%x%x%x%x%x%x%x%x.-|r", "") or ""
                 row.notes:SetPoint("TOPLEFT", 20, y - 18)
