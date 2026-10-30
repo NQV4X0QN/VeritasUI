@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.34.4] - 2026-10-30
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Options for three features that were always on.** `/way` waypoints, map notes and the Journeys shortcuts now each have a checkbox, so you can see them and turn them off. A new **Maps** section holds **/way Waypoints** and **Map Notes**, and **Journeys Shortcuts** joins **Progress**. All three stay on unless you turn them off. Turning Map Notes off hides your notes from the map without deleting them. With TomTom installed, /way Waypoints is greyed out because TomTom handles `/way` (`QualityOfLife.lua`, `Journeys.lua`, `README.md`)
+
+### Changed
+
+- `VeritasUI_Lib` — **The VeritasUI page no longer shows a slash command beside Advanced Options,** so no module looks like the only one with chat commands (`Lib.lua`)
+
+
 ## [1.34.3] - 2026-10-30
 
 ### Changed

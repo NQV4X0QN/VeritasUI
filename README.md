@@ -25,10 +25,10 @@ Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped
 ### Quality of Life — small conveniences
 - **Item levels** on gear in your bags, bank, warband bank, character panel and at merchants
 - **Auto sell junk** and **auto repair** at merchants, with a choice of paying repairs from guild funds or your own gold
-- **`/way` waypoints** in the format most guides use, e.g. `/way #2351 45.2 56.3`, placing WoW's own map pin and arrow (if TomTom is installed, it keeps `/way`)
+- **`/way` waypoints** (on unless you turn it off) in the format most guides use, e.g. `/way #2351 45.2 56.3`, placing WoW's own map pin and arrow (if TomTom is installed, it keeps `/way`)
 - **AFK screen**: a slow camera orbit with your name, level, item level and zone while you're away, which also helps against screen burn-in
 - **Delve counts** shown right on the Delve objective icon instead of only in its tooltip: the Nemesis count, and in a Labyrinth the Treasure Room chambers completed, with a checkmark at 9
-- **Map notes**: `/note <text>` leaves a note on the map where you're standing. Click a note to change its icon or remove it; `/note clear` removes the notes on your current map. Notes left inside a Labyrinth or other instance are removed when you leave it
+- **Map notes** (on unless you turn it off): `/note <text>` leaves a note on the map where you're standing. Click a note to change its icon or remove it; `/note clear` removes the notes on your current map. Notes left inside a Labyrinth or other instance are removed when you leave it
 - **Track latest reputation** (off until you turn it on): the reputation bar switches to whichever faction you most recently earned reputation with
 - **Renown level on the reputation bar** (off until you turn it on): your renown level beside the faction's name, such as [18/20], and past the top the levels earned beyond it, such as [21/20]
 - **Great Vault button by the minimap** (off until you turn it on): the Great Vault button sits under the minimap's mail icon whenever your vault holds something, including last week's rewards; click it to open the vault
@@ -39,7 +39,7 @@ Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped
 - **Tooltip lines** (each off until you turn it on): who a player or NPC is targeting, green when it's you, and the mount a player is riding, with a check or red X for whether you own it. Left out where the game hides this from addons
 - **Timestamp every message** (off until you turn it on): Blizzard's chat timestamp on system, loot, money, achievement, experience and reputation lines and VeritasUI's own messages, not just player chat. Uses the format from Options → Social → Chat Timestamps
 - **Character sheet** (each off until you turn it on): a green check beside each slot whose enchant and gems are all there, or a red X on Epic and Legendary gear when one is missing, with a tooltip naming what's there and what's missing (optionally with the labels in your class colour); durability on each slot below 100%; and your Mythic+ rating under your item level
-- **Journeys**: adds the "Show as Experience Bar" checkbox to Delves and Prey cards, and lets you click the reputation or honor bar to open that faction's page or the PvP window
+- **Journeys shortcuts** (on unless you turn it off): adds the "Show as Experience Bar" checkbox to Delves and Prey cards, and lets you click the reputation or honor bar to open that faction's page or the PvP window
 
 For map and minimap coordinates, use WoW's own options in **Options → Interface**.
 
