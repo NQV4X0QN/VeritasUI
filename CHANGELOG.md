@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.33.0] - 2026-10-30
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Show Renown Level on Reputation Bar.** The reputation bar's own text shows your renown level beside the faction's name, such as `Hara'ti (Warband) [18/20] 985 / 2500`, so you can see how far along the whole reputation is. Past the top renown it counts the levels earned beyond it, such as `[21/20]`. Renown factions only; other reputations are unchanged. Off by default (`QualityOfLife.lua`, `README.md`)
+
+
 ## [1.32.1] - 2026-10-30
 
 ### Changed
