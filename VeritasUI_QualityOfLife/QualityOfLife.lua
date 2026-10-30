@@ -3520,7 +3520,10 @@ do
     local SLOT_ALERT_INDEX = { [1] = 1, [3] = 2, [5] = 3, [6] = 4, [7] = 5, [8] = 6, [9] = 7,
                                [10] = 8, [16] = 9, [17] = 10 }   -- slot ID -> INVENTORY_ALERT_STATUS_SLOTS
     local ENCHANT_LINE = Enum and Enum.TooltipDataLineType and Enum.TooltipDataLineType.ItemEnchantmentPermanent or 15
-    local ENCHANT_TEXT_WIDTH = 110
+    -- Half of the ~245 px between the slot columns, less the 14 px gap past the gem icons on each
+    -- side and a few pixels of air, so a left- and a right-column text on the same row never meet
+    -- (owner's screenshot, 2026-10-30: at 110 the Helm and Gloves texts ran together).
+    local ENCHANT_TEXT_WIDTH = 100
     local charHooked = false
     local ratingFrame
     local ratingShown = false   -- our own record: whether WE moved Attributes below the rating line
@@ -3534,7 +3537,11 @@ do
                 local text = line.leftText
                 local prefix = ENCHANTED_TOOLTIP_LINE and ENCHANTED_TOOLTIP_LINE:match("^(.-)%%s")
                 if prefix and prefix ~= "" and text:sub(1, #prefix) == prefix then text = text:sub(#prefix + 1) end
-                return text
+                -- The enchant's own item name repeats the slot: "Enchant Helm - Empowered Rune of
+                -- Avoidance". Keep only what follows the first " - " (owner's request); a name with
+                -- no " - ", such as a weapon rite, is shown whole.
+                local short = text:match("^.- %- (.+)$")
+                return short or text
             end
         end
         return nil
