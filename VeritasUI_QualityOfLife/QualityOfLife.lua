@@ -3526,6 +3526,8 @@ local SetupCharacterSheet
     -- owner's list from Wowhead's Havoc enchants guide, 2026-10-30 -- weapon, helm, shoulders,
     -- chest, legs (armour kit / spellthread), boots, both rings. The off-hand only counts when it
     -- holds a weapon (a shield or held-in-off-hand item takes none). Update here each season.
+    -- This list only decides where a MISSING enchant shows a red X; an enchant on any other slot
+    -- (12.1.5 glove scrolls) still gets its green check.
     local ENCHANTABLE = { [16] = true, [1] = true, [3] = true, [5] = true, [7] = true, [8] = true,
                           [11] = true, [12] = true, [17] = "weapon" }
     local ICON_OK, ICON_MISSING = "common-icon-checkmark", "common-icon-redx"   -- Blizzard's own atlases
@@ -3645,9 +3647,16 @@ local SetupCharacterSheet
         local hasItem = GetInventoryItemLink("player", slotID) ~= nil
         local enchantIcon, gemIcon = StatusIcon(holder, 1), StatusIcon(holder, 2)
         local shown = {}
-        if hasItem and SlotIsEnchantable(slotID) then
-            local name = EnchantText(slotID)
-            SetIcon(enchantIcon, name ~= nil, name and { "Enchanted", name } or { "Not enchanted" })
+        -- Any item that HAS an enchant gets a green check, whatever the slot: the game can say an
+        -- item is enchanted, but not whether a slot could be, so a red X is only ever shown on the
+        -- ENCHANTABLE list. Covers 12.1.5's glove enchant scrolls and anything a later patch adds
+        -- (owner, 2026-10-30).
+        local name = hasItem and EnchantText(slotID) or nil
+        if name then
+            SetIcon(enchantIcon, true, { "Enchanted", name })
+            shown[#shown + 1] = enchantIcon
+        elseif hasItem and SlotIsEnchantable(slotID) then
+            SetIcon(enchantIcon, false, { "Not enchanted" })
             shown[#shown + 1] = enchantIcon
         else
             enchantIcon:Hide()
