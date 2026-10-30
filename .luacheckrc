@@ -108,7 +108,7 @@ read_globals = {
     -- Item / container / inventory
     "C_Item", "C_Container", "ItemLocation", "Item", "GetInventoryItemLink", "GetInventoryItemQuality", "REPUTATION_STATUS_BAR_LABEL_ACCOUNT_WIDE",
     "GetItemInfoInstant", "GetDetailedItemLevelInfo",
-    "ITEM_QUALITY_COLORS", "BAG_ITEM_QUALITY_COLORS", "NUM_BAG_SLOTS",
+    "ITEM_QUALITY_COLORS", "BAG_ITEM_QUALITY_COLORS", "ColorManager", "NUM_BAG_SLOTS",
     "C_TradeSkillUI", "C_Texture",
     -- Map / navigation / quests
     "C_Map", "C_Navigation", "C_SuperTrack", "C_QuestLog",

@@ -484,8 +484,17 @@ local function SetButton(button, data)
     -- /dump). Poor (0) has no bag-palette entry, so fall back to GetItemQualityColor(0),
     -- which is gray — matching the gray edge native draws on junk. Default missing
     -- quality to Common so a nil quality still renders the gray edge, never nothing.
+    -- ColorManager first (audit A1, v1.35.2): it is what Blizzard's own bag buttons read
+    -- (SetItemButtonQuality_Base, ItemButtonTemplate.lua:210-238) and it returns the player's
+    -- custom item-quality colour when one is set (ColorManager.lua:92-102), which reading
+    -- BAG_ITEM_QUALITY_COLORS directly ignored. It returns nil for Poor, so the chain below stays.
     local q = data.quality or 1
-    local color = BAG_ITEM_QUALITY_COLORS and BAG_ITEM_QUALITY_COLORS[q]
+    local color
+    if ColorManager and ColorManager.GetColorDataForBagItemQuality then
+        local okC, c = pcall(ColorManager.GetColorDataForBagItemQuality, q)
+        if okC and type(c) == "table" and c.r then color = c end
+    end
+    color = color or (BAG_ITEM_QUALITY_COLORS and BAG_ITEM_QUALITY_COLORS[q])
     local r, g, b
     if color then
         r, g, b = color.r, color.g, color.b
