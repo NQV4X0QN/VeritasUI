@@ -2881,11 +2881,17 @@ end
 --     same pair the bar itself uses) counts as one level beyond.
 -- ⚠ Those bars are Edit Mode system frames (landmine 114): no hook, no HookScript, no field written
 --   on them. The one write is SetText on their text FontString, from our own ticker -- never from
---   inside their execution. A ticker rather than an event because Blizzard rewrites the text on
---   every hover and every gain; a stale text lasts at most one tick.
+--   inside their execution. Checked EVERY FRAME (OnUpdate on our own frame), not on a timer or an
+--   event: Blizzard rewrites the text on every hover and every gain, and owner-reported at the
+--   0.1 s-ticker build (2026-10-30) the text visibly jumped when the level arrived a moment later.
+--   OnUpdate runs after that frame's input and events and before it is drawn, so the rewrite and
+--   our insert land in the same drawn frame. Cheap: one GetText per bar per frame, and the level is
+--   only looked up when the text differs from what we last wrote (or once a second, for a level
+--   change that left the text the same).
 local SetRenownOnRepBar
 ;(function()
-    local ticker
+    local watcher, sinceFull = nil, 0
+    local painted = {}   -- [fontString] = the text we last wrote (or found already right)
     local function RepBars()
         local manager, info = _G.StatusTrackingBarManager, _G.StatusTrackingBarInfo
         if not (manager and manager.barContainers and info and info.BarsEnum) then return {} end
@@ -2933,10 +2939,20 @@ local SetRenownOnRepBar
     end
 
     -- Our insert is " [L/M]" straight after the name; strip it (turning off) or add it.
-    local function Paint(on)
+    local function Paint(on, force)
+        local bars = RepBars()
+        if not force then
+            local stale = false
+            for _, fs in ipairs(bars) do
+                local ok, text = pcall(fs.GetText, fs)
+                if not ok or text ~= painted[fs] then stale = true; break end
+            end
+            if not stale then return end
+        end
         local name, tag = NameAndLevel()
-        for _, fs in ipairs(RepBars()) do
+        for _, fs in ipairs(bars) do
             local ok, text = pcall(fs.GetText, fs)
+            painted[fs] = nil
             if ok and type(text) == "string" and not Secret(text) then
                 local stripped = text:gsub(" %[%d+/%d+%]", "", 1)
                 local want = stripped
@@ -2944,17 +2960,27 @@ local SetRenownOnRepBar
                     want = name .. " " .. tag .. stripped:sub(#name + 1)
                 end
                 if want ~= text then pcall(fs.SetText, fs, want) end
+                painted[fs] = want
             end
         end
     end
 
     SetRenownOnRepBar = function(on)
         if on then
-            if not ticker then ticker = C_Timer.NewTicker(0.1, function() Paint(true) end) end
-            Paint(true)
+            if not watcher then
+                watcher = CreateFrame("Frame")
+                watcher:SetScript("OnUpdate", function(_, elapsed)
+                    sinceFull = sinceFull + (elapsed or 0)
+                    local force = sinceFull >= 1
+                    if force then sinceFull = 0 end
+                    Paint(true, force)
+                end)
+            end
+            watcher:Show()
+            Paint(true, true)
         else
-            if ticker then ticker:Cancel(); ticker = nil end
-            Paint(false)
+            if watcher then watcher:Hide() end
+            Paint(false, true)
         end
     end
 end)()
