@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.1] - 2026-10-30
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **Enchants and gems on the character sheet: the red X is only for Epic and Legendary gear.** Green, blue and heirloom items never show a red X for a missing enchant or gem; one that does have an enchant or gem still shows the green check (`QualityOfLife.lua`)
+
+
 ## [1.32.0] - 2026-10-30
 
 ### Added
