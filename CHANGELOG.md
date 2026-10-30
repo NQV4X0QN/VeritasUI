@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.34.0] - 2026-10-30
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Show Great Vault Button by the Minimap.** The Great Vault button from the Journeys window appears in the mail icon's spot by the minimap whenever your vault holds something: a slot filled this week, or last week's rewards still waiting. It moves under the mail icon while you have unread mail, and is gone when the vault is empty. Click it to open or close the vault; it can't be opened during combat. Off by default (`QualityOfLife.lua`, `README.md`)
+
+
 ## [1.33.0] - 2026-10-30
 
 ### Added
