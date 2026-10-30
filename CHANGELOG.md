@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.34.2] - 2026-10-30
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **The options page is in sections.** Instead of one long list, the options sit under six headers, the way Blizzard's own pages are laid out: Character and Gear, Merchants and Trainers, Quests and Dialogue, Progress, Tooltips, and General. Every option keeps its name and your setting (`QualityOfLife.lua`)
+
+
 ## [1.34.1] - 2026-10-30
 
 ### Fixed
