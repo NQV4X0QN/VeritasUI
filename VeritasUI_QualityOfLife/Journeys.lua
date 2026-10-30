@@ -65,6 +65,13 @@ local type           = type
 -- throw unprotected -- pcall only protects the CALL. Every other Blizzard global in this file is
 -- reached through `_G.X and ...`; this was the one exception. Rep() returns the function or nil,
 -- and `pcall(nil)` is caught, so both a missing namespace and a removed member degrade quietly.
+-- The Journeys Shortcuts option (v1.34.4, on by default). Read live from QualityOfLife's account
+-- table, so unticking it applies at once: no checkbox on the next hovered card, no bar clicks.
+local function Enabled()
+    local db = _G.VeritasUI_QualityOfLifeDB
+    return not (type(db) == "table" and db.journeysShortcuts == false)
+end
+
 local function Rep(name)
     local ns = _G.C_Reputation
     return ns and ns[name] or nil
@@ -214,6 +221,10 @@ local function Install()
     installed = true
 
     hooksecurefunc(_G.JourneyCardButtonMixin, "OnEnter", function(card)
+        if not Enabled() then
+            if card.WatchedFactionToggleFrame then card.WatchedFactionToggleFrame:Hide() end
+            return
+        end
         Attach(card)
         local data = card.majorFactionData
         if card.WatchedFactionToggleFrame and data and data.isUnlocked then
@@ -381,7 +392,9 @@ local function OpenWatchedFactionPage(bar)
     local factionID = (okData and watched and watched.factionID) or (bar and bar.factionID)
     OpenFactionPage(factionID)
 end
-VUI.OpenWatchedFactionPage = OpenWatchedFactionPage
+VUI.OpenWatchedFactionPage = function(bar)   -- also ElvUI's reputation bar (VeritasUI_ElvUI)
+    if Enabled() then OpenWatchedFactionPage(bar) end
+end
 
 ----------------------------------------------------------------
 --  Honor bar -> the PvP UI (v1.15.1).
@@ -453,7 +466,7 @@ local function EnsureOverlay(bar, action)
     click:SetScript("OnMouseUp", function(_, button)
         if button ~= "LeftButton" then return end
         if not bar:IsVisible() then return end   -- poll may be up to POLL_INTERVAL stale
-        if EditModeIsActive() then return end
+        if EditModeIsActive() or not Enabled() then return end
         action(bar)
     end)
     click:Hide()
@@ -464,7 +477,7 @@ end
 local function SyncOverlays()
     local editing = EditModeIsActive()
     for bar, click in pairs(overlays) do
-        local want = (not editing) and bar:IsVisible() or false
+        local want = (not editing) and Enabled() and bar:IsVisible() or false
         if want ~= click:IsShown() then click:SetShown(want) end
     end
 end

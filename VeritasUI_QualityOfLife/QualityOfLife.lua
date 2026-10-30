@@ -151,6 +151,8 @@ local UNIVERSAL = {
     -- /way was always on and had no option until v1.34.4 (owner: a feature we mention must be one the
     -- player can see and switch). ON by default, unlike the options above, so nobody loses it.
     wayCommand        = true,
+    mapNotesEnabled   = true,     -- /note and the notes' map pins; same reason, on by default (v1.34.4)
+    journeysShortcuts = true,     -- Journeys.lua's card checkbox and bar clicks; same (v1.34.4)
     -- EllesmereUI-inspired plan, phase 2 (v1.28.0). OFF by default for the same reason: they
     -- change how two of Blizzard's own confirmations behave.
     fillDeleteConfirm = false,   -- types DELETE into the delete-item confirmation
@@ -3291,6 +3293,12 @@ local function AddMapNote(text)
 end
 
 local function MapNoteCommand(msg)
+    -- Registered while the option is on; unticked mid-session it stays registered (slash commands
+    -- are cached by the chat frame), so it answers that it is off.
+    if not (db and db.mapNotesEnabled) then
+        VUI.Print("Quality of Life", "|cFFFFFF00/note|r is turned off in Quality of Life's options.")
+        return
+    end
     local text = strtrim(msg or "")
     if text == "" then
         VUI.Print("Quality of Life", "|cFFFFFF00/note <text>|r leaves a note on the map where you're "
@@ -3389,6 +3397,7 @@ local function MapNotesInstall()
     end
     function mapNotesProvider:RefreshAllData()
         self:RemoveAllData()
+        if not (db and db.mapNotesEnabled) then return end   -- hidden, not deleted, while off
         local list = cdb and cdb.mapNotes
         if not list then return end
         local mapID = self:GetMap():GetMapID()
@@ -3420,9 +3429,7 @@ mapNotesFrame:SetScript("OnEvent", function(_, event)
     PruneInstanceNotes(event)
 end)
 
-SLASH_VERITASUI_MAPNOTE1 = "/note"
-SLASH_VERITASUI_MAPNOTE2 = "/mapnote"
-SlashCmdList["VERITASUI_MAPNOTE"] = MapNoteCommand
+-- /note and /mapnote are registered at PLAYER_LOGIN, and only while the Map Notes option is on.
 
 -- ── Fill In DELETE (v1.28.0, EllesmereUI-inspired plan phase 2) ──
 -- Deleting a rare-or-better item opens DELETE_GOOD_ITEM / DELETE_GOOD_QUEST_ITEM, which make you
@@ -4265,6 +4272,30 @@ local function InitializeOptions()
             if value then DelveStartCount() else DelveStopCount() end
         end)
 
+    AddCheckbox("journeysShortcuts", "Journeys Shortcuts",
+        "Adds the Show as Experience Bar checkbox to the Delve and Prey cards in the Journeys window, "
+        .. "and lets you click the reputation bar to open that faction's page, or the honor bar to "
+        .. "open the PvP window.")
+
+    Header("Maps")
+    AddCheckbox("wayCommand", "/way Waypoints",
+        "Type /way and map coordinates, such as /way 45.2 56.3, to place WoW's own map pin and "
+        .. "arrow there. Add a map number for another zone, such as /way #2351 45.2 56.3, and type "
+        .. "/way clear to remove it.",
+        SetWayCommand)
+
+    AddCheckbox("mapNotesEnabled", "Map Notes",
+        "Type /note and a few words to leave a note on the map where you're standing. Click a note "
+        .. "on the map to change its icon or remove it, and type /note clear to remove the notes on "
+        .. "your current map. Turning this off hides your notes until you turn it back on.",
+        function(value)
+            if value then
+                SLASH_VERITASUI_MAPNOTE1, SLASH_VERITASUI_MAPNOTE2 = "/note", "/mapnote"
+                SlashCmdList["VERITASUI_MAPNOTE"] = MapNoteCommand
+            end
+            MapNotesRefresh()
+        end)
+
     Header("Tooltips")
     AddCheckbox("tooltipTarget", "Show Target in Tooltips",
         "Adds who a player or NPC is targeting to their tooltip, in green when it's you. Left out "
@@ -4294,12 +4325,6 @@ local function InitializeOptions()
         "When you delete a valuable item, types DELETE into the confirmation for you, so you only "
         .. "have to press Enter or click Yes.",
         function(value) if value then SetupDeleteFill() end end)
-
-    AddCheckbox("wayCommand", "/way Waypoints",
-        "Type /way and map coordinates, such as /way 45.2 56.3, to place WoW's own map pin and "
-        .. "arrow there. Add a map number for another zone, such as /way #2351 45.2 56.3, and type "
-        .. "/way clear to remove it.",
-        SetWayCommand)
 
     AddCheckbox("timestampAllMessages", "Timestamp Every Message",
         "Adds the chat timestamp to system, loot, money, achievement, experience and reputation "
@@ -4422,6 +4447,10 @@ frame:SetScript("OnEvent", function(self, event, arg1)
                 "TomTom detected — |cFFFFFF00/way|r is handled by TomTom.")
         elseif db.wayCommand then
             SetWayCommand(true)
+        end
+        if db.mapNotesEnabled then
+            SLASH_VERITASUI_MAPNOTE1, SLASH_VERITASUI_MAPNOTE2 = "/note", "/mapnote"
+            SlashCmdList["VERITASUI_MAPNOTE"] = MapNoteCommand
         end
 
         self:UnregisterEvent("PLAYER_LOGIN")
