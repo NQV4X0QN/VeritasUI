@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.31.0] - 2026-10-30
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Timestamp Every Message.** Blizzard's chat timestamp only appears on player chat; this adds it to system, loot, money, currency, skill, achievement, experience and reputation lines, and to VeritasUI's own messages. Uses the format chosen in Options > Social > Chat Timestamps, and adds nothing when that is None. A few lines the chat window writes itself, such as `/played`, can't be stamped. Off by default (`QualityOfLife.lua`, `Lib.lua`, `README.md`)
+
+
 ## [1.30.0] - 2026-10-30
 
 ### Added
