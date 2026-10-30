@@ -81,7 +81,7 @@ read_globals = {
     "strtrim", "strsplit", "strjoin", "strlower", "strfind", "format",
     "CreateColor", "CreateVector2D", "C_ClassColor",
     -- Settings / options framework
-    "Settings", "SettingsPanel", "InterfaceOptions_AddCategory", "MinimalSliderWithSteppersMixin",
+    "Settings", "SettingsPanel", "InterfaceOptions_AddCategory", "MinimalSliderWithSteppersMixin", "CreateSettingsListSectionHeaderInitializer",
     "EventRegistry", "SETTINGS_DEFAULTS", "RELOADUI",
     "SELL_PRICE", "ContainerFrameUtil_GetItemButtonAndContainer",
     -- QualityOfLife (audit Q2, Q5)

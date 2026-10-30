@@ -704,9 +704,19 @@ local function GreyIfUnavailable(initializer, key)
 end
 
 local function InitializeOptions()
-    local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
+    local category, layout = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
 
-    local options = {
+    -- Two groups under section headers, the way Blizzard's own Options pages are laid out
+    -- (layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(...)),
+    -- Blizzard_SettingsDefinitions_Frame/Interface.lua:18). Owner's request, 2026-10-29: fades
+    -- and hides were interleaved. Order is presentation only; every key is unchanged.
+    local function Header(name)
+        if layout and layout.AddInitializer and CreateSettingsListSectionHeaderInitializer then
+            layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(name))
+        end
+    end
+
+    local FADE_OPTIONS = {
         { key = "fadeChatTabs",        name = "Fade Chat Tabs",
           tip = "Chat tabs fade out with the chat window and reappear on mouseover. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
@@ -714,6 +724,14 @@ local function InitializeOptions()
           tip = "Makes the chat background transparent until you mouse over it. Turn it off and "
              .. "reload, and your own background comes back. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
+        { key = "fadeMicroMenu",       name = "Fade Micro Menu",
+          tip = "The bottom-right menu bar fades out unless moused over. "
+             .. "Requires |cFFFFFF00/reload|r to apply." },
+        { key = "fadePlayerFrame",     name = "Fade Player Frame",
+          tip = "Your player frame fades out when idle and reappears in combat, when damaged, or on mouseover. "
+             .. "Requires |cFFFFFF00/reload|r to apply." },
+    }
+    local HIDE_OPTIONS = {
         { key = "hideSocialButton",    name = "Hide Social Button",
           tip = "Hides the Quick Join / Communities toast button. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
@@ -724,12 +742,6 @@ local function InitializeOptions()
           tip = "Hides the voice and channels button beside the chat window, and the mute and "
              .. "deafen buttons shown while you are in a voice channel. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
-        { key = "fadeMicroMenu",       name = "Fade Micro Menu",
-          tip = "The bottom-right menu bar fades out unless moused over. "
-             .. "Requires |cFFFFFF00/reload|r to apply." },
-        { key = "fadePlayerFrame",     name = "Fade Player Frame",
-          tip = "Your player frame fades out when idle and reappears in combat, when damaged, or on mouseover. "
-             .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideBagButtons",      name = "Hide Bag Buttons",
           tip = "Hides the bag bar buttons. You can still open bags with B. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
@@ -738,32 +750,123 @@ local function InitializeOptions()
              .. "Requires |cFFFFFF00/reload|r to apply." },
     }
 
-    -- ⚠ THIS LOOP IS MIXED-SCOPE. Eight of these nine keys are account-wide and one
+    -- ⚠ THESE CHECKBOXES ARE MIXED-SCOPE. Eight of the nine keys are account-wide and one
     -- (fadePlayerFrame) is per-character, so the table handed to Settings AND the table the
     -- default is read from must both be resolved PER KEY. Passing one table for all nine -- which
     -- is what this did before v1.14.4 -- would store fadePlayerFrame at account scope, and the
     -- panel would then read and write a value the runtime code never looks at. Blizzard captures
     -- the table by reference (Blizzard_Setting.lua:420), so getting this wrong stays invisible
     -- until a setting fails to persist or leaks across characters.
-    for _, opt in ipairs(options) do
-        local perChar  = PERCHAR[opt.key] ~= nil
-        local owner    = perChar and cdb or db
-        local defTable = perChar and PERCHAR or UNIVERSAL
-        local setting = Settings.RegisterAddOnSetting(
-            category,
-            ADDON_NAME .. "_" .. opt.key,
-            opt.key,
-            owner,
-            type(defTable[opt.key]),
-            opt.name,
-            defTable[opt.key]
-        )
-        setting:SetValueChangedCallback(function(_, value)
-            VUI.PrintOnOff("Clean Solo", opt.name, value)
-        end)
-        local init = Settings.CreateCheckbox(category, setting, TipWithReason(opt.tip, opt.key))
-        GreyIfUnavailable(init, opt.key)
+    local function AddCheckboxes(list)
+        for _, opt in ipairs(list) do
+            local perChar  = PERCHAR[opt.key] ~= nil
+            local owner    = perChar and cdb or db
+            local defTable = perChar and PERCHAR or UNIVERSAL
+            local setting = Settings.RegisterAddOnSetting(
+                category,
+                ADDON_NAME .. "_" .. opt.key,
+                opt.key,
+                owner,
+                type(defTable[opt.key]),
+                opt.name,
+                defTable[opt.key]
+            )
+            setting:SetValueChangedCallback(function(_, value)
+                VUI.PrintOnOff("Clean Solo", opt.name, value)
+            end)
+            local init = Settings.CreateCheckbox(category, setting, TipWithReason(opt.tip, opt.key))
+            GreyIfUnavailable(init, opt.key)
+        end
     end
+
+    Header("Fade")
+    AddCheckboxes(FADE_OPTIONS)
+
+    -- ── Fade Action Bars — tick-box dropdown, PER-CHARACTER (mask paired with fadeActionBars).
+    cdb.fadeActionBars[1] = nil  -- Bar 1 is Blizzard-protected
+    cdb.fadeActionBarsLabel = nil  -- RETIRED v1.21.0: the old display string, now the mask
+    cdb.fadeActionBarsMask = ActionBarsMask()
+    local lastBarMask = cdb.fadeActionBarsMask
+
+    local fadeSetting = Settings.RegisterAddOnSetting(
+        category,
+        ADDON_NAME .. "_fadeActionBars",
+        "fadeActionBarsMask",
+        cdb,                         -- PER-CHARACTER: paired with fadeActionBars
+        "number",
+        "Fade Action Bars",
+        Bit(BAR_NONE)
+    )
+
+    local ignoreFadeCallback = false
+
+    local function GetBarOptions()
+        local container = Settings.CreateControlTextContainer()
+        container:AddCheckbox(BAR_NONE, "None")
+        for i = 2, BAR_MAX do container:AddCheckbox(i, ACTION_BAR_LABELS[i]) end
+        return container:GetData()
+    end
+
+    fadeSetting:SetValueChangedCallback(function(_, val)
+        if ignoreFadeCallback or type(val) ~= "number" then return end
+        local changed = ChangedBits(lastBarMask, val, BAR_MAX)
+        if #changed == 1 then
+            local v, on = changed[1], HasBit(val, changed[1])
+            if v == BAR_NONE then
+                if on then for i = 2, BAR_MAX do cdb.fadeActionBars[i] = nil end end
+            else
+                cdb.fadeActionBars[v] = on or nil
+                VUI.Print("Clean Solo", ACTION_BAR_LABELS[v] .. " fade "
+                    .. (on and "enabled" or "disabled") .. " — |cFFFFFF00/reload|r to apply.")
+            end
+        elseif #changed > 1 then
+            for i = 2, BAR_MAX do cdb.fadeActionBars[i] = HasBit(val, i) or nil end
+        end
+        cdb.fadeActionBarsMask = ActionBarsMask()
+        lastBarMask = cdb.fadeActionBarsMask
+        ignoreFadeCallback = true
+        pcall(fadeSetting.SetValue, fadeSetting, cdb.fadeActionBarsMask)
+        ignoreFadeCallback = false
+    end)
+
+    local fadeInit = Settings.CreateDropdown(category, fadeSetting, GetBarOptions, TipWithReason(
+        "Pick a bar to fade it out when idle; it reappears on mouseover. "
+        .. "Requires |cFFFFFF00/reload|r to apply.", "fadeActionBars"))
+    GreyIfUnavailable(fadeInit, "fadeActionBars")
+
+    -- ── Fade Delay — slider, UNIVERSAL. The one Clean Solo setting that applies at once: it is a
+    -- number the faders read each time they are about to fade (VUI.SetFadeDelay), not a hook, so
+    -- the /reload policy at the top of this file does not apply to it. 0.5 s steps, the step
+    -- Blizzard's own seconds-valued sliders use (Blizzard_SettingsDefinitions_Frame/Mounts.lua:114).
+    local delaySetting = Settings.RegisterAddOnSetting(
+        category,
+        ADDON_NAME .. "_fadeDelay",
+        "fadeDelay",
+        db,                          -- UNIVERSAL
+        "number",
+        "Fade Delay",
+        UNIVERSAL.fadeDelay
+    )
+    delaySetting:SetValueChangedCallback(function(_, value)
+        VUI.SetFadeDelay(value)
+    end)
+    local delayOptions = Settings.CreateSliderOptions(0, 5, 0.5)
+    local labelRight = MinimalSliderWithSteppersMixin and MinimalSliderWithSteppersMixin.Label
+        and MinimalSliderWithSteppersMixin.Label.Right
+    if labelRight and delayOptions.SetLabelFormatter then
+        delayOptions:SetLabelFormatter(labelRight, function(value)
+            return string.format("%.1f sec", value)
+        end)
+    end
+    local delayInit = Settings.CreateSlider(category, delaySetting, delayOptions, TipWithReason(
+        "How long the faded micro menu, player frame and action bars stay visible after you move "
+        .. "the mouse away, before they fade. 0 keeps the usual short delay. The chat window and "
+        .. "its tabs keep Blizzard's own timing. Applies at once.", "fadeDelay"))
+    GreyIfUnavailable(delayInit, "fadeDelay")
+
+
+    Header("Hide")
+    AddCheckboxes(HIDE_OPTIONS)
 
     -- ── Hide Error Text — tick-box dropdown (see the Options Panel note above). UNIVERSAL:
     -- hideErrorText, hideErrorTypes and the mask all live on `db`.
@@ -867,88 +970,6 @@ local function InitializeOptions()
         .. "the rest still show. All hides every error message. Combat holds messages like "
         .. "'You are too far away!' and 'You are facing the wrong way!'; Mail, Vendors & Bank "
         .. "holds 'Internal mail database error.' Requires |cFFFFFF00/reload|r to apply.")
-
-    -- ── Fade Action Bars — tick-box dropdown, PER-CHARACTER (mask paired with fadeActionBars).
-    cdb.fadeActionBars[1] = nil  -- Bar 1 is Blizzard-protected
-    cdb.fadeActionBarsLabel = nil  -- RETIRED v1.21.0: the old display string, now the mask
-    cdb.fadeActionBarsMask = ActionBarsMask()
-    local lastBarMask = cdb.fadeActionBarsMask
-
-    local fadeSetting = Settings.RegisterAddOnSetting(
-        category,
-        ADDON_NAME .. "_fadeActionBars",
-        "fadeActionBarsMask",
-        cdb,                         -- PER-CHARACTER: paired with fadeActionBars
-        "number",
-        "Fade Action Bars",
-        Bit(BAR_NONE)
-    )
-
-    local ignoreFadeCallback = false
-
-    local function GetBarOptions()
-        local container = Settings.CreateControlTextContainer()
-        container:AddCheckbox(BAR_NONE, "None")
-        for i = 2, BAR_MAX do container:AddCheckbox(i, ACTION_BAR_LABELS[i]) end
-        return container:GetData()
-    end
-
-    fadeSetting:SetValueChangedCallback(function(_, val)
-        if ignoreFadeCallback or type(val) ~= "number" then return end
-        local changed = ChangedBits(lastBarMask, val, BAR_MAX)
-        if #changed == 1 then
-            local v, on = changed[1], HasBit(val, changed[1])
-            if v == BAR_NONE then
-                if on then for i = 2, BAR_MAX do cdb.fadeActionBars[i] = nil end end
-            else
-                cdb.fadeActionBars[v] = on or nil
-                VUI.Print("Clean Solo", ACTION_BAR_LABELS[v] .. " fade "
-                    .. (on and "enabled" or "disabled") .. " — |cFFFFFF00/reload|r to apply.")
-            end
-        elseif #changed > 1 then
-            for i = 2, BAR_MAX do cdb.fadeActionBars[i] = HasBit(val, i) or nil end
-        end
-        cdb.fadeActionBarsMask = ActionBarsMask()
-        lastBarMask = cdb.fadeActionBarsMask
-        ignoreFadeCallback = true
-        pcall(fadeSetting.SetValue, fadeSetting, cdb.fadeActionBarsMask)
-        ignoreFadeCallback = false
-    end)
-
-    local fadeInit = Settings.CreateDropdown(category, fadeSetting, GetBarOptions, TipWithReason(
-        "Pick a bar to fade it out when idle; it reappears on mouseover. "
-        .. "Requires |cFFFFFF00/reload|r to apply.", "fadeActionBars"))
-    GreyIfUnavailable(fadeInit, "fadeActionBars")
-
-    -- ── Fade Delay — slider, UNIVERSAL. The one Clean Solo setting that applies at once: it is a
-    -- number the faders read each time they are about to fade (VUI.SetFadeDelay), not a hook, so
-    -- the /reload policy at the top of this file does not apply to it. 0.5 s steps, the step
-    -- Blizzard's own seconds-valued sliders use (Blizzard_SettingsDefinitions_Frame/Mounts.lua:114).
-    local delaySetting = Settings.RegisterAddOnSetting(
-        category,
-        ADDON_NAME .. "_fadeDelay",
-        "fadeDelay",
-        db,                          -- UNIVERSAL
-        "number",
-        "Fade Delay",
-        UNIVERSAL.fadeDelay
-    )
-    delaySetting:SetValueChangedCallback(function(_, value)
-        VUI.SetFadeDelay(value)
-    end)
-    local delayOptions = Settings.CreateSliderOptions(0, 5, 0.5)
-    local labelRight = MinimalSliderWithSteppersMixin and MinimalSliderWithSteppersMixin.Label
-        and MinimalSliderWithSteppersMixin.Label.Right
-    if labelRight and delayOptions.SetLabelFormatter then
-        delayOptions:SetLabelFormatter(labelRight, function(value)
-            return string.format("%.1f sec", value)
-        end)
-    end
-    local delayInit = Settings.CreateSlider(category, delaySetting, delayOptions, TipWithReason(
-        "How long the faded micro menu, player frame and action bars stay visible after you move "
-        .. "the mouse away, before they fade. 0 keeps the usual short delay. The chat window and "
-        .. "its tabs keep Blizzard's own timing. Applies at once.", "fadeDelay"))
-    GreyIfUnavailable(delayInit, "fadeDelay")
 
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
