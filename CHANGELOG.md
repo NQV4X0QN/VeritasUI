@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.34.1] - 2026-10-30
+
+### Fixed
+
+- `VeritasUI_CleanSolo` — **Fade Chat Tabs: the tabs no longer appear without the chat window.** Moving the mouse across the tabs used to bring them up on their own, floating with no window under them. They now appear only when the chat window does, whether you rest the mouse on the window or on the tabs, and fade out with it (`CleanSolo.lua`)
+
+
 ## [1.34.0] - 2026-10-30
 
 ### Added
