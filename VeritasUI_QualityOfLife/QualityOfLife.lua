@@ -150,6 +150,11 @@ local UNIVERSAL = {
     -- change how two of Blizzard's own confirmations behave.
     fillDeleteConfirm = false,   -- types DELETE into the delete-item confirmation
     skipCinematics    = false,   -- Escape skips a cinematic or movie without asking
+    -- Phase 3 (v1.29.0): NPC shortcuts, all off by default; Shift held pauses the first three.
+    pickOnlyGossip    = false,   -- pick an NPC's only dialogue option
+    autoAcceptQuest   = false,   -- take offered quests (separate from turn-in, owner's request)
+    autoTurnInQuest   = false,   -- hand in completed quests
+    trainAllButton    = false,   -- Train All button on the trainer window
     -- The icon the next /note starts with: the last one chosen from a note's menu.
     mapNoteIcon = "Waypoint-MapPin-Untracked",
 }
@@ -3178,6 +3183,165 @@ local function SetupSkipCinematics()
     end
 end
 
+-- ── NPC shortcuts (v1.29.0, EllesmereUI-inspired plan phase 3) ──
+-- Three independent options, all paused while Shift is held as you talk to the NPC:
+--   pickOnlyGossip  -- an NPC with ONE dialogue option and no quests: pick it.
+--   autoAcceptQuest -- take offered quests.          (separate from turn-in: owner, 2026-10-29)
+--   autoTurnInQuest -- hand in completed quests.
+-- Every call below is the one Blizzard's own buttons make, sourced:
+--   Gossip (Blizzard_UIPanels_Game/Shared/GossipFrameShared.lua:192-202): Blizzard already picks
+--   the only option when it is flagged selectOptionWhenOnlyOption, under exactly the conditions
+--   used here (no quests, one option, not ForceGossip) -- this drops the flag requirement and
+--   also requires the option to be Available (Enum.GossipOptionStatus, GossipInfoDocumentation).
+--   A gold-cost option still raises Blizzard's own confirmation.
+--   Quest frame (Blizzard_UIPanels_Game/Mainline/QuestFrame.lua): accept = AcknowledgeAutoAccept-
+--   Quest / AcceptQuest (:566-578), skipped for PvP quests, which Blizzard confirms first;
+--   progress = CompleteQuest (:164-167) when IsQuestCompletable; reward = GetQuestReward
+--   (:145-162) ONLY with 0 or 1 reward choices and no gold to pay -- a real choice, or a quest that
+--   costs gold, is left for you. Greeting lists use SelectActive/AvailableQuest by index
+--   (:348-394, :449-455). Trivial (grey) quests are never auto-accepted.
+local npcFrame = CreateFrame("Frame")
+local NPC_EVENTS = { "GOSSIP_SHOW", "QUEST_GREETING", "QUEST_DETAIL", "QUEST_PROGRESS", "QUEST_COMPLETE" }
+
+local function NpcPaused()
+    return IsShiftKeyDown and IsShiftKeyDown()
+end
+
+local function OnGossipShow()
+    local G = C_GossipInfo
+    if not G then return end
+    if db.autoTurnInQuest and G.GetActiveQuests then
+        for _, q in ipairs(G.GetActiveQuests() or {}) do
+            if q.isComplete and q.questID then G.SelectActiveQuest(q.questID); return end
+        end
+    end
+    if db.autoAcceptQuest and G.GetAvailableQuests then
+        for _, q in ipairs(G.GetAvailableQuests() or {}) do
+            if not q.isTrivial and q.questID then G.SelectAvailableQuest(q.questID); return end
+        end
+    end
+    if db.pickOnlyGossip and G.GetOptions then
+        if G.GetNumAvailableQuests() ~= 0 or G.GetNumActiveQuests() ~= 0 then return end
+        if G.ForceGossip and G.ForceGossip() then return end
+        local options = G.GetOptions() or {}
+        local only = options[1]
+        local available = Enum and Enum.GossipOptionStatus and Enum.GossipOptionStatus.Available or 0
+        if #options == 1 and only.status == available and only.orderIndex then
+            G.SelectOptionByIndex(only.orderIndex)
+        end
+    end
+end
+
+local function OnQuestGreeting()
+    if db.autoTurnInQuest and GetNumActiveQuests then
+        for i = 1, GetNumActiveQuests() do
+            local _, isComplete = GetActiveTitle(i)
+            if isComplete then SelectActiveQuest(i); return end
+        end
+    end
+    if db.autoAcceptQuest and GetNumAvailableQuests then
+        for i = 1, GetNumAvailableQuests() do
+            local isTrivial = GetAvailableQuestInfo(i)
+            if not isTrivial then SelectAvailableQuest(i); return end
+        end
+    end
+end
+
+npcFrame:SetScript("OnEvent", function(_, event)
+    if not db or NpcPaused() then return end
+    if event == "GOSSIP_SHOW" then
+        OnGossipShow()
+    elseif event == "QUEST_GREETING" then
+        OnQuestGreeting()
+    elseif event == "QUEST_DETAIL" then
+        if not db.autoAcceptQuest then return end
+        if QuestFlagsPVP and QuestFlagsPVP() then return end
+        if QuestGetAutoAccept and QuestGetAutoAccept() then
+            if AcknowledgeAutoAcceptQuest then AcknowledgeAutoAcceptQuest() end
+        else
+            AcceptQuest()
+        end
+    elseif event == "QUEST_PROGRESS" then
+        if db.autoTurnInQuest and IsQuestCompletable and IsQuestCompletable() then CompleteQuest() end
+    elseif event == "QUEST_COMPLETE" then
+        if not db.autoTurnInQuest then return end
+        local choices = GetNumQuestChoices and GetNumQuestChoices() or 0
+        local money = GetQuestMoneyToGet and GetQuestMoneyToGet() or 0
+        if choices <= 1 and not (money and money > 0) then GetQuestReward(choices) end
+    end
+end)
+
+-- Registered only while one of the three is on; called at login and from each checkbox.
+local function UpdateNpcEvents()
+    local on = db and (db.pickOnlyGossip or db.autoAcceptQuest or db.autoTurnInQuest)
+    for _, ev in ipairs(NPC_EVENTS) do
+        if on then npcFrame:RegisterEvent(ev) else npcFrame:UnregisterEvent(ev) end
+    end
+end
+
+-- ── Train All button (v1.29.0) ──────────────────────────────
+-- A Train All button beside Blizzard's Train on the trainer window (Blizzard_TrainerUI, load on
+-- demand). Learns every service Blizzard lists as "available" that you can afford, in DESCENDING
+-- index order so a purchase that re-indexes the list never skips one. Learning a NEW profession
+-- (GetTrainerServiceCost's isProfession) is skipped: Blizzard asks for confirmation for that
+-- (Blizzard_TrainerUI.lua:13-30, :398-404). Calls the same BuyTrainerService Train does (:402).
+local trainAllButton
+
+local function TrainableServices()
+    local list, total = {}, 0
+    if not GetNumTrainerServices then return list, total end
+    local wallet = GetMoney and GetMoney() or 0
+    for i = GetNumTrainerServices(), 1, -1 do
+        local _, serviceType = GetTrainerServiceInfo(i)
+        local cost, isProfession = GetTrainerServiceCost(i)
+        cost = cost or 0
+        if serviceType == "available" and not isProfession and cost <= wallet then
+            list[#list + 1] = i
+            wallet, total = wallet - cost, total + cost
+        end
+    end
+    return list, total
+end
+
+local function RefreshTrainAll()
+    if not trainAllButton then return end
+    local on = db and db.trainAllButton
+    trainAllButton:SetShown(on and true or false)
+    if on then trainAllButton:SetEnabled(#TrainableServices() > 0) end
+end
+
+local function CreateTrainAll()
+    if trainAllButton or not (ClassTrainerFrame and ClassTrainerTrainButton) then return end
+    trainAllButton = CreateFrame("Button", nil, ClassTrainerFrame, "MagicButtonTemplate")
+    trainAllButton:SetText("Train All")
+    trainAllButton:SetSize(80, ClassTrainerTrainButton:GetHeight() or 22)
+    trainAllButton:SetPoint("RIGHT", ClassTrainerTrainButton, "LEFT", 0, 0)
+    trainAllButton:SetScript("OnClick", function()
+        for _, i in ipairs((TrainableServices())) do BuyTrainerService(i) end
+    end)
+    trainAllButton:SetScript("OnEnter", function(self)
+        local list, total = TrainableServices()
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Train All")
+        GameTooltip:AddLine(string.format("Learn %d skill%s for %s", #list, #list == 1 and "" or "s",
+            Coins(total)), 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    trainAllButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    if ClassTrainerFrame_Update then hooksecurefunc("ClassTrainerFrame_Update", RefreshTrainAll) end
+    RefreshTrainAll()
+end
+
+local trainerLoader = CreateFrame("Frame")
+trainerLoader:SetScript("OnEvent", function(self, _, name)
+    if name == "Blizzard_TrainerUI" then self:UnregisterEvent("ADDON_LOADED"); CreateTrainAll() end
+end)
+
+local function SetupTrainAll()
+    if trainAllButton then RefreshTrainAll(); return end
+    if ClassTrainerFrame then CreateTrainAll() else trainerLoader:RegisterEvent("ADDON_LOADED") end
+end
+
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
@@ -3307,6 +3471,26 @@ local function InitializeOptions()
         .. "first. Scenes you can only leave by exiting a vehicle still ask.",
         function(value) if value then SetupSkipCinematics() end end)
 
+    AddCheckbox("pickOnlyGossip", "Pick Only Dialogue Option",
+        "When an NPC has just one dialogue option and no quests, it is picked for you. Hold Shift "
+        .. "while talking to the NPC to see the dialogue instead.",
+        UpdateNpcEvents)
+
+    AddCheckbox("autoAcceptQuest", "Auto Accept Quests",
+        "Accepts quests when an NPC offers them. Grey (trivial) quests and PvP quests are left for "
+        .. "you. Hold Shift while talking to the NPC to choose yourself.",
+        UpdateNpcEvents)
+
+    AddCheckbox("autoTurnInQuest", "Auto Turn In Quests",
+        "Hands in completed quests. If you have to choose a reward, or the quest costs gold, you "
+        .. "still choose. Hold Shift while talking to the NPC to do it yourself.",
+        UpdateNpcEvents)
+
+    AddCheckbox("trainAllButton", "Train All Button",
+        "Adds a Train All button beside Train at trainers, learning everything available that you "
+        .. "can afford. Learning a new profession still asks first.",
+        function(value) if value then SetupTrainAll() else RefreshTrainAll() end end)
+
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
     VUI.RegisterSettingsLabel(SETTINGS_LABEL)
@@ -3404,6 +3588,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.followReputationGains then RepFollowStart() end
         if db.fillDeleteConfirm then SetupDeleteFill() end
         if db.skipCinematics then SetupSkipCinematics() end
+        UpdateNpcEvents()
+        if db.trainAllButton then SetupTrainAll() end
 
         -- Register /way only if TomTom is absent; both addons claim this command.
         if not (_G.TomTom or (IsAddOnLoaded and IsAddOnLoaded("TomTom"))) then
