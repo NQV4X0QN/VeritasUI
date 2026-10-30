@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.0] - 2026-10-29
+
+### Added
+
+- `VeritasUI_AdvancedOptions` — **Reset Everything: every game setting back to Blizzard's defaults in one click.** With **Changed** ticked and nothing in the search box, the button is **Reset Everything**: after a warning it runs the game's own `cvar_default`, exactly as typing `/console cvar_default` does, then says in chat whether anything still differs. Keybindings, Edit Mode layouts and addon settings are not touched, and it won't run during combat. Type a search and the button becomes **Reset All to Default**, which resets only the rows listed, so only one reset is ever offered (`Browser.lua`, `README.md`)
+
+
 ## [1.23.0] - 2026-10-29
 
 ### Added
