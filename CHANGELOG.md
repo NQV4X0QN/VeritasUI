@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.34.5] - 2026-10-30
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **Renown level at the end of the reputation bar's text.** It now reads `Hara'ti (Warband) 985 / 2500 [19/20]`, so your overall progress is always the last thing on the bar (`QualityOfLife.lua`, `README.md`)
+
+
 ## [1.34.4] - 2026-10-30
 
 ### Added

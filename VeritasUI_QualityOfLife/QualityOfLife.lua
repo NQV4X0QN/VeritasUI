@@ -2888,8 +2888,9 @@ local function RepFollowStop()
 end
 
 -- ── Renown level on the reputation bar ──────────────────────
--- "Hara'ti (Warband) [18/20] 985 / 2500": the renown level beside the name on the bar's text, and
--- past the top, the levels earned beyond it ("Amani Tribe (Warband) [21/20]"). Owner, 2026-10-30.
+-- "Hara'ti (Warband) 985 / 2500 [18/20]": the renown level at the END of the bar's text, so the eye
+-- always finds overall progress in the same place (owner, v1.34.5; it sat after the name in v1.33.0),
+-- and past the top, the levels earned beyond it ("Amani Tribe (Warband) [21/20]"). Owner, 2026-10-30.
 -- SOURCED (wow-ui-source live):
 --   * The text is Blizzard's own: ReputationStatusBarMixin:Update builds `name .. " %d / %d"` (or
 --     the name alone when capped), with REPUTATION_STATUS_BAR_LABEL_ACCOUNT_WIDE after the name for
@@ -2959,7 +2960,8 @@ local SetRenownOnRepBar
         return name, "[" .. level .. "/" .. maxLevel .. "]"
     end
 
-    -- Our insert is " [L/M]" straight after the name; strip it (turning off) or add it.
+    -- Our addition is " [L/M]" at the end of the text; strip it (turning off) or add it. The name
+    -- check stays: it is what tells us the text is the watched faction's, not one mid-change.
     local function Paint(on, force)
         local bars = RepBars()
         if not force then
@@ -2978,7 +2980,7 @@ local SetRenownOnRepBar
                 local stripped = text:gsub(" %[%d+/%d+%]", "", 1)
                 local want = stripped
                 if on and name and stripped:sub(1, #name) == name then
-                    want = name .. " " .. tag .. stripped:sub(#name + 1)
+                    want = stripped .. " " .. tag
                 end
                 if want ~= text then pcall(fs.SetText, fs, want) end
                 painted[fs] = want
@@ -4251,8 +4253,8 @@ local function InitializeOptions()
         end)
 
     AddCheckbox("repBarRenownLevel", "Show Renown Level on Reputation Bar",
-        "Adds your renown level to the reputation bar's text, such as [18/20], beside the faction's "
-        .. "name. Past the top renown, it counts the levels earned beyond it, such as [21/20].",
+        "Adds your renown level to the end of the reputation bar's text, such as [18/20]. Past the "
+        .. "top renown, it counts the levels earned beyond it, such as [21/20].",
         SetRenownOnRepBar)
 
     AddCheckbox("greatVaultButton", "Show Great Vault Button by the Minimap",
