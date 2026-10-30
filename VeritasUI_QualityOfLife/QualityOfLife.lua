@@ -158,6 +158,10 @@ local UNIVERSAL = {
     -- Phase 4 (v1.30.0): extra unit tooltip lines, off by default, independent.
     tooltipTarget     = false,   -- "Target: <name>", green "You" when it is you
     tooltipMount      = false,   -- the mount a player rides, check or red X for owned
+    -- Phase 6 (v1.32.0): character sheet details, off by default, independent.
+    charEnchants      = false,   -- each slot's enchant beside it
+    charDurability    = false,   -- each slot's durability %, below 100%
+    charMythicRating  = false,   -- Mythic+ rating under the item level
     -- Phase 5 (v1.31.0): Blizzard's timestamp on system/loot/money/... lines too. Off by default.
     timestampAllMessages = false,
     -- The icon the next /note starts with: the last one chosen from a note's menu.
@@ -3489,6 +3493,173 @@ local function SetTimestampAll(on)
     if VUI.SetPrintTimestamps then VUI.SetPrintTimestamps(stampsOn) end
 end
 
+-- ── Character sheet details (v1.32.0, EllesmereUI-inspired plan phase 6) ──
+-- Three independent options for the character window:
+--   charEnchants   -- each slot's enchant beside it, on the side facing the character model
+--   charDurability -- each slot's durability %, when below 100%
+--   charMythicRating -- your Mythic+ rating, just below the item level
+-- Sources (Blizzard_UIPanels_Game/Mainline):
+--   PaperDollItemSlotButton_Update (PaperDollFrame.lua:1694) runs for a slot whenever it changes;
+--   a post-hook (hooksecurefunc on the global) repaints that slot. Slot sides come from the
+--   templates' own IsLeftSide key (PaperDollFrame.xml:76-107: true = left column, false = right,
+--   nil = the two weapon slots). Blizzard's gem display sits on the inner edge of each slot, so
+--   the enchant text starts past it.
+--   Enchant: the ItemEnchantmentPermanent line (TooltipDataLineType 15) of the slot's tooltip
+--   data, with Blizzard's own "Enchanted: " prefix (ENCHANTED_TOOLTIP_LINE) removed.
+--   Durability colours: Blizzard's own INVENTORY_ALERT_COLORS via GetInventoryAlertStatus, the
+--   same as the armour man (Blizzard_DurabilityFrame/DurabilityFrame.lua:1-16, :73); white otherwise.
+--   Rating: C_ChallengeMode.GetOverallDungeonScore + GetDungeonScoreRarityColor, as the Mythic+
+--   window shows it (Blizzard_ChallengesUI.lua:224-231). The line sits between the item level
+--   and Attributes; PaperDollFrame_UpdateStats re-anchors Attributes under the item level every
+--   time (PaperDollFrame.lua:1904-1911), so a post-hook on it moves Attributes below the line.
+-- Only our own font strings and our own one frame are created; no Blizzard frame is hidden.
+-- ⚠ Wrapped in do ... end: this file sits at Lua's 200-active-locals limit for one chunk (WoW's
+-- Lua 5.1 enforces it too, and a file over it fails to load). Only SetupCharacterSheet escapes.
+local SetupCharacterSheet
+do
+    local SLOT_ALERT_INDEX = { [1] = 1, [3] = 2, [5] = 3, [6] = 4, [7] = 5, [8] = 6, [9] = 7,
+                               [10] = 8, [16] = 9, [17] = 10 }   -- slot ID -> INVENTORY_ALERT_STATUS_SLOTS
+    local ENCHANT_LINE = Enum and Enum.TooltipDataLineType and Enum.TooltipDataLineType.ItemEnchantmentPermanent or 15
+    local ENCHANT_TEXT_WIDTH = 110
+    local charHooked = false
+    local ratingFrame
+    local ratingShown = false   -- our own record: whether WE moved Attributes below the rating line
+
+    local function EnchantText(slotID)
+        if not (C_TooltipInfo and C_TooltipInfo.GetInventoryItem) then return nil end
+        local ok, data = pcall(C_TooltipInfo.GetInventoryItem, "player", slotID)
+        if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then return nil end
+        for _, line in ipairs(data.lines) do
+            if line.type == ENCHANT_LINE and type(line.leftText) == "string" then
+                local text = line.leftText
+                local prefix = ENCHANTED_TOOLTIP_LINE and ENCHANTED_TOOLTIP_LINE:match("^(.-)%%s")
+                if prefix and prefix ~= "" and text:sub(1, #prefix) == prefix then text = text:sub(#prefix + 1) end
+                return text
+            end
+        end
+        return nil
+    end
+
+    local function SlotText(btn, key, point, relPoint, x, y, justify)
+        local fs = btn[key]
+        if not fs then
+            fs = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            fs:SetPoint(point, btn, relPoint, x, y)
+            fs:SetJustifyH(justify)
+            btn[key] = fs
+        end
+        return fs
+    end
+
+    local function PaintSlot(btn)
+        if not (btn and btn.GetID) then return end
+        local slotID = btn:GetID()
+        -- Enchant, beside the slot on the side facing the model.
+        if db and db.charEnchants then
+            local fs
+            if btn.IsLeftSide == true then
+                fs = SlotText(btn, "_vui_enchant", "LEFT", "RIGHT", 14, 0, "LEFT")
+            elseif btn.IsLeftSide == false then
+                fs = SlotText(btn, "_vui_enchant", "RIGHT", "LEFT", -14, 0, "RIGHT")
+            elseif slotID == 16 then
+                fs = SlotText(btn, "_vui_enchant", "RIGHT", "LEFT", -8, 0, "RIGHT")
+            else
+                fs = SlotText(btn, "_vui_enchant", "LEFT", "RIGHT", 8, 0, "LEFT")
+            end
+            fs:SetWidth(ENCHANT_TEXT_WIDTH)
+            fs:SetWordWrap(false)
+            local text = EnchantText(slotID)
+            fs:SetText(text or "")
+            fs:SetTextColor(0.1, 1, 0.1)   -- the green Blizzard draws enchant lines in
+            fs:SetShown(text ~= nil)
+        elseif btn._vui_enchant then
+            btn._vui_enchant:Hide()
+        end
+        -- Durability %, top of the icon, only below 100%.
+        if db and db.charDurability then
+            local fs = SlotText(btn, "_vui_durability", "TOP", "TOP", 0, -2, "CENTER")
+            local ok, cur, max = pcall(GetInventoryItemDurability, slotID)
+            if ok and cur and max and max > 0 and cur < max then
+                fs:SetText(string.format("%d%%", math.floor(cur / max * 100)))
+                local idx = SLOT_ALERT_INDEX[slotID]
+                local okA, status = pcall(GetInventoryAlertStatus, idx or 0)
+                local c = idx and okA and INVENTORY_ALERT_COLORS and INVENTORY_ALERT_COLORS[status]
+                if c then fs:SetTextColor(c.r, c.g, c.b) else fs:SetTextColor(1, 1, 1) end
+                fs:Show()
+            else
+                fs:Hide()
+            end
+        elseif btn._vui_durability then
+            btn._vui_durability:Hide()
+        end
+    end
+
+    -- The slot buttons by their global names (PaperDollFrame.xml:820-914).
+    local CHARACTER_SLOTS = { "Head", "Neck", "Shoulder", "Back", "Chest", "Shirt", "Tabard", "Wrist",
+                              "Hands", "Waist", "Legs", "Feet", "Finger0", "Finger1", "Trinket0", "Trinket1",
+                              "MainHand", "SecondaryHand" }
+
+    local function RepaintAllSlots()
+        for _, name in ipairs(CHARACTER_SLOTS) do
+            local b = _G["Character" .. name .. "Slot"]
+            if b then pcall(PaintSlot, b) end
+        end
+    end
+
+    local function UpdateRating()
+        local pane = CharacterStatsPane
+        if not (pane and pane.ItemLevelFrame and pane.AttributesCategory) then return end
+        local on = db and db.charMythicRating and pane.ItemLevelFrame:IsShown()
+        local score = 0
+        if on and C_ChallengeMode and C_ChallengeMode.GetOverallDungeonScore then
+            local ok, s = pcall(C_ChallengeMode.GetOverallDungeonScore)
+            score = (ok and type(s) == "number") and s or 0
+        end
+        if not on or score <= 0 then
+            if ratingFrame and ratingShown then
+                ratingFrame:Hide()
+                ratingShown = false
+                -- Put Attributes back where Blizzard puts it (PaperDollFrame.lua:1910-1911), so turning
+                -- this off mid-session leaves no gap until Blizzard's next stats update.
+                if pane.ItemLevelFrame:IsShown() then
+                    pane.AttributesCategory:ClearAllPoints()
+                    pane.AttributesCategory:SetPoint("TOP", pane.ItemLevelFrame, "BOTTOM", 0, 0)
+                end
+            end
+            return
+        end
+        if not ratingFrame then
+            ratingFrame = CreateFrame("Frame", nil, pane)
+            ratingFrame:SetSize(187, 18)
+            ratingFrame:SetPoint("TOP", pane.ItemLevelFrame, "BOTTOM", 0, 0)
+            ratingFrame.text = ratingFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+            ratingFrame.text:SetPoint("CENTER")
+        end
+        local hex = "ffffffff"
+        local okC, color = pcall(C_ChallengeMode.GetDungeonScoreRarityColor, score)
+        if okC and color and color.GenerateHexColor then hex = color:GenerateHexColor() end
+        ratingFrame.text:SetText(string.format("Mythic+ Rating: |c%s%d|r", hex, score))
+        ratingFrame:Show()
+        ratingShown = true
+        pane.AttributesCategory:ClearAllPoints()
+        pane.AttributesCategory:SetPoint("TOP", ratingFrame, "BOTTOM", 0, 0)
+    end
+
+    SetupCharacterSheet = function()
+        if not charHooked then
+            if PaperDollItemSlotButton_Update then
+                hooksecurefunc("PaperDollItemSlotButton_Update", function(btn) pcall(PaintSlot, btn) end)
+            end
+            if PaperDollFrame_UpdateStats then
+                hooksecurefunc("PaperDollFrame_UpdateStats", function() pcall(UpdateRating) end)
+            end
+            charHooked = true
+        end
+        RepaintAllSlots()
+        pcall(UpdateRating)
+    end
+end
+
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()
     local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
@@ -3655,6 +3826,23 @@ local function InitializeOptions()
         .. "chat window writes itself, such as /played, can't be stamped.",
         SetTimestampAll)
 
+    -- Each one repaints the open character window at once; the hooks are installed on first use.
+    local function CharSheetChanged() SetupCharacterSheet() end
+
+    AddCheckbox("charEnchants", "Show Enchants on Character Sheet",
+        "Shows each item's enchant beside its slot on the character window, in green.",
+        CharSheetChanged)
+
+    AddCheckbox("charDurability", "Show Durability on Character Sheet",
+        "Shows each item's durability on its slot when it is below 100%, in yellow when it is low "
+        .. "and red when it is broken, the same colours as the armour figure.",
+        CharSheetChanged)
+
+    AddCheckbox("charMythicRating", "Show Mythic+ Rating on Character Sheet",
+        "Shows your Mythic+ rating just below your item level, in its rating colour. Hidden while "
+        .. "you have no rating.",
+        CharSheetChanged)
+
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
     VUI.RegisterSettingsLabel(SETTINGS_LABEL)
@@ -3756,6 +3944,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.trainAllButton then SetupTrainAll() end
         if db.tooltipTarget or db.tooltipMount then SetupTooltipLines() end
         if db.timestampAllMessages then SetTimestampAll(true) end
+        if db.charEnchants or db.charDurability or db.charMythicRating then SetupCharacterSheet() end
 
         -- Register /way only if TomTom is absent; both addons claim this command.
         if not (_G.TomTom or (IsAddOnLoaded and IsAddOnLoaded("TomTom"))) then
