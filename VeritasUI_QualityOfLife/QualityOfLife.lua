@@ -3589,7 +3589,9 @@ local SetupCharacterSheet
         return n, filled, names
     end
 
-    -- Two fixed positions so the meaning never shifts: 1 = enchant (nearest the slot), 2 = gems.
+    -- Icon 1 = enchant, icon 2 = gems. They are PACKED against the slot: only the icons that apply
+    -- are shown, nearest the slot first, so an item with no enchant has no gap (owner, 2026-10-30;
+    -- fixed positions left a hole). Hovering says which is which.
     local function StatusIcon(holder, index)
         holder._icons = holder._icons or {}
         local f = holder._icons[index]
@@ -3611,13 +3613,13 @@ local SetupCharacterSheet
         return f
     end
 
-    local function PlaceIcons(btn, holder)
-        -- Left column: icons run right, away from the slot. Right column and the main hand: left.
+    -- Place the shown icons, in order, from the slot outward. Left column: they run right, away
+    -- from the slot. Right column and the main hand: left.
+    local function PlaceIcons(btn, shown)
         local outward = (btn.IsLeftSide == true or (btn.IsLeftSide == nil and btn:GetID() ~= 16)) and 1 or -1
-        for i = 1, 2 do
-            local f = StatusIcon(holder, i)
+        for k, f in ipairs(shown) do
             f:ClearAllPoints()
-            local offset = 8 + (i - 1) * (ICON_SIZE + ICON_GAP)
+            local offset = 8 + (k - 1) * (ICON_SIZE + ICON_GAP)
             if outward == 1 then
                 f:SetPoint("LEFT", btn, "RIGHT", offset, 0)
             else
@@ -3638,14 +3640,15 @@ local SetupCharacterSheet
             holder = CreateFrame("Frame", nil, btn)
             holder:SetAllPoints(btn)
             btn._vui_status = holder
-            PlaceIcons(btn, holder)
         end
         holder:Show()
         local hasItem = GetInventoryItemLink("player", slotID) ~= nil
         local enchantIcon, gemIcon = StatusIcon(holder, 1), StatusIcon(holder, 2)
+        local shown = {}
         if hasItem and SlotIsEnchantable(slotID) then
             local name = EnchantText(slotID)
             SetIcon(enchantIcon, name ~= nil, name and { "Enchanted", name } or { "Not enchanted" })
+            shown[#shown + 1] = enchantIcon
         else
             enchantIcon:Hide()
         end
@@ -3655,9 +3658,11 @@ local SetupCharacterSheet
             local tip = { filled == n and "Gems" or string.format("%d of %d sockets empty", n - filled, n) }
             for _, g in ipairs(names) do tip[#tip + 1] = g end
             SetIcon(gemIcon, filled == n, tip)
+            shown[#shown + 1] = gemIcon
         else
             gemIcon:Hide()
         end
+        PlaceIcons(btn, shown)
     end
 
     local function PaintSlot(btn)
