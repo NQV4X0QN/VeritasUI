@@ -589,10 +589,12 @@ function AO:BuildBrowserContent(parent)
             if n > 0 then StaticPopup_Show("VERITASUI_AO_RESET_ELVUI", n, n == 1 and "" or "s") end
         end)
 
-        -- "Changed" mode only: the console's cvar_default, stacked above Reset All.
+        -- "Changed" mode with nothing searched: the console's cvar_default. It takes Reset All's
+        -- place rather than sitting beside it, so the footer only ever offers one reset: everything
+        -- (no search) or exactly the rows a search left (Reset All). Owner's design, 2026-10-29.
         resetEverythingBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
         resetEverythingBtn:SetSize(150, 22)
-        resetEverythingBtn:SetPoint("BOTTOM", resetAllBtn, "TOP", 0, 4)
+        resetEverythingBtn:SetPoint("BOTTOMRIGHT", footer, "BOTTOMRIGHT", 0, 2)
         resetEverythingBtn:SetText("Reset Everything")
         resetEverythingBtn:SetScript("OnClick", function()
             StaticPopup_Show("VERITASUI_AO_RESET_EVERYTHING")
@@ -625,8 +627,12 @@ function AO:BuildBrowserContent(parent)
     local function UpdateFooter(shown)
         local on = elvuiOnly or changedOnly
         footer:SetShown(on)
-        -- Shown in Changed mode even when the list is empty: it reaches CVars this list can't.
-        resetEverythingBtn:SetShown(changedOnly)
+        -- Changed mode, nothing searched: Reset Everything (shown even when the list is empty -- it
+        -- reaches CVars this list can't). Anything searched, or the ElvUI filter: Reset All.
+        local searched = strtrim(searchBox:GetText() or "") ~= ""
+        local everything = changedOnly and not searched
+        resetEverythingBtn:SetShown(everything)
+        resetAllBtn:SetShown(not everything)
         local h = changedOnly and FOOTER_CHANGED_H or FOOTER_H
         footer:SetHeight(h)
         scrollBox:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SB_INSET, on and (h + 8) or 4)
@@ -637,11 +643,15 @@ function AO:BuildBrowserContent(parent)
             if running then
                 lead = format("|cFFFF4444%s is running|r and may set some of these again when it loads. "
                     .. "Turn it off in the AddOns list before resetting.", running)
+            elseif everything then
+                lead = (shown == 0 and "Every setting listed here is at Blizzard's default. "
+                        or "These differ from Blizzard's defaults, including changes you made yourself. ")
+                    .. "Reset Everything resets every game setting, listed or not. Search to reset only some."
             elseif shown == 0 then
                 lead = "Every setting listed here is at Blizzard's default."
             else
                 lead = "These differ from Blizzard's defaults, including changes you made yourself. "
-                    .. "Reset All resets only the rows listed, so search first to narrow it."
+                    .. "Reset All to Default resets only the rows listed."
             end
         elseif AO.ElvUILoaded() then
             lead = "|cFFFF4444ElvUI is running|r and sets its nameplate settings again at every login. "
