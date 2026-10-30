@@ -145,7 +145,7 @@ read_globals = {
     "C_AuctionHouse", "AuctionHouseFrame", "AuctionHouseFrameDisplayMode",
     -- Chat / UI elements (CleanSolo)
     "NUM_CHAT_WINDOWS", "FCF_SetWindowAlpha", "FCF_SetWindowColor",
-    "FCF_FadeInChatFrame", "CHAT_FRAME_FADE_TIME", "CHAT_FRAME_FADE_OUT_TIME",
+    "FCF_FadeInChatFrame", "FCF_FadeOutChatFrame", "CHAT_FRAME_FADE_TIME", "CHAT_FRAME_FADE_OUT_TIME",
     "CHAT_TAB_HIDE_DELAY", "QuickJoinToastButton", "MicroMenu", "PlayerFrame",
     "VoiceChatTalkerContainer", "ChatFrame1EditBox", "UIErrorsFrame",
     "BagsBar", "BagBar", "MouseIsOver", "GetMouseFocus", "GetMouseFoci",

@@ -179,8 +179,8 @@ end
 
 -- ── Feature: Chat Tab Fading ────────────────────────────────
 -- Hides ALL chat tabs by default.  Tabs fade in when Blizzard
--- fades in the chat frame (synchronized) and fade back out as
--- a group when the mouse leaves.
+-- fades in the chat window and fade out when Blizzard fades it
+-- out, so they never show without the window (v1.34.1).
 --
 -- Each tab has a three-state guard driven by hooksecurefunc on
 -- SetAlpha (fires synchronously after every call, so Blizzard
@@ -192,7 +192,6 @@ end
 local function SetupChatTabFading()
     local FADE_IN    = CHAT_FRAME_FADE_TIME     or 0.15
     local FADE_OUT   = CHAT_FRAME_FADE_OUT_TIME or 2.0
-    local FADE_DELAY = CHAT_TAB_HIDE_DELAY      or 1.0
 
     local chatFrames = {}
     local tabs       = {}
@@ -233,92 +232,60 @@ local function SetupChatTabFading()
         end
     end
 
-    local hideTimer
-    -- Handle for the "fade-out finished → go hard HIDDEN" timer armed in
-    -- HideAllTabs. It MUST be cancellable: it is armed for FADE_OUT + 0.05
-    -- (2.05s by default) while the hide countdown is only FADE_DELAY (1.0s),
-    -- so an ordinary hover out → in → out cycle can start a second fade-out
-    -- while the first cycle's timer is still pending. If that stale timer
-    -- lands it flips state to HIDDEN mid-fade, and the alpha hook below then
-    -- slams every remaining fade frame to 0 — turning a 2s fade into a snap.
+    -- Handle for the "fade-out finished -> go hard HIDDEN" timer. Cancelled when the window
+    -- fades back in, or a stale one would flip state to HIDDEN mid-fade and the alpha hook
+    -- above would snap the tabs to 0.
     local fadeDoneTimer
 
-    local function CancelTimers()
-        if hideTimer then hideTimer:Cancel(); hideTimer = nil end
+    -- ⚠ THE TABS FOLLOW THE WINDOW AND NOTHING ELSE (owner, 2026-10-30). Until v1.34.0 they also
+    -- came in on their own the instant the mouse touched one (tab OnEnter), while Blizzard fades
+    -- the window in only after the mouse rests over it for CHAT_TAB_SHOW_DELAY (FCF_OnUpdate,
+    -- FloatingChatFrame.lua:1140-1151) -- so sweeping across the tabs left them floating over no
+    -- window. Blizzard's hover area reaches 28 px above the window (topOffset, :1125), over the
+    -- tab strip, so resting on a tab still brings both in, together. Do NOT re-add tab hover
+    -- hooks, and do NOT call FCF_FadeInChatFrame ourselves: it runs Blizzard's shared
+    -- UIFrameFade table from addon code (landmine 33).
+    local function ShowAllTabs()
         if fadeDoneTimer then fadeDoneTimer:Cancel(); fadeDoneTimer = nil end
+        for _, tab in ipairs(tabs) do
+            tab._vui_fadeState = "VISIBLE"
+            VUI.SmoothFade(tab, CHAT_FRAME_FADE_TIME or FADE_IN, 1)
+        end
     end
 
-    -- Uses the :IsMouseOver() widget method rather than the old global
-    -- MouseIsOver() helper: patch 12.1.0 deleted that global (it lived at
-    -- Blizzard_UIParent/Shared/UIParent.lua:530 in 12.0.7 and was itself
-    -- only a one-line wrapper around region:IsMouseOver()). Calling the
-    -- widget method directly is what Blizzard's own 12.1 code does.
-    local function IsOverAnyChatElement()
+    -- Any window still faded in (an undocked one the mouse is over) keeps the tabs up. Only
+    -- shown ones count: FCF_OnUpdate skips hidden frames, so a hidden one can keep a stale flag.
+    local function AnyWindowShown()
         for _, cf in ipairs(chatFrames) do
-            if cf:IsMouseOver() then return true end
-        end
-        for _, tab in ipairs(tabs) do
-            if tab:IsMouseOver() then return true end
+            if cf:IsShown() and cf.hasBeenFaded then return true end
         end
         return false
     end
 
-    local function ShowAllTabs()
-        CancelTimers()
-        for _, tab in ipairs(tabs) do
-            tab._vui_fadeState = "VISIBLE"
-            VUI.SmoothFade(tab, FADE_IN, 1)
-        end
-    end
-
+    -- Starts in the same frame as Blizzard's own fade-out of the window, at its speed.
     local function HideAllTabs()
-        CancelTimers()
-        -- ⚠ Deliberately NOT on the Fade Delay slider (owner, 2026-10-29). Blizzard fades the chat
-        -- window itself on its own timing, so a longer tab delay left the tabs floating over an
-        -- empty space after the window had gone. The tabs stay in step with the window instead.
-        hideTimer = C_Timer.NewTimer(FADE_DELAY, function()
-            hideTimer = nil
-            if not IsOverAnyChatElement() then
-                for _, tab in ipairs(tabs) do
-                    tab._vui_fadeState = "FADING_OUT"
-                    tab._vui_prevAlpha = tab:GetAlpha()
-                    VUI.SmoothFade(tab, FADE_OUT, 0)
+        if AnyWindowShown() then return end
+        if fadeDoneTimer then fadeDoneTimer:Cancel(); fadeDoneTimer = nil end
+        for _, tab in ipairs(tabs) do
+            if tab._vui_fadeState == "VISIBLE" then
+                tab._vui_fadeState = "FADING_OUT"
+                tab._vui_prevAlpha = tab:GetAlpha()
+                VUI.SmoothFade(tab, FADE_OUT, 0)
+            end
+        end
+        fadeDoneTimer = C_Timer.NewTimer(FADE_OUT + 0.05, function()
+            fadeDoneTimer = nil
+            for _, tab in ipairs(tabs) do
+                if tab._vui_fadeState == "FADING_OUT" then
+                    tab._vui_fadeState = "HIDDEN"
+                    tab._vui_prevAlpha = 0
                 end
-                -- After the fade-out duration, switch to hard HIDDEN.
-                -- Guards below are the second line of defence and stay as-is.
-                fadeDoneTimer = C_Timer.NewTimer(FADE_OUT + 0.05, function()
-                    fadeDoneTimer = nil
-                    if not IsOverAnyChatElement() then
-                        for _, tab in ipairs(tabs) do
-                            if tab._vui_fadeState == "FADING_OUT" then
-                                tab._vui_fadeState = "HIDDEN"
-                                tab._vui_prevAlpha = 0
-                            end
-                        end
-                    end
-                end)
             end
         end)
     end
 
-    -- Tab hover: show/hide on direct interaction.
-    for _, tab in ipairs(tabs) do
-        tab:HookScript("OnEnter", ShowAllTabs)
-        tab:HookScript("OnLeave", HideAllTabs)
-    end
-
-    -- Chat frame leave: trigger the hide countdown.
-    for _, cf in ipairs(chatFrames) do
-        cf:HookScript("OnLeave", HideAllTabs)
-    end
-
-    -- Synchronize tab fade-in with Blizzard's own chat frame
-    -- fade-in, so tabs appear at exactly the same moment.
-    if FCF_FadeInChatFrame then
-        hooksecurefunc("FCF_FadeInChatFrame", function()
-            ShowAllTabs()
-        end)
-    end
+    if FCF_FadeInChatFrame then hooksecurefunc("FCF_FadeInChatFrame", ShowAllTabs) end
+    if FCF_FadeOutChatFrame then hooksecurefunc("FCF_FadeOutChatFrame", HideAllTabs) end
 end
 
 -- ── Feature: Hide Chat Buttons ──────────────────────────────
