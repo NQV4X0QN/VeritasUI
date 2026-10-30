@@ -84,6 +84,11 @@ local UNIVERSAL = {
     -- Fade Delay slider, seconds (0-5). One value for every fade, an interface choice like the
     -- rest of this table. 0 = each fade's own built-in delay, i.e. the behaviour before v1.25.0.
     fadeDelay           = 0,
+    -- v1.26.0 (EllesmereUI-inspired plan, phase 1). OFF by default: unlike the original options
+    -- these remove game content (story popups, zone names, boss loot), so nobody gets them unasked.
+    hideTalkingHead     = false,
+    muteTalkingHead     = false,
+    hideTopBanners      = false,
 }
 
 -- ⚠ PER-CHARACTER. These two are the reason per-character storage was requested in the first
@@ -438,6 +443,58 @@ local function HideMacroNames()
     C_Timer.After(3, ScanAll)
 end
 
+-- ── Feature: Hide Talking Head / Mute Talking Head Voice (v1.26.0) ──
+-- Two independent options: the popup and its voice are separate in Blizzard's own code, so a
+-- player can hide one and keep the other. Source: Blizzard_FrameXML/TalkingHeadUI.lua.
+--   Hide: visibility is decided only by UpdateShownState (:241-243, SetShown(isInEditMode or
+--   isPlaying)); a hook after it hides the frame unless Edit Mode is open, so the frame can still
+--   be placed. The voice is a separate PlaySound (:211) and keeps playing.
+--   Mute: PlayCurrent starts the line's sound and keeps its handle in self.voHandle (:211-214);
+--   a hook after it stops that sound. The handle is only READ -- no Blizzard field is written.
+-- Both hooks also check the saved value, so turning an option off stops it straight away.
+local function SetupTalkingHead()
+    local thf = _G.TalkingHeadFrame
+    if not thf then return end
+    if db.hideTalkingHead and thf.UpdateShownState then
+        hooksecurefunc(thf, "UpdateShownState", function(self)
+            if db.hideTalkingHead and not self.isInEditMode and self:IsShown() then self:Hide() end
+        end)
+        if thf:IsShown() and not thf.isInEditMode then thf:Hide() end
+    end
+    if db.muteTalkingHead and thf.PlayCurrent then
+        hooksecurefunc(thf, "PlayCurrent", function(self)
+            if db.muteTalkingHead and self.voHandle and StopSound then StopSound(self.voHandle) end
+        end)
+    end
+end
+
+-- ── Feature: Hide Top Banners (v1.26.0) ─────────────────────
+-- The big zone name, event toasts (level up, scenario stages, weekly rewards, flight points...)
+-- and the boss kill/loot banner. Each is STOPPED FROM STARTING by unregistering the event that
+-- starts it, the same mechanism HideErrorText uses -- not hidden mid-animation. Hiding a playing
+-- boss banner would leave it stuck as TopBannerMgr.currentBanner (its animation never finishes
+-- on a hidden frame, so TopBannerManager_BannerFinished never runs; TopBannerManager.lua), which
+-- would block every later top banner. Events, from source:
+--   ZoneTextFrame          ZONE_CHANGED, _INDOORS, _NEW_AREA  (Mainline/ZoneText.lua:76-78; the
+--                          sub-zone text is only ever shown from that same handler, :83-121)
+--   BossBanner             BOSS_KILL, ENCOUNTER_LOOT_RECEIVED (BossBannerToast.lua:182-183)
+--   EventToastManagerFrame DISPLAY_EVENT_TOASTS               (EventToastManager.lua:151)
+-- Blizzard's OnLoad registers them again on the next load, so /reload with the option off undoes it.
+local TOP_BANNER_EVENTS = {
+    { "ZoneTextFrame",          { "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA" } },
+    { "BossBanner",             { "BOSS_KILL", "ENCOUNTER_LOOT_RECEIVED" } },
+    { "EventToastManagerFrame", { "DISPLAY_EVENT_TOASTS" } },
+}
+
+local function HideTopBanners()
+    for _, entry in ipairs(TOP_BANNER_EVENTS) do
+        local f = _G[entry[1]]
+        if f and f.UnregisterEvent then
+            for _, ev in ipairs(entry[2]) do pcall(f.UnregisterEvent, f, ev) end
+        end
+    end
+end
+
 -- ── Feature: Hide Error Text ────────────────────────────────
 local function HideErrorText()
     if UIErrorsFrame then
@@ -748,11 +805,23 @@ local function InitializeOptions()
         { key = "hideMacroNames",      name = "Hide Macro Names",
           tip = "Hides the macro name text displayed on action bar buttons. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
+        { key = "hideTalkingHead",     name = "Hide Talking Head",
+          tip = "Hides the NPC portrait that pops up with story dialogue in quests and dungeons. "
+             .. "The voice still plays unless Mute Talking Head Voice is on. Still shown in Edit "
+             .. "Mode so you can place it. Requires |cFFFFFF00/reload|r to apply." },
+        { key = "muteTalkingHead",     name = "Mute Talking Head Voice",
+          tip = "Silences the voice line that plays with the talking head popup. The popup itself "
+             .. "still shows unless Hide Talking Head is on. Requires |cFFFFFF00/reload|r to apply." },
+        { key = "hideTopBanners",      name = "Hide Top Banners",
+          tip = "Stops the big messages at the top of the screen: the zone name when you travel, "
+             .. "event banners (level up, new scenario stage, weekly rewards and similar) and the "
+             .. "boss kill and loot banner. "
+             .. "Requires |cFFFFFF00/reload|r to apply." },
     }
 
-    -- ⚠ THESE CHECKBOXES ARE MIXED-SCOPE. Eight of the nine keys are account-wide and one
+    -- ⚠ THESE CHECKBOXES ARE MIXED-SCOPE. All the keys but one are account-wide and one
     -- (fadePlayerFrame) is per-character, so the table handed to Settings AND the table the
-    -- default is read from must both be resolved PER KEY. Passing one table for all nine -- which
+    -- default is read from must both be resolved PER KEY. Passing one table for all of them -- which
     -- is what this did before v1.14.4 -- would store fadePlayerFrame at account scope, and the
     -- panel would then read and write a value the runtime code never looks at. Blizzard captures
     -- the table by reference (Blizzard_Setting.lua:420), so getting this wrong stays invisible
@@ -1030,6 +1099,9 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if cdb.fadePlayerFrame and not Unavailable("fadePlayerFrame")  then SetupPlayerFrameFade() end
         if db.hideBagButtons and not Unavailable("hideBagButtons") then HideBagButtons() end
         if db.hideMacroNames and not Unavailable("hideMacroNames") then HideMacroNames() end
+        if (db.hideTalkingHead and not Unavailable("hideTalkingHead"))
+            or (db.muteTalkingHead and not Unavailable("muteTalkingHead")) then SetupTalkingHead() end
+        if db.hideTopBanners and not Unavailable("hideTopBanners") then HideTopBanners() end
         if db.hideErrorText       then HideErrorText()
         else                           HideErrorTypes()      end
         if not Unavailable("fadeActionBars") then SetupActionBarFading() end
