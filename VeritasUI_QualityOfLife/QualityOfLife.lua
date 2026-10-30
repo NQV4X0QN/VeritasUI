@@ -3634,7 +3634,10 @@ local SetupCharacterSheet
     local function Wrap(hex, text) return "|c" .. hex .. text .. "|r" end
     local function ColorHex(c)
         if c and c.GenerateHexColor then return c:GenerateHexColor() end
-        if c and c.r then return string.format("ff%02x%02x%02x", math.floor(c.r * 255 + 0.5), math.floor(c.g * 255 + 0.5), math.floor(c.b * 255 + 0.5)) end
+        if c and c.r then
+            local function B(x) return math.floor(x * 255 + 0.5) end
+            return string.format("ff%02x%02x%02x", B(c.r), B(c.g), B(c.b))
+        end
         return "ffffffff"
     end
     -- "Enchant:" / "Gem:" -- in your class colour when the sub-option is on.
@@ -3653,6 +3656,12 @@ local SetupCharacterSheet
         if not GetInventoryItemLink("player", slotID) then f:Hide(); return end
         local missing, present = {}, {}
         local applies = false
+        -- Only Epic and Legendary gear is expected to be enchanted and gemmed (owner, 2026-10-30):
+        -- on anything else a missing enchant or gem is never flagged, but one that IS there still
+        -- shows the green check. Quality as PaperDollFrame.lua:1733 reads it (Enum.ItemQuality,
+        -- ItemQualitiesDocumentation.lua: Epic 4, Legendary 5).
+        local quality = GetInventoryItemQuality("player", slotID)
+        local expected = quality == 4 or quality == 5
         -- Enchant. The game can say an item IS enchanted, not whether a slot could be, so a missing
         -- enchant only counts on the ENCHANTABLE list; an enchant anywhere else (12.1.5's glove
         -- scrolls) still counts as present.
@@ -3660,16 +3669,16 @@ local SetupCharacterSheet
         if enchant then
             applies = true
             present[#present + 1] = Label("Enchant:") .. " " .. Wrap(ColorHex(enchantColor or ENCHANT_GREEN), enchant)
-        elseif SlotIsEnchantable(slotID) then
+        elseif expected and SlotIsEnchantable(slotID) then
             applies = true
             missing[#missing + 1] = Wrap(RED, "Enchant Missing")
         end
         -- Gems, read the way Blizzard's own socket display reads them.
         local n, filled, names = GemState(slotID)
-        if n > 0 then
+        if n > 0 and (expected or filled > 0) then
             applies = true
             for _, g in ipairs(names) do present[#present + 1] = Label("Gem:") .. " " .. g end
-            local empty = n - filled
+            local empty = expected and (n - filled) or 0
             if empty == 1 then missing[#missing + 1] = Wrap(RED, "Gem Missing")
             elseif empty > 1 then missing[#missing + 1] = Wrap(RED, empty .. " Gems Missing") end
         end
@@ -3681,7 +3690,7 @@ local SetupCharacterSheet
         f._tip = tip
         -- Title: the item's own name in its quality colour.
         local link = GetInventoryItemLink("player", slotID)
-        local okI, itemName, _, quality = pcall(C_Item.GetItemInfo, link)
+        local okI, itemName = pcall(C_Item.GetItemInfo, link)
         local qc = okI and quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
         f._title = (okI and itemName) or " "
         f._tr, f._tg, f._tb = qc and qc.r or 1, qc and qc.g or 1, qc and qc.b or 1

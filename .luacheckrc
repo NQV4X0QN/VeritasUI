@@ -106,7 +106,7 @@ read_globals = {
     "BattlePetTooltip", "FloatingBattlePetTooltip", "BattlePetToolTip_Show",
     "FloatingBattlePet_Toggle",
     -- Item / container / inventory
-    "C_Item", "C_Container", "ItemLocation", "Item", "GetInventoryItemLink",
+    "C_Item", "C_Container", "ItemLocation", "Item", "GetInventoryItemLink", "GetInventoryItemQuality",
     "GetItemInfoInstant", "GetDetailedItemLevelInfo",
     "ITEM_QUALITY_COLORS", "BAG_ITEM_QUALITY_COLORS", "NUM_BAG_SLOTS",
     "C_TradeSkillUI", "C_Texture",
