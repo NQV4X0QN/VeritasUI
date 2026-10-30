@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.29.0] - 2026-10-30
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Pick Only Dialogue Option.** When an NPC has just one dialogue option and no quests, it is picked for you. An option that costs gold still asks. Hold Shift while talking to the NPC to see the dialogue instead. Off by default (`QualityOfLife.lua`, `README.md`)
+- `VeritasUI_QualityOfLife` — **Auto Accept Quests and Auto Turn In Quests, as two separate options.** Accept takes offered quests, leaving grey and PvP quests to you; Turn In hands in completed quests, leaving it to you when there is a reward to choose or gold to pay. Hold Shift while talking to the NPC to do it yourself. Off by default (`QualityOfLife.lua`, `README.md`)
+- `VeritasUI_QualityOfLife` — **Train All button at trainers.** Learns everything available that you can afford in one click; hover it to see how many skills and the total cost. Learning a new profession still asks first. Off by default (`QualityOfLife.lua`, `README.md`)
+
+
 ## [1.28.0] - 2026-10-30
 
 ### Added

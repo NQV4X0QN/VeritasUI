@@ -32,6 +32,8 @@ Settings: **Options → AddOns → Clean Solo**, or `/cs`, grouped under **Fade*
 - **Track latest reputation** (off until you turn it on): the reputation bar switches to whichever faction you most recently earned reputation with
 - **Fill In DELETE** (off until you turn it on): when you delete a valuable item, DELETE is typed in for you, so Enter or Yes confirms
 - **Skip Cinematics** (off until you turn it on): Escape skips a cinematic or movie straight away instead of asking first
+- **NPC shortcuts** (each off until you turn it on): pick an NPC's only dialogue option, **auto accept** quests, and **auto turn in** completed quests — separate options, and holding Shift while you talk to the NPC pauses them. Reward choices and quests that cost gold are always left to you
+- **Train All** button at trainers (off until you turn it on): learns everything available that you can afford in one click
 - **Journeys**: adds the "Show as Experience Bar" checkbox to Delves and Prey cards, and lets you click the reputation or honor bar to open that faction's page or the PvP window
 
 For map and minimap coordinates, use WoW's own options in **Options → Interface**.
