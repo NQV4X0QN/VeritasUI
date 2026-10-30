@@ -3005,7 +3005,9 @@ end)()
 --   own OnUpdate, to follow their position, scale, visibility and alpha.
 local GreatVault = {}
 ;(function()
-    local SIZE, GAP, OPACITY = 22, 2, 1
+    -- OPACITY: the vault art is drawn solid (Journeys window art), unlike the semi-transparent
+    -- minimap HUD art around it; 0.8 is owner-chosen in game (2026-10-30) to match.
+    local SIZE, GAP, OPACITY = 22, 2, 0.8
     local button, watcher, anchoredTo, sinceCheck = nil, nil, nil, 0
     local enabled, active = false, false
     local function Secret(v) return issecretvalue and issecretvalue(v) end
@@ -3131,19 +3133,6 @@ local GreatVault = {}
             active = false
             button:Hide()
         end
-    end
-
-    -- Session-only size, for tuning in game: /qol vaultsize <n>.
-    function GreatVault.Size(n)
-        if n then SIZE = n; if button then button:SetSize(n, n) end end
-        return SIZE
-    end
-
-    -- Session-only opacity, for tuning in game: /qol vaultalpha <0-100>. Multiplies the
-    -- minimap's own alpha, which the button already follows.
-    function GreatVault.Opacity(pct)
-        if pct then OPACITY = pct / 100; if button then Follow() end end
-        return math.floor(OPACITY * 100 + 0.5)
     end
 end)()
 
@@ -4627,22 +4616,6 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
     local arg = (msg and strtrim(msg)) or ""
     if arg:lower() == "mappins" then DumpMapPins(); return end
     if arg:lower() == "notes" then DumpMapNotes(); return end
-    local vsize = arg:lower():match("^vaultsize%s*(%d*)$")
-    if vsize then
-        local n = tonumber(vsize)
-        if n then n = math.max(12, math.min(40, n)) end
-        VUI.Print("Quality of Life", format("Great Vault button is |cFFFFFF00%d|r px "
-            .. "(this session only).", GreatVault.Size(n)))
-        return
-    end
-    local valpha = arg:lower():match("^vaultalpha%s*(%d*)$")
-    if valpha then
-        local n = tonumber(valpha)
-        if n then n = math.max(10, math.min(100, n)) end
-        VUI.Print("Quality of Life", format("Great Vault button opacity is |cFFFFFF00%d%%|r "
-            .. "(this session only).", GreatVault.Opacity(n)))
-        return
-    end
     local ntail = arg:lower():match("^delvenudge%s*(.*)$")
     if ntail then
         -- Guarded: these branches return before the handler's own db nil-check below,
