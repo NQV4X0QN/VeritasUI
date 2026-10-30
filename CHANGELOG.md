@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.28.0] - 2026-10-30
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Fill In DELETE.** When you delete a rare-or-better item, DELETE is already typed into the confirmation, so you only press Enter or click Yes. Nothing is ever deleted without your own click or key press. Off by default, applies at once (`QualityOfLife.lua`, `README.md`)
+- `VeritasUI_QualityOfLife` — **Skip Cinematics.** Pressing Escape during a cinematic or movie skips it straight away instead of asking first. Scenes you can only leave by exiting a vehicle still ask. Off by default, applies at once (`QualityOfLife.lua`, `README.md`)
+
+
 ## [1.27.0] - 2026-10-29
 
 ### Added

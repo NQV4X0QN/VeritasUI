@@ -30,6 +30,8 @@ Settings: **Options → AddOns → Clean Solo**, or `/cs`, grouped under **Fade*
 - **Delve counts** shown right on the Delve objective icon instead of only in its tooltip: the Nemesis count, and in a Labyrinth the Treasure Room chambers completed, with a checkmark at 9
 - **Map notes**: `/note <text>` leaves a note on the map where you're standing. Click a note to change its icon or remove it; `/note clear` removes the notes on your current map. Notes left inside a Labyrinth or other instance are removed when you leave it
 - **Track latest reputation** (off until you turn it on): the reputation bar switches to whichever faction you most recently earned reputation with
+- **Fill In DELETE** (off until you turn it on): when you delete a valuable item, DELETE is typed in for you, so Enter or Yes confirms
+- **Skip Cinematics** (off until you turn it on): Escape skips a cinematic or movie straight away instead of asking first
 - **Journeys**: adds the "Show as Experience Bar" checkbox to Delves and Prey cards, and lets you click the reputation or honor bar to open that faction's page or the PvP window
 
 For map and minimap coordinates, use WoW's own options in **Options → Interface**.
