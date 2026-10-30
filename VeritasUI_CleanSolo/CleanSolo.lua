@@ -89,6 +89,7 @@ local UNIVERSAL = {
     hideTalkingHead     = false,
     muteTalkingHead     = false,
     hideTopBanners      = false,
+    hideProfessionGear  = false,   -- v1.27.0, owner's request; applies at once
 }
 
 -- ⚠ PER-CHARACTER. These two are the reason per-character storage was requested in the first
@@ -495,6 +496,112 @@ local function HideTopBanners()
     end
 end
 
+-- ── Feature: Hide Profession Gear (v1.27.0) ─────────────────
+-- Crafting or gathering puts a profession outfit on you as a cosmetic transform AURA; removing
+-- that aura puts your own outfit back. Owner's request, 2026-10-29.
+--
+-- ⚠ The aura spell IDs are NOT from Blizzard's UI source (an aura's spell ID is server data, not
+-- UI code). They come from EllesmereUI v9.6.9's transform list (EllesmereUIQoL.lua:4880-4893),
+-- read 2026-10-29. If a profession's outfit still shows, `/cs gear` lists what is on you so the
+-- missing ID can be added here.
+--
+-- Removal: C_UnitAuras.CancelAuraByInstanceID (UnitAuraDocumentation.lua:85, HasRestrictions),
+-- found with GetPlayerAuraBySpellID (:395), so there is no buff-index scan. Never in combat, and
+-- every read is pcall'd and secret-checked: aura data is secret in restricted content, where this
+-- simply does nothing. A cancel refused in combat is retried when combat ends.
+--
+-- Fishing is the exception: its outfit (394009) is re-applied for as long as the fishing channel
+-- (131476) runs, so it is removed when the channel stops.
+local PROFESSION_GEAR_AURAS = {
+    388658,   -- Blacksmithing
+    394015,   -- Jewelcrafting
+    391312,   -- Tailoring
+    394007,   -- Engineering
+    394008,   -- Enchanting
+    394003,   -- Alchemy
+    394016,   -- Inscription
+    394001,   -- Leatherworking
+    394005,   -- Herbalism
+    394006,   -- Mining
+    394011,   -- Skinning
+    391775,   -- Cooking (Chef's Hat)
+    394009,   -- Fishing (removed on channel stop, below)
+}
+local FISHING_AURA, FISHING_CHANNEL = 394009, 131476
+
+local gearFrame = CreateFrame("Frame")
+local gearPending = false
+local gearLast = "none yet"   -- for /cs gear
+
+local function IsSecret(v)
+    return issecretvalue and issecretvalue(v) or false
+end
+
+-- Remove every listed outfit aura on the player. Returns how many were removed.
+local function RemoveProfessionGear(includeFishing)
+    if not (C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID and C_UnitAuras.CancelAuraByInstanceID) then
+        gearLast = "aura API missing"
+        return 0
+    end
+    if InCombatLockdown() then gearPending = true; return 0 end
+    local removed = 0
+    for _, id in ipairs(PROFESSION_GEAR_AURAS) do
+        if includeFishing or id ~= FISHING_AURA then
+            local ok, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, id)
+            local inst = ok and aura and not IsSecret(aura) and aura.auraInstanceID
+            if inst and not IsSecret(inst) then
+                local cok = pcall(C_UnitAuras.CancelAuraByInstanceID, "player", inst)
+                if cok then
+                    removed = removed + 1
+                    gearLast = "removed " .. id
+                else
+                    gearLast = "cancel refused for " .. id
+                end
+            end
+        end
+    end
+    return removed
+end
+
+gearFrame:SetScript("OnEvent", function(_, event, unit, _, spellID)
+    if event == "PLAYER_REGEN_ENABLED" then
+        if gearPending then gearPending = false; RemoveProfessionGear(true) end
+    elseif event == "UNIT_SPELLCAST_CHANNEL_STOP" then
+        if not IsSecret(spellID) and spellID == FISHING_CHANNEL then RemoveProfessionGear(true) end
+    else -- UNIT_AURA, player only
+        RemoveProfessionGear(false)
+    end
+end)
+
+local function SetHideProfessionGear(on)
+    if on then
+        gearFrame:RegisterUnitEvent("UNIT_AURA", "player")
+        gearFrame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", "player")
+        gearFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+        RemoveProfessionGear(false)
+    else
+        gearFrame:UnregisterAllEvents()
+        gearPending = false
+    end
+end
+
+-- /cs gear: what is on you now, so a profession whose outfit still shows can be identified.
+-- Lists the listed outfit auras found, then every buff's name and spell ID (scan pcall'd: aura
+-- data is secret in restricted content).
+local function PrintGearDiag()
+    VUI.Print("Clean Solo", "Hide Profession Gear: " .. ((db and db.hideProfessionGear) and "on" or "off")
+        .. ", last result: " .. gearLast)
+    if not (C_UnitAuras and C_UnitAuras.GetBuffDataByIndex) then return end
+    for i = 1, 40 do
+        local ok, data = pcall(C_UnitAuras.GetBuffDataByIndex, "player", i)
+        if not ok then VUI.Print("Clean Solo", "  buffs can't be read here"); return end
+        if not data then return end
+        local name, id = data.name, data.spellId
+        if IsSecret(name) or IsSecret(id) then VUI.Print("Clean Solo", "  (hidden)")
+        else VUI.Print("Clean Solo", string.format("  %s  %d", tostring(name), id or 0)) end
+    end
+end
+
 -- ── Feature: Hide Error Text ────────────────────────────────
 local function HideErrorText()
     if UIErrorsFrame then
@@ -817,6 +924,10 @@ local function InitializeOptions()
              .. "event banners (level up, new scenario stage, weekly rewards and similar) and the "
              .. "boss kill and loot banner. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
+        { key = "hideProfessionGear",  name = "Hide Profession Gear",
+          tip = "Keeps your own outfit on while you craft, gather or fish, instead of the "
+             .. "profession outfit the game puts on you. Not during combat. Applies at once.",
+          apply = function(value) SetHideProfessionGear(value) end },
     }
 
     -- ⚠ THESE CHECKBOXES ARE MIXED-SCOPE. All the keys but one are account-wide and one
@@ -842,6 +953,8 @@ local function InitializeOptions()
             )
             setting:SetValueChangedCallback(function(_, value)
                 VUI.PrintOnOff("Clean Solo", opt.name, value)
+                -- An option with `apply` takes effect at once instead of after a /reload.
+                if opt.apply and not Unavailable(opt.key) then opt.apply(value) end
             end)
             local init = Settings.CreateCheckbox(category, setting, TipWithReason(opt.tip, opt.key))
             GreyIfUnavailable(init, opt.key)
@@ -1102,6 +1215,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if (db.hideTalkingHead and not Unavailable("hideTalkingHead"))
             or (db.muteTalkingHead and not Unavailable("muteTalkingHead")) then SetupTalkingHead() end
         if db.hideTopBanners and not Unavailable("hideTopBanners") then HideTopBanners() end
+        if db.hideProfessionGear and not Unavailable("hideProfessionGear") then SetHideProfessionGear(true) end
         if db.hideErrorText       then HideErrorText()
         else                           HideErrorTypes()      end
         if not Unavailable("fadeActionBars") then SetupActionBarFading() end
@@ -1131,7 +1245,8 @@ end)
 -- ── Slash commands ──────────────────────────────────────────
 SLASH_VERITASUI_CLEANSOLO1 = "/cleansolo"
 SLASH_VERITASUI_CLEANSOLO2 = "/cs"
-SlashCmdList["VERITASUI_CLEANSOLO"] = function()
+SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
+    if strtrim(msg or ""):lower() == "gear" then PrintGearDiag(); return end
     -- Guard against nil (options init not yet run, or failed) — same
     -- "still loading" pattern as PriorityRotation / ZoneQuests / AH.
     if settingsCategoryID then
