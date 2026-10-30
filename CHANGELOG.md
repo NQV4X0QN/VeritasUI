@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.35.2] - 2026-10-30
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **Sell-strip borders follow your item-quality colours.** If you have changed the colour WoW uses for an item quality, the strip's borders now use it, as your bags do (`UI/SellStrip.lua`)
+- `VeritasUI_AuctionHouse` — **Sell-strip icons light up like bag slots.** Hovering shows Blizzard's bag-slot glow and clicking shows the pressed look, in place of a flat grey wash (`UI/SellStrip.lua`)
+- `VeritasUI_AuctionHouse` — **No stray `/ah browseprobe` report.** If the server refuses the probe's scan, the probe is now cancelled instead of reporting after your next scan (`Core.lua`)
+
+
 ## [1.35.1] - 2026-10-30
 
 ### Fixed
