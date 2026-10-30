@@ -569,9 +569,11 @@ local function MakeButton(parent, index)
     b.count:SetPoint("BOTTOMRIGHT", -1, 1)
     b.count:Hide()
 
-    local hl = b:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints()
-    hl:SetColorTexture(1, 1, 1, 0.25)
+    -- Hover and pressed art of Blizzard's own bag slots (audit A2, v1.35.2): bag buttons are the
+    -- intrinsic ItemButton with no override (ContainerFrame.xml:77), whose textures are these two
+    -- (Blizzard_ItemButton/Shared/ItemButtonTemplate.xml:76-77). Was a flat white 25% wash.
+    b:SetPushedTexture("Interface\\Buttons\\UI-Quickslot-Depress")
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
 
     b:SetScript("OnEnter", function(self)
         ShowButtonTooltip(self)
