@@ -3495,15 +3495,15 @@ end
 
 -- ── Character sheet details (v1.32.0, EllesmereUI-inspired plan phase 6) ──
 -- Three independent options for the character window:
---   charEnchants   -- each slot's enchant beside it, on the side facing the character model
+--   charEnchants   -- enchant and gem status icons beside each slot (check / red X; hover for names).
+--                     Owner's redesign 2026-10-30: enchant NAMES beside the slots were unreadable.
 --   charDurability -- each slot's durability %, when below 100%
 --   charMythicRating -- your Mythic+ rating, just below the item level
 -- Sources (Blizzard_UIPanels_Game/Mainline):
 --   PaperDollItemSlotButton_Update (PaperDollFrame.lua:1694) runs for a slot whenever it changes;
 --   a post-hook (hooksecurefunc on the global) repaints that slot. Slot sides come from the
 --   templates' own IsLeftSide key (PaperDollFrame.xml:76-107: true = left column, false = right,
---   nil = the two weapon slots). Blizzard's gem display sits on the inner edge of each slot, so
---   the enchant text starts past it.
+--   nil = the two weapon slots). The status icons sit beside each slot on the side facing the model.
 --   Enchant: the ItemEnchantmentPermanent line (TooltipDataLineType 15) of the slot's tooltip
 --   data, with Blizzard's own "Enchanted: " prefix (ENCHANTED_TOOLTIP_LINE) removed.
 --   Durability colours: Blizzard's own INVENTORY_ALERT_COLORS via GetInventoryAlertStatus, the
@@ -3512,19 +3512,26 @@ end
 --   window shows it (Blizzard_ChallengesUI.lua:224-231). The line sits between the item level
 --   and Attributes; PaperDollFrame_UpdateStats re-anchors Attributes under the item level every
 --   time (PaperDollFrame.lua:1904-1911), so a post-hook on it moves Attributes below the line.
--- Only our own font strings and our own one frame are created; no Blizzard frame is hidden.
--- ⚠ Wrapped in do ... end: this file sits at Lua's 200-active-locals limit for one chunk (WoW's
--- Lua 5.1 enforces it too, and a file over it fails to load). Only SetupCharacterSheet escapes.
+-- Only our own font strings, icon frames and rating frame are created; no Blizzard frame is hidden.
+-- ⚠ Built inside its own FUNCTION, not a do-block: this file sits near Lua's 200-active-locals
+-- limit for its main chunk (WoW's Lua 5.1 enforces it too; a file over it fails to load). A do-block
+-- does not help -- its locals are still active in the main chunk while it runs -- but a function has
+-- its own 200. Only SetupCharacterSheet escapes. (locals_headroom_test guards the main chunk.)
 local SetupCharacterSheet
-do
+;(function()
     local SLOT_ALERT_INDEX = { [1] = 1, [3] = 2, [5] = 3, [6] = 4, [7] = 5, [8] = 6, [9] = 7,
                                [10] = 8, [16] = 9, [17] = 10 }   -- slot ID -> INVENTORY_ALERT_STATUS_SLOTS
     local ENCHANT_LINE = Enum and Enum.TooltipDataLineType and Enum.TooltipDataLineType.ItemEnchantmentPermanent or 15
-    -- Half of the ~245 px between the slot columns, less the 14 px gap past the gem icons on each
-    -- side and a few pixels of air, so a left- and a right-column text on the same row never meet
-    -- (owner's screenshot, 2026-10-30: at 110 the Helm and Gloves texts ran together).
-    local ENCHANT_TEXT_WIDTH = 100
+    -- Slots that take an enchant this season. NOT in Blizzard's UI source (it is game data): the
+    -- owner's list from Wowhead's Havoc enchants guide, 2026-10-30 -- weapon, helm, shoulders,
+    -- chest, legs (armour kit / spellthread), boots, both rings. The off-hand only counts when it
+    -- holds a weapon (a shield or held-in-off-hand item takes none). Update here each season.
+    local ENCHANTABLE = { [16] = true, [1] = true, [3] = true, [5] = true, [7] = true, [8] = true,
+                          [11] = true, [12] = true, [17] = "weapon" }
+    local ICON_OK, ICON_MISSING = "common-icon-checkmark", "common-icon-redx"   -- Blizzard's own atlases
+    local ICON_SIZE, ICON_GAP = 14, 2
     local charHooked = false
+    local PaintStatus   -- assigned below, used by PaintSlot
     local ratingFrame
     local ratingShown = false   -- our own record: whether WE moved Attributes below the rating line
 
@@ -3537,17 +3544,13 @@ do
                 local text = line.leftText
                 local prefix = ENCHANTED_TOOLTIP_LINE and ENCHANTED_TOOLTIP_LINE:match("^(.-)%%s")
                 if prefix and prefix ~= "" and text:sub(1, #prefix) == prefix then text = text:sub(#prefix + 1) end
-                -- The enchant's own item name repeats the slot: "Enchant Helm - Empowered Rune of
-                -- Avoidance". Keep only what follows the first " - " (owner's request); a name with
-                -- no " - ", such as a weapon rite, is shown whole.
-                local short = text:match("^.- %- (.+)$")
-                return short or text
+                return text
             end
         end
         return nil
     end
 
-    local function SlotText(btn, key, point, relPoint, x, y, justify)
+    local function SlotText(btn, key, point, relPoint, x, y, justify)   -- durability text
         local fs = btn[key]
         if not fs then
             fs = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -3558,29 +3561,113 @@ do
         return fs
     end
 
+    local function SlotIsEnchantable(slotID)
+        local rule = ENCHANTABLE[slotID]
+        if rule ~= "weapon" then return rule == true end
+        local link = GetInventoryItemLink("player", slotID)
+        if not link then return false end
+        local ok, _, _, _, _, _, classID = pcall(C_Item.GetItemInfoInstant, link)
+        return ok and classID == 2   -- Enum.ItemClass.Weapon
+    end
+
+    -- Gems the way Blizzard's own socket display reads them (PaperDollFrame.lua:2775-2780).
+    -- Returns numSockets, numFilled, gem names (for the tooltip).
+    local function GemState(slotID)
+        local link = GetInventoryItemLink("player", slotID)
+        if not (link and C_Item and C_Item.GetItemNumSockets) then return 0, 0, {} end
+        local ok, n = pcall(C_Item.GetItemNumSockets, link)
+        if not ok or type(n) ~= "number" then return 0, 0, {} end
+        local filled, names = 0, {}
+        for i = 1, n do
+            local okG, gemID = pcall(C_Item.GetItemGemID, link, i)
+            if okG and gemID then
+                filled = filled + 1
+                local okN, name = pcall(C_Item.GetItemNameByID, gemID)
+                names[#names + 1] = (okN and name) or ("gem " .. gemID)
+            end
+        end
+        return n, filled, names
+    end
+
+    -- Two fixed positions so the meaning never shifts: 1 = enchant (nearest the slot), 2 = gems.
+    local function StatusIcon(holder, index)
+        holder._icons = holder._icons or {}
+        local f = holder._icons[index]
+        if not f then
+            f = CreateFrame("Frame", nil, holder)
+            f:SetSize(ICON_SIZE, ICON_SIZE)
+            f._tex = f:CreateTexture(nil, "OVERLAY")
+            f._tex:SetAllPoints()
+            f:SetScript("OnEnter", function(self)
+                if not self._tip then return end
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(self._tip[1])
+                for i = 2, #self._tip do GameTooltip:AddLine(self._tip[i], 1, 1, 1) end
+                GameTooltip:Show()
+            end)
+            f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            holder._icons[index] = f
+        end
+        return f
+    end
+
+    local function PlaceIcons(btn, holder)
+        -- Left column: icons run right, away from the slot. Right column and the main hand: left.
+        local outward = (btn.IsLeftSide == true or (btn.IsLeftSide == nil and btn:GetID() ~= 16)) and 1 or -1
+        for i = 1, 2 do
+            local f = StatusIcon(holder, i)
+            f:ClearAllPoints()
+            local offset = 8 + (i - 1) * (ICON_SIZE + ICON_GAP)
+            if outward == 1 then
+                f:SetPoint("LEFT", btn, "RIGHT", offset, 0)
+            else
+                f:SetPoint("RIGHT", btn, "LEFT", -offset, 0)
+            end
+        end
+    end
+
+    local function SetIcon(f, ok, tip)
+        f._tex:SetAtlas(ok and ICON_OK or ICON_MISSING)
+        f._tip = tip
+        f:Show()
+    end
+
+    PaintStatus = function(btn, slotID)
+        local holder = btn._vui_status
+        if not holder then
+            holder = CreateFrame("Frame", nil, btn)
+            holder:SetAllPoints(btn)
+            btn._vui_status = holder
+            PlaceIcons(btn, holder)
+        end
+        holder:Show()
+        local hasItem = GetInventoryItemLink("player", slotID) ~= nil
+        local enchantIcon, gemIcon = StatusIcon(holder, 1), StatusIcon(holder, 2)
+        if hasItem and SlotIsEnchantable(slotID) then
+            local name = EnchantText(slotID)
+            SetIcon(enchantIcon, name ~= nil, name and { "Enchanted", name } or { "Not enchanted" })
+        else
+            enchantIcon:Hide()
+        end
+        local n, filled, names = 0, 0, {}
+        if hasItem then n, filled, names = GemState(slotID) end
+        if n > 0 then
+            local tip = { filled == n and "Gems" or string.format("%d of %d sockets empty", n - filled, n) }
+            for _, g in ipairs(names) do tip[#tip + 1] = g end
+            SetIcon(gemIcon, filled == n, tip)
+        else
+            gemIcon:Hide()
+        end
+    end
+
     local function PaintSlot(btn)
         if not (btn and btn.GetID) then return end
         local slotID = btn:GetID()
-        -- Enchant, beside the slot on the side facing the model.
+        -- Enchant and gem status icons, beside the slot on the side facing the model.
         if db and db.charEnchants then
-            local fs
-            if btn.IsLeftSide == true then
-                fs = SlotText(btn, "_vui_enchant", "LEFT", "RIGHT", 14, 0, "LEFT")
-            elseif btn.IsLeftSide == false then
-                fs = SlotText(btn, "_vui_enchant", "RIGHT", "LEFT", -14, 0, "RIGHT")
-            elseif slotID == 16 then
-                fs = SlotText(btn, "_vui_enchant", "RIGHT", "LEFT", -8, 0, "RIGHT")
-            else
-                fs = SlotText(btn, "_vui_enchant", "LEFT", "RIGHT", 8, 0, "LEFT")
-            end
-            fs:SetWidth(ENCHANT_TEXT_WIDTH)
-            fs:SetWordWrap(false)
-            local text = EnchantText(slotID)
-            fs:SetText(text or "")
-            fs:SetTextColor(0.1, 1, 0.1)   -- the green Blizzard draws enchant lines in
-            fs:SetShown(text ~= nil)
-        elseif btn._vui_enchant then
-            btn._vui_enchant:Hide()
+            PaintStatus(btn, slotID)
+        elseif btn._vui_status then
+            btn._vui_status:Hide()
         end
         -- Durability %, top of the icon, only below 100%.
         if db and db.charDurability then
@@ -3665,7 +3752,7 @@ do
         RepaintAllSlots()
         pcall(UpdateRating)
     end
-end
+end)()
 
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()
@@ -3836,8 +3923,10 @@ local function InitializeOptions()
     -- Each one repaints the open character window at once; the hooks are installed on first use.
     local function CharSheetChanged() SetupCharacterSheet() end
 
-    AddCheckbox("charEnchants", "Show Enchants on Character Sheet",
-        "Shows each item's enchant beside its slot on the character window, in green.",
+    AddCheckbox("charEnchants", "Show Enchants and Gems on Character Sheet",
+        "Beside each slot on the character window: a green check or red X for its enchant (on slots "
+        .. "that take one) and for its gems (on items with sockets). Hover an icon to see the enchant "
+        .. "or gem, or what is missing.",
         CharSheetChanged)
 
     AddCheckbox("charDurability", "Show Durability on Character Sheet",
