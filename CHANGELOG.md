@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.30.0] - 2026-10-30
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Show Target in Tooltips.** A player's or NPC's tooltip shows who they are targeting: "You" in green when it's you, a player's name in their class colour, an NPC's in white. Off by default (`QualityOfLife.lua`, `README.md`)
+- `VeritasUI_QualityOfLife` — **Show Mount in Tooltips.** A mounted player's tooltip shows the mount's icon and name, with a check if you own it and a red X if you don't. Off by default. Both lines are left out wherever the game hides this information from addons, such as some fights in instances (`QualityOfLife.lua`, `README.md`)
+
+
 ## [1.29.0] - 2026-10-30
 
 ### Added

@@ -34,6 +34,7 @@ Settings: **Options → AddOns → Clean Solo**, or `/cs`, grouped under **Fade*
 - **Skip Cinematics** (off until you turn it on): Escape skips a cinematic or movie straight away instead of asking first
 - **NPC shortcuts** (each off until you turn it on): pick an NPC's only dialogue option, **auto accept** quests, and **auto turn in** completed quests — separate options, and holding Shift while you talk to the NPC pauses them. Reward choices and quests that cost gold are always left to you
 - **Train All** button at trainers (off until you turn it on): learns everything available that you can afford in one click
+- **Tooltip lines** (each off until you turn it on): who a player or NPC is targeting, green when it's you, and the mount a player is riding, with a check or red X for whether you own it. Left out where the game hides this from addons
 - **Journeys**: adds the "Show as Experience Bar" checkbox to Delves and Prey cards, and lets you click the reputation or honor bar to open that faction's page or the PvP window
 
 For map and minimap coordinates, use WoW's own options in **Options → Interface**.

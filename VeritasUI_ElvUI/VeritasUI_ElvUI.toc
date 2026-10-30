@@ -1,7 +1,7 @@
 ## Interface: 120105
 ## Title: VeritasUI — ElvUI
 ## Notes: Styles VeritasUI to match ElvUI. Only loads when ElvUI is installed. |cFF888888by NQV4X0QN|r
-## Version: 1.29.0
+## Version: 1.30.0
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib, ElvUI
 ## OptionalDeps: VeritasUI_AdvancedOptions, VeritasUI_AuctionHouse, VeritasUI_CleanSolo, VeritasUI_PriorityRotation, VeritasUI_QualityOfLife, VeritasUI_ZoneQuests
