@@ -61,6 +61,8 @@ Open it with `/ao`. It has its own window rather than an Options panel.
 
 Stopped using ElvUI? ElvUI changes a number of these settings (nameplates for every NPC among them) and they stay changed after it is turned off. Type `/ao elvui`, or tick **Changed by ElvUI** on the All CVars tab, to see the ones that differ from Blizzard's defaults and reset them, one at a time or all at once. VeritasUI mentions it once, on your first login without ElvUI.
 
+Tried another addon and something odd stayed behind? Type `/ao changed`, or tick **Changed** on the All CVars tab, to list every setting that differs from Blizzard's default, whoever changed it. Right-click a row to reset it, or use **Reset All to Default**, which resets only the rows listed: search first (for example `nameplate`) to keep your own graphics and sound choices.
+
 ### VeritasUI Lib — shared core
 Required by every other module. It also provides:
 

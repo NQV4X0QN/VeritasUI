@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.23.0] - 2026-10-29
+
+### Added
+
+- `VeritasUI_AdvancedOptions` — **Changed: put back settings any addon left behind.** Tick **Changed** on the All CVars tab, or type `/ao changed`, to list every setting that differs from Blizzard's default, whoever changed it. Right-click a row to reset it, or use **Reset All to Default**, which resets only the rows listed, so searching first (for example `nameplate`) leaves the rest alone. A red line warns while ElvUI or EllesmereUI is still running, since they set some of these again when they load (`Browser.lua`, `Core.lua`, `README.md`)
+- `VeritasUI_AdvancedOptions` — **EllesmereUI's settings are listed.** The All CVars tab now includes the settings EllesmereUI changes, such as friendly nameplates, the camera distance and spell IDs on aura tooltips, so the Changed list can find what it left behind (`EllesmereUIChanges.lua`, new)
+
+
 ## [1.22.2] - 2026-10-29
 
 ### Added
