@@ -147,6 +147,7 @@ local UNIVERSAL = {
     -- to other players who never asked for that.
     followReputationGains = false,
     repBarRenownLevel = false,    -- "[18/20]" beside the name on the reputation bar (owner, 2026-10-30)
+    greatVaultButton  = false,    -- Great Vault button by the minimap's mail icon (owner, 2026-10-30)
     -- EllesmereUI-inspired plan, phase 2 (v1.28.0). OFF by default for the same reason: they
     -- change how two of Blizzard's own confirmations behave.
     fillDeleteConfirm = false,   -- types DELETE into the delete-item confirmation
@@ -2985,6 +2986,160 @@ local SetRenownOnRepBar
     end
 end)()
 
+-- ── Great Vault button beside the minimap ───────────────────
+-- A click opens the Great Vault. Shown whenever the vault holds anything: a slot unlocked this
+-- week, or last week's rewards still waiting. Gone when there is nothing at all (owner, 2026-10-30).
+-- SOURCED (wow-ui-source live):
+--   * Look: the Journeys window's own vault button, atlases ui-journeys-greatvault-button and
+--     -pressed (Blizzard_EncounterJournal.xml:1435-1441).
+--   * Click: WeeklyRewards_ShowUI(), exactly what that button calls (Blizzard_EncounterJournal.lua
+--     :3684-3687; Blizzard_WeeklyRewards_Bootstrap.lua:7-12 loads the addon and shows the panel).
+--     ShowUIPanel from addon code is refused in combat (landmine 125), so a click there does nothing.
+--   * Unlocked slot: progress >= threshold, the vault's own test (Blizzard_WeeklyRewards.lua:428).
+--     Last week's rewards: C_WeeklyRewards.HasAvailableRewards (the vault's own check, :95).
+--   * Place: MinimapCluster.IndicatorFrame, a HorizontalLayoutFrame of fixed 20x15 holding the
+--     mail icon (layoutIndex 1) and the crafting-order icon (2) (Blizzard_Minimap Minimap.xml:83-149).
+--     With neither shown we take that spot; otherwise we sit under the row.
+-- ⚠ MinimapCluster is an Edit Mode system frame (landmine 114): nothing of Blizzard's is moved,
+--   hooked or written. Our button is parented to UIParent and only READS their frames, from our
+--   own OnUpdate, to follow their position, scale, visibility and alpha.
+local GreatVault = {}
+;(function()
+    local SIZE, GAP = 22, 2
+    local button, watcher, anchoredTo, sinceCheck = nil, nil, nil, 0
+    local enabled, active = false, false
+    local function Secret(v) return issecretvalue and issecretvalue(v) end
+
+    local function VaultHasAnything()
+        local wr = _G.C_WeeklyRewards
+        if not wr then return false end
+        if wr.HasAvailableRewards then
+            local ok, has = pcall(wr.HasAvailableRewards)
+            if ok and has == true then return true end
+        end
+        if not wr.GetActivities then return false end
+        local ok, acts = pcall(wr.GetActivities)
+        if not ok or type(acts) ~= "table" then return false end
+        for _, a in ipairs(acts) do
+            local p, t = a and a.progress, a and a.threshold
+            if not Secret(p) and not Secret(t) and type(p) == "number" and type(t) == "number"
+                and t > 0 and p >= t then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function Shown(f) return f and f.IsShown and f:IsShown() end
+
+    local function Follow()
+        local ind = _G.MinimapCluster and _G.MinimapCluster.IndicatorFrame
+        if not (ind and active and ind:IsVisible()) then
+            if button:IsShown() then button:Hide() end
+            return
+        end
+        local target, point, rel, y = ind, "TOP", "TOP", 0
+        if Shown(ind.MailFrame) then
+            target, rel, y = ind.MailFrame, "BOTTOM", -GAP
+        elseif Shown(ind.CraftingOrderFrame) then
+            target, rel, y = ind.CraftingOrderFrame, "BOTTOM", -GAP
+        end
+        local key = tostring(target) .. rel
+        if key ~= anchoredTo then
+            button:ClearAllPoints()
+            button:SetPoint(point, target, rel, 0, y)
+            anchoredTo = key
+        end
+        local scale = ind:GetEffectiveScale() / UIParent:GetEffectiveScale()
+        if scale > 0 and math.abs(button:GetScale() - scale) > 0.001 then button:SetScale(scale) end
+        local alpha = ind:GetEffectiveAlpha()
+        if button:GetAlpha() ~= alpha then button:SetAlpha(alpha) end
+        if not button:IsShown() then button:Show() end
+    end
+
+    local function Refresh()
+        active = enabled and VaultHasAnything()
+        sinceCheck = 0
+        Follow()
+    end
+
+    local function Build()
+        button = CreateFrame("Button", "VUIQoLGreatVaultButton", UIParent)
+        button:SetSize(SIZE, SIZE)
+        button:SetFrameStrata("MEDIUM")
+        button:SetNormalAtlas("ui-journeys-greatvault-button")
+        button:SetPushedAtlas("ui-journeys-greatvault-button-pressed")
+        local pushed = button:GetPushedTexture()
+        if pushed and pushed.SetBlendMode then pushed:SetBlendMode("ADD") end
+        -- AlphaHighlightButtonMixin's behaviour (SharedUIPanelTemplates.lua:1648-1673): the
+        -- highlight is the button's own art, switching to the pressed art while held.
+        button:SetHighlightAtlas("ui-journeys-greatvault-button")
+        button:SetScript("OnMouseDown", function(self)
+            self:SetHighlightAtlas("ui-journeys-greatvault-button-pressed")
+        end)
+        button:SetScript("OnMouseUp", function(self)
+            self:SetHighlightAtlas("ui-journeys-greatvault-button")
+        end)
+        button:Hide()
+        button:SetScript("OnClick", function()
+            if InCombatLockdown() then return end
+            local vault = _G.WeeklyRewardsFrame
+            if vault and vault:IsShown() then
+                pcall(HideUIPanel, vault)
+            elseif _G.WeeklyRewards_ShowUI then
+                pcall(_G.WeeklyRewards_ShowUI)
+            end
+        end)
+        button:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip_SetTitle(GameTooltip, GREAT_VAULT_REWARDS or "Great Vault")
+            if InCombatLockdown() then
+                GameTooltip_AddErrorLine(GameTooltip, ERR_NOT_IN_COMBAT or "You can't do that while in combat")
+            else
+                GameTooltip_AddInstructionLine(GameTooltip,
+                    WEEKLY_REWARDS_CLICK_TO_PREVIEW_INSTRUCTIONS or "Click to open the Great Vault.")
+            end
+            GameTooltip:Show()
+        end)
+        button:SetScript("OnLeave", function(self)
+            if GameTooltip:GetOwner() == self then GameTooltip:Hide() end
+        end)
+
+        -- Parentless, so hiding the button never stops it. Events refresh at once; the 10 s
+        -- re-read catches a weekly reset that arrives without one (not measured either way).
+        watcher = CreateFrame("Frame")
+        for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "WEEKLY_REWARDS_UPDATE",
+                             "CHALLENGE_MODE_COMPLETED", "CHALLENGE_MODE_MAPS_UPDATE" }) do
+            pcall(watcher.RegisterEvent, watcher, e)
+        end
+        watcher:SetScript("OnEvent", Refresh)
+        watcher:SetScript("OnUpdate", function(_, elapsed)
+            sinceCheck = sinceCheck + (elapsed or 0)
+            if sinceCheck >= 10 then Refresh() else Follow() end
+        end)
+    end
+
+    -- Hidden frames still get events, so `enabled` (not the watcher's visibility) is the gate.
+    function GreatVault.Set(on)
+        enabled = on and true or false
+        if on then
+            if not button then Build() end
+            watcher:Show()
+            Refresh()
+        elseif button then
+            watcher:Hide()
+            active = false
+            button:Hide()
+        end
+    end
+
+    -- Session-only size, for tuning in game: /qol vaultsize <n>.
+    function GreatVault.Size(n)
+        if n then SIZE = n; if button then button:SetSize(n, n) end end
+        return SIZE
+    end
+end)()
+
 -- ── Map Notes (/note) ───────────────────────────────────────
 -- `/note <text>` drops a note where the player is standing; it shows as a pin on the World Map
 -- with the text in its tooltip, and a click on the pin offers "Remove Note". Notes made inside
@@ -4035,6 +4190,11 @@ local function InitializeOptions()
         .. "name. Past the top renown, it counts the levels earned beyond it, such as [21/20].",
         SetRenownOnRepBar)
 
+    AddCheckbox("greatVaultButton", "Show Great Vault Button by the Minimap",
+        "Shows the Great Vault button under the minimap's mail icon whenever your vault holds "
+        .. "something, including last week's rewards. Click it to open the vault.",
+        GreatVault.Set)
+
     -- Both hooks check the saved value each time, so turning either off applies at once; turning
     -- one on installs its hook the first time.
     AddCheckbox("fillDeleteConfirm", "Fill In DELETE",
@@ -4207,6 +4367,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 
         if db.followReputationGains then RepFollowStart() end
         if db.repBarRenownLevel then SetRenownOnRepBar(true) end
+        if db.greatVaultButton then GreatVault.Set(true) end
         if db.fillDeleteConfirm then SetupDeleteFill() end
         if db.skipCinematics then SetupSkipCinematics() end
         UpdateNpcEvents()
@@ -4459,6 +4620,14 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
     local arg = (msg and strtrim(msg)) or ""
     if arg:lower() == "mappins" then DumpMapPins(); return end
     if arg:lower() == "notes" then DumpMapNotes(); return end
+    local vsize = arg:lower():match("^vaultsize%s*(%d*)$")
+    if vsize then
+        local n = tonumber(vsize)
+        if n then n = math.max(12, math.min(40, n)) end
+        VUI.Print("Quality of Life", format("Great Vault button is |cFFFFFF00%d|r px "
+            .. "(this session only).", GreatVault.Size(n)))
+        return
+    end
     local ntail = arg:lower():match("^delvenudge%s*(.*)$")
     if ntail then
         -- Guarded: these branches return before the handler's own db nil-check below,
