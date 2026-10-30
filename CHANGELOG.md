@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.25.0] - 2026-10-29
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Fade Delay: faded elements wait before fading.** A slider from 0 to 5 seconds sets how long the micro menu, faded action bars and player frame stay visible after you move the mouse away. It applies at once, with no `/reload`, and moving back during the delay keeps them up. At 0 they fade exactly as before. The chat window and its tabs keep Blizzard's own timing, so the tabs never float over an empty chat window (`CleanSolo.lua`, `Lib.lua`, `README.md`)
+
+### Changed
+
+- `VeritasUI_CleanSolo` — **Options grouped under Fade and Hide.** The settings page now lists every fade under a **Fade** header and every hide under a **Hide** header, the way Blizzard's own Options pages are laid out, instead of mixing the two. Your settings are unchanged (`CleanSolo.lua`)
+- `VeritasUI_ElvUI` — **Fade Delay is greyed out with ElvUI,** along with the other Clean Solo fades (`Behaviour.lua`)
+
+
 ## [1.24.0] - 2026-10-29
 
 ### Added

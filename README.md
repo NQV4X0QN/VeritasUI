@@ -13,10 +13,11 @@ Hides or fades the parts of the interface you don't need most of the time.
 
 - Chat tabs and the chat background fade away when you're not using chat, and come back on mouseover
 - The micro menu, chosen action bars (2–8) and your player frame fade out when idle and reappear on mouseover, in combat, or when you take damage
+- **Fade Delay**: keep the micro menu, action bars and player frame up for 0 to 5 seconds after the mouse leaves, before they fade (the chat window keeps Blizzard's own timing)
 - Optionally hides the social button, the chat menu and voice buttons, the bag bar, and macro names on action buttons
 - Hides red error text — all of it, or only the kinds you pick (combat, spells and cooldowns, items and bags, mail/vendors/bank, looting, mounts and flight paths), so "Internal mail database error." can go while "You are too far away!" stays
 
-Settings: **Options → AddOns → Clean Solo**, or `/cs`. Changes apply after a `/reload`.
+Settings: **Options → AddOns → Clean Solo**, or `/cs`, grouped under **Fade** and **Hide**. Changes apply after a `/reload`, except Fade Delay, which applies at once.
 
 ### Quality of Life — small conveniences
 - **Item levels** on gear in your bags, bank, warband bank, character panel and at merchants
