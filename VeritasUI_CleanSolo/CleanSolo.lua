@@ -81,6 +81,9 @@ local UNIVERSAL = {
     -- hideErrorText, and must share their scope; like fadeActionBarsMask it has no default
     -- here because the Settings registration seeds it.
     hideErrorTypes      = {},
+    -- Fade Delay slider, seconds (0-5). One value for every fade, an interface choice like the
+    -- rest of this table. 0 = each fade's own built-in delay, i.e. the behaviour before v1.25.0.
+    fadeDelay           = 0,
 }
 
 -- ⚠ PER-CHARACTER. These two are the reason per-character storage was requested in the first
@@ -264,7 +267,9 @@ local function SetupChatTabFading()
 
     local function HideAllTabs()
         CancelTimers()
-        hideTimer = C_Timer.NewTimer(FADE_DELAY, function()
+        -- Fade Delay slider (VUI.SetFadeDelay): Blizzard's own tab delay stays the floor.
+        local delay = math.max(FADE_DELAY, VUI.GetFadeDelay and VUI.GetFadeDelay() or 0)
+        hideTimer = C_Timer.NewTimer(delay, function()
             hideTimer = nil
             if not IsOverAnyChatElement() then
                 for _, tab in ipairs(tabs) do
@@ -914,6 +919,36 @@ local function InitializeOptions()
         .. "Requires |cFFFFFF00/reload|r to apply.", "fadeActionBars"))
     GreyIfUnavailable(fadeInit, "fadeActionBars")
 
+    -- ── Fade Delay — slider, UNIVERSAL. The one Clean Solo setting that applies at once: it is a
+    -- number the faders read each time they are about to fade (VUI.SetFadeDelay), not a hook, so
+    -- the /reload policy at the top of this file does not apply to it. 0.5 s steps, the step
+    -- Blizzard's own seconds-valued sliders use (Blizzard_SettingsDefinitions_Frame/Mounts.lua:114).
+    local delaySetting = Settings.RegisterAddOnSetting(
+        category,
+        ADDON_NAME .. "_fadeDelay",
+        "fadeDelay",
+        db,                          -- UNIVERSAL
+        "number",
+        "Fade Delay",
+        UNIVERSAL.fadeDelay
+    )
+    delaySetting:SetValueChangedCallback(function(_, value)
+        VUI.SetFadeDelay(value)
+    end)
+    local delayOptions = Settings.CreateSliderOptions(0, 5, 0.5)
+    local labelRight = MinimalSliderWithSteppersMixin and MinimalSliderWithSteppersMixin.Label
+        and MinimalSliderWithSteppersMixin.Label.Right
+    if labelRight and delayOptions.SetLabelFormatter then
+        delayOptions:SetLabelFormatter(labelRight, function(value)
+            return string.format("%.1f sec", value)
+        end)
+    end
+    local delayInit = Settings.CreateSlider(category, delaySetting, delayOptions, TipWithReason(
+        "How long the faded chat tabs, micro menu, player frame and action bars stay visible "
+        .. "after you move the mouse away, before they fade. 0 keeps the usual short delay. "
+        .. "Applies at once.", "fadeDelay"))
+    GreyIfUnavailable(delayInit, "fadeDelay")
+
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
     VUI.RegisterSettingsLabel(SETTINGS_LABEL)
@@ -962,6 +997,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         end
 
         InitializeOptions()
+        -- Before any fader runs, so the first fade of the session already uses it.
+        if VUI.SetFadeDelay then VUI.SetFadeDelay(db.fadeDelay) end
         if db.hideSocialButton and not Unavailable("hideSocialButton") then HideSocialButton() end
         if db.fadeChatTabs      and not Unavailable("fadeChatTabs")      then SetupChatTabFading()  end
         if db.transparentChatBG and not Unavailable("transparentChatBG") then SetupTransparentChatBG() end

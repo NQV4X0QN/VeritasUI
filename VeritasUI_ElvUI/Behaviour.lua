@@ -18,7 +18,7 @@ if not (VUI and NS.E) then return end
 if VUI.SetOptionUnavailable then
     local REASON = "Not available with ElvUI (handled by ElvUI)."
     for _, key in ipairs({ "fadeChatTabs", "transparentChatBG", "fadeMicroMenu",
-                           "fadePlayerFrame", "fadeActionBars",
+                           "fadePlayerFrame", "fadeActionBars", "fadeDelay",
                            "hideSocialButton", "hideChatButtons", "hideVoiceChatButton",
                            "hideBagButtons", "hideMacroNames" }) do
         VUI.SetOptionUnavailable("VeritasUI_CleanSolo", key, REASON)

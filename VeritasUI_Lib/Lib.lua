@@ -188,6 +188,24 @@ local HOVER_FADE_OUT  = 0.5
 local HOVER_FADE_POLL_RATE = 0.1    -- ~10 Hz always
 local HOVER_LEAVE_GRACE = 0.15 -- seconds after last "not over" before fading
 
+-- Fade Delay (CleanSolo's slider, v1.25.0): how long a faded element stays up after it no longer
+-- needs to show, before it starts fading. ONE value for every fader so they behave alike. Each
+-- fader keeps its own built-in delay as a floor (hover 0.15 s, player frame 0.5 s, chat tabs
+-- Blizzard's CHAT_TAB_HIDE_DELAY), so 0 means exactly the behaviour before the slider existed.
+-- Read at the moment a fade is about to start, so a change applies at once, without /reload.
+local FADE_DELAY_MAX = 5
+local fadeDelay = 0
+
+function VUI.SetFadeDelay(seconds)
+    seconds = tonumber(seconds) or 0
+    if seconds < 0 then seconds = 0 elseif seconds > FADE_DELAY_MAX then seconds = FADE_DELAY_MAX end
+    fadeDelay = seconds
+end
+
+function VUI.GetFadeDelay()
+    return fadeDelay
+end
+
 -- Widgets that belong to a bar but are NOT direct children of it.
 --
 -- Spell flyouts — Pet Utility, mage teleports, profession tools, warlock demons —
@@ -313,7 +331,7 @@ function VUI.HookHoverFade(target, shouldStayVisible)
             local now = GetTime()
             if not graceSince then
                 graceSince = now
-            elseif now - graceSince >= HOVER_LEAVE_GRACE then
+            elseif now - graceSince >= math.max(HOVER_LEAVE_GRACE, fadeDelay) then
                 FadeOut()
             end
         end
@@ -409,7 +427,7 @@ function VUI.HookPlayerFrameFade(frame, inCombatRef)
                 wasShowing = true
             end
         elseif wasShowing and not delayTimer then
-            delayTimer = C_Timer.NewTimer(FADE_OUT_DELAY, DoFadeOut)
+            delayTimer = C_Timer.NewTimer(math.max(FADE_OUT_DELAY, fadeDelay), DoFadeOut)
         end
     end
 
