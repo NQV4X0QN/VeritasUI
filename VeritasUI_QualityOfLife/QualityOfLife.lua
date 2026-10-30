@@ -3005,7 +3005,7 @@ end)()
 --   own OnUpdate, to follow their position, scale, visibility and alpha.
 local GreatVault = {}
 ;(function()
-    local SIZE, GAP = 22, 2
+    local SIZE, GAP, OPACITY = 22, 2, 1
     local button, watcher, anchoredTo, sinceCheck = nil, nil, nil, 0
     local enabled, active = false, false
     local function Secret(v) return issecretvalue and issecretvalue(v) end
@@ -3052,7 +3052,7 @@ local GreatVault = {}
         end
         local scale = ind:GetEffectiveScale() / UIParent:GetEffectiveScale()
         if scale > 0 and math.abs(button:GetScale() - scale) > 0.001 then button:SetScale(scale) end
-        local alpha = ind:GetEffectiveAlpha()
+        local alpha = ind:GetEffectiveAlpha() * OPACITY
         if button:GetAlpha() ~= alpha then button:SetAlpha(alpha) end
         if not button:IsShown() then button:Show() end
     end
@@ -3137,6 +3137,13 @@ local GreatVault = {}
     function GreatVault.Size(n)
         if n then SIZE = n; if button then button:SetSize(n, n) end end
         return SIZE
+    end
+
+    -- Session-only opacity, for tuning in game: /qol vaultalpha <0-100>. Multiplies the
+    -- minimap's own alpha, which the button already follows.
+    function GreatVault.Opacity(pct)
+        if pct then OPACITY = pct / 100; if button then Follow() end end
+        return math.floor(OPACITY * 100 + 0.5)
     end
 end)()
 
@@ -4626,6 +4633,14 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
         if n then n = math.max(12, math.min(40, n)) end
         VUI.Print("Quality of Life", format("Great Vault button is |cFFFFFF00%d|r px "
             .. "(this session only).", GreatVault.Size(n)))
+        return
+    end
+    local valpha = arg:lower():match("^vaultalpha%s*(%d*)$")
+    if valpha then
+        local n = tonumber(valpha)
+        if n then n = math.max(10, math.min(100, n)) end
+        VUI.Print("Quality of Life", format("Great Vault button opacity is |cFFFFFF00%d%%|r "
+            .. "(this session only).", GreatVault.Opacity(n)))
         return
     end
     local ntail = arg:lower():match("^delvenudge%s*(.*)$")
