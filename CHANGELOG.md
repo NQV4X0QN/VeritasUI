@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.32.0] - 2026-10-30
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Enchants and gems on the character sheet.** Beside each slot that can hold an enchant or gems, a green check when they are all there and a red X when one is missing. Hover it for the item's name, what's missing in red, and the enchant and gems it has, with the enchant in the same colour as on the item's tooltip. Enchants are expected on the weapon, head, chest, legs, feet and rings; gloves or other slots enchanted anyway show a green check, never a red X. A sub-option, **Class-Colored Labels**, shows "Enchant:" and "Gem:" in your class colour. Off by default (`QualityOfLife.lua`, `README.md`)
+- `VeritasUI_QualityOfLife` — **Durability on the character sheet.** Each slot below 100% shows its durability, in Blizzard's yellow or red when the item is damaged or broken. Off by default (`QualityOfLife.lua`, `README.md`)
+- `VeritasUI_QualityOfLife` — **Mythic+ rating on the character sheet,** under your item level, in Blizzard's rating colour. Off by default (`QualityOfLife.lua`, `README.md`)
+
+
 ## [1.31.0] - 2026-10-30
 
 ### Added
