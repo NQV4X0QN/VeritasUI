@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.35.0] - 2026-10-30
+
+### Removed
+
+- `VeritasUI_ElvUI` — **Retired.** The optional module that styled VeritasUI to match ElvUI is no longer part of the suite. If you installed it, delete the `VeritasUI_ElvUI` folder from your AddOns folder. Its code is kept on the `elvui-archive` branch on GitHub. Advanced Options still lists the settings ElvUI changes, so you can put them back after leaving ElvUI (`README.md`)
+
+
 ## [1.34.5] - 2026-10-30
 
 ### Changed
