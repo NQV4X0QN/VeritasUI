@@ -837,6 +837,96 @@ function VUI.ShowCopyMenu(owner)
     MenuUtil.CreateContextMenu(owner, BuildCopyMenu)
 end
 
+----------------------------------------------------------------
+--  One "VeritasUI" entry on the AddOns tab, with every module's page nested under it
+--  (owner, 2026-10-30). Blizzard draws group headers only on the Game tab
+--  (Blizzard_CategoryList.lua:411-417) and files every addon under one unheaded "AddOns"
+--  group (Blizzard_Settings.lua:133-137), so a parent category with subcategories is the
+--  AddOns-tab way to group a suite (Blizzard_ImplementationReadme.lua:9-19).
+--   * The parent is a canvas page: a title styled like Blizzard's page header
+--     (Blizzard_SettingsList.xml:9-23) and the installed modules with their TOC notes.
+--     Canvas, not a vertical list, so it carries no Defaults button that would reset nothing.
+--   * Subcategories inherit the AddOns tab from the parent (Blizzard_Category.lua:65-73).
+--     Each module still calls Settings.RegisterAddOnCategory(subcategory): for a category with a
+--     parent that only rebuilds the list (Blizzard_CategoryList.lua:299-305), which is what makes
+--     a page registered after the parent appear.
+--   * Expanded by default and sorted by name (SetExpanded / SetShouldSortAlphabetically,
+--     Blizzard_Category.lua:114-136, read by CreateSection, Blizzard_CategoryList.lua:392-407).
+----------------------------------------------------------------
+local settingsParent
+local SUITE_MODULES = {   -- folder, shown name; Lib and the ElvUI layer have no page of their own
+    { "VeritasUI_AdvancedOptions",  "Advanced Options", "/ao" },
+    { "VeritasUI_AuctionHouse",     "Auction House" },
+    { "VeritasUI_CleanSolo",        "Clean Solo" },
+    { "VeritasUI_PriorityRotation", "Priority Rotation" },
+    { "VeritasUI_QualityOfLife",    "Quality of Life" },
+    { "VeritasUI_ZoneQuests",       "Zone Quests" },
+}
+
+local function BuildSuitePage()
+    local page = CreateFrame("Frame")
+    local title = page:CreateFontString(nil, "ARTWORK", "GameFontHighlightHuge")
+    title:SetPoint("TOPLEFT", 7, -22)
+    title:SetJustifyH("LEFT")
+    title:SetText("VeritasUI")
+    local divider = page:CreateTexture(nil, "ARTWORK")
+    divider:SetAtlas("Options_HorizontalDivider", true)
+    divider:SetPoint("TOP", 0, -50)
+    local version = page:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    version:SetPoint("TOPLEFT", 20, -70)
+    version:SetText("Version " .. tostring(VUI.VERSION))
+
+    local rows = {}
+    page.OnRefresh = function()
+        local isLoaded = C_AddOns and C_AddOns.IsAddOnLoaded
+        local meta = C_AddOns and C_AddOns.GetAddOnMetadata
+        local y, n = -100, 0
+        for _, m in ipairs(SUITE_MODULES) do
+            local okL, loaded = pcall(isLoaded, m[1])
+            if okL and loaded then
+                n = n + 1
+                local row = rows[n]
+                if not row then
+                    row = {
+                        name  = page:CreateFontString(nil, "ARTWORK", "GameFontNormal"),
+                        notes = page:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall"),
+                    }
+                    row.notes:SetJustifyH("LEFT")
+                    rows[n] = row
+                end
+                row.name:SetPoint("TOPLEFT", 20, y)
+                row.name:SetText(m[3] and (m[2] .. "  |cFFFFFFFF(" .. m[3] .. ")|r") or m[2])
+                local okN, notes = pcall(meta, m[1], "Notes")
+                notes = (okN and type(notes) == "string") and notes:gsub("%s*|c%x%x%x%x%x%x%x%x.-|r", "") or ""
+                row.notes:SetPoint("TOPLEFT", 20, y - 18)
+                row.notes:SetPoint("RIGHT", page, "RIGHT", -20, 0)
+                row.notes:SetText(notes)
+                row.name:Show(); row.notes:Show()
+                y = y - 44
+            end
+        end
+        for i = n + 1, #rows do rows[i].name:Hide(); rows[i].notes:Hide() end
+    end
+    page:SetScript("OnShow", page.OnRefresh)
+    return page
+end
+
+-- Every module registers its options page through this instead of
+-- Settings.RegisterVerticalLayoutCategory; returns the same (category, layout) pair.
+function VUI.RegisterSettingsCategory(name)
+    local sub = Settings.RegisterVerticalLayoutSubcategory
+    if not sub or not Settings.RegisterCanvasLayoutCategory then
+        return Settings.RegisterVerticalLayoutCategory(name)
+    end
+    if not settingsParent then
+        settingsParent = Settings.RegisterCanvasLayoutCategory(BuildSuitePage(), "VeritasUI")
+        if settingsParent.SetExpanded then settingsParent:SetExpanded(true) end
+        if settingsParent.SetShouldSortAlphabetically then settingsParent:SetShouldSortAlphabetically(true) end
+        Settings.RegisterAddOnCategory(settingsParent)
+    end
+    return sub(settingsParent, name)
+end
+
 VUI._settingsLabels = {}
 local reloadBtn
 local copyBtn

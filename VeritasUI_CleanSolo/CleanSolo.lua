@@ -835,7 +835,7 @@ local function GreyIfUnavailable(initializer, key)
 end
 
 local function InitializeOptions()
-    local category, layout = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
+    local category, layout = VUI.RegisterSettingsCategory(SETTINGS_LABEL)
 
     -- Two groups under section headers, the way Blizzard's own Options pages are laid out
     -- (layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(...)),

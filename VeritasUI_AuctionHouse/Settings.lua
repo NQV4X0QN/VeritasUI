@@ -13,7 +13,7 @@ if not VUI then return end
 local SETTINGS_LABEL = "Auction House"
 
 local function BuildNativeSettingsPanel()
-    local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
+    local category = VUI.RegisterSettingsCategory(SETTINGS_LABEL)
 
     -- Seed the tooltip defaults here too, so this panel never depends on
     -- Tooltip.lua's PLAYER_LOGIN frame having fired first (cross-frame event

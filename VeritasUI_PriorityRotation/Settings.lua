@@ -511,7 +511,7 @@ end
 -- ── Native Settings Panel ────────────────────────────────────────
 
 local function BuildNativeSettingsPanel()
-    local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
+    local category = VUI.RegisterSettingsCategory(SETTINGS_LABEL)
 
     local enableSetting = Settings.RegisterAddOnSetting(
         category,

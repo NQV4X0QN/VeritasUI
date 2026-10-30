@@ -4064,7 +4064,7 @@ end)()
 
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()
-    local category, layout = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
+    local category, layout = VUI.RegisterSettingsCategory(SETTINGS_LABEL)
 
     -- Section headers, the way Blizzard's own Options pages are laid out and as Clean Solo does
     -- (layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(...)),

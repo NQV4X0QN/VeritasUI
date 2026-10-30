@@ -325,7 +325,7 @@ end
 local settingsCategoryID
 
 local function InitializeOptions()
-    local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
+    local category = VUI.RegisterSettingsCategory(SETTINGS_LABEL)
 
     local enableSetting = Settings.RegisterAddOnSetting(
         category,
