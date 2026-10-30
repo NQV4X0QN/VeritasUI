@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.27.0] - 2026-10-29
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Hide Profession Gear: keep your own outfit while you work.** A new option in the Hide group removes the profession outfit the game puts on you when you craft, gather or fish, for all eleven crafting and gathering professions plus Cooking's Chef's Hat. The fishing outfit goes when you stop fishing. Never during combat: an outfit put on in a fight is removed when the fight ends. Applies at once, off by default. Confirmed in game for Herbalism, Mining and Fishing; if a crafting outfit still shows, `/cs gear` lists what you're wearing so it can be added (`CleanSolo.lua`, `README.md`)
+
+
 ## [1.26.0] - 2026-10-29
 
 ### Added
