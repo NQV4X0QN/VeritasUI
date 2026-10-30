@@ -4064,7 +4064,18 @@ end)()
 
 -- ── Options Panel ───────────────────────────────────────────
 local function InitializeOptions()
-    local category = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
+    local category, layout = Settings.RegisterVerticalLayoutCategory(SETTINGS_LABEL)
+
+    -- Section headers, the way Blizzard's own Options pages are laid out and as Clean Solo does
+    -- (layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(...)),
+    -- Blizzard_SettingsDefinitions_Frame/Interface.lua:18). Owner's request, 2026-10-30: the page
+    -- was one long list. Every section holds at least two options (his rule; qol_sections_test).
+    -- Order is presentation only; every key is unchanged.
+    local function Header(name)
+        if layout and layout.AddInitializer and CreateSettingsListSectionHeaderInitializer then
+            layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(name))
+        end
+    end
 
     -- An option another addon has taken over (VUI.SetOptionUnavailable; today VeritasUI_ElvUI,
     -- when ElvUI's own repair or grey-selling is switched on): greyed, with the reason added to
@@ -4095,6 +4106,7 @@ local function InitializeOptions()
         return init
     end
 
+    Header("Character and Gear")
     AddCheckbox("showItemLevels", "Show Item Levels",
         "Shows item levels on gear in your bags, bank, character panel and at merchants.",
         function(value)
@@ -4108,6 +4120,34 @@ local function InitializeOptions()
             end
         end)
 
+    -- Each one repaints the open character window at once; the hooks are installed on first use.
+    local function CharSheetChanged() SetupCharacterSheet() end
+
+    local enchantsInit = AddCheckbox("charEnchants", "Show Enchants and Gems on Character Sheet",
+        "Beside each slot on the character window that can hold an enchant or gems: a green check "
+        .. "when they are all there, a red X when one is missing. Hover it to see which.",
+        CharSheetChanged)
+
+    -- Sub-option, indented under its parent and greyed while the parent is off -- Blizzard's own
+    -- nesting (SettingsElementHierarchyMixin:SetParentInitializer, Blizzard_SettingControls.lua:120).
+    local labelInit = AddCheckbox("charLabelClassColor", "Class-Colored Labels",
+        "In that icon's tooltip, shows the words \"Enchant:\" and \"Gem:\" in your class colour.",
+        CharSheetChanged)
+    if labelInit and labelInit.SetParentInitializer and enchantsInit then
+        labelInit:SetParentInitializer(enchantsInit, function() return db.charEnchants end)
+    end
+
+    AddCheckbox("charDurability", "Show Durability on Character Sheet",
+        "Shows each item's durability on its slot when it is below 100%, in yellow when it is low "
+        .. "and red when it is broken, the same colours as the armour figure.",
+        CharSheetChanged)
+
+    AddCheckbox("charMythicRating", "Show Mythic+ Rating on Character Sheet",
+        "Shows your Mythic+ rating just below your item level, in its rating colour. Hidden while "
+        .. "you have no rating.",
+        CharSheetChanged)
+
+    Header("Merchants and Trainers")
     -- Mid-session enable: MERCHANT_SHOW/CLOSED are registered at PLAYER_LOGIN
     -- only if a merchant feature was already on.  If BOTH were off at login,
     -- enabling one later did nothing until /reload — the only QoL toggle that
@@ -4156,24 +4196,28 @@ local function InitializeOptions()
         TipWithReason("Guild + Personal uses guild funds first when your guild allows it, then your "
             .. "own gold. Personal Only always uses your own gold.", "autoRepair")), "autoRepair")
 
-    AddCheckbox("afkScreen", "AFK Screen",
-        "When you go AFK, hides the UI and slowly circles the camera, showing your name, level, item level and zone. Also helps prevent screen burn-in.",
-        function(value)
-            if value then AFK_StartPoll() end
-        end)
+    AddCheckbox("trainAllButton", "Train All Button",
+        "Adds a Train All button beside Train at trainers, learning everything available that you "
+        .. "can afford. Learning a new profession still asks first.",
+        function(value) if value then SetupTrainAll() else RefreshTrainAll() end end)
 
-    -- Key stays `delveNemesisCount` (saved on every account); only the label widened when
-    -- Labyrinth chambers joined it in v1.20.0.
-    AddCheckbox("delveNemesisCount", "Show Delve Counts",
-        -- The /qol delve* tuning commands are deliberately not listed here: they are the
-        -- owner's placement knobs, and the shipped defaults are already tuned.
-        "Shows the count on the objective icon without hovering it: Nemesis groups left in "
-        .. "a Delve, or chambers completed in a Labyrinth. A checkmark replaces the number "
-        .. "when you're done.",
-        function(value)
-            if value then DelveStartCount() else DelveStopCount() end
-        end)
+    Header("Quests and Dialogue")
+    AddCheckbox("pickOnlyGossip", "Pick Only Dialogue Option",
+        "When an NPC has just one dialogue option and no quests, it is picked for you. Hold Shift "
+        .. "while talking to the NPC to see the dialogue instead.",
+        UpdateNpcEvents)
 
+    AddCheckbox("autoAcceptQuest", "Auto Accept Quests",
+        "Accepts quests when an NPC offers them. Grey (trivial) quests and PvP quests are left for "
+        .. "you. Hold Shift while talking to the NPC to choose yourself.",
+        UpdateNpcEvents)
+
+    AddCheckbox("autoTurnInQuest", "Auto Turn In Quests",
+        "Hands in completed quests. If you have to choose a reward, or the quest costs gold, you "
+        .. "still choose. Hold Shift while talking to the NPC to do it yourself.",
+        UpdateNpcEvents)
+
+    Header("Progress")
     AddCheckbox("followReputationGains", "Track Latest Reputation",
         "The reputation bar switches to whichever faction you most recently earned "
         .. "reputation with. During combat, it switches once combat ends.",
@@ -4191,38 +4235,19 @@ local function InitializeOptions()
         .. "something, including last week's rewards. Click it to open the vault.",
         GreatVault.Set)
 
-    -- Both hooks check the saved value each time, so turning either off applies at once; turning
-    -- one on installs its hook the first time.
-    AddCheckbox("fillDeleteConfirm", "Fill In DELETE",
-        "When you delete a valuable item, types DELETE into the confirmation for you, so you only "
-        .. "have to press Enter or click Yes.",
-        function(value) if value then SetupDeleteFill() end end)
+    -- Key stays `delveNemesisCount` (saved on every account); only the label widened when
+    -- Labyrinth chambers joined it in v1.20.0.
+    AddCheckbox("delveNemesisCount", "Show Delve Counts",
+        -- The /qol delve* tuning commands are deliberately not listed here: they are the
+        -- owner's placement knobs, and the shipped defaults are already tuned.
+        "Shows the count on the objective icon without hovering it: Nemesis groups left in "
+        .. "a Delve, or chambers completed in a Labyrinth. A checkmark replaces the number "
+        .. "when you're done.",
+        function(value)
+            if value then DelveStartCount() else DelveStopCount() end
+        end)
 
-    AddCheckbox("skipCinematics", "Skip Cinematics",
-        "Pressing Escape during a cinematic or movie skips it straight away instead of asking "
-        .. "first. Scenes you can only leave by exiting a vehicle still ask.",
-        function(value) if value then SetupSkipCinematics() end end)
-
-    AddCheckbox("pickOnlyGossip", "Pick Only Dialogue Option",
-        "When an NPC has just one dialogue option and no quests, it is picked for you. Hold Shift "
-        .. "while talking to the NPC to see the dialogue instead.",
-        UpdateNpcEvents)
-
-    AddCheckbox("autoAcceptQuest", "Auto Accept Quests",
-        "Accepts quests when an NPC offers them. Grey (trivial) quests and PvP quests are left for "
-        .. "you. Hold Shift while talking to the NPC to choose yourself.",
-        UpdateNpcEvents)
-
-    AddCheckbox("autoTurnInQuest", "Auto Turn In Quests",
-        "Hands in completed quests. If you have to choose a reward, or the quest costs gold, you "
-        .. "still choose. Hold Shift while talking to the NPC to do it yourself.",
-        UpdateNpcEvents)
-
-    AddCheckbox("trainAllButton", "Train All Button",
-        "Adds a Train All button beside Train at trainers, learning everything available that you "
-        .. "can afford. Learning a new profession still asks first.",
-        function(value) if value then SetupTrainAll() else RefreshTrainAll() end end)
-
+    Header("Tooltips")
     AddCheckbox("tooltipTarget", "Show Target in Tooltips",
         "Adds who a player or NPC is targeting to their tooltip, in green when it's you. Left out "
         .. "where the game hides it from addons, such as some fights in instances.",
@@ -4233,39 +4258,31 @@ local function InitializeOptions()
         .. "if you don't. Left out where the game hides buffs from addons, such as in instances.",
         function(value) if value then SetupTooltipLines() end end)
 
+    Header("General")
+    AddCheckbox("afkScreen", "AFK Screen",
+        "When you go AFK, hides the UI and slowly circles the camera, showing your name, level, item level and zone. Also helps prevent screen burn-in.",
+        function(value)
+            if value then AFK_StartPoll() end
+        end)
+
+    AddCheckbox("skipCinematics", "Skip Cinematics",
+        "Pressing Escape during a cinematic or movie skips it straight away instead of asking "
+        .. "first. Scenes you can only leave by exiting a vehicle still ask.",
+        function(value) if value then SetupSkipCinematics() end end)
+
+    -- Both hooks check the saved value each time, so turning either off applies at once; turning
+    -- one on installs its hook the first time.
+    AddCheckbox("fillDeleteConfirm", "Fill In DELETE",
+        "When you delete a valuable item, types DELETE into the confirmation for you, so you only "
+        .. "have to press Enter or click Yes.",
+        function(value) if value then SetupDeleteFill() end end)
+
     AddCheckbox("timestampAllMessages", "Timestamp Every Message",
         "Adds the chat timestamp to system, loot, money, achievement, experience and reputation "
         .. "messages, and VeritasUI's own messages, not just player chat. Uses the format chosen in "
         .. "Options > Social > Chat Timestamps; with that at None, nothing is added. A few lines the "
         .. "chat window writes itself, such as /played, can't be stamped.",
         SetTimestampAll)
-
-    -- Each one repaints the open character window at once; the hooks are installed on first use.
-    local function CharSheetChanged() SetupCharacterSheet() end
-
-    local enchantsInit = AddCheckbox("charEnchants", "Show Enchants and Gems on Character Sheet",
-        "Beside each slot on the character window that can hold an enchant or gems: a green check "
-        .. "when they are all there, a red X when one is missing. Hover it to see which.",
-        CharSheetChanged)
-
-    -- Sub-option, indented under its parent and greyed while the parent is off -- Blizzard's own
-    -- nesting (SettingsElementHierarchyMixin:SetParentInitializer, Blizzard_SettingControls.lua:120).
-    local labelInit = AddCheckbox("charLabelClassColor", "Class-Colored Labels",
-        "In that icon's tooltip, shows the words \"Enchant:\" and \"Gem:\" in your class colour.",
-        CharSheetChanged)
-    if labelInit and labelInit.SetParentInitializer and enchantsInit then
-        labelInit:SetParentInitializer(enchantsInit, function() return db.charEnchants end)
-    end
-
-    AddCheckbox("charDurability", "Show Durability on Character Sheet",
-        "Shows each item's durability on its slot when it is below 100%, in yellow when it is low "
-        .. "and red when it is broken, the same colours as the armour figure.",
-        CharSheetChanged)
-
-    AddCheckbox("charMythicRating", "Show Mythic+ Rating on Character Sheet",
-        "Shows your Mythic+ rating just below your item level, in its rating colour. Hidden while "
-        .. "you have no rating.",
-        CharSheetChanged)
 
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
