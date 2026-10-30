@@ -15,6 +15,8 @@ Hides or fades the parts of the interface you don't need most of the time.
 - The micro menu, chosen action bars (2–8) and your player frame fade out when idle and reappear on mouseover, in combat, or when you take damage
 - **Fade Delay**: keep the micro menu, action bars and player frame up for 0 to 5 seconds after the mouse leaves, before they fade (the chat window keeps Blizzard's own timing)
 - Optionally hides the social button, the chat menu and voice buttons, the bag bar, and macro names on action buttons
+- Optionally hides the **talking head** story popup and, separately, **mutes its voice**, so you can keep either one
+- Optionally hides the **top banners**: the zone name when you travel, event banners such as level up and scenario stages, and the boss kill and loot banner
 - Hides red error text — all of it, or only the kinds you pick (combat, spells and cooldowns, items and bags, mail/vendors/bank, looting, mounts and flight paths), so "Internal mail database error." can go while "You are too far away!" stays
 
 Settings: **Options → AddOns → Clean Solo**, or `/cs`, grouped under **Fade** and **Hide**. Changes apply after a `/reload`, except Fade Delay, which applies at once.

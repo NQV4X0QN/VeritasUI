@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.26.0] - 2026-10-29
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Hide Talking Head and Mute Talking Head Voice.** Two separate options in the Hide group: one hides the NPC portrait that pops up with story dialogue, the other silences its voice line, so you can keep the voice without the popup or the popup without the voice. The portrait still shows in Edit Mode so you can place it. Both off by default (`CleanSolo.lua`, `README.md`)
+- `VeritasUI_CleanSolo` — **Hide Top Banners.** Stops the big messages at the top of the screen: the zone name when you travel, event banners such as level up, scenario stages and weekly rewards, and the boss kill and loot banner. They are stopped before they start rather than hidden part-way, so later banners never get stuck waiting. Off by default (`CleanSolo.lua`, `README.md`)
+
+
 ## [1.25.0] - 2026-10-29
 
 ### Added
