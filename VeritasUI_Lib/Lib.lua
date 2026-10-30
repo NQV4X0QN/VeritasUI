@@ -52,8 +52,27 @@ VUI.debug = false
 ----------------------------------------------------------------
 --  Print helpers
 ----------------------------------------------------------------
+-- Timestamps on VeritasUI's own lines (v1.31.0). Quality of Life's "Timestamp Every Message"
+-- turns this on; Blizzard's message filters never see these lines, because print() writes to the
+-- chat window directly instead of sending a chat event. Same format as Blizzard's Chat Timestamps
+-- option (ChatFrameUtil.GetTimestampFormat + TimeUtil.BetterDate); nothing when that is None.
+local printStamps = false
+
+function VUI.SetPrintTimestamps(on)
+    printStamps = on and true or false
+end
+
+local function PrintStamp()
+    if not printStamps then return "" end
+    local get = _G.ChatFrameUtil and _G.ChatFrameUtil.GetTimestampFormat
+    local fmt = get and get()
+    if not (fmt and _G.TimeUtil and _G.TimeUtil.BetterDate) then return "" end
+    local ok, stamp = pcall(_G.TimeUtil.BetterDate, fmt, time())
+    return (ok and type(stamp) == "string") and stamp or ""
+end
+
 function VUI.Print(tag, msg)
-    print(format("|cFF00CCFF[%s]|r %s", tag, msg))
+    print(PrintStamp() .. format("|cFF00CCFF[%s]|r %s", tag, msg))
 end
 
 -- On/off print for settings that require a /reload to apply (CleanSolo's

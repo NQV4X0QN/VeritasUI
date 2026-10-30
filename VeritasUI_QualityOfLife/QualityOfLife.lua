@@ -3448,7 +3448,11 @@ end
 -- Shared/ChatFrameFilters.lua). Blizzard calls every filter through securecallfunction and SKIPS
 -- it entirely when any argument is a hidden value (canaccessvalue), so a hidden encounter line
 -- never reaches this code. The filter only returns a new first argument; it never touches a chat
--- frame. Messages addons print straight to chat are not chat events and are not covered.
+-- frame. VeritasUI's own lines are stamped by Lib (VUI.SetPrintTimestamps). NOT covered, by
+-- design: lines the chat window writes itself without a chat event -- /played (TIME_PLAYED_MSG ->
+-- ChatFrameUtil.DisplayTimePlayed, ChatFrameOverrides.lua:196-198), server and Battle.net status
+-- (:211-259) -- and other addons' prints. Reaching those means replacing the chat window's
+-- AddMessage, which would run every chat line through addon code (taint).
 local STAMP_EVENTS = {
     "CHAT_MSG_SYSTEM", "CHAT_MSG_LOOT", "CHAT_MSG_MONEY", "CHAT_MSG_CURRENCY", "CHAT_MSG_SKILL",
     "CHAT_MSG_OPENING", "CHAT_MSG_TRADESKILLS", "CHAT_MSG_PET_INFO", "CHAT_MSG_TARGETICONS",
@@ -3480,6 +3484,9 @@ local function SetTimestampAll(on)
         for _, ev in ipairs(STAMP_EVENTS) do remove(ev, StampFilter) end
     end
     stampsOn = on and true or false
+    -- VeritasUI's own lines (Lib's VUI.Print): print() writes straight to the chat window, so no
+    -- filter sees them; Lib stamps them itself when this is on.
+    if VUI.SetPrintTimestamps then VUI.SetPrintTimestamps(stampsOn) end
 end
 
 -- ── Options Panel ───────────────────────────────────────────
@@ -3643,8 +3650,9 @@ local function InitializeOptions()
 
     AddCheckbox("timestampAllMessages", "Timestamp Every Message",
         "Adds the chat timestamp to system, loot, money, achievement, experience and reputation "
-        .. "messages too, not just player chat. Uses the format chosen in Options > Social > Chat "
-        .. "Timestamps; with that at None, nothing is added.",
+        .. "messages, and VeritasUI's own messages, not just player chat. Uses the format chosen in "
+        .. "Options > Social > Chat Timestamps; with that at None, nothing is added. A few lines the "
+        .. "chat window writes itself, such as /played, can't be stamped.",
         SetTimestampAll)
 
     Settings.RegisterAddOnCategory(category)
