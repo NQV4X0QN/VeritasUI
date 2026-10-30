@@ -146,6 +146,7 @@ local UNIVERSAL = {
     -- the toggles above: it overrides a faction the player chose to watch, and the suite ships
     -- to other players who never asked for that.
     followReputationGains = false,
+    repBarRenownLevel = false,    -- "[18/20]" beside the name on the reputation bar (owner, 2026-10-30)
     -- EllesmereUI-inspired plan, phase 2 (v1.28.0). OFF by default for the same reason: they
     -- change how two of Blizzard's own confirmations behave.
     fillDeleteConfirm = false,   -- types DELETE into the delete-item confirmation
@@ -2865,6 +2866,99 @@ local function RepFollowStop()
     repPendingID = nil
 end
 
+-- ── Renown level on the reputation bar ──────────────────────
+-- "Hara'ti (Warband) [18/20] 985 / 2500": the renown level beside the name on the bar's text, and
+-- past the top, the levels earned beyond it ("Amani Tribe (Warband) [21/20]"). Owner, 2026-10-30.
+-- SOURCED (wow-ui-source live):
+--   * The text is Blizzard's own: ReputationStatusBarMixin:Update builds `name .. " %d / %d"` (or
+--     the name alone when capped), with REPUTATION_STATUS_BAR_LABEL_ACCOUNT_WIDE after the name for
+--     warband factions, and SetBarText puts it on `bar.OverlayFrame.Text`
+--     (Shared/ReputationBar.lua, Shared/StatusTrackingBar.lua:20-21). OnEnter rewrites it from
+--     `self.name` (UpdateCurrentText). We only insert our "[L/M]" after the name.
+--   * Level: C_MajorFactions.GetMajorFactionData().renownLevel; max = the last entry of
+--     GetRenownLevels, as Blizzard's own GetMaxLevel reads it. Past the max the faction is paragon:
+--     every full paragon threshold earned (GetFactionParagonInfo's currentValue / threshold, the
+--     same pair the bar itself uses) counts as one level beyond.
+-- ⚠ Those bars are Edit Mode system frames (landmine 114): no hook, no HookScript, no field written
+--   on them. The one write is SetText on their text FontString, from our own ticker -- never from
+--   inside their execution. A ticker rather than an event because Blizzard rewrites the text on
+--   every hover and every gain; a stale text lasts at most one tick.
+local SetRenownOnRepBar
+;(function()
+    local ticker
+    local function RepBars()
+        local manager, info = _G.StatusTrackingBarManager, _G.StatusTrackingBarInfo
+        if not (manager and manager.barContainers and info and info.BarsEnum) then return {} end
+        local out = {}
+        for _, container in ipairs(manager.barContainers) do
+            local bar = container.bars and container.bars[info.BarsEnum.Reputation]
+            local fs = bar and bar.OverlayFrame and bar.OverlayFrame.Text
+            if fs then out[#out + 1] = fs end
+        end
+        return out
+    end
+    local function Secret(v) return issecretvalue and issecretvalue(v) end
+
+    -- The name exactly as Blizzard writes it at the start of the text, and "[L/M]", or nil.
+    local function NameAndLevel()
+        local rep, mf = _G.C_Reputation, _G.C_MajorFactions
+        if not (rep and mf and rep.GetWatchedFactionData and rep.IsMajorFaction) then return end
+        local ok, w = pcall(rep.GetWatchedFactionData)
+        if not ok or not w or Secret(w.factionID) or not w.factionID or w.factionID == 0 then return end
+        local id = w.factionID
+        local okM, isMajor = pcall(rep.IsMajorFaction, id)
+        if not (okM and isMajor) then return end
+        local okD, data = pcall(mf.GetMajorFactionData, id)
+        local okL, levels = pcall(mf.GetRenownLevels, id)
+        if not (okD and data and okL and type(levels) == "table" and #levels > 0) then return end
+        local level, maxLevel = data.renownLevel, levels[#levels].level
+        if Secret(level) or Secret(maxLevel) or type(level) ~= "number" or type(maxLevel) ~= "number" then
+            return
+        end
+        local okP, isPara = pcall(rep.IsFactionParagonForCurrentPlayer, id)
+        if okP and isPara and level >= maxLevel then
+            local okV, value, threshold = pcall(rep.GetFactionParagonInfo, id)
+            if okV and not Secret(value) and not Secret(threshold) and type(value) == "number"
+                and type(threshold) == "number" and threshold > 0 then
+                level = maxLevel + math.floor(value / threshold)
+            end
+        end
+        local name = w.name
+        if Secret(name) or type(name) ~= "string" then return end
+        local okA, wide = pcall(rep.IsAccountWideReputation, id)
+        if okA and wide and REPUTATION_STATUS_BAR_LABEL_ACCOUNT_WIDE then
+            name = name .. " " .. REPUTATION_STATUS_BAR_LABEL_ACCOUNT_WIDE
+        end
+        return name, "[" .. level .. "/" .. maxLevel .. "]"
+    end
+
+    -- Our insert is " [L/M]" straight after the name; strip it (turning off) or add it.
+    local function Paint(on)
+        local name, tag = NameAndLevel()
+        for _, fs in ipairs(RepBars()) do
+            local ok, text = pcall(fs.GetText, fs)
+            if ok and type(text) == "string" and not Secret(text) then
+                local stripped = text:gsub(" %[%d+/%d+%]", "", 1)
+                local want = stripped
+                if on and name and stripped:sub(1, #name) == name then
+                    want = name .. " " .. tag .. stripped:sub(#name + 1)
+                end
+                if want ~= text then pcall(fs.SetText, fs, want) end
+            end
+        end
+    end
+
+    SetRenownOnRepBar = function(on)
+        if on then
+            if not ticker then ticker = C_Timer.NewTicker(0.1, function() Paint(true) end) end
+            Paint(true)
+        else
+            if ticker then ticker:Cancel(); ticker = nil end
+            Paint(false)
+        end
+    end
+end)()
+
 -- ── Map Notes (/note) ───────────────────────────────────────
 -- `/note <text>` drops a note where the player is standing; it shows as a pin on the World Map
 -- with the text in its tooltip, and a click on the pin offers "Remove Note". Notes made inside
@@ -3910,6 +4004,11 @@ local function InitializeOptions()
             if value then RepFollowStart() else RepFollowStop() end
         end)
 
+    AddCheckbox("repBarRenownLevel", "Show Renown Level on Reputation Bar",
+        "Adds your renown level to the reputation bar's text, such as [18/20], beside the faction's "
+        .. "name. Past the top renown, it counts the levels earned beyond it, such as [21/20].",
+        SetRenownOnRepBar)
+
     -- Both hooks check the saved value each time, so turning either off applies at once; turning
     -- one on installs its hook the first time.
     AddCheckbox("fillDeleteConfirm", "Fill In DELETE",
@@ -4081,6 +4180,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.delveNemesisCount then DelveStartCount() end
 
         if db.followReputationGains then RepFollowStart() end
+        if db.repBarRenownLevel then SetRenownOnRepBar(true) end
         if db.fillDeleteConfirm then SetupDeleteFill() end
         if db.skipCinematics then SetupSkipCinematics() end
         UpdateNpcEvents()
