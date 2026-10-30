@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.35.1] - 2026-10-30
+
+### Fixed
+
+- `VeritasUI_Lib` — **Out-of-date notes in the code corrected (audit L1).** Notes that named the retired ElvUI module as the user of two shared hooks, pointed at moved line numbers, or miscounted the per-character settings now match the code. Nothing changes in game (`Lib.lua`)
+
+
 ## [1.35.0] - 2026-10-30
 
 ### Removed

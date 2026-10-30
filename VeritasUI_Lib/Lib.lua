@@ -24,7 +24,7 @@ local InCombatLockdown = InCombatLockdown
 -- direction anyway: it costs one load-time truth test and keeps working if the
 -- global ever returns.  DO NOT collapse this to a bare GetMouseFocus call.
 -- VUI.HookPlayerFrameFade's hover test reads it from a 10 Hz ticker
--- (PLAYER_FRAME_HOVER_POLL_RATE = 0.10, line ~332; the note at line ~329 says 10 Hz
+-- (PLAYER_FRAME_HOVER_POLL_RATE = 0.10; the note above that constant says 10 Hz
 -- too), and CleanSolo hooks the player frame in normal play, so a nil call would
 -- error TEN times a second for as long as the frame is faded in — and that ticker
 -- keeps no handle, so it cannot be cancelled short of /reload.
@@ -41,7 +41,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.35.0"
+VUI.VERSION = "1.35.1"
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;
@@ -403,11 +403,11 @@ function VUI.HookPlayerFrameFade(frame, inCombatRef)
     -- chase here — a forbidden object simply cannot be touched by addon code at all,
     -- and the only correct move is to stop walking.
     --
-    -- Blast radius was the 10 Hz ticker at line ~427: the error's Count climbed by ten
+    -- Blast radius was the 10 Hz ticker at the end of this function: the error's Count climbed by ten
     -- a second for as long as the cursor rested on the pin, and each throw aborted
     -- Evaluate() mid-flight, so the fade stopped being re-evaluated while it happened.
     --
-    -- This is now the same shape as HookHoverFade's IsMouseOverDescendant (line ~230),
+    -- This is now the same shape as HookHoverFade's IsMouseOverDescendant (above),
     -- which has had the pcall and the cap since it was written.  IsHovered was the
     -- inconsistency, not the pattern.  Returning false on an inaccessible chain is
     -- deliberate: if we cannot see the chain we cannot claim a hover, and a cursor
@@ -470,12 +470,13 @@ function VUI.HookPlayerFrameFade(frame, inCombatRef)
     --
     -- ⚠ CORRECTED v1.13.8: this used to call that "the one place in this suite that
     -- hooked a secure Blizzard frame's mouse scripts". It is not. HookHoverFade still
-    -- does exactly that at line ~310 — on MicroMenu and on up to seven MultiBar*
-    -- containers (CleanSolo.lua:318, :448). That hooking is DELIBERATE and documented
-    -- (parent containers yes, child ActionButtons never — see lines ~163-167, ~286-289
-    -- and ~398-400); only the "one place" claim was false. It matters because a reader
-    -- trusting it would believe no secure mouse-script hooks remain and would not think
-    -- to look at line 310 when the next ADDON_ACTION_FORBIDDEN names VeritasUI_Lib.
+    -- does exactly that (its target:HookScript("OnEnter")) — on MicroMenu and on up to
+    -- seven MultiBar* containers (CleanSolo's two VUI.HookHoverFade calls). That hooking
+    -- is DELIBERATE and documented (parent containers yes, child ActionButtons never — see
+    -- HookHoverFade's header, its poll, and the note on its OnEnter hook); only the "one
+    -- place" claim was false. It matters because a reader trusting it would believe no
+    -- secure mouse-script hooks remain and would not think to look at HookHoverFade's
+    -- OnEnter hook when the next ADDON_ACTION_FORBIDDEN names VeritasUI_Lib.
     --
     -- What IS unique about PlayerFrame: it is the one place where hooking was ABANDONED
     -- in favour of polling. It is the same shape as the documented
@@ -540,8 +541,9 @@ end)
 -- A module calls VUI.AnnounceFrame(key, frame) once it has finished building a frame that
 -- another addon might want to restyle. VUI.OnFrameBuilt(key, fn) runs fn(frame) for every
 -- frame announced under `key`, including any announced before it was called, so neither side
--- depends on load or login order. Nothing listens unless an optional module registers (today
--- only VeritasUI_ElvUI), so without one an announcement is a table insert.
+-- depends on load or login order. Nothing listens unless an optional module registers; none
+-- ships since VeritasUI_ElvUI was retired in v1.35.0 (kept so a revival needs no other changes),
+-- so an announcement is a table insert.
 --
 -- A listener error is reported through WoW's error handler and does not interrupt the module
 -- that announced the frame.
@@ -571,10 +573,12 @@ end
 ----------------------------------------------------------------
 --  Unavailable options — another addon owns the part of the screen an option changes
 ----------------------------------------------------------------
--- An optional module (today VeritasUI_ElvUI) calls VUI.SetOptionUnavailable before
--- PLAYER_LOGIN to say an option of `addonName` cannot work alongside it. The owning module
--- then skips that feature and shows the option greyed out with `reason` in its tooltip. The
--- saved value is never touched, so the option comes back as it was without that addon.
+-- VUI.SetOptionUnavailable says an option of `addonName` cannot work alongside another addon,
+-- and must be called before the owning module builds its options page. The owning module then
+-- skips that feature and shows the option greyed out with `reason` in its tooltip. The saved
+-- value is never touched, so the option comes back as it was without that addon. ⚠ IN USE:
+-- Quality of Life calls it for its own /way option when TomTom is installed (at PLAYER_LOGIN,
+-- before InitializeOptions). VeritasUI_ElvUI (retired v1.35.0) was the other caller.
 local unavailableOptions = {}
 
 function VUI.SetOptionUnavailable(addonName, key, reason)
@@ -854,7 +858,7 @@ end
 --     Blizzard_Category.lua:114-136, read by CreateSection, Blizzard_CategoryList.lua:392-407).
 ----------------------------------------------------------------
 local settingsParent
-local SUITE_MODULES = {   -- folder, shown name; Lib and the ElvUI layer have no page of their own
+local SUITE_MODULES = {   -- folder, shown name; every installed module except Lib itself
     { "VeritasUI_AdvancedOptions",  "Advanced Options" },
     { "VeritasUI_AuctionHouse",     "Auction House" },
     { "VeritasUI_CleanSolo",        "Clean Solo" },
@@ -1386,8 +1390,8 @@ VUI._charDBs = VUI._charDBs or {}
 -- per-character. That is how four modules became per-character to solve a two-setting
 -- problem, and how the Delve count's placement ended up per-character when it should be
 -- shared. The authority on which keys go where is
--- ~/.agents/skills/veritasui/references/setting-scope-map.md; only EIGHT keys are
--- per-character. Do not reach for BindCharDB for new work.
+-- ~/.agents/skills/veritasui/references/setting-scope-map.md; only a handful of keys are
+-- per-character (the map has the list). Do not reach for BindCharDB for new work.
 --
 -- ⚠ TWO CONTRACTS THAT ARE THE OPPOSITE OF BindCharDB'S. Both are deliberate, both are
 -- enforced by scoped_db_test, and reverting either reintroduces a shipped defect:
