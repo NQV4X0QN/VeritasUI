@@ -380,6 +380,62 @@ StaticPopupDialogs["VERITASUI_AO_RESET_SHOWN"] = {
     OnCancel = function() pendingReset = nil end,
 }
 
+-- "Reset Everything": the console's own cvar_default, every CVar on the client, not just the ones
+-- this browser indexes. Run through ConsoleExec exactly as Blizzard's /console does: its handler
+-- is a non-secure command that calls forceinsecure() then ConsoleExec(msg)
+-- (Blizzard_ChatFrameBase/Shared/SlashCommands.lua:839-842), so this is no more tainted than the
+-- player typing it. Keybindings, Edit Mode layouts, chat windows and addon settings are not CVars
+-- and are untouched. Refused in combat rather than queued: nothing about it should land mid-fight.
+--
+-- After a second, counts the indexed CVars still away from default and says so -- the only way
+-- to see what cvar_default actually did without opening the console.
+function AO:ReportAfterResetEverything()
+    local left = 0
+    for _, e in ipairs(cvarList or {}) do
+        RefreshEntry(e)
+        if e.value ~= e.default then left = left + 1 end
+    end
+    if left == 0 then
+        VUI.Print("Advanced Options", "Every setting is back at Blizzard's default.")
+    else
+        VUI.Print("Advanced Options", format("Reset everything. %d setting%s listed here still differ%s "
+            .. "from Blizzard's default: |cFFFFFF00/ao changed|r", left, left == 1 and "" or "s",
+            left == 1 and "s" or ""))
+    end
+    if AO.RefreshBrowser then AO:RefreshBrowser() end
+end
+
+function AO:ResetEverything()
+    if InCombatLockdown() then
+        VUI.Print("Advanced Options", "|cFFFF4444Can't reset everything during combat.|r Try again afterwards.")
+        return false
+    end
+    local exec = _G.ConsoleExec
+    if type(exec) ~= "function" then
+        VUI.Print("Advanced Options", "|cFFFF4444This game client doesn't let addons run console commands.|r "
+            .. "Type |cFFFFFF00/console cvar_default|r instead.")
+        return false
+    end
+    local ok, result = pcall(exec, "cvar_default")
+    if not ok or result == false then
+        VUI.Print("Advanced Options", "|cFFFF4444The reset didn't run.|r "
+            .. "Type |cFFFFFF00/console cvar_default|r instead.")
+        return false
+    end
+    C_Timer.After(1, function() AO:ReportAfterResetEverything() end)
+    return true
+end
+
+StaticPopupDialogs["VERITASUI_AO_RESET_EVERYTHING"] = {
+    text = "Reset EVERY game setting to Blizzard's defaults?\n\nThis includes your graphics, sound, "
+        .. "interface and controls options, not just the ones listed here. Keybindings, Edit Mode "
+        .. "layouts and addon settings are not affected.",
+    button1 = "Reset Everything",
+    button2 = CANCEL or "Cancel",
+    timeout = 0, whileDead = 1, hideOnEscape = 1, showAlert = 1,
+    OnAccept = function() AO:ResetEverything() end,
+}
+
 ----------------------------------------------------------------
 --  Browser UI — Blizzard ScrollBox + MinimalScrollBar
 --
@@ -507,7 +563,7 @@ function AO:BuildBrowserContent(parent)
     -- ── Filter footer ("Changed by ElvUI" / "Changed"): explanation + Reset All ───
     local FOOTER_H = 58
     local FOOTER_CHANGED_H = 70   -- the "Changed" explanation runs a line longer
-    local footer, footerText, resetAllBtn
+    local footer, footerText, resetAllBtn, resetEverythingBtn
     do
         footer = CreateFrame("Frame", nil, parent)
         footer:SetPoint("BOTTOMLEFT",  parent, "BOTTOMLEFT",  INSET, 4)
@@ -532,6 +588,16 @@ function AO:BuildBrowserContent(parent)
             local n = #AO:ElvUIChangedCVars()
             if n > 0 then StaticPopup_Show("VERITASUI_AO_RESET_ELVUI", n, n == 1 and "" or "s") end
         end)
+
+        -- "Changed" mode only: the console's cvar_default, stacked above Reset All.
+        resetEverythingBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+        resetEverythingBtn:SetSize(150, 22)
+        resetEverythingBtn:SetPoint("BOTTOM", resetAllBtn, "TOP", 0, 4)
+        resetEverythingBtn:SetText("Reset Everything")
+        resetEverythingBtn:SetScript("OnClick", function()
+            StaticPopup_Show("VERITASUI_AO_RESET_EVERYTHING")
+        end)
+        resetEverythingBtn:Hide()
 
         footerText = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         footerText:SetPoint("TOPLEFT", footer, "TOPLEFT", 0, -2)
@@ -559,6 +625,8 @@ function AO:BuildBrowserContent(parent)
     local function UpdateFooter(shown)
         local on = elvuiOnly or changedOnly
         footer:SetShown(on)
+        -- Shown in Changed mode even when the list is empty: it reaches CVars this list can't.
+        resetEverythingBtn:SetShown(changedOnly)
         local h = changedOnly and FOOTER_CHANGED_H or FOOTER_H
         footer:SetHeight(h)
         scrollBox:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SB_INSET, on and (h + 8) or 4)

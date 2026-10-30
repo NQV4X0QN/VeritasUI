@@ -36,6 +36,7 @@ globals = {
     "StaticPopupDialogs.VERITASUI_UNDO_COPY",
     "StaticPopupDialogs.VERITASUI_AO_RESET_ELVUI",   -- AdvancedOptions/ElvUIChanges.lua
     "StaticPopupDialogs.VERITASUI_AO_RESET_SHOWN",   -- AdvancedOptions/Browser.lua ("Changed" filter)
+    "StaticPopupDialogs.VERITASUI_AO_RESET_EVERYTHING", -- AdvancedOptions/Browser.lua (cvar_default)
     -- SavedVariables (declared in each .toc; WoW injects/reads these as globals)
     "VeritasUI_AdvancedOptionsDB",
     "VeritasUI_AuctionHouseDB",
