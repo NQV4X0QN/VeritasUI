@@ -407,7 +407,7 @@ AO.FEATURED_CATEGORIES = {
 ----------------------------------------------------------------
 --  Layout constants
 ----------------------------------------------------------------
-local HEADER_H    = 24         -- header button (20) + divider + gap
+local HEADER_H    = 30         -- Blizzard's section bar: its Button is 30 high (audit O2)
 local SECTION_GAP = 14         -- extra gap between categories
 local GAP         = 4          -- gap between controls; added to AO.CONTROL_HEIGHTS in extents
 local PAD_X       = 8
@@ -554,8 +554,6 @@ function AO:BuildFeaturedContent(parent)
             frame._attached._owner = nil
         end
         frame._attached = nil
-        -- Hide leftover textures from header reuse
-        if frame._divider then frame._divider:Hide() end
 
         if elementData.type == "gap" then
             -- Empty spacer — nothing to render
@@ -566,42 +564,34 @@ function AO:BuildFeaturedContent(parent)
             local catIdx = elementData.catIdx
             local cat    = self.FEATURED_CATEGORIES[catIdx]
 
-            -- Create header on first encounter, cache thereafter
+            -- Create header on first encounter, cache thereafter.
+            -- ⚠ Blizzard's own collapsible section bar, the one Options -> Keybindings uses
+            -- (SettingsExpandableSectionTemplate, Blizzard_SettingControls.xml:192-233; open/closed
+            -- art swapped on Button.Right, Blizzard_Keybindings.lua:119-128). Audit O2: until
+            -- v1.35.7 these were hand-drawn arrows, gold text and a 1 px line. The template's own
+            -- OnClick reads scroll-box element data from Blizzard's settings list, which this list
+            -- does not have, so the click is replaced. Plain button only if the template is missing.
             if not headerCache[catIdx] then
                 local h = {}
+                local okT, sec = pcall(CreateFrame, "EventFrame", nil, frame, "SettingsExpandableSectionTemplate")
+                if okT and sec and sec.Button then
+                    h.btn, h.clicker, h.right = sec, sec.Button, sec.Button.Right
+                    if sec.Button.Text then sec.Button.Text:SetText(cat.title) end
+                else
+                    h.btn = CreateFrame("Button", nil, frame)
+                    h.btn:SetHeight(20)
+                    h.clicker = h.btn
+                    local text = h.btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    text:SetPoint("LEFT", h.btn, "LEFT", 4, 0)
+                    text:SetText(cat.title)
+                end
 
-                h.btn = CreateFrame("Button", nil, frame)
-                h.btn:SetHeight(20)
-
-                h.arrowBox = CreateFrame("Frame", nil, h.btn)
-                h.arrowBox:SetSize(12, 12)
-                h.arrowBox:SetPoint("LEFT", h.btn, "LEFT", 2, 0)
-
-                h.arrowDown = h.arrowBox:CreateTexture(nil, "OVERLAY")
-                h.arrowDown:SetAllPoints()
-                h.arrowDown:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
-                h.arrowDown:SetVertexColor(1, 0.82, 0)
-
-                h.arrowRight = h.arrowBox:CreateTexture(nil, "OVERLAY")
-                h.arrowRight:SetAllPoints()
-                h.arrowRight:SetTexture("Interface\\Buttons\\Arrow-Up-Up")
-                h.arrowRight:SetRotation(-math.pi / 2)
-                h.arrowRight:SetVertexColor(1, 0.82, 0)
-                h.arrowRight:Hide()
-
-                h.text = h.btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                h.text:SetPoint("LEFT", h.arrowBox, "RIGHT", 4, 0)
-                h.text:SetTextColor(1, 0.82, 0)
-                h.text:SetText(cat.title)
-
-                h.btn:SetScript("OnClick", function()
+                h.clicker:SetScript("OnClick", function()
                     self:ToggleCollapsed(cat.key)
                     Refresh()
                 end)
 
                 headerCache[catIdx] = h
-                -- Arrows kept on the button for a restyling addon (VeritasUI_ElvUI).
-                h.btn.arrowDown, h.btn.arrowRight = h.arrowDown, h.arrowRight
                 VUI.AnnounceFrame("AdvancedOptions.FeaturedHeader", h.btn)
             end
 
@@ -615,20 +605,9 @@ function AO:BuildFeaturedContent(parent)
             h.btn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD_X, 0)
             h.btn:Show()
 
-            h.arrowDown:SetShown(not collapsed)
-            h.arrowRight:SetShown(collapsed)
-
-            -- Divider line — create on the pool frame (not cached, since
-            -- it needs to span the frame's width which varies by pool slot)
-            if not frame._divider then
-                frame._divider = frame:CreateTexture(nil, "ARTWORK")
-                frame._divider:SetHeight(1)
-                frame._divider:SetColorTexture(0.35, 0.35, 0.35, 0.8)
+            if h.right then
+                h.right:SetAtlas(collapsed and "Options_ListExpand_Right" or "Options_ListExpand_Right_Expanded", true)
             end
-            frame._divider:ClearAllPoints()
-            frame._divider:SetPoint("BOTTOMLEFT",  frame, "BOTTOMLEFT",  PAD_X, 1)
-            frame._divider:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD_X, 1)
-            frame._divider:Show()
 
             h.btn._owner    = frame
             frame._attached = h.btn
