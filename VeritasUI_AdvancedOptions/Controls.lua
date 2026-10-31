@@ -132,7 +132,7 @@ end
 -- resetY: raises the reset button off the row's centre. A slider row is taller than its slider
 -- (room under the bar), so a centred button sat below the slider (owner, 2026-10-30); sliders
 -- pass SLIDER_RESET_RAISE.
-local SLIDER_RESET_RAISE = 4
+local SLIDER_RESET_RAISE = 8   -- owner, 2026-10-30: 4 was not enough
 local function FinishRow(row, cfg, Refresh, resetY)
     local resetBtn = CreateResetButton(row, cfg.cvar, Refresh)
     resetBtn:SetPoint("RIGHT", row, "RIGHT", 8, resetY or 0)
