@@ -416,6 +416,10 @@ local HEADER_H    = 30         -- Blizzard's section bar: its Button is 30 high 
 local SECTION_GAP = 14         -- extra gap between categories
 local GAP         = 4          -- gap between controls; added to AO.CONTROL_HEIGHTS in extents
 local PAD_X       = 8
+-- A slider's label sits at the top of its row, so a slider straight under a section bar touched it
+-- (owner, 2026-10-30: Max Camera Distance, Render Distance). That first slider is pushed down this
+-- far; checkboxes and dropdowns are centred in their rows and need none.
+local FIRST_SLIDER_DROP = 6
 
 ----------------------------------------------------------------
 --  Renderer — builds the Featured tab content inside a native
@@ -462,6 +466,7 @@ function AO:BuildFeaturedContent(parent, buttonBar)
                         type     = "control",
                         catIdx   = catIdx,
                         ctrlIdx  = ctrlIdx,
+                        dropBelowHeader = (ctrlIdx == 1 and cfg.type == "slider") and FIRST_SLIDER_DROP or 0,
                         cfg      = cfg,
                     }
                 end
@@ -472,13 +477,13 @@ function AO:BuildFeaturedContent(parent, buttonBar)
     end
 
     -- ── Expand All / Collapse All (owner's request, 2026-10-30) ──
-    -- In the window's bottom button bar, bottom left, where ButtonFrameTemplate puts a frame's
-    -- main button (MagicButton_OnLoad's 4,4 offset, SharedUIPanelTemplates.lua:32-35) -- the spot
-    -- the Auction House's Scan button sits in (v1.35.10). Parented to this tab, so it shows with it
-    -- only. While any category is open it folds them all; once every one is folded it opens them all.
+    -- In the window's bottom button bar, bottom RIGHT (owner, 2026-10-30), at ButtonFrameTemplate's
+    -- own corner offset (MagicButton_OnLoad's -6,4, SharedUIPanelTemplates.lua:36-39) -- the same
+    -- spot as the All CVars tab's Reset buttons. Parented to this tab, so it shows with it only.
+    -- While any category is open it folds them all; once every one is folded it opens them all.
     local allBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     allBtn:SetSize(120, 22)
-    allBtn:SetPoint("BOTTOMLEFT", buttonBar or parent, "BOTTOMLEFT", 4, 4)
+    allBtn:SetPoint("BOTTOMRIGHT", buttonBar or parent, "BOTTOMRIGHT", -6, 4)
     local function AnyOpen()
         for _, cat in ipairs(self.FEATURED_CATEGORIES) do
             if not self:IsCollapsed(cat.key) then return true end
@@ -553,6 +558,7 @@ function AO:BuildFeaturedContent(parent, buttonBar)
         -- because this is a scroll-box extent callback: arithmetic on a nil would blank
         -- the whole panel rather than fail anywhere useful.
         return (AO.CONTROL_HEIGHTS[elementData.cfg.type] or AO.CONTROL_HEIGHTS.checkbox) + GAP
+            + (elementData.dropBelowHeader or 0)
     end)
 
     -- Element initializer — creates or retrieves cached UI, reparents
@@ -681,8 +687,9 @@ function AO:BuildFeaturedContent(parent, buttonBar)
             if ctrl then
                 ctrl:SetParent(frame)
                 ctrl:ClearAllPoints()
-                ctrl:SetPoint("TOPLEFT",  frame, "TOPLEFT",  PAD_X, 0)
-                ctrl:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD_X, 0)
+                local drop = elementData.dropBelowHeader or 0
+                ctrl:SetPoint("TOPLEFT",  frame, "TOPLEFT",  PAD_X, -drop)
+                ctrl:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD_X, -drop)
                 ctrl:Show()
                 -- Ownership must be recorded on BOTH attach paths. Recording it only for headers
                 -- would leave every control still vulnerable to the stale-pointer detach above.

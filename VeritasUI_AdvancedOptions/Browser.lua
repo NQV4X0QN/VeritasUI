@@ -491,7 +491,8 @@ local COL_NAME_W  = 200
 local COL_VAL_W   = 100
 local COL_DEF_W   = 100
 
-function AO:BuildBrowserContent(parent)
+-- buttonBar: the window, whose ButtonFrameTemplate bottom bar holds the Reset buttons (Settings.lua).
+function AO:BuildBrowserContent(parent, buttonBar)
     local INSET = 8
 
     -- ── Search Box ──────────────────────────────────────────
@@ -600,9 +601,15 @@ function AO:BuildBrowserContent(parent)
         footer:SetHeight(FOOTER_H)
         footer:Hide()
 
-        resetAllBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+        -- Both Reset buttons sit in the window's bottom bar, bottom right, where the Featured tab's
+        -- Collapse All sits (owner, 2026-10-30): ButtonFrameTemplate's corner offset -6,4
+        -- (MagicButton_OnLoad, SharedUIPanelTemplates.lua:36-39). Parented to this tab, so they
+        -- show with it only; UpdateFooter shows them only while a filter is on.
+        local bar = buttonBar or footer
+        local barX, barY = buttonBar and -6 or 0, buttonBar and 4 or 2
+        resetAllBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
         resetAllBtn:SetSize(150, 22)
-        resetAllBtn:SetPoint("BOTTOMRIGHT", footer, "BOTTOMRIGHT", 0, 2)
+        resetAllBtn:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", barX, barY)
         resetAllBtn:SetText("Reset All to Default")
         resetAllBtn:SetScript("OnClick", function()
             if changedOnly then
@@ -621,18 +628,23 @@ function AO:BuildBrowserContent(parent)
         -- "Changed" mode with nothing searched: the console's cvar_default. It takes Reset All's
         -- place rather than sitting beside it, so the footer only ever offers one reset: everything
         -- (no search) or exactly the rows a search left (Reset All). Owner's design, 2026-10-29.
-        resetEverythingBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+        resetEverythingBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
         resetEverythingBtn:SetSize(150, 22)
-        resetEverythingBtn:SetPoint("BOTTOMRIGHT", footer, "BOTTOMRIGHT", 0, 2)
+        resetEverythingBtn:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", barX, barY)
         resetEverythingBtn:SetText("Reset Everything")
         resetEverythingBtn:SetScript("OnClick", function()
             StaticPopup_Show("VERITASUI_AO_RESET_EVERYTHING")
         end)
         resetEverythingBtn:Hide()
+        resetAllBtn:Hide()
 
         footerText = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         footerText:SetPoint("TOPLEFT", footer, "TOPLEFT", 0, -2)
-        footerText:SetPoint("BOTTOMRIGHT", resetAllBtn, "BOTTOMLEFT", -10, 0)
+        if buttonBar then
+            footerText:SetPoint("BOTTOMRIGHT", footer, "BOTTOMRIGHT", 0, 0)
+        else
+            footerText:SetPoint("BOTTOMRIGHT", resetAllBtn, "BOTTOMLEFT", -10, 0)
+        end
         footerText:SetJustifyH("LEFT")
         footerText:SetJustifyV("TOP")
         footerText:SetWordWrap(true)
@@ -660,8 +672,8 @@ function AO:BuildBrowserContent(parent)
         -- reaches CVars this list can't). Anything searched, or the ElvUI filter: Reset All.
         local searched = strtrim(searchBox:GetText() or "") ~= ""
         local everything = changedOnly and not searched
-        resetEverythingBtn:SetShown(everything)
-        resetAllBtn:SetShown(not everything)
+        resetEverythingBtn:SetShown(on and everything)
+        resetAllBtn:SetShown(on and not everything)
         local h = changedOnly and FOOTER_CHANGED_H or FOOTER_H
         footer:SetHeight(h)
         scrollBox:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SB_INSET, on and (h + 8) or 4)

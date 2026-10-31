@@ -80,6 +80,21 @@ local function BuildMainWindow()
     -- ── Content panels ────────────────────────────────────────
     -- Inside Blizzard's recessed Inset. The fallback anchors match ButtonFrameTemplate's own Inset
     -- (TOPLEFT 4,-60 / BOTTOMRIGHT -6,26) should a client ever lack it.
+    -- The Inset's own background is the old marble tile. The Auction House's lists use a flat,
+    -- modern one, auctionhouse-background-index (Blizzard_AuctionHouseBrowseResultsFrame.xml:10),
+    -- laid 3 px inside the same InsetFrameTemplate border (AuctionHouseBackgroundMixin:OnLoad,
+    -- Blizzard_AuctionHouseSharedTemplates.lua:25-34). Atlases come from the client, not the
+    -- Auction House addon, so it shows without that UI loaded. Stretched to the Inset's size.
+    if win.Inset and win.Inset.Bg then
+        local bg = win.Inset.Bg
+        bg:SetHorizTile(false)
+        bg:SetVertTile(false)
+        bg:SetAtlas("auctionhouse-background-index")
+        bg:ClearAllPoints()
+        bg:SetPoint("TOPLEFT",     win.Inset, "TOPLEFT",      3, -3)
+        bg:SetPoint("BOTTOMRIGHT", win.Inset, "BOTTOMRIGHT", -3,  3)
+    end
+
     local CONTENT = CreateFrame("Frame", nil, win)
     if win.Inset then
         CONTENT:SetPoint("TOPLEFT",     win.Inset, "TOPLEFT",      4, -4)
@@ -94,7 +109,7 @@ local function BuildMainWindow()
     subtitle:SetPoint("TOP", win, "TOP", 0, -32)
     subtitle:SetJustifyH("CENTER")
     subtitle:SetTextColor(1, 1, 1)
-    subtitle:SetText("Advanced Options")
+    subtitle:SetText("Featured Settings")
 
     -- Featured tab content container
     local contFeatured = CreateFrame("Frame", nil, CONTENT)
@@ -126,7 +141,7 @@ local function BuildMainWindow()
         PanelTemplates_SetTab(win, idx)
         contFeatured:SetShown(idx == 1)
         contBrowser:SetShown(idx == 2)
-        subtitle:SetText(idx == 1 and "Advanced Options" or "All CVars")
+        subtitle:SetText(idx == 1 and "Featured Settings" or "All CVars")
         -- Persist last tab
         if AO.db then AO.db.lastTab = idx end
     end
@@ -141,7 +156,7 @@ local function BuildMainWindow()
 
     -- ── Build tab contents ────────────────────────────────────
     AO:BuildFeaturedContent(contFeatured, win)
-    AO:BuildBrowserContent(contBrowser)
+    AO:BuildBrowserContent(contBrowser, win)
 
     win:SetScript("OnShow", function()
         ApplyPortrait(win)
