@@ -267,29 +267,12 @@ AO.FEATURED_CATEGORIES = {
                 label   = "Show Toast Notifications",
                 tooltip = "Display pop-up toast notifications for social events, achievements, etc.",
             },
-            {
-                type    = "dropdown",
-                cvar    = "findYourselfMode",
-                label   = "Find Yourself Mode",
-                tooltip = "Visual highlight to help locate your character in crowded scenes.",
-                options = {
-                    { value = "0", text = "Off" },
-                    { value = "1", text = "Circle" },
-                    { value = "2", text = "Circle + Arrow" },
-                },
-            },
-            {
-                type    = "dropdown",
-                cvar    = "OutlineEngineMode",
-                label   = "Character Outline",
-                tooltip = "Renders an outline around characters for visibility.",
-                options = {
-                    { value = "0", text = "Off" },
-                    { value = "1", text = "Low" },
-                    { value = "2", text = "Medium" },
-                    { value = "3", text = "High" },
-                },
-            },
+            -- Find Yourself Mode (findYourselfMode) and Character Outline (OutlineEngineMode) were
+            -- removed in v1.35.9 (audit O5): owner-tested 2026-10-30, neither did anything. Blizzard
+            -- drives both through other CVars and already shows them in Options: Combat -> Self
+            -- Highlight (findYourselfModeCircle/Outline/Icon, CombatOverrides.lua:3-48) and
+            -- Interface -> Object/NPC Outline ("Outline", Interface.lua:43-55). Both names stay
+            -- searchable on All CVars. Do not re-add them here.
             {
                 type    = "checkbox",
                 cvar    = "showTutorials",
