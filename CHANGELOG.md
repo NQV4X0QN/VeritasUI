@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.35.4] - 2026-10-30
+
+### Fixed
+
+- `VeritasUI_PriorityRotation` — **No Lua errors when a protected Blizzard window covers the rotation window.** The helper that opens the spellbook from an empty slot now stops quietly when the mouse is over one of Blizzard's protected windows, such as the House Editor, instead of raising an error twenty times a second (`SpellbookOpener.lua`)
+- `VeritasUI_PriorityRotation` — **Corrected a code note** that described the Spellbook button the way that caused the v1.22.1 problem. Nothing changes in game (`Settings.lua`)
+
+
 ## [1.35.3] - 2026-10-30
 
 ### Fixed
