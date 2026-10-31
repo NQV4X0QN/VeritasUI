@@ -111,7 +111,7 @@ read_globals = {
     "ITEM_QUALITY_COLORS", "BAG_ITEM_QUALITY_COLORS", "ColorManager", "NUM_BAG_SLOTS",
     "C_TradeSkillUI", "C_Texture",
     -- Map / navigation / quests
-    "C_Map", "C_Navigation", "C_SuperTrack", "C_QuestLog", "GetQuestID",
+    "C_Map", "C_Navigation", "C_SuperTrack", "C_QuestLog", "GetQuestID", "GetTitleText",
     -- Delves (QualityOfLife: Nemesis groups-remaining count on the Delve plaque)
     "C_DelvesUI",
     -- Blizzard font colour objects (QoL: Delve count colouring). Confirmed present
