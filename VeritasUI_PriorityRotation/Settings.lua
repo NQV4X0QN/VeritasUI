@@ -470,11 +470,12 @@ local function BuildMainWindow()
             win.specDD = specDD
         end
 
-        -- Spellbook toggle button. In Midnight, SpellBookFrame was retired
-        -- and absorbed into PlayerSpellsFrame. We implement explicit
-        -- toggle: if PlayerSpellsFrame is shown, hide via HideUIPanel
-        -- (manager-aware); otherwise open via the modern PlayerSpellsUtil
-        -- with a ToggleSpellBook fallback for earlier-build clients.
+        -- Spellbook button. ⛔ Priority Rotation does NOT open the spellbook itself: doing so from
+        -- this code tainted it, and a spell clicked in it was refused (CastSpellBookItem,
+        -- ADDON_ACTION_FORBIDDEN, fixed v1.22.1). The click is taken by SpellbookOpener.lua's
+        -- secure overlay (AddTarget below) and forwarded to Blizzard's PlayerSpellsMicroButton,
+        -- which opens or closes it like the menu bar. PR.ToggleSpellBookPanel only explains, for
+        -- when the overlay is absent (in combat, or no micro button). Never call PlayerSpellsUtil here.
         local spellBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")
         spellBtn:SetSize(HALF, 24)
         spellBtn:SetPoint("TOPLEFT", (specDD or divTools), "BOTTOMLEFT", 0, -10)
