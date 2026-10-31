@@ -302,6 +302,7 @@ end
 --      label    = "Display Label",
 --      tooltip  = "Optional tooltip body text",
 --      options  = { { value = "0", text = "Off" }, { value = "1", text = "On" }, ... },
+--      valueText = nil,           -- optional fn(value) → text for a value not in options
 --      restart  = false,
 --  }
 --
@@ -344,6 +345,8 @@ function AO:CreateDropdown(parent, cfg)
             for _, opt in ipairs(cfg.options) do
                 if tostring(opt.value) == curStr then return opt.text end
             end
+            -- Optional cfg.valueText(value): readable text for a value not in the list (audit O4).
+            if cfg.valueText then return cfg.valueText(curStr) end
         end
         return cur or "?"
     end

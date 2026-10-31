@@ -45,6 +45,31 @@ local SOFT_TARGET_OPTIONS = {
     { value = "3", text = "Always" },
 }
 
+-- Chat Timestamps: Blizzard's own list (Blizzard_SettingsDefinitions_Frame/Social.lua:190-218).
+-- The values are the TIMESTAMP_FORMAT_* globals and each label is an example time drawn with that
+-- format, so the box reads "03:27 PM", never "%I:%M %p" (audit O4: until v1.35.8 this list was our
+-- own, missed "%I:%M %p", and a value not in it was shown raw). Same example time as Blizzard's.
+local TIMESTAMP_EXAMPLE = { year = 2010, month = 12, day = 15, hour = 15, min = 27, sec = 32 }
+local function TimestampLabel(fmt)
+    if fmt == "none" then return TIMESTAMP_FORMAT_NONE or "None" end
+    if TimeUtil and TimeUtil.BetterDate and time then
+        local ok, label = pcall(TimeUtil.BetterDate, fmt, time(TIMESTAMP_EXAMPLE))
+        if ok and type(label) == "string" and label ~= "" then return label end
+    end
+    return fmt
+end
+AO.TimestampLabel = TimestampLabel
+
+local TIMESTAMP_OPTIONS = { { value = "none", text = TimestampLabel("none") } }
+for _, key in ipairs({ "TIMESTAMP_FORMAT_HHMM", "TIMESTAMP_FORMAT_HHMMSS", "TIMESTAMP_FORMAT_HHMM_AMPM",
+                       "TIMESTAMP_FORMAT_HHMMSS_AMPM", "TIMESTAMP_FORMAT_HHMM_24HR",
+                       "TIMESTAMP_FORMAT_HHMMSS_24HR" }) do
+    local fmt = _G[key]
+    if type(fmt) == "string" and fmt ~= "" then
+        TIMESTAMP_OPTIONS[#TIMESTAMP_OPTIONS + 1] = { value = fmt, text = TimestampLabel(fmt) }
+    end
+end
+
 AO.FEATURED_CATEGORIES = {
     {
         key   = "camera",
@@ -306,13 +331,10 @@ AO.FEATURED_CATEGORIES = {
                 cvar    = "showTimestamps",
                 label   = "Chat Timestamps",
                 tooltip = "Show a timestamp next to each chat message.",
-                options = {
-                    { value = "none",             text = "Off" },
-                    { value = "%H:%M",            text = "HH:MM (24h)" },
-                    { value = "%I:%M",            text = "HH:MM (12h)" },
-                    { value = "%H:%M:%S",         text = "HH:MM:SS (24h)" },
-                    { value = "%I:%M:%S %p",      text = "HH:MM:SS AM/PM" },
-                },
+                options = TIMESTAMP_OPTIONS,
+                -- A format not in the list (set by another addon or by hand) is shown as an
+                -- example time too, not as its raw codes.
+                valueText = TimestampLabel,
             },
         },
     },
