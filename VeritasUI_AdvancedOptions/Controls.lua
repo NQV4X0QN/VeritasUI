@@ -129,9 +129,13 @@ end
 --
 -- ⚠ Deliberately NOT used by the dropdown's pcall fallback path: that path has
 -- no reset button, no indicator and no tooltip, and returns early by design.
-local function FinishRow(row, cfg, Refresh)
+-- resetY: raises the reset button off the row's centre. A slider row is taller than its slider
+-- (room under the bar), so a centred button sat below the slider (owner, 2026-10-30); sliders
+-- pass SLIDER_RESET_RAISE.
+local SLIDER_RESET_RAISE = 4
+local function FinishRow(row, cfg, Refresh, resetY)
     local resetBtn = CreateResetButton(row, cfg.cvar, Refresh)
-    resetBtn:SetPoint("RIGHT", row, "RIGHT", 8, 0)
+    resetBtn:SetPoint("RIGHT", row, "RIGHT", 8, resetY or 0)
 
     if cfg.restart then
         local indicator = CreateRestartIndicator(row)
@@ -291,7 +295,7 @@ function AO:CreateSlider(parent, cfg)
         end)
     end)
 
-    return FinishRow(row, cfg, Refresh)
+    return FinishRow(row, cfg, Refresh, SLIDER_RESET_RAISE)
 end
 
 ----------------------------------------------------------------
