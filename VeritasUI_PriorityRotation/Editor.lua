@@ -357,7 +357,7 @@ function PR:BuildEditor(parent, contentWidth)
 
         local emptyTex = iconBtn:CreateTexture(nil, "ARTWORK")
         emptyTex:SetAllPoints()
-        emptyTex:SetTexture("Interface\\PaperDoll\\UI-Backpack-EmptySlot")
+        emptyTex:SetAtlas("bags-item-slot64")   -- bags' empty slot (ContainerFrame.xml:80)
         iconBtn.empty = emptyTex
 
         local iconTex = iconBtn:CreateTexture(nil, "ARTWORK")
@@ -427,8 +427,8 @@ function PR:BuildEditor(parent, contentWidth)
 
         -- Spell name
         local nameLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        nameLbl:SetPoint("LEFT", iconBtn, "RIGHT", 7, 0)
-        nameLbl:SetWidth(150)   -- ends at 212, where the control columns' grid starts (FREQ_L)
+        nameLbl:SetPoint("LEFT", iconBtn, "RIGHT", 11, 0)   -- 8 px inside the block (owner: 4 more)
+        nameLbl:SetWidth(146)   -- ends at 212, where the control columns' grid starts (FREQ_L)
         nameLbl:SetJustifyH("LEFT")
         row.nameLbl = nameLbl
 
@@ -444,27 +444,31 @@ function PR:BuildEditor(parent, contentWidth)
         freqLbl:SetTextColor(1, 1, 1)
         row.freqLbl = freqLbl
 
-        -- ⚠ THE STANDARD ARROW (owner, 2026-10-30): the Journeys renown track's
-        -- (RewardTrackJumpButtonTemplate, Blizzard_FrameXML/RewardTrackTemplates.xml:167-193) --
-        -- ui-journeys-delve-arrow-small-left with its -pressed / -disable atlases, the same art
-        -- added on top at 40% for hover. Hover only brightens it; a click shifts it subtly. The
-        -- right arrow is the left one mirrored, as Blizzard does (RewardTrackArtButtonMixin:OnLoad,
-        -- RewardTrackTemplates.lua:255-262). Until v1.35.11 these swapped to a different arrow on
-        -- hover, which jumped.
+        -- ⚠ THE STANDARD ARROW (owner, 2026-10-30): the Journeys renown track's ONE-STEP arrow
+        -- (RewardTrackButtonTemplate via RewardTrackArtButtonTemplate, Blizzard_FrameXML/
+        -- RewardTrackTemplates.xml:131-165) -- ui-journeys-delve-arrow-big-left with its -pressed /
+        -- -disable atlases, the same art added on top at 40% for hover. NOT the -small- atlases:
+        -- those are the double "jump to the start / end" arrow (RewardTrackJumpButtonTemplate).
+        -- Hover only brightens it; a click shifts it subtly. The right arrow is the left one
+        -- mirrored, as Blizzard does (RewardTrackArtButtonMixin:OnLoad, RewardTrackTemplates.lua
+        -- :255-262). Drawn at ARROW_W x ARROW_H, smaller than its 22x34 button, to fit the row.
+        -- Until v1.35.11 these swapped to a different arrow on hover, which jumped.
+        local ARROW_W, ARROW_H = 10, 15
         local function JourneysArrow(btn, facingRight)
             local function Tex(atlas, layer, alpha, blend)
                 local t = btn:CreateTexture(nil, layer)
-                t:SetAtlas(atlas, true)
+                t:SetAtlas(atlas)
+                t:SetSize(ARROW_W, ARROW_H)
                 t:SetPoint("CENTER")
                 if alpha then t:SetAlpha(alpha) end
                 if blend then t:SetBlendMode(blend) end
                 if facingRight then t:SetTexCoord(1, 0, 0, 1) end
                 return t
             end
-            btn:SetNormalTexture(Tex("ui-journeys-delve-arrow-small-left", "ARTWORK"))
-            btn:SetPushedTexture(Tex("ui-journeys-delve-arrow-small-left-pressed", "ARTWORK"))
-            btn:SetDisabledTexture(Tex("ui-journeys-delve-arrow-small-left-disable", "ARTWORK"))
-            btn:SetHighlightTexture(Tex("ui-journeys-delve-arrow-small-left", "HIGHLIGHT", 0.4, "ADD"))
+            btn:SetNormalTexture(Tex("ui-journeys-delve-arrow-big-left", "ARTWORK"))
+            btn:SetPushedTexture(Tex("ui-journeys-delve-arrow-big-left-pressed", "ARTWORK"))
+            btn:SetDisabledTexture(Tex("ui-journeys-delve-arrow-big-left-disable", "ARTWORK"))
+            btn:SetHighlightTexture(Tex("ui-journeys-delve-arrow-big-left", "HIGHLIGHT", 0.4, "ADD"))
         end
 
         local decBtn = CreateFrame("Button", nil, freqFrame)
@@ -503,7 +507,7 @@ function PR:BuildEditor(parent, contentWidth)
 
         local followEmpty = followBtn:CreateTexture(nil, "ARTWORK")
         followEmpty:SetAllPoints()
-        followEmpty:SetTexture("Interface\\PaperDoll\\UI-Backpack-EmptySlot")
+        followEmpty:SetAtlas("bags-item-slot64")   -- bags' empty slot (ContainerFrame.xml:80)
         followEmpty:SetAlpha(0.35)
         followBtn.empty = followEmpty
 
@@ -677,7 +681,7 @@ function PR:BuildEditor(parent, contentWidth)
     MakeCenteredHeader(13,  "#")
     MakeCenteredHeader(41,  "Icon")
     local hAbility = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    hAbility:SetPoint("BOTTOMLEFT", rows[1], "TOPLEFT", 62, HEADER_Y)
+    hAbility:SetPoint("BOTTOMLEFT", rows[1], "TOPLEFT", 66, HEADER_Y)
     hAbility:SetTextColor(0.85, 0.75, 0.20)
     hAbility:SetText("Ability")
     AddHeaderTip(hAbility, "Ability")
