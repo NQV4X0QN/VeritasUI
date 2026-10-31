@@ -15,10 +15,9 @@ end
 -- ── Saved variable defaults ────────────────────────────────────────
 -- Saved settings, split by SCOPE. The authority on which key goes where is
 -- ~/.agents/skills/veritasui/references/setting-scope-map.md; `scope_map_test` enforces it.
--- Shared by every character: filtering choices are about how the player wants the tracker to
--- behave, not about a particular character's progress.
+-- Shared by every character: which quest types to keep is about how the player wants the tracker
+-- to behave, not about a particular character's progress.
 local UNIVERSAL = {
-    enabled       = true,
     pinCampaign   = true,
     pinImportant  = true,
     pinLegendary  = true,
@@ -30,7 +29,12 @@ local UNIVERSAL = {
 -- quest log ({ [questID] = true } for quests the player had NOT tracked when filtering was
 -- switched on; `false` = no record). Sharing it would apply one character's choices to quests
 -- an alt has never picked up. Replaced `manualWatched` in v1.17.12 (audit Z1).
+-- ⚠ `enabled` is PER-CHARACTER too (v1.35.6, audit Z1): it must share its record's scope. While it
+-- was shared, turning filtering off on one character restored only that character, and every alt
+-- it had filtered stayed filtered. Characters first seen after the change take the old shared
+-- value (`SeedEnabledFromShared`), so nothing flips on or off at the update.
 local PERCHAR = {
+    enabled               = true,
     untrackedBeforeFilter = false,
 }
 
@@ -39,7 +43,9 @@ local db  = nil  -- ACCOUNT-wide table; assigned at ADDON_LOADED
 -- nil until PLAYER_LOGIN. RecordTrackingBeforeFilter/RestoreTracking reference it below this
 -- point but are DEFINED above the assignment, so without this declaration the assignment would
 -- create a global and those reads would silently resolve to it -- the /way v1.6.33 trap.
-local cdb = nil  -- PER-CHARACTER table (untrackedBeforeFilter only); nil until PLAYER_LOGIN
+local cdb = nil  -- PER-CHARACTER table (enabled, untrackedBeforeFilter); nil until PLAYER_LOGIN
+
+local function Enabled() return cdb ~= nil and cdb.enabled == true end
 
 -- ── No hot-global localization block here, on purpose ─────────────
 -- Most modules in the suite open with a block of `local x = x` upvalues; this one
@@ -211,7 +217,7 @@ local SYNC_COOLDOWN  = 0.5
 local cachedQuestSet = nil   -- rebuilt on ZONE_CHANGED*, reused for QUEST_LOG_UPDATE
 
 local function SyncTracking(verbose)
-    if not db or not db.enabled then
+    if not db or not Enabled() then
         if verbose then print("[ZQ sync] disabled, aborting.") end
         return
     end
@@ -304,6 +310,34 @@ local function RestoreTracking()
     cdb.untrackedBeforeFilter = false
 end
 
+-- One-time fix-up (audit Z1): a character that filtering was turned off for elsewhere, while
+-- `enabled` was shared, logs in off but still holding its record and the filtered tracker. Put
+-- its own tracking back -- only once the quest log has entries, so an empty log at login cannot
+-- use up the record. Also run before a new record is taken, so the filtered state is never
+-- recorded as the player's choice.
+local restorePending = false
+local function FinishPendingRestore()
+    if not restorePending or not cdb then return end
+    if type(cdb.untrackedBeforeFilter) ~= "table" then restorePending = false; return end
+    if C_QuestLog.GetNumQuestLogEntries() == 0 then return end
+    restorePending = false
+    RestoreTracking()
+end
+
+-- Before BindScopedDB seeds this character's `enabled` with the default (at ADDON_LOADED when
+-- the identity is already known, else at PLAYER_LOGIN), give a character not
+-- seen since `enabled` became per-character (v1.35.6) the value that was shared until then.
+-- The shared copy stays on the root as that seed; nothing reads it otherwise.
+local function SeedEnabledFromShared()
+    local root = _G.VeritasUI_ZoneQuestsDB
+    local key = VUI.CharKey()
+    if type(root) ~= "table" or type(root.enabled) ~= "boolean" or not key then return end
+    if type(root.chars) ~= "table" then root.chars = {} end
+    local slot = root.chars[key]
+    if type(slot) ~= "table" then slot = {}; root.chars[key] = slot end
+    if slot.enabled == nil then slot.enabled = root.enabled end
+end
+
 local function ZoneName()
     return GetRealZoneText() or GetZoneText() or "Unknown"
 end
@@ -331,13 +365,14 @@ local function InitializeOptions()
         category,
         ADDON_NAME .. "_enabled",
         "enabled",
-        db,                                -- ACCOUNT table: `enabled` is universal
-        type(UNIVERSAL.enabled),
+        cdb,                               -- PER-CHARACTER table: `enabled` is per-character
+        type(PERCHAR.enabled),
         "Enable Zone Filtering",
-        UNIVERSAL.enabled
+        PERCHAR.enabled
     )
     enableSetting:SetValueChangedCallback(function(_, value)
         if value then
+            FinishPendingRestore()
             RecordTrackingBeforeFilter()
             SyncTracking(false)
             VUI.Print("Zone Quests", "|cFF00FF00On.|r Filtering to |cFFFFCC00" .. ZoneName() .. "|r")
@@ -348,7 +383,7 @@ local function InitializeOptions()
     end)
     Settings.CreateCheckbox(category, enableSetting,
         "Shows only quests for your current zone in the Objective Tracker. Turning it off "
-        .. "puts back the tracking you had before.")
+        .. "puts back the tracking you had before. Set for each character.")
 
     local pins = {
         { key = "pinCampaign",
@@ -424,12 +459,12 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         -- EVERY default into the account root, which is the mechanism behind the pinning
         -- defect this refactor fixes, so it had to go rather than sit alongside the binder.
         -- It also deep-copies table defaults, so the local DeepCopy is no longer needed.
+        -- BindScopedDB seeds this character's slot here already when its identity is known, so
+        -- the shared `enabled` must be copied in first (see SeedEnabledFromShared).
+        SeedEnabledFromShared()
         db = VUI.BindScopedDB("VeritasUI_ZoneQuestsDB", UNIVERSAL, PERCHAR)
         -- InitializeOptions stays at PLAYER_LOGIN: Settings.RegisterAddOnSetting captures the
-        -- table it is handed, and the per-character table does not exist yet here.
-        -- InitializeOptions moved to PLAYER_LOGIN: Settings.RegisterAddOnSetting
-        -- captures the table it is handed, so it must receive the per-character
-        -- slot, which does not exist yet here.
+        -- table it is handed, and the per-character table (`enabled`) does not exist yet here.
         ef:UnregisterEvent("ADDON_LOADED")
         return
     end
@@ -438,7 +473,8 @@ ef:SetScript("OnEvent", function(_, event, arg1)
 
     if event == "PLAYER_LOGIN" then
         -- Identity is available: bind BOTH tables. `db` is account-wide (every universal read
-        -- below is unchanged); `cdb` is this character's slot and holds untrackedBeforeFilter only.
+        -- below is unchanged); `cdb` is this character's slot: enabled and untrackedBeforeFilter.
+        SeedEnabledFromShared()
         db, cdb = VUI.BindScopedDB("VeritasUI_ZoneQuestsDB", UNIVERSAL, PERCHAR)
 
         -- ⚠ MIGRATION MUST RUN HERE: after the char table exists, and BEFORE anything reads a
@@ -461,8 +497,10 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         db.manualWatched = nil
 
         InitializeOptions()
+        restorePending = not Enabled() and type(cdb and cdb.untrackedBeforeFilter) == "table"
         C_Timer.After(2.0, function()
             -- No snapshot here: the record is taken only when filtering is switched on.
+            FinishPendingRestore()
             SyncTracking(false)
             -- Login line removed (suite-wide audit S2): Lib prints the one "VeritasUI vX loaded" line.
         end)
@@ -472,7 +510,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         or event == "ZONE_CHANGED_INDOORS" then
         -- Always invalidate the cache so the next sync uses fresh zone data.
         cachedQuestSet = nil
-        if not db or not db.enabled then return end
+        if not Enabled() then return end
         if debounceTimer then debounceTimer:Cancel(); debounceTimer = nil end
         cachedQuestSet = BuildZoneQuestSet()
         lastDirectSync = GetTime()
@@ -484,7 +522,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         -- (see the registration comment above). One rebuild per acceptance
         -- burst — the debounce collapses the accompanying QUEST_LOG_UPDATEs.
         cachedQuestSet = nil
-        if db.enabled then ScheduleSync() end
+        if Enabled() then ScheduleSync() end
 
     elseif event == "SUPER_TRACKING_CHANGED" then
         -- Player set or cleared the minimap direction arrow. Re-sync so the
@@ -492,6 +530,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         ScheduleSync()
 
     elseif event == "QUEST_LOG_UPDATE" then
+        FinishPendingRestore()
         ScheduleSync()
     end
 end)
@@ -509,16 +548,17 @@ SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
     msg = strtrim(msg or ""):lower()
 
     if msg == "off" or msg == "disable" then
-        if not db then VUI.Print("Zone Quests", "Not ready."); return end
-        if not db.enabled then VUI.Print("Zone Quests", "Already off."); return end
-        db.enabled = false
+        if not cdb then VUI.Print("Zone Quests", "Not ready."); return end
+        if not cdb.enabled then VUI.Print("Zone Quests", "Already off."); return end
+        cdb.enabled = false
         RestoreTracking()
         VUI.Print("Zone Quests", "|cFFFF4444Off.|r  /zq on to re-enable.")
 
     elseif msg == "on" or msg == "enable" then
-        if not db then VUI.Print("Zone Quests", "Not ready."); return end
-        if db.enabled then VUI.Print("Zone Quests", "Already on."); return end
-        db.enabled = true
+        if not cdb then VUI.Print("Zone Quests", "Not ready."); return end
+        if cdb.enabled then VUI.Print("Zone Quests", "Already on."); return end
+        cdb.enabled = true
+        FinishPendingRestore()
         RecordTrackingBeforeFilter()
         SyncTracking(false)
         VUI.Print("Zone Quests", "|cFF00FF00On.|r  " .. ZoneName())
@@ -607,7 +647,7 @@ SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
         -- the second copy alive and guarantees the next drift.
         print("  Per-quest dispositions: run |cFFFFFF00/zq synctest|r")
         print("  WatchType: " .. tostring(GetWatchType()))
-        print("  db.enabled: " .. tostring(db and db.enabled))
+        print("  enabled (this character): " .. tostring(cdb and cdb.enabled))
 
     else
         if settingsCategoryID then

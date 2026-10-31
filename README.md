@@ -54,7 +54,7 @@ Settings: **Options → AddOns → VeritasUI → Quality of Life**, or `/qol`.
 Settings: **Options → AddOns → VeritasUI → Auction House**, or `/ah`.
 
 ### Zone Quests — a tidy quest tracker
-Shows only quests for the zone you're in, updating as you travel. Campaign, important, legendary, meta and daily/weekly quests can be kept visible everywhere, and the quest you're navigating to always stays. Turning it off puts back the tracking you had chosen before.
+Shows only quests for the zone you're in, updating as you travel. Campaign, important, legendary, meta and daily/weekly quests can be kept visible everywhere, and the quest you're navigating to always stays. Turning it off puts back the tracking you had chosen before. It's turned on or off for each character on its own.
 
 Settings: **Options → AddOns → VeritasUI → Zone Quests**, or `/zq`.
 
