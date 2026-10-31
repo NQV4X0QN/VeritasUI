@@ -223,20 +223,24 @@ local function BuildMainWindow()
     local function BuildInWindowSettingsTab(cont)
         local CW   = CONTENT_W - 8
         local HALF = math.floor((CW - 8) / 2)
+        -- Equal margins left and right (owner, 2026-10-30: everything sat on the left border with
+        -- 8 px spare on the right). The column is CW wide inside a CONTENT_W-wide tab, so it starts
+        -- MARGIN in; every later row hangs off the first section, so this one offset moves them all.
+        local MARGIN = (CONTENT_W - CW) / 2
 
         -- Section helper: gold header + 1px divider, returns divider frame.
         -- relPoint controls which edge of anchorFrame to hang from:
         --   "TOPLEFT"    — first section, hangs from the top of the container
         --   "BOTTOMLEFT" — subsequent sections, chains below previous body text
-        local function Section(anchorFrame, relPoint, yOff, title)
+        local function Section(anchorFrame, relPoint, yOff, title, xOff)
             local hdr = cont:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            hdr:SetPoint("TOPLEFT", anchorFrame, relPoint, 0, yOff)
+            hdr:SetPoint("TOPLEFT", anchorFrame, relPoint, xOff or 0, yOff)
             hdr:SetTextColor(1, 0.82, 0)
             hdr:SetText(title)
             local div = cont:CreateTexture(nil, "ARTWORK")
             div:SetHeight(1)
             div:SetPoint("TOPLEFT",  hdr,  "BOTTOMLEFT",  0, -3)
-            div:SetPoint("TOPRIGHT", cont, "TOPRIGHT",   -6,  0)
+            div:SetPoint("TOPRIGHT", cont, "TOPRIGHT", -MARGIN, 0)
             div:SetColorTexture(0.35, 0.35, 0.35, 0.8)
             return div
         end
@@ -252,7 +256,7 @@ local function BuildMainWindow()
         end
 
         -- ── How It Works ──────────────────────────────────────────
-        local divHow = Section(cont, "TOPLEFT", -4, "How It Works")
+        local divHow = Section(cont, "TOPLEFT", -4, "How It Works", MARGIN)
         local txtHow = Body(divHow, -6,
             "Spam the bound key to cycle through your rotation. "
             .."WoW's built-in cooldown and resource checks handle the rest.")
