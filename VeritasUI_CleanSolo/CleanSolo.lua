@@ -275,8 +275,77 @@ local function SetupChatTabFading()
         end)
     end
 
-    if FCF_FadeInChatFrame then hooksecurefunc("FCF_FadeInChatFrame", ShowTab) end
-    if FCF_FadeOutChatFrame then hooksecurefunc("FCF_FadeOutChatFrame", HideTab) end
+    -- ── The IM-style type bar follows the window too (owner, 2026-10-31) ──
+    -- With Chat Style "IM" Blizzard keeps the window's edit box shown while you are not typing,
+    -- at a fixed 0.35 alpha (ChatFrameEditBoxMixin:Deactivate, ChatFrameEditBox.lua:543-553;
+    -- shown by ChatFrameUtil.SetLastActiveWindow, ChatFrameUtil.lua:583-585), and never fades it,
+    -- so it sat on screen with the window and tabs gone. Classic hides it instead, so nothing here
+    -- changes Classic. The bar now goes to Blizzard's 0.35 when the window fades in and to 0 when
+    -- it fades out, at the same speeds as the tab.
+    -- ⚠ While you type, the bar is Blizzard's: ActivateChat sets it to 1 (ChatFrameUtil.lua:540) and
+    --   every step of our fade checks ACTIVE_CHAT_EDIT_BOX first and drops out, so a fade already
+    --   running can never dim the box you are typing in. Own driver, not VUI.SmoothFade, for
+    --   exactly that check.
+    local BAR_ALPHA = 0.35   -- Blizzard's inactive IM edit box alpha (ChatFrameEditBox.lua:551)
+    local barFades, barHooked = {}, {}
+    local barDriver = CreateFrame("Frame")
+    barDriver:Hide()
+    barDriver:SetScript("OnUpdate", function(self, elapsed)
+        for eb, f in pairs(barFades) do
+            if _G.ACTIVE_CHAT_EDIT_BOX == eb then
+                barFades[eb] = nil
+            else
+                f.t = f.t + (elapsed or 0)
+                if f.t >= f.d then
+                    eb:SetAlpha(f.to); barFades[eb] = nil
+                else
+                    eb:SetAlpha(f.from + (f.to - f.from) * f.t / f.d)
+                end
+            end
+        end
+        if not next(barFades) then self:Hide() end
+    end)
+
+    local FadeBar
+    local function BarOf(cf)
+        local eb = cf and rawget(cf, "editBox")
+        if type(eb) ~= "table" or not eb.SetAlpha then return nil end
+        -- After you send (or Escape), Blizzard puts the bar back at 0.35 at once; if the window
+        -- has already faded out, take it away at the window's fade-out speed.
+        if not barHooked[eb] and eb.Deactivate then
+            barHooked[eb] = true
+            hooksecurefunc(eb, "Deactivate", function()
+                if not cf.hasBeenFaded then FadeBar(cf, 0, FADE_OUT) end
+            end)
+        end
+        return eb
+    end
+
+    function FadeBar(cf, to, dur)
+        local eb = BarOf(cf)
+        if not eb or _G.ACTIVE_CHAT_EDIT_BOX == eb then return end
+        barFades[eb] = { from = eb:GetAlpha(), to = to, d = dur, t = 0 }
+        barDriver:Show()
+    end
+
+    -- Install the Deactivate hooks now, and take away the bar Blizzard has already shown at
+    -- login, the way the tabs start hidden.
+    for cf in pairs(tabs) do
+        if not cf.hasBeenFaded then FadeBar(cf, 0, 0) else BarOf(cf) end
+    end
+
+    if FCF_FadeInChatFrame then
+        hooksecurefunc("FCF_FadeInChatFrame", function(cf)
+            ShowTab(cf)
+            FadeBar(cf, BAR_ALPHA, FADE_IN)
+        end)
+    end
+    if FCF_FadeOutChatFrame then
+        hooksecurefunc("FCF_FadeOutChatFrame", function(cf)
+            HideTab(cf)
+            FadeBar(cf, 0, FADE_OUT)
+        end)
+    end
 end
 
 -- ── Feature: Hide Chat Buttons ──────────────────────────────
@@ -842,6 +911,7 @@ local function InitializeOptions()
     local FADE_OPTIONS = {
         { key = "fadeChatTabs",        name = "Fade Chat Tabs",
           tip = "Chat tabs stay hidden until the chat window appears, then fade in and out with it. "
+             .. "With Chat Style set to IM, the box you type in does the same. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "transparentChatBG",   name = "Transparent Chat Background",
           tip = "Makes the chat background transparent until you mouse over it. Turn it off and "
