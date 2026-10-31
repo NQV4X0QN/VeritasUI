@@ -150,7 +150,9 @@ rotBtn:Show()
 
 -- Initialize macros table immediately to prevent nil-access if
 -- a click arrives before the first InjectSequence call.
-rotBtn:Execute("macros = newtable(); macros[1] = ''; links = newtable(); armed = newtable(); nextLink = 0")
+PR.AFTER_PRESSES = 7
+rotBtn:Execute("macros = newtable(); macros[1] = ''; links = newtable(); armed = newtable(); nextLink = 0;"
+    .. " armPresses = " .. PR.AFTER_PRESSES)
 
 -- PARITY BUG (found 2026-07-11, latent since inception): the keybind path
 -- (SetOverrideBindingClick) delivers TWO clicks per physical press — key-down
@@ -168,10 +170,16 @@ rotBtn:Execute("macros = newtable(); macros[1] = ''; links = newtable(); armed =
 --
 -- "After" links (v1.36.0) are decided here, per press, not in the compiled list.
 -- links[i] = { "[channeling:<target>] 1", <follower macrotext> }. A press that lands while
--- the target channels re-arms every link on it for 2 presses and otherwise steps as normal
--- (its step carries [nochanneling], so it does nothing). The first presses after the channel
--- ends cast the armed followers, in profile order, instead of advancing the step; a follower
--- still on cooldown just fails, and waits for the next channel. SecureCmdOptionParse is
+-- the target channels re-arms every link on it for PR.AFTER_PRESSES presses and otherwise steps
+-- as normal (its step carries [nochanneling], so it does nothing). The presses after the channel
+-- ends cast the armed followers, taking turns in profile order, instead of advancing the step; a
+-- follower still on cooldown just fails, and waits for the next channel.
+-- WHY 7 (measured 2026-10-31, /pr afterlog, 8 Eye Beams): at 2 presses each, Blade Dance and
+-- Essence Break's four tries all landed inside ONE global cooldown, so whichever cast first left
+-- the other nothing; Essence Break missed 5 of the first 5. The snippet cannot see time
+-- (no GetTime in RestrictedEnvironment.lua), so the window is counted in presses: 7 each = 14
+-- alternating presses, about 1.5 s at the owner's ~9 presses/s (18 per Eye Beam channel), which is
+-- more than one global cooldown and less than two. A faster presser gets a shorter window. SecureCmdOptionParse is
 -- allowed in this environment (RestrictedEnvironment.lua:82); the 2026-10-31 probe measured
 -- [channeling:Eye Beam] true on every press during 6 channels and false on all 1302 outside.
 rotBtn:WrapScript(rotBtn, "OnClick", [=[
@@ -182,7 +190,7 @@ rotBtn:WrapScript(rotBtn, "OnClick", [=[
         local channeling = false
         for i = 1, #links do
             if SecureCmdOptionParse(links[i][1]) then
-                armed[i] = 2
+                armed[i] = armPresses
                 channeling = true
             end
         end
@@ -282,7 +290,7 @@ alogFrame:SetScript("OnUpdate", function()
     if n ~= alog.lastPress then
         alog.lastPress = n
         local w = alog.window
-        if w and #w.presses < 6 then
+        if w and #w.presses < 8 then
             local text = rotBtn:GetAttribute("macrotext") or ""
             local lastLine = text:match("([^\n]*)$") or text
             w.presses[#w.presses + 1] = lastLine:match("%]%s*(.+)$") or lastLine:gsub("^/%a+%s*", "")
