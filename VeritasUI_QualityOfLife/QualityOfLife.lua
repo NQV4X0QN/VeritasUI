@@ -3042,7 +3042,10 @@ local GreatVault = {}
 ;(function()
     -- OPACITY: the vault art is drawn solid (Journeys window art), unlike the semi-transparent
     -- minimap HUD art around it; 0.8 is owner-chosen in game (2026-10-30) to match.
-    local SIZE, GAP, OPACITY = 22, 2, 0.8
+    -- SIZE: the vault art is 36 px with 32 px visible (incl. its soft edge); the mail icon is
+    -- drawn at its 20 px atlas size with 18 px visible. 20 puts the vault at 17.8 wide vs the
+    -- mail's 18 (measured from both atlas textures, 2026-10-30; 22 drew it 19.6 wide).
+    local SIZE, GAP, OPACITY = 20, 2, 0.8
     local button, watcher, anchoredTo, sinceCheck = nil, nil, nil, 0
     local enabled, active = false, false
     local function Secret(v) return issecretvalue and issecretvalue(v) end
