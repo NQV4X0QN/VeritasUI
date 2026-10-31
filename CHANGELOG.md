@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.35.6] - 2026-10-30
+
+### Changed
+
+- `VeritasUI_ZoneQuests` — **Enable Zone Filtering is set for each character.** Turning it off on one character no longer leaves your other characters' trackers filtered; each character keeps the setting it had before this update (`ZoneQuests.lua`, `README.md`)
+
+### Fixed
+
+- `VeritasUI_ZoneQuests` — **Alts left filtered get their tracking back.** A character that an earlier "off" on another character left showing only one zone's quests has its own tracking put back when it logs in (`ZoneQuests.lua`)
+- `VeritasUI_ZoneQuests` — Corrected out-of-date notes in the code (`ZoneQuests.lua`)
+
+
 ## [1.35.5] - 2026-10-30
 
 ### Fixed
