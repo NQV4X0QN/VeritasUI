@@ -384,14 +384,23 @@ StaticPopupDialogs["VERITASUI_AO_RESET_SHOWN"] = {
 }
 
 -- "Reset Everything": the console's own cvar_default, every CVar on the client, not just the ones
--- this browser indexes. Run through ConsoleExec exactly as Blizzard's /console does: its handler
--- is a non-secure command that calls forceinsecure() then ConsoleExec(msg)
--- (Blizzard_ChatFrameBase/Shared/SlashCommands.lua:839-842), so this is no more tainted than the
--- player typing it. Keybindings, Edit Mode layouts, chat windows and addon settings are not CVars
--- and are untouched. Refused in combat rather than queued: nothing about it should land mid-fight.
+-- this browser indexes. Keybindings, Edit Mode layouts, chat windows and addon settings are not
+-- CVars and are untouched. Refused in combat rather than queued: nothing about it should land
+-- mid-fight.
 --
--- After a second, counts the indexed CVars still away from default and says so -- the only way
--- to see what cvar_default actually did without opening the console.
+-- ⚠ THE PLAYER SENDS IT (audit O3, v1.35.7). Until then this ran ConsoleExec("cvar_default") from
+-- addon code. On 2026-10-30 that reset part of the list (nameplates went back live), then raised
+-- an error that stopped it -- "The reset didn't run" -- and the owner had to type /console
+-- cvar_default to finish. The error text was thrown away, so why is unknown. Now the chat box opens
+-- with the command typed in and the player presses Enter: exactly the command he measured working.
+-- Do NOT go back to ConsoleExec without capturing that error first.
+--
+-- After it is sent, counts the indexed CVars still away from default and says so once the CVar
+-- changes stop (CVAR_UPDATE, debounced) -- the only way to see what cvar_default actually did
+-- without opening the console. Gives up after two minutes if the command is never sent.
+local RESET_COMMAND = "/console cvar_default"
+local resetWatch, resetSettle, resetGiveUp
+
 function AO:ReportAfterResetEverything()
     local left = 0
     for _, e in ipairs(cvarList or {}) do
@@ -408,31 +417,48 @@ function AO:ReportAfterResetEverything()
     if AO.RefreshBrowser then AO:RefreshBrowser() end
 end
 
+local function StopResetWatch()
+    if resetWatch then resetWatch:UnregisterAllEvents() end
+    if resetSettle then resetSettle:Cancel(); resetSettle = nil end
+    if resetGiveUp then resetGiveUp:Cancel(); resetGiveUp = nil end
+end
+
+local function WatchForReset()
+    if not resetWatch then
+        resetWatch = CreateFrame("Frame")
+        resetWatch:SetScript("OnEvent", function()
+            if resetSettle then resetSettle:Cancel() end
+            resetSettle = C_Timer.NewTimer(1, function()
+                resetSettle = nil
+                StopResetWatch()
+                AO:ReportAfterResetEverything()
+            end)
+        end)
+    end
+    StopResetWatch()
+    resetWatch:RegisterEvent("CVAR_UPDATE")
+    resetGiveUp = C_Timer.NewTimer(120, function() resetGiveUp = nil; StopResetWatch() end)
+end
+
 function AO:ResetEverything()
     if InCombatLockdown() then
         VUI.Print("Advanced Options", "|cFFFF4444Can't reset everything during combat.|r Try again afterwards.")
         return false
     end
-    local exec = _G.ConsoleExec
-    if type(exec) ~= "function" then
-        VUI.Print("Advanced Options", "|cFFFF4444This game client doesn't let addons run console commands.|r "
-            .. "Type |cFFFFFF00/console cvar_default|r instead.")
+    local open = (ChatFrameUtil and ChatFrameUtil.OpenChat) or _G.ChatFrame_OpenChat
+    if type(open) ~= "function" or not pcall(open, RESET_COMMAND) then
+        VUI.Print("Advanced Options", "Type |cFFFFFF00" .. RESET_COMMAND .. "|r in chat to reset everything.")
         return false
     end
-    local ok, result = pcall(exec, "cvar_default")
-    if not ok or result == false then
-        VUI.Print("Advanced Options", "|cFFFF4444The reset didn't run.|r "
-            .. "Type |cFFFFFF00/console cvar_default|r instead.")
-        return false
-    end
-    C_Timer.After(1, function() AO:ReportAfterResetEverything() end)
+    WatchForReset()
     return true
 end
 
 StaticPopupDialogs["VERITASUI_AO_RESET_EVERYTHING"] = {
     text = "Reset EVERY game setting to Blizzard's defaults?\n\nThis includes your graphics, sound, "
         .. "interface and controls options, not just the ones listed here. Keybindings, Edit Mode "
-        .. "layouts and addon settings are not affected.",
+        .. "layouts and addon settings are not affected.\n\nThe chat box opens with "
+        .. RESET_COMMAND .. " typed in: press Enter to run it.",
     button1 = "Reset Everything",
     button2 = CANCEL or "Cancel",
     timeout = 0, whileDead = 1, hideOnEscape = 1, showAlert = 1,
