@@ -83,7 +83,11 @@ local function BuildMainWindow()
     -- manager and produces drift / strata-flicker. SetToplevel IS safe
     -- (the manager doesn't touch it) and is required for PR to render
     -- above the instance-info side bar, matching CharacterFrame.
-    local win = CreateFrame("Frame", "PriorityRotMainWindow", UIParent, "PortraitFrameTemplate")
+    -- ButtonFrameTemplate (Blizzard_SharedXML/Mainline/SharedUIPanelTemplates.xml:660-693): the
+    -- portrait frame plus its recessed Inset and the 26 px button bar along the bottom -- the same
+    -- frame as Advanced Options (owner's request, v1.35.11). Both tabs sit in win.Inset; the bar
+    -- holds the Settings tab's Scan & Bind.
+    local win = CreateFrame("Frame", "PriorityRotMainWindow", UIParent, "ButtonFrameTemplate")
     win:SetSize(PNL_W, PNL_H)
     win:EnableMouse(true)
     win:Hide()
@@ -131,16 +135,25 @@ local function BuildMainWindow()
 
     ApplySpecPortrait(win)
 
+    -- Flat Auction House background in the Inset instead of the old marble (Lib).
+    VUI.UseFlatInsetBackground(win)
+
+    -- The tabs' content, inside Blizzard's recessed Inset. The fallback anchors match
+    -- ButtonFrameTemplate's own Inset (TOPLEFT 4,-60 / BOTTOMRIGHT -6,26).
     local CONTENT = CreateFrame("Frame", nil, win)
-    CONTENT:SetPoint("TOPLEFT",     win, "TOPLEFT",     8,  -28)
-    CONTENT:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -8,   6)
+    if win.Inset then
+        CONTENT:SetPoint("TOPLEFT",     win.Inset, "TOPLEFT",      4, -4)
+        CONTENT:SetPoint("BOTTOMRIGHT", win.Inset, "BOTTOMRIGHT", -4,  4)
+    else
+        CONTENT:SetPoint("TOPLEFT",     win, "TOPLEFT",      8, -64)
+        CONTENT:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -10, 30)
+    end
 
     -- Spec / profile badge — "Havoc Demon Hunter" in heroic 20pt Friz Quadrata
-    -- (GameFontNormalHuge is Blizzard's standard section-title font).
-    -- Anchored to CONTENT's TOP (horizontally centered) at y=-16 to visually
-    -- balance against the portrait circle.
-    local specBadge = CONTENT:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-    specBadge:SetPoint("TOP", CONTENT, "TOP", 0, -16)
+    -- (GameFontNormalHuge is Blizzard's standard section-title font), centred in the band
+    -- between the title bar and the Inset.
+    local specBadge = win:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    specBadge:SetPoint("TOP", win, "TOP", 0, -30)
     specBadge:SetJustifyH("CENTER")
     specBadge:SetTextColor(1, 1, 1)
 
@@ -162,18 +175,12 @@ local function BuildMainWindow()
         end
     end
 
-    -- Content panels — anchored to CONTENT directly (not to specBadge) so
-    -- horizontal position is independent of the badge's x offset. The -50 y
-    -- offset reserves the top band for the heroic spec-name header and leaves
-    -- room at the bottom for the Compiled Sequence preview to grow as users
-    -- add more spells / higher freq values.
+    -- Content panels fill CONTENT (the Inset); the spec badge sits above it.
     local contRotation = CreateFrame("Frame", nil, CONTENT)
-    contRotation:SetPoint("TOPLEFT",     CONTENT, "TOPLEFT",      4, -50)
-    contRotation:SetPoint("BOTTOMRIGHT", CONTENT, "BOTTOMRIGHT", -4,   4)
+    contRotation:SetAllPoints(CONTENT)
 
     local contSettings = CreateFrame("Frame", nil, CONTENT)
-    contSettings:SetPoint("TOPLEFT",     CONTENT, "TOPLEFT",      4, -50)
-    contSettings:SetPoint("BOTTOMRIGHT", CONTENT, "BOTTOMRIGHT", -4,   4)
+    contSettings:SetAllPoints(CONTENT)
     contSettings:Hide()
 
     -- Bottom tabs — PanelTabButtonTemplate hangs below the frame edge in the
@@ -292,24 +299,12 @@ local function BuildMainWindow()
             .."tab/click ever changes targets — a live target you picked is "
             .."never overridden. |cFFFFFF00Set per spec.|r")
 
-        -- ── Rotation Columns ──────────────────────────────────────
-        local divFreq = Section(txtTarget, "BOTTOMLEFT", -10, "Rotation Columns")
-        local txtFreq = Body(divFreq, -6,
-            "|cFFFFFF00Frequency|r — how often an ability is attempted relative "
-            .."to the others, spread as evenly as the numbers allow. 5 = attempted "
-            .."almost constantly (short cooldowns, spenders); 1 = attempted "
-            .."rarely. It sets the spacing, not a literal count — back-to-back "
-            .."presses of the same ability are collapsed, so a high frequency "
-            .."buys you shorter gaps rather than more steps. A not-ready attempt "
-            .."is skipped harmlessly, so err on the high side for important "
-            .."abilities.\n"
-            .."|cFFFFFF00After|r — also casts an ability on the very next press "
-            .."after another one (combo windows, e.g. Blade Dance after Eye Beam).\n"
-            .."|cFFFFFF00Combat|r — only cast in combat. Leave your opener "
-            .."unchecked so a key press can start the fight.")
+        -- (A "Rotation Columns" section here repeated the Rotation tab's explanation of Frequency /
+        -- After / Combat; removed v1.35.11 at the owner's request. Those columns explain themselves
+        -- in their header tooltips, Editor.lua.)
 
         -- ── Setup ─────────────────────────────────────────────────
-        local divSetup = Section(txtFreq, "BOTTOMLEFT", -10, "Setup")
+        local divSetup = Section(txtTarget, "BOTTOMLEFT", -10, "Setup")
         local txtSetup = Body(divSetup, -6,
             "1.  Click |cFFFFFF00Create / Update Macro|r below\n"
             .."2.  Drag |cFFFFFF00Attack|r from /macro onto any action bar\n"
@@ -333,17 +328,21 @@ local function BuildMainWindow()
             SlashCmdList["VERITASUI_PR"]("macro")
         end)
 
+        -- Scan & Bind sits in the window's bottom bar, bottom right, at ButtonFrameTemplate's own
+        -- corner offset (MagicButton_OnLoad, SharedUIPanelTemplates.lua:36-39) -- the same spot as
+        -- Advanced Options' buttons (owner's request, v1.35.11). Parented to this tab, so it shows
+        -- with it only.
         local scanBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")
-        scanBtn:SetSize(CW, 28)
-        scanBtn:SetPoint("TOPLEFT", macroBtn, "BOTTOMLEFT", 0, -6)
-        scanBtn:SetText("Scan & Bind  (/pr scan)")
+        scanBtn:SetSize(150, 22)
+        scanBtn:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -6, 4)
+        scanBtn:SetText("Scan & Bind")
         scanBtn:SetScript("OnClick", function()
             SlashCmdList["VERITASUI_PR"]("scan")
         end)
 
         local resetBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")
         resetBtn:SetSize(HALF, 24)
-        resetBtn:SetPoint("TOPLEFT", scanBtn, "BOTTOMLEFT", 0, -14)
+        resetBtn:SetPoint("TOPLEFT", macroBtn, "BOTTOMLEFT", 0, -14)
         resetBtn:SetText("Reset to Spec Defaults")
         resetBtn:SetScript("OnClick", function()
             PR:ResetCurrentProfileToDefault()

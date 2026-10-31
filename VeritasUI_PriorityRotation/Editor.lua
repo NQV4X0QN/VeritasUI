@@ -212,25 +212,17 @@ function PR:BuildEditor(parent, contentWidth)
     if W < 1 then W = 362 end
     local editor = {}
 
-    local lHelp = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    lHelp:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -8)
-    lHelp:SetWidth(W - 16)
-    lHelp:SetJustifyH("LEFT")
-    lHelp:SetText(
-        "|cFF00CCFFDrag spells|r from your spellbook, |cFF00CCFFmacros|r from /macro, "
-        .."or |cFF00CCFFtrinkets|r from your character pane onto a slot.\n"
-        .."Right-click to remove. Use arrows to reorder.\n"
-        .."|cFFFFFF00Frequency|r = how often relative to the others — spacing, not a count (5=constant, 1=rare).\n"
-        .."|cFFFFFF00After|r = also cast right after another ability (click to cycle).\n"
-        .."|cFFFFFF00Combat|r = only cast in combat — leave your opener unchecked.")
-
+    -- No explainer paragraph above the rows (removed v1.35.11, owner's request): each column
+    -- header explains itself in a tooltip (HEADER_TIPS below), and an empty slot's tooltip says
+    -- what to drag onto it.
+    --
     -- Divider below the header-label row. Column headers themselves are
     -- created AFTER the row loop so they can anchor to row 1's components
-    -- and stay column-aligned automatically (the 22px gap leaves room for
-    -- the header fontstrings between lHelp and divLine).
+    -- and stay column-aligned automatically (the 26px drop leaves room for
+    -- the header fontstrings above divLine).
     local divLine = parent:CreateTexture(nil, "ARTWORK")
     divLine:SetHeight(1)
-    divLine:SetPoint("TOPLEFT", lHelp, "BOTTOMLEFT", -4, -22)
+    divLine:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, -26)
     -- Width matches the rows exactly (they anchor to this line's BOTTOMLEFT
     -- and are W-12 wide). The old TOPRIGHT-to-parent anchor used the panel's
     -- own inset (-6), which fell a few px short of the rows' right edge.
@@ -663,11 +655,49 @@ function PR:BuildEditor(parent, contentWidth)
     -- centers derived from the same constants, so they stay aligned
     -- for any panel width without hand-tuned offsets.
     local HEADER_Y = 6
+
+    -- Each header explains its column on hover (v1.35.11). The wording is what the explainer
+    -- paragraph and the Settings tab's "Rotation Columns" section used to say.
+    local HEADER_TIPS = {
+        ["#"]       = "Your rotation's slots, in order. Use the arrows on a slot to move it up or down.",
+        Icon        = "Drag a spell from your spellbook, a macro from /macro or a trinket from your "
+                      .."character pane onto a slot. Right-click a slot to remove it.",
+        Ability     = "What is in the slot. |cFF66BBFF[M]|r marks a macro, |cFFFFD200[T]|r a trinket.",
+        Frequency   = "How often an ability is attempted relative to the others, spread as evenly as "
+                      .."the numbers allow. 5 = attempted almost constantly (short cooldowns, spenders); "
+                      .."1 = attempted rarely. It sets the spacing, not a literal count: back-to-back "
+                      .."presses of the same ability are collapsed, so a high frequency buys shorter gaps "
+                      .."rather than more steps. A not-ready attempt is skipped harmlessly, so err on the "
+                      .."high side for important abilities.",
+        After       = "Also casts an ability on the very next press after another one (combo windows, "
+                      .."e.g. Blade Dance after Eye Beam). Click a slot's box to step through the other "
+                      .."abilities, then back to none.",
+        Combat      = "Only cast in combat. Leave your opener unchecked so a key press can start the "
+                      .."fight. Macros have no box: what they do is up to the macro.",
+    }
+    local function AddHeaderTip(fs, text)
+        local tip = HEADER_TIPS[text]
+        if not tip then return end
+        local hit = CreateFrame("Frame", nil, parent)
+        hit:SetPoint("TOPLEFT",     fs, "TOPLEFT",     -4,  3)
+        hit:SetPoint("BOTTOMRIGHT", fs, "BOTTOMRIGHT",  4, -3)
+        hit:EnableMouse(true)
+        hit:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(text == "#" and "Order" or text, 1, 0.82, 0)
+            GameTooltip:AddLine(tip, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        fs.tipHit = hit
+    end
+
     local function MakeCenteredHeader(xOff, text)
         local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         fs:SetPoint("BOTTOM", rows[1], "TOPLEFT", xOff, HEADER_Y)
         fs:SetTextColor(0.85, 0.75, 0.20)
         fs:SetText(text)
+        AddHeaderTip(fs, text)
         return fs
     end
 
@@ -677,9 +707,11 @@ function PR:BuildEditor(parent, contentWidth)
     hAbility:SetPoint("BOTTOMLEFT", rows[1], "TOPLEFT", 82, HEADER_Y)
     hAbility:SetTextColor(0.85, 0.75, 0.20)
     hAbility:SetText("Ability")
+    AddHeaderTip(hAbility, "Ability")
     MakeCenteredHeader(FREQ_L + FREQ_W / 2, "Frequency")
     MakeCenteredHeader(AFTER_L + AFTER_W / 2, "After")
     MakeCenteredHeader(CHK_L + CHK_W / 2, "Combat")
+    editor.headerTips = HEADER_TIPS
 
     -- ── Sequence preview card ────────────────────────────────────
     -- Wraps the "Compiled Sequence:" header + preview text in a card
