@@ -613,7 +613,6 @@ local HideAllItemLevelOverlays
 local function SetupItemLevels()
     if itemLevelsSetup then return end
     itemLevelsSetup = true
-    local QUALITY_COLORS = ITEM_QUALITY_COLORS
     local GEAR_CLASSES   = { [2] = true, [4] = true }  -- Weapon, Armor
     -- Items whose GetDetailedItemLevelInfo returns a stale/wrong ilvl.
     -- Heart of Azeroth: BfA Azerite scaling is defunct; API returns old ilvl.
@@ -657,7 +656,11 @@ local function SetupItemLevels()
             bg:SetHeight(24)
             btn._vui_ilvlBG = bg
         end
-        local c = QUALITY_COLORS[quality or 1] or QUALITY_COLORS[1]
+        -- Read the global at draw time, never a copy taken at setup: Blizzard REPLACES the table
+        -- whenever item-quality colours load or change (ColorManager.lua:19-26, :294-295), so a
+        -- saved reference keeps the old colours until /reload (audit Q2).
+        local colors = _G.ITEM_QUALITY_COLORS or {}
+        local c = colors[quality or 1] or colors[1] or { r = 1, g = 1, b = 1 }
         fs:SetText(ilvl)
         fs:SetTextColor(c.r, c.g, c.b)
         fs:Show()
