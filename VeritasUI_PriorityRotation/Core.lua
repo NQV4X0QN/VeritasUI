@@ -1137,6 +1137,30 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         VUI.Print("Priority Rotation", "    • Inside M+/raid (secrets active)")
         VUI.Print("Priority Rotation", "    • In combat vs. out of combat")
 
+    elseif cmd == "tipprobe" then
+        -- TEMPORARY PROBE (test/after-hold): can the tooltip's "Channeled" line be read? Prints the
+        -- short lines (the cast-time row, not the description) of every spell in the rotation.
+        local function txt(v)
+            if v == nil then return "" end
+            if issecretvalue and issecretvalue(v) then return "(secret)" end
+            v = tostring(v)
+            return #v > 40 and (v:sub(1, 40) .. "…") or v
+        end
+        for _, e in ipairs(PR:CurrentProfile().spells) do
+            if e.spellID and not e.macroName and not e.itemID then
+                local ok, d = pcall(C_TooltipInfo.GetSpellByID, e.spellID)
+                local parts = {}
+                for i, l in ipairs(ok and d and d.lines or {}) do
+                    if i > 1 and i <= 5 then
+                        parts[#parts + 1] = i .. "=" .. txt(l.leftText)
+                            .. (l.rightText and (" | " .. txt(l.rightText)) or "")
+                    end
+                end
+                VUI.Print("Priority Rotation", "|cFFFFFF00" .. e.spellName .. "|r: "
+                    .. (ok and (#parts > 0 and tconcat(parts, "  ") or "no lines") or "error"))
+            end
+        end
+
     elseif cmd == "help" then
         VUI.Print("Priority Rotation", "Commands:")
         VUI.Print("Priority Rotation", "  |cFFFFFF00/pr|r           — toggle editor")
