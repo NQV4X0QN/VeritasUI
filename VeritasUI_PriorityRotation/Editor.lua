@@ -210,6 +210,19 @@ local function HandleDrop(slotIndex)
     if PR.Editor then PR.Editor:Refresh() end
 end
 
+-- The bags' slot border around every icon box, empty or filled (owner, 2026-10-30): an
+-- ItemButton's NormalTexture, Interface\Buttons\UI-Quickslot2, drawn 64 px on a 37 px button and
+-- 1 px low (Blizzard_ItemButton/Shared/ItemButtonTemplate.xml:70-75), scaled to `size`. OVERLAY,
+-- so it frames the icon the same way whether a slot is empty or filled.
+local function SlotBorder(btn, size)
+    local border = btn:CreateTexture(nil, "OVERLAY")
+    border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+    local sz = math.floor(size * 64 / 37 + 0.5)
+    border:SetSize(sz, sz)
+    border:SetPoint("CENTER", btn, "CENTER", 0, -1)
+    return border
+end
+
 -- ── Build the editor ─────────────────────────────────────────
 function PR:BuildEditor(parent, contentWidth)
     local W = contentWidth or parent:GetWidth()
@@ -349,6 +362,8 @@ function PR:BuildEditor(parent, contentWidth)
         iconBtn:RegisterForDrag("LeftButton")
         iconBtn:SetScript("OnDragStart", function() editor:StartReorder(i) end)
         iconBtn:SetScript("OnDragStop",  function() editor:FinishReorder() end)
+
+        iconBtn.border = SlotBorder(iconBtn, ICON_SZ)
 
         local emptyTex = iconBtn:CreateTexture(nil, "ARTWORK")
         emptyTex:SetAllPoints()
@@ -503,19 +518,8 @@ function PR:BuildEditor(parent, contentWidth)
         local followEmpty = followBtn:CreateTexture(nil, "ARTWORK")
         followEmpty:SetAllPoints()
         followEmpty:SetAtlas("bags-item-slot64")   -- bags' empty slot (ContainerFrame.xml:80)
-        followEmpty:SetAlpha(0.35)
         followBtn.empty = followEmpty
-
-        -- The bags' slot border, so the faded empty box reads as a slot (owner, 2026-10-30): an
-        -- ItemButton's NormalTexture, Interface\Buttons\UI-Quickslot2, drawn 64 px on a 37 px
-        -- button and 1 px low (Blizzard_ItemButton/Shared/ItemButtonTemplate.xml:70-75) -- scaled
-        -- to this button. Kept above the icon so a linked ability is framed the same way.
-        local followBorder = followBtn:CreateTexture(nil, "OVERLAY")
-        followBorder:SetTexture("Interface\\Buttons\\UI-Quickslot2")
-        local borderSz = math.floor(AFTER_W * 64 / 37 + 0.5)
-        followBorder:SetSize(borderSz, borderSz)
-        followBorder:SetPoint("CENTER", followBtn, "CENTER", 0, -1)
-        followBtn.border = followBorder
+        followBtn.border = SlotBorder(followBtn, AFTER_W)
 
         local followTex = followBtn:CreateTexture(nil, "ARTWORK")
         followTex:SetAllPoints()
