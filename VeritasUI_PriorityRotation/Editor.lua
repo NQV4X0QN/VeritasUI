@@ -325,6 +325,17 @@ function PR:BuildEditor(parent, contentWidth)
         -- replaced the up/down arrows). The game's own drag events: OnDragStart once the mouse
         -- moves with the button held, OnDragStop on release, wherever the cursor is.
         row:RegisterForDrag("LeftButton")
+        -- Says so on hover, so the drag can be found (owner, 2026-10-30).
+        row:SetScript("OnEnter", function(self)
+            local e = PR:CurrentProfile().spells[i]
+            if not e then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(EntryDisplayName(e), 1, 1, 1)
+            GameTooltip:AddLine("Drag to move", 0.8, 0.8, 0.8)
+            GameTooltip:AddLine("|cFFFF6644Right-click to remove|r")
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
         row:SetScript("OnDragStart", function() editor:StartReorder(i) end)
         row:SetScript("OnDragStop",  function() editor:FinishReorder() end)
 
@@ -378,6 +389,7 @@ function PR:BuildEditor(parent, contentWidth)
             if e and e.spellID then
                 GameTooltip:SetSpellByID(e.spellID)
                 GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("|cFF888888Drag to move|r")
                 GameTooltip:AddLine("|cFFFF6644Right-click to remove|r")
             elseif e and e.itemID then
                 -- Items use the standard Blizzard item tooltip with quality
@@ -385,6 +397,7 @@ function PR:BuildEditor(parent, contentWidth)
                 -- in the character pane.
                 GameTooltip:SetItemByID(e.itemID)
                 GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("|cFF888888Drag to move|r")
                 GameTooltip:AddLine("|cFFFF6644Right-click to remove|r")
             elseif e and e.macroName then
                 local resolvedSpellID = ExtractSpellFromMacro(e.macroName)
@@ -400,6 +413,7 @@ function PR:BuildEditor(parent, contentWidth)
                     end
                 end
                 GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("|cFF888888Drag to move|r")
                 GameTooltip:AddLine("|cFFFF6644Right-click to remove|r")
             else
                 GameTooltip:AddLine("Slot " .. i, 1, 1, 0)
@@ -430,26 +444,33 @@ function PR:BuildEditor(parent, contentWidth)
         freqLbl:SetTextColor(1, 1, 1)
         row.freqLbl = freqLbl
 
-        -- Both arrows use the SAME rotation value (-π/2 = CW in WoW screen
-        -- space) to guarantee identical sub-pixel vertical rendering.
-        -- Arrow-Down-Up tip starts at BOTTOM → CW 90° = points LEFT  (dec)
-        -- Arrow-Up-Up   tip starts at TOP    → CW 90° = points RIGHT (inc)
+        -- ⚠ THE STANDARD ARROW (owner, 2026-10-30): the Journeys renown track's
+        -- (RewardTrackJumpButtonTemplate, Blizzard_FrameXML/RewardTrackTemplates.xml:167-193) --
+        -- ui-journeys-delve-arrow-small-left with its -pressed / -disable atlases, the same art
+        -- added on top at 40% for hover. Hover only brightens it; a click shifts it subtly. The
+        -- right arrow is the left one mirrored, as Blizzard does (RewardTrackArtButtonMixin:OnLoad,
+        -- RewardTrackTemplates.lua:255-262). Until v1.35.11 these swapped to a different arrow on
+        -- hover, which jumped.
+        local function JourneysArrow(btn, facingRight)
+            local function Tex(atlas, layer, alpha, blend)
+                local t = btn:CreateTexture(nil, layer)
+                t:SetAtlas(atlas, true)
+                t:SetPoint("CENTER")
+                if alpha then t:SetAlpha(alpha) end
+                if blend then t:SetBlendMode(blend) end
+                if facingRight then t:SetTexCoord(1, 0, 0, 1) end
+                return t
+            end
+            btn:SetNormalTexture(Tex("ui-journeys-delve-arrow-small-left", "ARTWORK"))
+            btn:SetPushedTexture(Tex("ui-journeys-delve-arrow-small-left-pressed", "ARTWORK"))
+            btn:SetDisabledTexture(Tex("ui-journeys-delve-arrow-small-left-disable", "ARTWORK"))
+            btn:SetHighlightTexture(Tex("ui-journeys-delve-arrow-small-left", "HIGHLIGHT", 0.4, "ADD"))
+        end
+
         local decBtn = CreateFrame("Button", nil, freqFrame)
         decBtn:SetSize(20, ROW_H)
         decBtn:SetPoint("LEFT")
-        local decArrow = decBtn:CreateTexture(nil, "ARTWORK")
-        decArrow:SetSize(12, 12)
-        decArrow:SetPoint("CENTER", freqFrame, "LEFT", 10, 0)
-        decArrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
-        decArrow:SetRotation(-math.pi / 2)
-        decBtn:SetScript("OnEnter", function()
-            decArrow:SetTexture("Interface\\Buttons\\Arrow-Down-Down")
-            decArrow:SetRotation(-math.pi / 2)
-        end)
-        decBtn:SetScript("OnLeave", function()
-            decArrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
-            decArrow:SetRotation(-math.pi / 2)
-        end)
+        JourneysArrow(decBtn, false)
         decBtn:SetScript("OnClick", function()
             local e = PR:CurrentProfile().spells[i]
             if not e then return end
@@ -460,19 +481,7 @@ function PR:BuildEditor(parent, contentWidth)
         local incBtn = CreateFrame("Button", nil, freqFrame)
         incBtn:SetSize(20, ROW_H)
         incBtn:SetPoint("RIGHT")
-        local incArrow = incBtn:CreateTexture(nil, "ARTWORK")
-        incArrow:SetSize(12, 12)
-        incArrow:SetPoint("CENTER", freqFrame, "RIGHT", -10, 0)
-        incArrow:SetTexture("Interface\\Buttons\\Arrow-Up-Up")
-        incArrow:SetRotation(-math.pi / 2)
-        incBtn:SetScript("OnEnter", function()
-            incArrow:SetTexture("Interface\\Buttons\\Arrow-Up-Down")
-            incArrow:SetRotation(-math.pi / 2)
-        end)
-        incBtn:SetScript("OnLeave", function()
-            incArrow:SetTexture("Interface\\Buttons\\Arrow-Up-Up")
-            incArrow:SetRotation(-math.pi / 2)
-        end)
+        JourneysArrow(incBtn, true)
         incBtn:SetScript("OnClick", function()
             local e = PR:CurrentProfile().spells[i]
             if not e then return end
@@ -480,7 +489,6 @@ function PR:BuildEditor(parent, contentWidth)
             PR:SaveCurrentProfile(); editor:Refresh()
         end)
 
-        decBtn.arrow, incBtn.arrow = decArrow, incArrow
         row.decBtn, row.incBtn = decBtn, incBtn
 
         -- "After" (follows) button — shows the icon of the ability this one
@@ -780,6 +788,7 @@ function PR:BuildEditor(parent, contentWidth)
         local spells = PR:CurrentProfile().spells
         if not spells[from] or #spells < 2 then return end
         dragFrom, dragTo = from, from
+        GameTooltip:Hide()
         rows[from]:SetAlpha(0.5)
         ShowMark(from)
         dragDriver:Show()
@@ -857,8 +866,9 @@ function PR:BuildEditor(parent, contentWidth)
                 end
                 row.nameLbl:SetText(displayName)
                 row.freqLbl:SetText("x" .. (e.freq or 1))
-                row.decBtn:SetAlpha((e.freq or 1) > 1 and 1 or 0.30)
-                row.incBtn:SetAlpha((e.freq or 1) < 5 and 1 or 0.30)
+                -- At the limits the arrow shows Blizzard's disabled art and stops taking clicks.
+                row.decBtn:SetEnabled((e.freq or 1) > 1)
+                row.incBtn:SetEnabled((e.freq or 1) < 5)
                 row.freqFrame:Show()
                 -- "After" indicator: target's icon when the link resolves;
                 -- dimmed empty slot when unset (or the target was removed —
