@@ -8,9 +8,10 @@ if not VUI then return end   -- Core.lua already printed the error
 
 local ICON_SZ = 28
 local ROW_H   = 38
--- Left edge of a row's dark block: past the slot number (4+18), arrows (1+20) and icon (4+28),
--- plus a 3 px gap -- the mount list's icon-outside-the-block layout.
-local BLOCK_X = 4 + 18 + 1 + 20 + 4 + ICON_SZ + 3
+-- Left edge of a row's dark block: past the slot number (4+18) and icon (5+28), plus a 3 px gap
+-- -- the mount list's icon-outside-the-block layout. (The move arrows that sat between number and
+-- icon were replaced by drag-to-reorder in v1.35.11.)
+local BLOCK_X = 4 + 18 + 5 + ICON_SZ + 3
 
 -- Spellbook / Macro toggles, shared by empty rotation slots and the Settings-tab buttons.
 --
@@ -310,8 +311,22 @@ function PR:BuildEditor(parent, contentWidth)
             hl:SetPoint("TOPLEFT",     block, "TOPLEFT",     0, 0)
             hl:SetPoint("BOTTOMRIGHT", block, "BOTTOMRIGHT", 0, 0)
         end
+        -- Drag-to-reorder target marker: the mount list's selected-row frame (PetList-ButtonSelect).
+        local dropMark = row:CreateTexture(nil, "OVERLAY")
+        dropMark:SetAtlas("PetList-ButtonSelect")
+        dropMark:SetPoint("TOPLEFT",     block, "TOPLEFT",     0, 0)
+        dropMark:SetPoint("BOTTOMRIGHT", block, "BOTTOMRIGHT", 0, 0)
+        dropMark:Hide()
+        row.dropMark = dropMark
         -- Kept for a restyling addon (VeritasUI_ElvUI), which swaps the card for its own panel.
         row.cardArt = { block }
+
+        -- Drag a filled slot by its block or its icon to move it (owner's request, v1.35.11;
+        -- replaced the up/down arrows). The game's own drag events: OnDragStart once the mouse
+        -- moves with the button held, OnDragStop on release, wherever the cursor is.
+        row:RegisterForDrag("LeftButton")
+        row:SetScript("OnDragStart", function() editor:StartReorder(i) end)
+        row:SetScript("OnDragStop",  function() editor:FinishReorder() end)
 
         local numLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         numLbl:SetPoint("LEFT", row, "LEFT", 4, 0)
@@ -320,56 +335,14 @@ function PR:BuildEditor(parent, contentWidth)
         numLbl:SetTextColor(0.75, 0.75, 0.20)
         numLbl:SetJustifyH("CENTER")
 
-        -- Move arrows
-        local moveCol = CreateFrame("Frame", nil, row)
-        moveCol:SetSize(20, ROW_H)
-        moveCol:SetPoint("LEFT", numLbl, "RIGHT", 1, 0)
-        local HALF_H = math.floor(ROW_H / 2)
-
-        local moveUpBtn = CreateFrame("Button", nil, moveCol)
-        moveUpBtn:SetSize(20, HALF_H)
-        moveUpBtn:SetPoint("TOP", moveCol, "TOP", 0, 0)
-        local upArrow = moveUpBtn:CreateTexture(nil, "ARTWORK")
-        upArrow:SetSize(12, 10)
-        upArrow:SetPoint("CENTER", 0, -1)
-        upArrow:SetTexture("Interface\\Buttons\\Arrow-Up-Up")
-        moveUpBtn:SetScript("OnClick", function()
-            local spells = PR:CurrentProfile().spells
-            if i > 1 and spells[i] then
-                spells[i], spells[i - 1] = spells[i - 1], spells[i]
-                PR:SaveCurrentProfile(); editor:Refresh()
-            end
-        end)
-        moveUpBtn:SetScript("OnEnter", function() upArrow:SetTexture("Interface\\Buttons\\Arrow-Up-Down") end)
-        moveUpBtn:SetScript("OnLeave", function() upArrow:SetTexture("Interface\\Buttons\\Arrow-Up-Up") end)
-        moveUpBtn.arrow = upArrow
-        row.moveUpBtn = moveUpBtn
-
-        local moveDownBtn = CreateFrame("Button", nil, moveCol)
-        moveDownBtn:SetSize(20, HALF_H)
-        moveDownBtn:SetPoint("BOTTOM", moveCol, "BOTTOM", 0, 0)
-        local downArrow = moveDownBtn:CreateTexture(nil, "ARTWORK")
-        downArrow:SetSize(12, 10)
-        downArrow:SetPoint("CENTER", 0, 1)
-        downArrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
-        moveDownBtn:SetScript("OnClick", function()
-            local spells = PR:CurrentProfile().spells
-            if spells[i] and spells[i + 1] then
-                spells[i], spells[i + 1] = spells[i + 1], spells[i]
-                PR:SaveCurrentProfile(); editor:Refresh()
-            end
-        end)
-        moveDownBtn:SetScript("OnEnter", function() downArrow:SetTexture("Interface\\Buttons\\Arrow-Down-Down") end)
-        moveDownBtn:SetScript("OnLeave", function() downArrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up") end)
-        moveDownBtn.arrow = downArrow
-        row.moveDownBtn = moveDownBtn
-        row.moveCol = moveCol
-
         -- Icon
         local iconBtn = CreateFrame("Button", nil, row)
         iconBtn:SetSize(ICON_SZ, ICON_SZ)
-        iconBtn:SetPoint("LEFT", moveCol, "RIGHT", 4, 0)
+        iconBtn:SetPoint("LEFT", numLbl, "RIGHT", 5, 0)
         iconBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        iconBtn:RegisterForDrag("LeftButton")
+        iconBtn:SetScript("OnDragStart", function() editor:StartReorder(i) end)
+        iconBtn:SetScript("OnDragStop",  function() editor:FinishReorder() end)
 
         local emptyTex = iconBtn:CreateTexture(nil, "ARTWORK")
         emptyTex:SetAllPoints()
@@ -441,7 +414,7 @@ function PR:BuildEditor(parent, contentWidth)
         -- Spell name
         local nameLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         nameLbl:SetPoint("LEFT", iconBtn, "RIGHT", 7, 0)
-        nameLbl:SetWidth(130)
+        nameLbl:SetWidth(150)   -- ends at 212, where the control columns' grid starts (FREQ_L)
         nameLbl:SetJustifyH("LEFT")
         row.nameLbl = nameLbl
 
@@ -651,7 +624,7 @@ function PR:BuildEditor(parent, contentWidth)
     -- Each header explains its column on hover (v1.35.11). The wording is what the explainer
     -- paragraph and the Settings tab's "Rotation Columns" section used to say.
     local HEADER_TIPS = {
-        ["#"]       = "Your rotation's slots, in order. Use the arrows on a slot to move it up or down.",
+        ["#"]       = "Your rotation's slots, in order. Drag a slot up or down to move it.",
         Icon        = "Drag a spell from your spellbook, a macro from /macro or a trinket from your "
                       .."character pane onto a slot. Right-click a slot to remove it.",
         Ability     = "What is in the slot. |cFF66BBFF[M]|r marks a macro, |cFFFFD200[T]|r a trinket.",
@@ -694,9 +667,9 @@ function PR:BuildEditor(parent, contentWidth)
     end
 
     MakeCenteredHeader(13,  "#")
-    MakeCenteredHeader(61,  "Icon")
+    MakeCenteredHeader(41,  "Icon")
     local hAbility = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    hAbility:SetPoint("BOTTOMLEFT", rows[1], "TOPLEFT", 82, HEADER_Y)
+    hAbility:SetPoint("BOTTOMLEFT", rows[1], "TOPLEFT", 62, HEADER_Y)
     hAbility:SetTextColor(0.85, 0.75, 0.20)
     hAbility:SetText("Ability")
     AddHeaderTip(hAbility, "Ability")
@@ -769,10 +742,80 @@ function PR:BuildEditor(parent, contentWidth)
     seqPreview:SetJustifyH("LEFT")
     seqPreview:SetTextColor(0.7, 0.7, 0.7)
 
+    -- ── Drag to reorder ──────────────────────────────────────
+    -- The slot under the cursor; above the first row counts as slot 1, below the last as the last
+    -- filled slot. Rows are fixed frames, so their screen bounds are read directly.
+    local function SlotUnderCursor(numSpells)
+        local _, cy = GetCursorPosition()
+        local scale = rows[1]:GetEffectiveScale()
+        if not cy or not scale or scale == 0 then return nil end
+        cy = cy / scale
+        local top1, bottomN = rows[1]:GetTop(), rows[PR.MAX_SLOTS]:GetBottom()
+        if top1 and cy > top1 then return 1 end
+        for k = 1, PR.MAX_SLOTS do
+            local t, b = rows[k]:GetTop(), rows[k]:GetBottom()
+            -- Each row also owns the 4 px gap above it, so no point between rows is a dead zone.
+            if t and b and cy <= t + 4 and cy >= b then return math.min(k, numSpells) end
+        end
+        if bottomN and cy < bottomN then return numSpells end
+        return nil
+    end
+
+    editor.rows = rows
+    local dragDriver = CreateFrame("Frame", nil, parent)
+    dragDriver:Hide()
+    local dragFrom, dragTo
+
+    local function ShowMark(slot)
+        for k = 1, PR.MAX_SLOTS do rows[k].dropMark:SetShown(k == slot) end
+    end
+
+    dragDriver:SetScript("OnUpdate", function()
+        local n = #PR:CurrentProfile().spells
+        dragTo = SlotUnderCursor(n) or dragTo
+        ShowMark(dragTo)
+    end)
+
+    function editor:StartReorder(from)
+        local spells = PR:CurrentProfile().spells
+        if not spells[from] or #spells < 2 then return end
+        dragFrom, dragTo = from, from
+        rows[from]:SetAlpha(0.5)
+        ShowMark(from)
+        dragDriver:Show()
+    end
+
+    function editor:FinishReorder()
+        if not dragFrom then return end
+        dragDriver:Hide()
+        local from = dragFrom
+        dragFrom = nil
+        rows[from]:SetAlpha(1)
+        ShowMark(nil)
+        local spells = PR:CurrentProfile().spells
+        local to = SlotUnderCursor(#spells) or dragTo
+        if to and to ~= from and spells[from] then
+            -- "After" links store the target's KEY, not its slot, so they survive the move.
+            local entry = table.remove(spells, from)
+            table.insert(spells, math.max(1, math.min(to, #spells + 1)), entry)
+            PR:SaveCurrentProfile()
+        end
+        editor:Refresh()
+    end
+
+    -- A drag cut short by the window closing ends without moving anything.
+    parent:HookScript("OnHide", function()
+        if dragFrom then
+            dragDriver:Hide()
+            rows[dragFrom]:SetAlpha(1)
+            dragFrom = nil
+            ShowMark(nil)
+        end
+    end)
+
     -- ── Refresh ──────────────────────────────────────────────
     function editor:Refresh()
         local spells = PR:CurrentProfile().spells
-        local numSpells = #spells
         for i = 1, PR.MAX_SLOTS do
             local row = rows[i]
             local e   = spells[i]
@@ -838,9 +881,6 @@ function PR:BuildEditor(parent, contentWidth)
                     row.combatChk:SetChecked(e.combatOnly and true or false)
                     row.combatChk:Show()
                 end
-                row.moveCol:Show()
-                row.moveUpBtn:SetAlpha(i > 1 and 1 or 0.20)
-                row.moveDownBtn:SetAlpha(i < numSpells and 1 or 0.20)
             else
                 row.iconBtn.tex:Hide()
                 row.iconBtn.empty:Show()
@@ -848,7 +888,6 @@ function PR:BuildEditor(parent, contentWidth)
                 row.freqFrame:Hide()
                 row.followBtn:Hide()
                 row.combatChk:Hide()
-                row.moveCol:Hide()
             end
         end
         if #PR.compiledSequence > 0 then
