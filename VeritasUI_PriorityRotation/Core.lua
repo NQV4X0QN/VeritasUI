@@ -150,7 +150,7 @@ rotBtn:Show()
 
 -- Initialize macros table immediately to prevent nil-access if
 -- a click arrives before the first InjectSequence call.
-rotBtn:Execute("macros = newtable(); macros[1] = ''")
+rotBtn:Execute("macros = newtable(); macros[1] = ''; links = newtable(); armed = newtable(); nextLink = 0")
 
 -- PARITY BUG (found 2026-07-11, latent since inception): the keybind path
 -- (SetOverrideBindingClick) delivers TWO clicks per physical press — key-down
@@ -164,10 +164,41 @@ rotBtn:Execute("macros = newtable(); macros[1] = ''")
 -- only on the other parity NEVER casts (observed in-game: Immolation Aura
 -- silent for 40s). The `down` argument is standard in secure OnClick
 -- snippets; gating on it consumes exactly one step per physical press, on
--- the same edge that casts — which also restores the "After" adjacency
--- guarantee (the follower step is the literal next executed step).
+-- the same edge that casts.
+--
+-- "After" links (v1.36.0) are decided here, per press, not in the compiled list.
+-- links[i] = { "[channeling:<target>] 1", <follower macrotext> }. A press that lands while
+-- the target channels re-arms every link on it for 2 presses and otherwise steps as normal
+-- (its step carries [nochanneling], so it does nothing). The first presses after the channel
+-- ends cast the armed followers, in profile order, instead of advancing the step; a follower
+-- still on cooldown just fails, and waits for the next channel. SecureCmdOptionParse is
+-- allowed in this environment (RestrictedEnvironment.lua:82); the 2026-10-31 probe measured
+-- [channeling:Eye Beam] true on every press during 6 channels and false on all 1302 outside.
 rotBtn:WrapScript(rotBtn, "OnClick", [=[
     if down then return end
+    if links and #links > 0 then
+        local channeling = false
+        for i = 1, #links do
+            if SecureCmdOptionParse(links[i][1]) then
+                armed[i] = 2
+                channeling = true
+            end
+        end
+        if channeling then
+            nextLink = 0
+        else
+            local n = #links
+            for k = 1, n do
+                local i = (nextLink + k - 1) % n + 1
+                if (armed[i] or 0) > 0 then
+                    armed[i] = armed[i] - 1
+                    nextLink = i
+                    self:SetAttribute('macrotext', links[i][2])
+                    return
+                end
+            end
+        end
+    end
     local step = tonumber(self:GetAttribute('step'))
     if not macros or #macros == 0 then return end
     self:SetAttribute('macrotext', macros[step] or '')
@@ -224,14 +255,17 @@ end
 --  order on ties, and yields per-entry gaps as even as arithmetic
 --  allows (weight 4 of total 10 → attempted every 2-3 steps).
 --
---  Follow-up pairing ("After" column): an entry with e.follows set is
---  ALSO emitted immediately after every occurrence of its target, on
---  top of its own weighted placement. This is the class-agnostic form
---  of "Blade Dance must land within 6s of Eye Beam": whenever the
---  target actually casts, the very next press attempts the follower.
---  Followers cascade (A after B after C) with a per-step visited guard
---  so a cycle in hand-edited data cannot loop. Adjacent duplicate
---  steps are collapsed (identical macrotext back-to-back adds nothing).
+--  "After" column (v1.36.0): NOT placed here. Until v1.36.0 a follower was
+--  also emitted right after every occurrence of its target, which could
+--  not hold anything back — the target step comes round whether or not
+--  the target is ready, and the follower kept its own slots (owner: Essence
+--  Break never waited for Eye Beam). Links now go to the press snippet
+--  (rotBtn WrapScript above), which can SEE a channel; so only a spell
+--  entry that has been seen channelling (e.channel, learned from
+--  UNIT_SPELLCAST_CHANNEL_START) can be a target. "Only after"
+--  (e.followOnly) drops the follower from the placement below, so it is
+--  cast after the channel and never on its own. Adjacent duplicate steps
+--  are collapsed (identical macrotext back-to-back adds nothing).
 --
 --  Constraints this design honors (memory: pr-rotation-constraints):
 --  castsequence and multi-line /cast fallback are both falsified by
@@ -252,7 +286,8 @@ function PR:CompileSequence()
         return
     end
 
-    local seq, names = {}, {}
+    self:MarkChannelEntries()   -- a spell dropped or a spec switched to since the channel was seen
+    local seq, names, links = {}, {}, {}
     local profile = self:CurrentProfile()
     -- Reacquire prefix — prepended to spell steps only when the profile
     -- opts in. `/cleartarget [dead]` drops a corpse; `/targetenemy
@@ -266,7 +301,7 @@ function PR:CompileSequence()
     local reacqPrefix = (profile and profile.reacquire)
         and "/cleartarget [dead]\n/targetenemy [noexists]\n" or ""
     if profile and profile.spells and #profile.spells > 0 then
-        local entries = {}   -- resolved steps: { text, name, key, weight, follows }
+        local entries = {}   -- resolved steps: { text, name, key, weight, follows, only, chanName }
         for _, e in ipairs(profile.spells) do
             if e then
                 local macrotext, entryName
@@ -345,87 +380,77 @@ function PR:CompileSequence()
                 if macrotext then
                     local weight = e.freq or 1
                     if weight < 1 then weight = 1 elseif weight > 5 then weight = 5 end
+                    -- A channel can be an "After" target only by a name the
+                    -- [channeling:] conditional can carry: ] ; , would end it.
+                    local chanName = e.channel and not e.macroName and not e.itemID
+                        and e.spellName and not e.spellName:find("[%];,]") and e.spellName or nil
                     entries[#entries + 1] = {
-                        text    = macrotext,
-                        name    = entryName,
-                        key     = PR.EntryKey(e),
-                        weight  = weight,
-                        follows = e.follows,
-                        current = 0,   -- smooth-WRR accumulator
+                        text     = macrotext,
+                        name     = entryName,
+                        key      = PR.EntryKey(e),
+                        weight   = weight,
+                        follows  = e.follows,
+                        only     = e.followOnly and true or false,
+                        chanName = chanName,
+                        current  = 0,   -- smooth-WRR accumulator
                     }
                 end
             end
         end
 
+        -- "After" links (see the press snippet on rotBtn). A link is live only when its target
+        -- is in the list and has been seen channelling; otherwise it is inert and the follower
+        -- is placed normally, so a not-yet-learned target can never silence an ability.
+        local byKey = {}
+        for _, it in ipairs(entries) do
+            if it.key and not byKey[it.key] then byKey[it.key] = it end
+        end
+        for _, it in ipairs(entries) do
+            local target = it.follows and byKey[it.follows]
+            if target and target ~= it and target.chanName then
+                links[#links + 1] = {
+                    cond   = "[channeling:" .. target.chanName .. "] 1",
+                    text   = it.text,
+                    name   = it.name,
+                    target = target.name,
+                    only   = it.only,
+                }
+                it.held = it.only
+            end
+        end
+
         -- Smooth weighted round-robin: cycle length = sum of weights;
         -- ipairs order makes tie-breaking stable in profile order.
+        local placed = {}
+        for _, it in ipairs(entries) do
+            if not it.held then placed[#placed + 1] = it end
+        end
         local total = 0
-        for _, it in ipairs(entries) do total = total + it.weight end
-        local base = {}
+        for _, it in ipairs(placed) do total = total + it.weight end
         for _ = 1, total do
             local best
-            for _, it in ipairs(entries) do
+            for _, it in ipairs(placed) do
                 it.current = it.current + it.weight
                 if not best or it.current > best.current then best = it end
             end
             best.current = best.current - total
-            base[#base + 1] = best
-        end
-
-        -- Follower map: target key → followers in profile order. A follows
-        -- link whose target isn't in the compiled list is inert (the target
-        -- was removed or elided) — re-adding the same spell reactivates it.
-        local followersOf
-        for _, it in ipairs(entries) do
-            if it.follows then
-                followersOf = followersOf or {}
-                local l = followersOf[it.follows]
-                if not l then l = {}; followersOf[it.follows] = l end
-                l[#l + 1] = it
+            -- Identical back-to-back steps are collapsed: a duplicate adds nothing at runtime.
+            if seq[#seq] ~= best.text then
+                seq[#seq + 1] = best.text
+                names[#seq]   = best.name
             end
-        end
-
-        -- Emit with cascading follower insertion. `visited` is per base
-        -- step so chains (A after B after C) expand fully but a cycle in
-        -- hand-edited data terminates. Identical back-to-back steps are
-        -- collapsed — a duplicate adds nothing at runtime (same macrotext),
-        -- and skipping its cascade is correct because the surviving copy
-        -- already cascaded the same follower set.
-        local function Emit(it, visited)
-            if seq[#seq] == it.text then return end
-            seq[#seq + 1] = it.text
-            names[#seq]   = it.name
-            local fl = followersOf and it.key and followersOf[it.key]
-            if fl then
-                for _, f in ipairs(fl) do
-                    if not visited[f] then
-                        visited[f] = true
-                        Emit(f, visited)
-                    end
-                end
-            end
-        end
-        for _, it in ipairs(base) do
-            Emit(it, { [it] = true })
         end
 
         -- Cycle wrap-around collapse. The sequence is CYCLIC — the secure
         -- snippet advances with `step % #macros + 1` — so the last step and
         -- the first are adjacent at runtime as well, and that is the one
-        -- adjacent pair the peephole in Emit never compares. Left unhandled,
+        -- adjacent pair the peephole above never compares. Left unhandled,
         -- {A freq 3, B freq 1} compiles to [A, B, A] and plays
         -- A,B,A,A,B,A… — a dead duplicate press every cycle, which is exactly
         -- the clumping the v1.9.6 redesign exists to remove. It happens
         -- whenever the top-weight entry also wins the final slot, i.e. the
-        -- normal case.
-        --
-        -- Dropping the LAST step is safe here precisely BECAUSE the two texts
-        -- are identical. If that step was a follower emitted for "After"
-        -- adjacency, the wrap now lands on seq[1], which carries the same
-        -- macrotext — so "the follower is the literal next executed step"
-        -- still holds for the target that ends the cycle. And exactly one drop
-        -- can ever be needed: Emit guarantees no two consecutive steps match,
-        -- so the new last step cannot equal seq[1] either.
+        -- normal case. Exactly one drop can ever be needed: no two
+        -- consecutive steps match, so the new last step cannot equal seq[1].
         if #seq > 1 and seq[#seq] == seq[1] then
             names[#seq] = nil
             seq[#seq]   = nil
@@ -434,13 +459,14 @@ function PR:CompileSequence()
 
     self.compiledSequence = seq
     self.compiledNames    = names
-    self:InjectSequence(seq)
+    self.compiledLinks    = links
+    self:InjectSequence(seq, links)
     self:ScheduleScan(0.5)
     -- The editor redraws the instant a change is made, but the compile it triggers is debounced
     -- (ScheduleCompile, 0.3 s), so without this the preview showed the PREVIOUS sequence until
     -- something else redrew it (audit P4).
     self:RefreshUI()
-    DebugPrint("Compiled " .. #seq .. " step(s)")
+    DebugPrint("Compiled " .. #seq .. " step(s), " .. #links .. " After link(s)")
 end
 
 -- Returns a Lua long-string literal that safely embeds any string content,
@@ -455,19 +481,22 @@ local function SafeQuote(s)
     return "[" .. eq .. "[" .. s .. "]" .. eq .. "]"
 end
 
-function PR:InjectSequence(seq)
+function PR:InjectSequence(seq, links)
     if InCombatLockdown() then return end
+    local lines = { "macros = newtable()", "links = newtable()", "armed = newtable()", "nextLink = 0" }
     if #seq > 0 then
-        local lines = { "macros = newtable()" }
         for i, macro in ipairs(seq) do
             lines[#lines + 1] = "macros[" .. i .. "] = " .. SafeQuote(macro)
         end
-        rotBtn:Execute(tconcat(lines, "\n"))
-        rotBtn:SetAttribute("macrotext", seq[1])
     else
-        rotBtn:Execute("macros = newtable()\nmacros[1] = ''")
-        rotBtn:SetAttribute("macrotext", "")
+        lines[#lines + 1] = "macros[1] = ''"
     end
+    for i, l in ipairs(links or {}) do
+        lines[#lines + 1] = "links[" .. i .. "] = newtable(" .. SafeQuote(l.cond) .. ", "
+            .. SafeQuote(l.text) .. ")"
+    end
+    rotBtn:Execute(tconcat(lines, "\n"))
+    rotBtn:SetAttribute("macrotext", seq[1] or "")
     rotBtn:SetAttribute("step", 1)
 end
 
@@ -704,6 +733,56 @@ function PR:RefreshUI()
 end
 
 ----------------------------------------------------------------
+--  Channel learning — marks rotation spells seen channelling (e.channel)
+----------------------------------------------------------------
+PR._channelSeen = {}   -- [spellID] / [spellName] = true, this session
+
+local function SeenChannelling(e)
+    return e.spellID and (PR._channelSeen[e.spellID] or (e.spellName and PR._channelSeen[e.spellName]))
+end
+
+-- Called on drop too, so a spell re-added in the same session is already known.
+function PR:MarkChannelEntries()
+    if not self.db then return false end
+    local changed = false
+    for _, e in ipairs(self:CurrentProfile().spells) do
+        if e and not e.channel and not e.macroName and not e.itemID and SeenChannelling(e) then
+            e.channel = true
+            changed = true
+        end
+    end
+    return changed
+end
+
+-- v1.36.0: an "After" target must be a channelled spell. Links to a macro or trinket can never
+-- be one, so they are cleared once (every profile), with one chat line saying so.
+function PR:ClearNonSpellAfterLinks()
+    if not self.db then return end
+    local n = 0
+    for _, profile in pairs(self.db.profiles or {}) do
+        for _, e in ipairs(profile.spells or {}) do
+            if e and e.follows and not e.follows:find("^spell") then
+                e.follows, e.followOnly = nil, nil
+                n = n + 1
+            end
+        end
+    end
+    if n > 0 then
+        VUI.Print("Priority Rotation", format(
+            "|cFFFFFF00After|r now waits for a channelled spell, so %d link(s) to a macro or trinket were cleared.",
+            n))
+    end
+end
+
+function PR:LearnChannel(spellID)
+    if spellID == nil or (issecretvalue and issecretvalue(spellID)) then return end
+    self._channelSeen[spellID] = true
+    local name = C_Spell.GetSpellName and C_Spell.GetSpellName(spellID)
+    if name and not (issecretvalue and issecretvalue(name)) then self._channelSeen[name] = true end
+    if self:MarkChannelEntries() then self:SaveCurrentProfile() end
+end
+
+----------------------------------------------------------------
 --  Event Handler
 ----------------------------------------------------------------
 local ef = CreateFrame("Frame")
@@ -721,14 +800,23 @@ ef:RegisterEvent("UPDATE_MACROS")
 -- PLAYER_REGEN_ENABLED is owned by VUI.CombatQueue (Lib.lua).
 -- All deferred post-combat actions go through VUI.CombatQueue.Add().
 
-ef:SetScript("OnEvent", function(_, event, arg1)
-    if event == "ADDON_LOADED" then
+-- Learns which rotation spells are channels, the only valid "After" targets (no API says so;
+-- the event's spellID does, and is secret only where spell casts are restricted:
+-- UnitDocumentation.lua UnitSpellcastChannelStart, SecretWhenUnitSpellCastRestricted).
+ef:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "player")
+
+ef:SetScript("OnEvent", function(_, event, arg1, _, arg3)
+    if event == "UNIT_SPELLCAST_CHANNEL_START" then
+        PR:LearnChannel(arg3)
+
+    elseif event == "ADDON_LOADED" then
         if arg1 ~= ADDON_NAME then return end
         PR:InitDB()
         ef:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
         PR:RestoreKeyDownSettingOnce()
+        PR:ClearNonSpellAfterLinks()
         PR:SwitchToCurrentSpec()
         PR:CompileSequence()
         PR._lastProfileKey = PR:GetProfileKey()

@@ -191,6 +191,25 @@ local function EntryDisplayName(e)
     return e and (e.spellName or e.macroName or e.itemName) or "?"
 end
 
+-- "After Eye Beam: Essence Break (only), Blade Dance" lines under the compiled sequence: held
+-- followers are not in the sequence at all, so without this they would vanish from the preview.
+local function AfterLinksText()
+    local byTarget, order = {}, {}
+    for _, l in ipairs(PR.compiledLinks or {}) do
+        if not byTarget[l.target] then byTarget[l.target] = {}; order[#order + 1] = l.target end
+        local n = l.name:match("^%[MACRO:(.-)%]$") and ("[M:" .. l.name:match("^%[MACRO:(.-)%]$") .. "]")
+            or l.name:match("^%[ITEM:(.-)%]$") and ("[T:" .. l.name:match("^%[ITEM:(.-)%]$") .. "]")
+            or l.name
+        local t = byTarget[l.target]
+        t[#t + 1] = l.only and (n .. " (only)") or n
+    end
+    local out = {}
+    for _, target in ipairs(order) do
+        out[#out + 1] = "|cFFFFD200After " .. target .. ":|r " .. table.concat(byTarget[target], ", ")
+    end
+    return #out > 0 and ("\n\n" .. table.concat(out, "\n")) or ""
+end
+
 local function HandleDrop(slotIndex)
     local entry, errMsg = BuildEntryFromCursor()
     if not entry then
@@ -507,11 +526,10 @@ function PR:BuildEditor(parent, contentWidth)
 
         row.decBtn, row.incBtn = decBtn, incBtn
 
-        -- "After" (follows) button — shows the icon of the ability this one
-        -- is also cast immediately after (compile-time follow-up pairing;
-        -- see the Smooth-Weave Compiler in Core.lua). Left-click cycles
-        -- through the other entries and back to none; right-click clears.
-        -- Reuses the empty-slot texture the icon column already streams.
+        -- "After" (follows) button — shows the icon of the channelled spell this one waits for
+        -- (v1.36.0; the press snippet in Core.lua does the waiting). Left-click cycles through
+        -- the other entries that have been seen channelling, then back to none; right-click
+        -- switches between "also after" and "only after" (the LFG lock badge).
         local followBtn = CreateFrame("Button", nil, row)
         followBtn:SetSize(AFTER_W, AFTER_W)
         followBtn:SetPoint("LEFT", row, "LEFT", AFTER_L, 0)   -- grid column 2
@@ -528,49 +546,54 @@ function PR:BuildEditor(parent, contentWidth)
         followTex:Hide()
         followBtn.tex = followTex
 
+        -- "Only after" badge: the LFG list's lock (17x21), half size in the bottom-right corner.
+        local followLock = followBtn:CreateTexture(nil, "OVERLAY", nil, 7)
+        followLock:SetAtlas("LFG-lock")
+        followLock:SetSize(9, 11)
+        followLock:SetPoint("BOTTOMRIGHT", followBtn, "BOTTOMRIGHT", 2, -2)
+        followLock:Hide()
+        followBtn.lock = followLock
+
         followBtn:SetScript("OnClick", function(_, btn)
             local spells = PR:CurrentProfile().spells
             local e = spells[i]
             if not e then return end
             if btn == "RightButton" then
-                e.follows = nil
+                if not e.follows then return end
+                e.followOnly = (not e.followOnly) or nil
             else
-                -- Candidates: every OTHER entry with a resolvable key, in
-                -- profile order. Excludes entries sharing this entry's own
-                -- key (self-follow would collapse at compile anyway).
+                -- Candidates: every OTHER channelled spell, by key, in profile order. Deduplicated
+                -- by key: e.follows stores a KEY, not a slot index, so two slots holding the same
+                -- ability are one candidate (without this the forward search below always matches
+                -- the FIRST duplicate and the cycle oscillates between two entries).
                 local selfKey = PR.EntryKey(e)
                 local cands, seen = {}, {}
                 for j, o in ipairs(spells) do
                     local k = PR.EntryKey(o)
-                    -- Deduplicate by key. e.follows stores a KEY, not a slot
-                    -- index, so two slots holding the same ability are a single
-                    -- candidate. Without this the forward search below always
-                    -- matches the FIRST duplicate, so the cycle oscillates
-                    -- between two entries and both "none" and every later
-                    -- candidate become permanently unreachable.
-                    if j ~= i and k and k ~= selfKey and not seen[k] then
+                    if j ~= i and k and k ~= selfKey and not seen[k] and o.channel
+                            and not o.macroName and not o.itemID then
                         seen[k] = true
                         cands[#cands + 1] = k
                     end
                 end
-                if #cands == 0 then
+                if #cands == 0 and not e.follows then
                     VUI.Print("Priority Rotation",
-                        "Add another ability first — |cFFFFFF00After|r links this one to it.")
+                        "|cFFFFFF00After|r waits for a channelled spell in this rotation, such as Eye Beam."
+                        .. " Cast it once out in the world and it can be picked here.")
                     return
                 end
                 local cur
                 for idx, k in ipairs(cands) do
                     if k == e.follows then cur = idx; break end
                 end
-                -- none → first candidate → … → last candidate → none.
-                -- Explicit branch: `cur and cands[cur+1] or cands[1]` would
-                -- wrap last→first and make "none" unreachable by left-click,
-                -- contradicting this comment and the tooltip.
+                -- none → first candidate → … → last candidate → none. A link to a target that is
+                -- not (yet) a candidate steps to the first candidate, or to none if there is none.
                 if cur then
                     e.follows = cands[cur + 1]   -- nil past the end = none
                 else
                     e.follows = cands[1]
                 end
+                if not e.follows then e.followOnly = nil end
             end
             PR:SaveCurrentProfile(); editor:Refresh()
         end)
@@ -578,22 +601,29 @@ function PR:BuildEditor(parent, contentWidth)
             local e = PR:CurrentProfile().spells[i]
             if not e then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine("After", 1, 0.82, 0)
             local target = FindEntryByKey(e.follows)
-            if target then
-                GameTooltip:AddLine(format(
-                    "|cFFFFFF00%s|r is also cast immediately after every |cFF00CCFF%s|r,"
-                    .. " on top of its normal placement.",
-                    EntryDisplayName(e), EntryDisplayName(target)), 0.8, 0.8, 0.8, true)
+            local me = EntryDisplayName(e)
+            if target and target.channel then
+                GameTooltip:SetText(e.followOnly and "Only After" or "Also After", 1, 0.82, 0)
+                GameTooltip:AddLine(format(e.followOnly
+                    and "|cFFFFFF00%s|r is held until |cFF00CCFF%s|r finishes channelling, then cast"
+                        .. " on the next press. It is never cast on its own."
+                    or  "|cFFFFFF00%s|r is cast on the next press after |cFF00CCFF%s|r finishes"
+                        .. " channelling, and also at its normal frequency.",
+                    me, EntryDisplayName(target)), 1, 1, 1, true)
+            elseif target then
+                GameTooltip:SetText("After", 1, 0.82, 0)
+                GameTooltip:AddLine(format("Not active yet: |cFF00CCFF%s|r has not been seen"
+                    .. " channelling. Cast it once out in the world. Only a channelled spell can be"
+                    .. " waited for.", EntryDisplayName(target)), 1, 0.13, 0.13, true)
             else
-                GameTooltip:AddLine(
-                    "Not linked. Link this ability to another to guarantee it is"
-                    .. " attempted on the very next press after that one casts"
-                    .. " — for combo windows like Blade Dance after Eye Beam.",
-                    0.8, 0.8, 0.8, true)
+                GameTooltip:SetText("After", 1, 0.82, 0)
+                GameTooltip:AddLine("Not linked. Pick a channelled spell (such as Eye Beam) and this"
+                    .. " ability is cast right after it finishes.", 1, 1, 1, true)
             end
             GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("|cFF888888Click to cycle · Right-click to clear|r")
+            GameTooltip:AddLine(e.follows and "Click to change · Right-click: Also / Only After"
+                or "Click to pick", 0.5, 0.5, 0.5)
             GameTooltip:Show()
         end)
         followBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -658,9 +688,10 @@ function PR:BuildEditor(parent, contentWidth)
                       .."presses of the same ability are collapsed, so a high frequency buys shorter gaps "
                       .."rather than more steps. A not-ready attempt is skipped harmlessly, so err on the "
                       .."high side for important abilities.",
-        After       = "Also casts an ability on the very next press after another one (combo windows, "
-                      .."e.g. Blade Dance after Eye Beam). Click a slot's box to step through the other "
-                      .."abilities, then back to none.",
+        After       = "Casts an ability on the next press after a channelled spell finishes, such as "
+                      .."Essence Break after Eye Beam. Click a slot's box to pick the spell. Right-click "
+                      .."for Only After (the lock): the ability is then held for it and never cast on "
+                      .."its own.",
         Combat      = "Only cast in combat. Leave your opener unchecked so a key press can start the "
                       .."fight. Macros have no box: what they do is up to the macro.",
     }
@@ -891,15 +922,18 @@ function PR:BuildEditor(parent, contentWidth)
                 -- "After" indicator: target's icon when the link resolves;
                 -- dimmed empty slot when unset (or the target was removed —
                 -- the stored key is kept, so re-adding the target relinks).
+                -- Grey icon: the target is there but not yet seen channelling (link inactive).
                 local target = FindEntryByKey(e.follows, spells)
                 if target and target.icon then
                     row.followBtn.tex:SetTexture(target.icon)
+                    row.followBtn.tex:SetDesaturated(not target.channel)
                     row.followBtn.tex:Show()
                     row.followBtn.empty:Hide()
                 else
                     row.followBtn.tex:Hide()
                     row.followBtn.empty:Show()
                 end
+                row.followBtn.lock:SetShown(target and e.followOnly and true or false)
                 row.followBtn:Show()
                 -- Combat gate applies only to entries PR compiles itself
                 -- (spells/trinkets); macro bodies are user-owned, so no box.
@@ -939,9 +973,11 @@ function PR:BuildEditor(parent, contentWidth)
                     displayNames[#displayNames + 1] = cast:gsub("^/cast ", ""):gsub("^/use ", "")
                 end
             end
-            seqPreview:SetText(table.concat(displayNames, " > "))
+            seqPreview:SetText(table.concat(displayNames, " > ") .. AfterLinksText())
         else
-            seqPreview:SetText("|cFF888888(empty -- add spells above)|r")
+            local links = AfterLinksText()
+            seqPreview:SetText(links ~= "" and links:gsub("^\n\n", "")
+                or "|cFF888888(empty -- add spells above)|r")
         end
         -- Resize the scroll child to fit the wrapped text so mousewheel
         -- scrolling works when the sequence overflows the card.
