@@ -2,7 +2,7 @@
 -- Filters the Objective Tracker to show only quests for your current zone.
 -- Special quest types can be pinned so they always show regardless of zone.
 --
--- Settings: Options → AddOns → Zone Quests   |   /zq   |   /zonequests
+-- Settings: Options → AddOns → VeritasUI → Zone Quests   |   /zq   |   /zonequests
 
 local ADDON_NAME   = "VeritasUI_ZoneQuests"
 local SETTINGS_LABEL = "Zone Quests"
