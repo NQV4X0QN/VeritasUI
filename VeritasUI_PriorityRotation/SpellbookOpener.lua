@@ -48,12 +48,21 @@ end
 
 -- Whether the top frame under the cursor is `frame` or something inside it. Keeps the overlay from
 -- popping up over a target hidden behind another window (IsMouseOver ignores occlusion).
+-- ⚠ Every GetParent is pcall'd and the walk is capped (audit P1): the focus can be a FORBIDDEN
+-- object (measured: House Editor pins), whose widget calls raise from addon code -- 20 times a
+-- second from Tick. An unreadable chain is not our target. Same shape as Lib's parent walks.
+local FOCUS_WALK_MAX_DEPTH = 8
 local function FocusIsWithin(frame)
     local foci = GetMouseFoci and GetMouseFoci()
     local f = foci and foci[1]
-    while f do
+    local depth = 0
+    while f and depth < FOCUS_WALK_MAX_DEPTH do
         if f == frame then return true end
-        f = f.GetParent and f:GetParent() or nil
+        if not f.GetParent then return false end
+        local ok, parent = pcall(f.GetParent, f)
+        if not ok then return false end
+        f = parent
+        depth = depth + 1
     end
     return false
 end
