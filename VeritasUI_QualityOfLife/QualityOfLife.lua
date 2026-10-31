@@ -1568,6 +1568,15 @@ function AFK_Exit()
     if MinimapCluster then
         if afkOverlay and afkOverlay._minimapWasShown then
             MinimapCluster:Show()
+            -- ⚠ Hiding the cluster ran the mail icon's OnHide, which hides its envelope
+            -- (MiniMapMailFrameMixin:ResetMailIcon, Blizzard_Minimap/Mainline/Minimap.lua:499-525);
+            -- only new mail or the mail animation's finish shows it again, so the slot came back
+            -- blank with its tooltip (audit Q5). Show it the way that finish does (:547-548).
+            local ind = MinimapCluster.IndicatorFrame
+            local mail = ind and ind.MailFrame
+            if mail and mail.MailIcon and mail:IsShown() and HasNewMail then
+                mail.MailIcon:SetShown(HasNewMail() and true or false)
+            end
         end
     end
     if cdb then cdb.afkUIDirty = false end
