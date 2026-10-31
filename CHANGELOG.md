@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.35.14] - 2026-10-31
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **Tooltips work on the AFK screen.** Hover something in a window you opened (bags, the character sheet, chat while typing) and its tooltip shows; hovering the hidden bars or the world still shows nothing (`QualityOfLife.lua`)
+- `VeritasUI_CleanSolo` — **Fade Chat Tabs takes the IM type bar along.** With Chat Style set to IM, the box you type in now fades in and out with its chat window and tabs instead of staying on screen; it is fully visible while you type (`CleanSolo.lua`)
+
+
 ## [1.35.13] - 2026-10-31
 
 ### Changed

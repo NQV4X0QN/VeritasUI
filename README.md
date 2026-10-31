@@ -11,7 +11,7 @@ The suite is split into modules. Each one does one job and has its own settings,
 ### Clean Solo — a quieter screen
 Hides or fades the parts of the interface you don't need most of the time.
 
-- Chat tabs and the chat background fade away when you're not using chat, and come back on mouseover
+- Chat tabs and the chat background fade away when you're not using chat, and come back on mouseover (with Chat Style set to IM, so does the box you type in)
 - The micro menu, chosen action bars (2–8) and your player frame fade out when idle and reappear on mouseover, in combat, or when you take damage
 - **Fade Delay**: keep the micro menu, action bars and player frame up for 0 to 5 seconds after the mouse leaves, before they fade (the chat window keeps Blizzard's own timing)
 - Optionally hides the social button, the chat menu and voice buttons, the bag bar, and macro names on action buttons
@@ -26,7 +26,7 @@ Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped
 - **Item levels** on gear in your bags, bank, warband bank, character panel and at merchants
 - **Auto sell junk** and **auto repair** at merchants, with a choice of paying repairs from guild funds or your own gold
 - **`/way` waypoints** (on unless you turn it off) in the format most guides use, e.g. `/way #2351 45.2 56.3`, placing WoW's own map pin and arrow (if TomTom is installed, it keeps `/way`)
-- **AFK screen**: a slow camera orbit with your name, level, item level and zone while you're away, which also helps against screen burn-in
+- **AFK screen**: a slow camera orbit with your name, level, item level and zone while you're away, which also helps against screen burn-in. Windows you open while away (bags, character sheet, chat) show up, tooltips included
 - **Delve counts** shown right on the Delve objective icon instead of only in its tooltip: the Nemesis count, and in a Labyrinth the Treasure Room chambers completed, with a checkmark at 9
 - **Map notes** (on unless you turn it off): `/note <text>` leaves a note on the map where you're standing. Click a note to change its icon or remove it; `/note clear` removes the notes on your current map. Notes left inside a Labyrinth or other instance are removed when you leave it
 - **Track latest reputation** (off until you turn it on): the reputation bar switches to whichever faction you most recently earned reputation with
