@@ -304,13 +304,8 @@ function PR:BuildEditor(parent, contentWidth)
         block:SetAtlas("PetList-ButtonBackground")
         block:SetPoint("TOPLEFT",     row, "TOPLEFT",     BLOCK_X, 0)
         block:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0,       0)
-        row:SetHighlightAtlas("PetList-ButtonHighlight")
-        local hl = row:GetHighlightTexture()
-        if hl then
-            hl:ClearAllPoints()
-            hl:SetPoint("TOPLEFT",     block, "TOPLEFT",     0, 0)
-            hl:SetPoint("BOTTOMRIGHT", block, "BOTTOMRIGHT", 0, 0)
-        end
+        -- No hover highlight (owner, 2026-10-30): the row's own controls take the mouse, so the
+        -- mount list's PetList-ButtonHighlight flickered off and on across the Frequency arrows.
         -- Drag-to-reorder target marker: the mount list's selected-row frame (PetList-ButtonSelect).
         local dropMark = row:CreateTexture(nil, "OVERLAY")
         dropMark:SetAtlas("PetList-ButtonSelect")
@@ -510,6 +505,17 @@ function PR:BuildEditor(parent, contentWidth)
         followEmpty:SetAtlas("bags-item-slot64")   -- bags' empty slot (ContainerFrame.xml:80)
         followEmpty:SetAlpha(0.35)
         followBtn.empty = followEmpty
+
+        -- The bags' slot border, so the faded empty box reads as a slot (owner, 2026-10-30): an
+        -- ItemButton's NormalTexture, Interface\Buttons\UI-Quickslot2, drawn 64 px on a 37 px
+        -- button and 1 px low (Blizzard_ItemButton/Shared/ItemButtonTemplate.xml:70-75) -- scaled
+        -- to this button. Kept above the icon so a linked ability is framed the same way.
+        local followBorder = followBtn:CreateTexture(nil, "OVERLAY")
+        followBorder:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+        local borderSz = math.floor(AFTER_W * 64 / 37 + 0.5)
+        followBorder:SetSize(borderSz, borderSz)
+        followBorder:SetPoint("CENTER", followBtn, "CENTER", 0, -1)
+        followBtn.border = followBorder
 
         local followTex = followBtn:CreateTexture(nil, "ARTWORK")
         followTex:SetAllPoints()
