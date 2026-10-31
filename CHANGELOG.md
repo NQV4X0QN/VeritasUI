@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.35.13] - 2026-10-31
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **The Great Vault button is a little smaller.** It is now the same width as the mail icon above it (`QualityOfLife.lua`)
+
+
 ## [1.35.12] - 2026-10-30
 
 ### Fixed
