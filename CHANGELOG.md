@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.35.8] - 2026-10-30
+
+### Added
+
+- `VeritasUI_AdvancedOptions` — **Expand All / Collapse All on the Featured tab.** One button at the top right folds every section while any is open, and opens them all once they are all folded (`Featured.lua`, `Core.lua`, `README.md`)
+
+### Fixed
+
+- `VeritasUI_AdvancedOptions` — **Chat Timestamps shows a time.** The box read format codes such as `%I:%M %p`; it now uses Blizzard's own list from Options → Social, labelled with an example time like 03:27 PM (`Featured.lua`, `Controls.lua`)
+
+
 ## [1.35.7] - 2026-10-30
 
 ### Changed
