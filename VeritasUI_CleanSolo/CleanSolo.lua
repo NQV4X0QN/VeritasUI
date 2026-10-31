@@ -908,8 +908,10 @@ local function InitializeOptions()
                 defTable[opt.key]
             )
             setting:SetValueChangedCallback(function(_, value)
-                VUI.PrintOnOff("Clean Solo", opt.name, value)
-                -- An option with `apply` takes effect at once instead of after a /reload.
+                -- An option with `apply` takes effect at once instead of after a /reload, and
+                -- says so: no "/reload to apply" for it (audit C2).
+                local printer = opt.apply and VUI.PrintOnOffLive or VUI.PrintOnOff
+                printer("Clean Solo", opt.name, value)
                 if opt.apply and not Unavailable(opt.key) then opt.apply(value) end
             end)
             local init = Settings.CreateCheckbox(category, setting, TipWithReason(opt.tip, opt.key))
