@@ -1,6 +1,6 @@
 -- VeritasUI_CleanSolo / CleanSolo.lua
 -- Fades or hides noisy default UI elements for solo play.
--- Settings: Options → AddOns → Clean Solo  |  /cleansolo  |  /cs
+-- Settings: Options → AddOns → VeritasUI → Clean Solo  |  /cleansolo  |  /cs
 --
 -- ────────────────────────────────────────────────────────────────
 --  POLICY: /reload required to apply setting changes (by design)
@@ -34,8 +34,10 @@
 --  event handlers that can be event-unregistered cleanly, whereas
 --  CS features are hooks that cannot.
 --
---  All CS setting tooltips and the on-toggle PrintOnOff message
---  consistently mention "/reload to apply" so the user is never
+--  Two exceptions apply at once and say so: Fade Delay (read live
+--  by VUI.SetFadeDelay) and Hide Profession Gear (plain events,
+--  switched by its `apply`).  Every other CS tooltip and on-toggle
+--  message mentions "/reload to apply" so the user is never
 --  surprised by the policy.  See the tooltip strings in the
 --  options{} table inside InitializeOptions for the wording.
 -- ────────────────────────────────────────────────────────────────
@@ -804,9 +806,10 @@ local function ActionBarsMask()
     return mask > 0 and mask or Bit(BAR_NONE)
 end
 
--- An option another addon has taken over (VUI.SetOptionUnavailable, today only VeritasUI_ElvUI,
--- which draws its own chat, bars and unit frames). Its feature is skipped at login and its control
--- is greyed out with the reason added to the tooltip; the saved value is left alone.
+-- An option another addon has taken over (VUI.SetOptionUnavailable). Nothing takes a Clean Solo
+-- option today: the caller was VeritasUI_ElvUI (retired), kept for a possible revival. Its feature
+-- is skipped at login and its control is greyed out with the reason added to the tooltip; the
+-- saved value is left alone.
 local function Unavailable(key)
     return VUI.OptionUnavailable and VUI.OptionUnavailable(ADDON_NAME, key) or nil
 end
@@ -974,7 +977,7 @@ local function InitializeOptions()
         .. "Requires |cFFFFFF00/reload|r to apply.", "fadeActionBars"))
     GreyIfUnavailable(fadeInit, "fadeActionBars")
 
-    -- ── Fade Delay — slider, UNIVERSAL. The one Clean Solo setting that applies at once: it is a
+    -- ── Fade Delay — slider, UNIVERSAL. Applies at once (as does Hide Profession Gear): it is a
     -- number the faders read each time they are about to fade (VUI.SetFadeDelay), not a hook, so
     -- the /reload policy at the top of this file does not apply to it. 0.5 s steps, the step
     -- Blizzard's own seconds-valued sliders use (Blizzard_SettingsDefinitions_Frame/Mounts.lua:114).
