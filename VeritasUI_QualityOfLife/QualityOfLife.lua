@@ -1373,7 +1373,10 @@ end
 -- invisible, which is correct — we are undoing our own UIParent blanket, not
 -- overriding another feature's deliberate choice.
 local afkRevealed = {}     -- [frame] = true while we are overriding its alpha
-local afkRevealTicker
+-- .ticker = the 5 Hz panel poll; .SyncTips/.StartTips/.StopTips = the tooltip reveal below.
+-- One table rather than separate locals: this file's main chunk is at Lua's 200-locals limit
+-- (landmine 117), so the tooltip code also lives in an IIFE.
+local AFKReveal = {}
 
 local function AFK_Reveal(f)
     if not (f and f.SetIgnoreParentAlpha) or afkRevealed[f] then return end
@@ -1408,6 +1411,63 @@ local function AFK_SyncOverlayStrata()
         afkOverlay:SetFrameStrata(AFK_OVERLAY_STRATA)
     end
 end
+
+-- Tooltips are children of UIParent too, so the alpha-0 blanket hides them along with
+-- everything else (owner, 2026-10-31: "I can see windows but I can't see tooltips"). A tooltip
+-- is shown only when the thing it describes is visible: its owner, or one of the owner's
+-- parents, is a frame we revealed. So hovering a bag slot or a chat link shows it, while
+-- hovering the hidden action bars or a unit in the world still shows nothing. ItemRefTooltip
+-- (a clicked chat link) is a window the player opened, so it shows whenever it is shown.
+-- The comparison tooltips are owned by the tooltip they compare against, so they follow it;
+-- they come after their owners in this list so their owner is already decided.
+;(function()
+    local TOOLTIPS = {
+        "GameTooltip", "ItemRefTooltip",
+        "ShoppingTooltip1", "ShoppingTooltip2", "ItemRefShoppingTooltip1", "ItemRefShoppingTooltip2",
+    }
+    local watcher
+
+    local function OwnerRevealed(tip)
+        local ok, owner = pcall(tip.GetOwner, tip)
+        if not ok then return false end
+        for _ = 1, 40 do
+            if not owner then return false end
+            if owner ~= tip and afkRevealed[owner] then return true end
+            local okP, parent = pcall(owner.GetParent, owner)
+            if not okP then return false end
+            owner = parent
+        end
+        return false
+    end
+
+    -- Returns true when any tooltip changed, so the caller can resync the overlay strata.
+    function AFKReveal.SyncTips()
+        local changed = false
+        for _, name in ipairs(TOOLTIPS) do
+            local tip = _G[name]
+            if tip and tip.IsShown then
+                local want = tip:IsShown()
+                    and (name == "ItemRefTooltip" or OwnerRevealed(tip))
+                if want and not afkRevealed[tip] then AFK_Reveal(tip); changed = true
+                elseif not want and afkRevealed[tip] then AFK_Unreveal(tip); changed = true end
+            end
+        end
+        return changed
+    end
+
+    -- Tooltips appear the moment the mouse rests on something, so they are checked every
+    -- frame rather than on the 5 Hz poll (a 0.2 s late tooltip is visibly late).
+    function AFKReveal.StartTips(onChange)
+        if not watcher then watcher = CreateFrame("Frame") end
+        watcher:SetScript("OnUpdate", function()
+            if AFKReveal.SyncTips() then onChange() end
+        end)
+    end
+
+    function AFKReveal.StopTips()
+        if watcher then watcher:SetScript("OnUpdate", nil) end
+    end
+end)()
 
 local function AFK_ScanPanels()
     if not afkActive then return end
@@ -1446,17 +1506,20 @@ local function AFK_ScanPanels()
         end
     end
 
+    AFKReveal.SyncTips()
     AFK_SyncOverlayStrata()
 end
 
 local function AFK_StartReveal()
-    if afkRevealTicker then return end
+    if AFKReveal.ticker then return end
     AFK_ScanPanels()   -- immediate first pass, so an already-open panel appears at once
-    afkRevealTicker = C_Timer.NewTicker(AFK_REVEAL_POLL_RATE, AFK_ScanPanels)
+    AFKReveal.ticker = C_Timer.NewTicker(AFK_REVEAL_POLL_RATE, AFK_ScanPanels)
+    AFKReveal.StartTips(AFK_SyncOverlayStrata)
 end
 
 local function AFK_StopReveal()
-    if afkRevealTicker then afkRevealTicker:Cancel(); afkRevealTicker = nil end
+    if AFKReveal.ticker then AFKReveal.ticker:Cancel(); AFKReveal.ticker = nil end
+    AFKReveal.StopTips()
     AFK_UnrevealAll()
     if afkOverlay and afkOverlay._afkLowered then
         afkOverlay._afkLowered = nil
