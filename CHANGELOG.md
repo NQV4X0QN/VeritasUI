@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.35.9] - 2026-10-30
+
+### Removed
+
+- `VeritasUI_AdvancedOptions` — **Find Yourself Mode and Character Outline left the Featured tab.** Neither did anything: the game now uses other settings for them, which Blizzard's own Options already has (Combat → Self Highlight, Interface → Object/NPC Outline). Both names can still be found on All CVars (`Featured.lua`)
+
+
 ## [1.35.8] - 2026-10-30
 
 ### Added
