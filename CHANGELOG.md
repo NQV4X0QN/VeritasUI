@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.35.7] - 2026-10-30
+
+### Changed
+
+- `VeritasUI_AdvancedOptions` — **Reset Everything hands you the command.** Pressing it now opens the chat box with `/console cvar_default` typed in; press Enter to run it. Run from the button itself it could stop partway and say it hadn't run. The list refreshes once the settings stop changing (`Browser.lua`)
+- `VeritasUI_AdvancedOptions` — **Featured headers look like Blizzard's.** The category headers are the same collapsible bars as Options → Keybindings, and still fold and unfold (`Featured.lua`)
+
+### Fixed
+
+- `VeritasUI_AdvancedOptions` — **One row per setting on All CVars.** Six settings whose names were spelt with different capitals, such as StatusTextDisplay, showed twice (`Browser.lua`)
+- `VeritasUI_QualityOfLife` — **Mail icon comes back after the AFK screen.** Its spot by the minimap was left blank, with its tooltip still there and the Great Vault button below it (`QualityOfLife.lua`)
+
+
 ## [1.35.6] - 2026-10-30
 
 ### Changed
