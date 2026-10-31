@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.35.5] - 2026-10-30
+
+### Fixed
+
+- `VeritasUI_CleanSolo` — **Each chat tab follows its own window.** With Fade Chat Tabs on, hovering a chat window pulled out of the main chat, or a whisper window, no longer brings up the main chat's tabs over a faded main chat; only that window's own tab comes up. The main chat's tabs still come and go together (`CleanSolo.lua`)
+- `VeritasUI_CleanSolo` — **Hide Profession Gear no longer says "/reload to apply".** It applies at once, and its chat line now says so; the README now lists it with Fade Delay as applying at once (`CleanSolo.lua`, `README.md`)
+- `VeritasUI_CleanSolo` — Corrected out-of-date notes in the code (`CleanSolo.lua`)
+
+
 ## [1.35.4] - 2026-10-30
 
 ### Fixed
