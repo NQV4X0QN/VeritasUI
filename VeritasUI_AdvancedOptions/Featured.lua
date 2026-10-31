@@ -420,6 +420,12 @@ local PAD_X       = 8
 -- (owner, 2026-10-30: Max Camera Distance, Render Distance). That first slider is pushed down this
 -- far; checkboxes and dropdowns are centred in their rows and need none.
 local FIRST_SLIDER_DROP = 6
+-- A slider's own row leaves room under its bar for the reset button, so a checkbox or dropdown
+-- after a slider sat further off than rows do elsewhere (owner, 2026-10-30: Max Camera Distance ->
+-- Camera Collides with Water). That slider row is this much shorter. Sliders after sliders keep it.
+local SLIDER_THEN_OTHER_TIGHTEN = 10
+-- Room above the first section bar, so Camera does not touch the top of the panel (owner, 2026-10-30).
+local TOP_GAP = 10
 
 ----------------------------------------------------------------
 --  Renderer — builds the Featured tab content inside a native
@@ -457,16 +463,19 @@ function AO:BuildFeaturedContent(parent, buttonBar)
 
     -- ── Build the flat data list ────────────────────────────
     local function BuildDataList()
-        local list = {}
+        local list = { { type = "gap", height = TOP_GAP } }
         for catIdx, cat in ipairs(self.FEATURED_CATEGORIES) do
             list[#list + 1] = { type = "header", catIdx = catIdx }
             if not self:IsCollapsed(cat.key) then
                 for ctrlIdx, cfg in ipairs(cat.controls) do
+                    local nextCfg = cat.controls[ctrlIdx + 1]
                     list[#list + 1] = {
                         type     = "control",
                         catIdx   = catIdx,
                         ctrlIdx  = ctrlIdx,
                         dropBelowHeader = (ctrlIdx == 1 and cfg.type == "slider") and FIRST_SLIDER_DROP or 0,
+                        tighten  = (cfg.type == "slider" and nextCfg and nextCfg.type ~= "slider")
+                                   and SLIDER_THEN_OTHER_TIGHTEN or 0,
                         cfg      = cfg,
                     }
                 end
@@ -550,7 +559,7 @@ function AO:BuildFeaturedContent(parent, buttonBar)
     -- Element heights
     view:SetElementExtentCalculator(function(dataIndex, elementData)
         if elementData.type == "header" then return HEADER_H end
-        if elementData.type == "gap"    then return SECTION_GAP end
+        if elementData.type == "gap"    then return elementData.height or SECTION_GAP end
         -- Fallback references the table instead of restating its value: v1.6.26 made
         -- AO.CONTROL_HEIGHTS the single definition of control heights, and a bare 26
         -- here would silently disagree with it the day ROW_HEIGHT moves. Unreachable
@@ -558,7 +567,7 @@ function AO:BuildFeaturedContent(parent, buttonBar)
         -- because this is a scroll-box extent callback: arithmetic on a nil would blank
         -- the whole panel rather than fail anywhere useful.
         return (AO.CONTROL_HEIGHTS[elementData.cfg.type] or AO.CONTROL_HEIGHTS.checkbox) + GAP
-            + (elementData.dropBelowHeader or 0)
+            + (elementData.dropBelowHeader or 0) - (elementData.tighten or 0)
     end)
 
     -- Element initializer — creates or retrieves cached UI, reparents

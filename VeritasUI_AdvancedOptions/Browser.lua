@@ -641,7 +641,9 @@ function AO:BuildBrowserContent(parent, buttonBar)
         footerText = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         footerText:SetPoint("TOPLEFT", footer, "TOPLEFT", 0, -2)
         if buttonBar then
-            footerText:SetPoint("BOTTOMRIGHT", footer, "BOTTOMRIGHT", 0, 0)
+            -- Width only, no bottom anchor: the text keeps its natural height, which UpdateFooter
+            -- reads to size the footer. A bottom anchor would clip it to the old height.
+            footerText:SetPoint("TOPRIGHT", footer, "TOPRIGHT", 0, -2)
         else
             footerText:SetPoint("BOTTOMRIGHT", resetAllBtn, "BOTTOMLEFT", -10, 0)
         end
@@ -674,10 +676,10 @@ function AO:BuildBrowserContent(parent, buttonBar)
         local everything = changedOnly and not searched
         resetEverythingBtn:SetShown(on and everything)
         resetAllBtn:SetShown(on and not everything)
-        local h = changedOnly and FOOTER_CHANGED_H or FOOTER_H
-        footer:SetHeight(h)
-        scrollBox:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SB_INSET, on and (h + 8) or 4)
-        if not on then return end
+        if not on then
+            scrollBox:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SB_INSET, 4)
+            return
+        end
         local lead
         if changedOnly then
             local running = RunningRewriter()
@@ -703,6 +705,13 @@ function AO:BuildBrowserContent(parent, buttonBar)
             lead = "These settings differ from Blizzard's defaults. Right-click a row to reset just that one."
         end
         footerText:SetText(lead .. "\n" .. CHAT_HINT)
+        -- The footer is as tall as its text (owner, 2026-10-30: it left a blank band under the text
+        -- once the Reset buttons moved to the bottom bar). The fixed heights are the fallback for a
+        -- text height the client cannot give yet.
+        local textH = tonumber(footerText:GetStringHeight()) or 0
+        local h = (textH > 0) and (math.ceil(textH) + 6) or (changedOnly and FOOTER_CHANGED_H or FOOTER_H)
+        footer:SetHeight(h)
+        scrollBox:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SB_INSET, h + 8)
         resetAllBtn:SetEnabled(shown > 0)
     end
 
