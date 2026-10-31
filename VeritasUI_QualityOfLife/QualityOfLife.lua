@@ -3564,6 +3564,13 @@ npcFrame:SetScript("OnEvent", function(_, event)
     elseif event == "QUEST_DETAIL" then
         if not db.autoAcceptQuest then return end
         if QuestFlagsPVP and QuestFlagsPVP() then return end
+        -- An NPC with one quest opens it straight away (QuestFrame.lua:37-63), skipping the
+        -- gossip/greeting lists that filter grey quests, so check here too (audit Q1).
+        local QL = C_QuestLog
+        if QL and QL.IsQuestTrivial and GetQuestID then
+            local okT, trivial = pcall(function() return QL.IsQuestTrivial(GetQuestID()) end)
+            if okT and trivial == true then return end
+        end
         if QuestGetAutoAccept and QuestGetAutoAccept() then
             if AcknowledgeAutoAcceptQuest then AcknowledgeAutoAcceptQuest() end
         else
