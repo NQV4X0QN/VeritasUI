@@ -438,7 +438,8 @@ local controlCache = {}    -- ["catIdx-ctrlIdx"] = control frame
 -- every layout pass, and an uncached control would otherwise reprint each time.
 local warnedControls = {}  -- ["catIdx-ctrlIdx"] = true once warned
 
-function AO:BuildFeaturedContent(parent)
+-- buttonBar: the window, whose ButtonFrameTemplate bottom bar holds Collapse All (Settings.lua).
+function AO:BuildFeaturedContent(parent, buttonBar)
     -- ── ScrollBox + MinimalScrollBar ────────────────────────
     local SB_INSET = AO.SB_INSET   -- shared with Browser tab for visual alignment
 
@@ -471,11 +472,13 @@ function AO:BuildFeaturedContent(parent)
     end
 
     -- ── Expand All / Collapse All (owner's request, 2026-10-30) ──
-    -- One button in the subtitle row, top right, shown with this tab only. While any category is
-    -- open it folds them all; once every one is folded it opens them all. The label says which.
+    -- In the window's bottom button bar, bottom left, where ButtonFrameTemplate puts a frame's
+    -- main button (MagicButton_OnLoad's 4,4 offset, SharedUIPanelTemplates.lua:32-35) -- the spot
+    -- the Auction House's Scan button sits in (v1.35.10). Parented to this tab, so it shows with it
+    -- only. While any category is open it folds them all; once every one is folded it opens them all.
     local allBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    allBtn:SetSize(110, 22)
-    allBtn:SetPoint("BOTTOMRIGHT", parent, "TOPRIGHT", -SB_INSET, 6)
+    allBtn:SetSize(120, 22)
+    allBtn:SetPoint("BOTTOMLEFT", buttonBar or parent, "BOTTOMLEFT", 4, 4)
     local function AnyOpen()
         for _, cat in ipairs(self.FEATURED_CATEGORIES) do
             if not self:IsCollapsed(cat.key) then return true end

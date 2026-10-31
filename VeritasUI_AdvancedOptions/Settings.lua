@@ -1,5 +1,5 @@
 -- VeritasUI_AdvancedOptions / Settings.lua
--- Main window (PortraitFrameTemplate + tabs).
+-- Main window (ButtonFrameTemplate + tabs).
 --
 -- This module deliberately has NO entry in Options -> AddOns. It used to register
 -- an empty category purely so the module could be "discovered" there, but a blank
@@ -41,7 +41,11 @@ end
 --  Main Window Builder
 ----------------------------------------------------------------
 local function BuildMainWindow()
-    local win = CreateFrame("Frame", "AdvancedOptionsMainWindow", UIParent, "PortraitFrameTemplate")
+    -- ButtonFrameTemplate (Blizzard_SharedXML/Mainline/SharedUIPanelTemplates.xml:660-693): the
+    -- portrait frame plus its recessed Inset and the 26 px button bar along the bottom -- the frame
+    -- the Auction House's bottom row and the Macro window are built on (owner's request, v1.35.10).
+    -- The tab content sits in win.Inset; the bar holds a tab's main button (Featured: Collapse All).
+    local win = CreateFrame("Frame", "AdvancedOptionsMainWindow", UIParent, "ButtonFrameTemplate")
     win:SetSize(PNL_W, PNL_H)
     win:EnableMouse(true)
     win:Hide()
@@ -74,26 +78,31 @@ local function BuildMainWindow()
     ApplyPortrait(win)
 
     -- ── Content panels ────────────────────────────────────────
+    -- Inside Blizzard's recessed Inset. The fallback anchors match ButtonFrameTemplate's own Inset
+    -- (TOPLEFT 4,-60 / BOTTOMRIGHT -6,26) should a client ever lack it.
     local CONTENT = CreateFrame("Frame", nil, win)
-    CONTENT:SetPoint("TOPLEFT",     win, "TOPLEFT",     8,  -28)
-    CONTENT:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -8,   6)
+    if win.Inset then
+        CONTENT:SetPoint("TOPLEFT",     win.Inset, "TOPLEFT",      4, -4)
+        CONTENT:SetPoint("BOTTOMRIGHT", win.Inset, "BOTTOMRIGHT", -4,  4)
+    else
+        CONTENT:SetPoint("TOPLEFT",     win, "TOPLEFT",      8, -64)
+        CONTENT:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -10, 30)
+    end
 
-    -- Subtitle — centered below the portrait area
-    local subtitle = CONTENT:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    subtitle:SetPoint("TOP", CONTENT, "TOP", 0, -12)
+    -- Subtitle — centered in the band between the title bar and the Inset
+    local subtitle = win:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    subtitle:SetPoint("TOP", win, "TOP", 0, -32)
     subtitle:SetJustifyH("CENTER")
     subtitle:SetTextColor(1, 1, 1)
     subtitle:SetText("Advanced Options")
 
     -- Featured tab content container
     local contFeatured = CreateFrame("Frame", nil, CONTENT)
-    contFeatured:SetPoint("TOPLEFT",     CONTENT, "TOPLEFT",      4, -40)
-    contFeatured:SetPoint("BOTTOMRIGHT", CONTENT, "BOTTOMRIGHT", -4,   4)
+    contFeatured:SetAllPoints(CONTENT)
 
     -- Browser tab content container
     local contBrowser = CreateFrame("Frame", nil, CONTENT)
-    contBrowser:SetPoint("TOPLEFT",     CONTENT, "TOPLEFT",      4, -40)
-    contBrowser:SetPoint("BOTTOMRIGHT", CONTENT, "BOTTOMRIGHT", -4,   4)
+    contBrowser:SetAllPoints(CONTENT)
     contBrowser:Hide()
 
     -- ── Bottom Tabs ───────────────────────────────────────────
@@ -131,7 +140,7 @@ local function BuildMainWindow()
     end
 
     -- ── Build tab contents ────────────────────────────────────
-    AO:BuildFeaturedContent(contFeatured)
+    AO:BuildFeaturedContent(contFeatured, win)
     AO:BuildBrowserContent(contBrowser)
 
     win:SetScript("OnShow", function()
