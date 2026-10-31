@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.35.10] - 2026-10-30
+
+### Changed
+
+- `VeritasUI_AdvancedOptions` — **The window looks like Blizzard's own.** It is now built like the Auction House: both tabs sit in a recessed centre panel with the Auction House's flat background, and the main buttons sit in a bar along the bottom, bottom right — Collapse All / Expand All on Featured, Reset All to Default / Reset Everything on All CVars (`Settings.lua`, `Featured.lua`, `Browser.lua`)
+- `VeritasUI_AdvancedOptions` — **Featured tidied.** The tab is headed Featured Settings, there is room above the first section and under a section's first slider, a checkbox after a slider sits as close as other rows, and each slider's reset button is level with its slider (`Settings.lua`, `Featured.lua`, `Controls.lua`)
+- `VeritasUI_AdvancedOptions` — **No blank band under the Changed explanation.** The text on All CVars takes only the room it needs, and the list gets the rest (`Browser.lua`)
+
+
 ## [1.35.9] - 2026-10-30
 
 ### Removed
