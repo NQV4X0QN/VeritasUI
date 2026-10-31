@@ -737,11 +737,33 @@ end
 ----------------------------------------------------------------
 PR._channelSeen = {}   -- [spellID] / [spellName] = true, this session
 
-local function SeenChannelling(e)
-    return e.spellID and (PR._channelSeen[e.spellID] or (e.spellName and PR._channelSeen[e.spellName]))
+-- The spell tooltip's cast-time row reads "Channeled" for a channel and "Instant" for an instant
+-- (measured 2026-10-31 with C_TooltipInfo.GetSpellByID on six Havoc spells: Eye Beam line 3 left =
+-- "Channeled"; the other five "Instant"). English clients only: other languages translate it, and
+-- for them the cast-event learning below still marks the spell after its first cast. Cached per
+-- spell ID; an empty or secret answer is not cached, so it is asked again later.
+PR._tipChannel = {}
+local function TooltipSaysChannel(spellID)
+    local known = PR._tipChannel[spellID]
+    if known ~= nil then return known end
+    local ok, d = pcall(C_TooltipInfo.GetSpellByID, spellID)
+    if not ok or not d or not d.lines or #d.lines < 2 then return false end
+    local found = false
+    for i = 2, math.min(#d.lines, 5) do
+        local t = d.lines[i].leftText
+        if t == nil or (issecretvalue and issecretvalue(t)) then return false end
+        if t == "Channeled" then found = true end
+    end
+    PR._tipChannel[spellID] = found
+    return found
 end
 
--- Called on drop too, so a spell re-added in the same session is already known.
+local function SeenChannelling(e)
+    return e.spellID and (PR._channelSeen[e.spellID] or (e.spellName and PR._channelSeen[e.spellName])
+        or TooltipSaysChannel(e.spellID))
+end
+
+-- Run at every compile, so a spell dropped into the rotation is checked at once.
 function PR:MarkChannelEntries()
     if not self.db then return false end
     local changed = false
@@ -1136,30 +1158,6 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         VUI.Print("Priority Rotation", "    • Open world (no secrets)")
         VUI.Print("Priority Rotation", "    • Inside M+/raid (secrets active)")
         VUI.Print("Priority Rotation", "    • In combat vs. out of combat")
-
-    elseif cmd == "tipprobe" then
-        -- TEMPORARY PROBE (test/after-hold): can the tooltip's "Channeled" line be read? Prints the
-        -- short lines (the cast-time row, not the description) of every spell in the rotation.
-        local function txt(v)
-            if v == nil then return "" end
-            if issecretvalue and issecretvalue(v) then return "(secret)" end
-            v = tostring(v)
-            return #v > 40 and (v:sub(1, 40) .. "…") or v
-        end
-        for _, e in ipairs(PR:CurrentProfile().spells) do
-            if e.spellID and not e.macroName and not e.itemID then
-                local ok, d = pcall(C_TooltipInfo.GetSpellByID, e.spellID)
-                local parts = {}
-                for i, l in ipairs(ok and d and d.lines or {}) do
-                    if i > 1 and i <= 5 then
-                        parts[#parts + 1] = i .. "=" .. txt(l.leftText)
-                            .. (l.rightText and (" | " .. txt(l.rightText)) or "")
-                    end
-                end
-                VUI.Print("Priority Rotation", "|cFFFFFF00" .. e.spellName .. "|r: "
-                    .. (ok and (#parts > 0 and tconcat(parts, "  ") or "no lines") or "error"))
-            end
-        end
 
     elseif cmd == "help" then
         VUI.Print("Priority Rotation", "Commands:")

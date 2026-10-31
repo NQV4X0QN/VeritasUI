@@ -579,7 +579,7 @@ function PR:BuildEditor(parent, contentWidth)
                 if #cands == 0 and not e.follows then
                     VUI.Print("Priority Rotation",
                         "|cFFFFFF00After|r waits for a channelled spell in this rotation, such as Eye Beam."
-                        .. " Cast it once out in the world and it can be picked here.")
+                        .. " Add one to the rotation first.")
                     return
                 end
                 local cur
@@ -613,9 +613,9 @@ function PR:BuildEditor(parent, contentWidth)
                     me, EntryDisplayName(target)), 1, 1, 1, true)
             elseif target then
                 GameTooltip:SetText("After", 1, 0.82, 0)
-                GameTooltip:AddLine(format("Not active yet: |cFF00CCFF%s|r has not been seen"
-                    .. " channelling. Cast it once out in the world. Only a channelled spell can be"
-                    .. " waited for.", EntryDisplayName(target)), 1, 0.13, 0.13, true)
+                GameTooltip:AddLine(format("Not active: |cFF00CCFF%s|r is not a channelled spell,"
+                    .. " and only a channel can be waited for. If it is one, cast it once and the"
+                    .. " link turns on.", EntryDisplayName(target)), 1, 0.13, 0.13, true)
             else
                 GameTooltip:SetText("After", 1, 0.82, 0)
                 GameTooltip:AddLine("Not linked. Pick a channelled spell (such as Eye Beam) and this"
