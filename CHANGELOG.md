@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.35.12] - 2026-10-30
+
+### Fixed
+
+- `VeritasUI_PriorityRotation` — **The spec icon is no longer zoomed in.** The portrait shows the whole spec icon, the same size as on Character Info (`Settings.lua`)
+- `VeritasUI_AdvancedOptions` — **The gear icon is no longer zoomed in.** The portrait shows the whole icon, like Blizzard's own windows (`Settings.lua`)
+- `VeritasUI_PriorityRotation` — **Even margins on the Rotation tab.** The line under the column headings and the Compiled Sequence box now sit the same distance from the left border as from the right; the rows have not moved (`Editor.lua`)
+
+
 ## [1.35.11] - 2026-10-30
 
 ### Changed
