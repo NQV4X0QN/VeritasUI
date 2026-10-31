@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.35.3] - 2026-10-30
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **Auto Accept Quests leaves grey quests alone when an NPC opens one straight away.** It already skipped them in an NPC's quest list; an NPC with a single quest that opens it directly now gets the same check (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Item-level numbers follow your item-quality colours.** If you change the colour WoW uses for an item quality, the numbers on your bags and character panel now use it without a reload (`QualityOfLife.lua`)
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **`/qol npc`** lists the last things Pick Only Dialogue Option, Auto Accept and Auto Turn In saw and decided, so a quest that was accepted or skipped unexpectedly can be explained (`QualityOfLife.lua`)
+
+
 ## [1.35.2] - 2026-10-30
 
 ### Fixed
