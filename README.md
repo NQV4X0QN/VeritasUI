@@ -68,7 +68,7 @@ To switch specialization quickly, hover **VeritasUI — Priority Rotation** in t
 Settings: `/pr` (the rotation editor), and an on/off switch under **Options → AddOns → VeritasUI → Priority Rotation**.
 
 ### Advanced Options — WoW's hidden settings
-WoW has many settings (CVars) that its Options panel doesn't show. The **Featured** tab gathers useful ones (camera distance, nameplates, combat text, soft targeting, graphics and more) as ordinary checkboxes, sliders and dropdowns, each with a reset button. The **All CVars** tab lets you search and edit every setting your client has, and star favourites.
+WoW has many settings (CVars) that its Options panel doesn't show. The **Featured** tab gathers useful ones (camera distance, nameplates, combat text, soft targeting, graphics and more) as ordinary checkboxes, sliders and dropdowns, each with a reset button, in sections you can fold away one at a time or all at once with **Collapse All** / **Expand All**. The **All CVars** tab lets you search and edit every setting your client has, and star favourites.
 
 Open it with `/ao`. It has its own window rather than an Options panel.
 

@@ -238,6 +238,12 @@ function AO:ToggleCollapsed(categoryKey)
     db.collapsed[categoryKey] = not db.collapsed[categoryKey]
 end
 
+-- Expand All / Collapse All (Featured.lua) sets every category at once.
+function AO:SetCollapsed(categoryKey, collapsed)
+    if not db then return end
+    db.collapsed[categoryKey] = collapsed and true or false
+end
+
 ----------------------------------------------------------------
 --  Event Handler
 ----------------------------------------------------------------

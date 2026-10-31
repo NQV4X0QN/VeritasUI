@@ -487,8 +487,25 @@ function AO:BuildFeaturedContent(parent)
         return list
     end
 
+    -- ── Expand All / Collapse All (owner's request, 2026-10-30) ──
+    -- One button in the subtitle row, top right, shown with this tab only. While any category is
+    -- open it folds them all; once every one is folded it opens them all. The label says which.
+    local allBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    allBtn:SetSize(110, 22)
+    allBtn:SetPoint("BOTTOMRIGHT", parent, "TOPRIGHT", -SB_INSET, 6)
+    local function AnyOpen()
+        for _, cat in ipairs(self.FEATURED_CATEGORIES) do
+            if not self:IsCollapsed(cat.key) then return true end
+        end
+        return false
+    end
+    local function UpdateAllButton()
+        allBtn:SetText(AnyOpen() and "Collapse All" or "Expand All")
+    end
+
     -- ── Refresh: rebuild DataProvider ────────────────────────
     local function Refresh()
+        UpdateAllButton()
         local dp = CreateDataProvider()
         for _, elem in ipairs(BuildDataList()) do
             dp:Insert(elem)
@@ -509,6 +526,12 @@ function AO:BuildFeaturedContent(parent)
         -- rebuild the provider at all -- OnShow is wired to RefreshValues, values only.
         scrollBox:SetDataProvider(dp, true)
     end
+
+    allBtn:SetScript("OnClick", function()
+        local fold = AnyOpen()
+        for _, cat in ipairs(self.FEATURED_CATEGORIES) do self:SetCollapsed(cat.key, fold) end
+        Refresh()
+    end)
 
     -- ── Refresh values only — no relayout ────────────────────
     --  The factories in Controls.lua read their CVar exactly once, at creation,
