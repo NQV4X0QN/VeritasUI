@@ -45,31 +45,14 @@ VUI.RegisterManagedPanel("PriorityRotMainWindow", {
     pushable = 0,
 })
 
--- Apply the current spec's icon to the frame's portrait slot, with the class
--- atlas as a fallback (e.g. pre-spec-selection or low-level characters).
--- Called on every RefreshBadge so it tracks spec changes automatically.
+-- Apply the current spec's icon to the frame's portrait slot through Blizzard's
+-- own PortraitFrameMixin:SetPortraitToSpecIcon (PortraitFrame.lua:73), the call
+-- the Character Info pane uses (CharacterFrame.lua:110): full-texture texcoords,
+-- class-circle fallback when no spec is chosen. Called on every RefreshBadge so
+-- it tracks spec changes automatically.
 local function ApplySpecPortrait(frame)
-    local portrait = (frame.PortraitContainer and frame.PortraitContainer.portrait)
-                  or frame.portrait
-    if not portrait then return end
-
-    local specIndex = C_SpecializationInfo.GetSpecialization()
-    if specIndex then
-        local _, _, _, specIcon = C_SpecializationInfo.GetSpecializationInfo(specIndex)
-        if specIcon then
-            portrait:SetTexture(specIcon)
-            -- Trim the ~8% Blizzard icon border so the spec art fills the
-            -- circular portrait mask cleanly.
-            portrait:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            return
-        end
-    end
-
-    -- Fallback: circular class atlas (used only when no spec is selected)
-    local _, class = UnitClass("player")
-    if class then
-        portrait:SetTexCoord(0, 1, 0, 1)
-        portrait:SetAtlas("classicon-" .. class:lower())
+    if frame.SetPortraitToSpecIcon then
+        frame:SetPortraitToSpecIcon()
     end
 end
 
