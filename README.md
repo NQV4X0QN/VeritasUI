@@ -61,7 +61,7 @@ Settings: **Options → AddOns → VeritasUI → Zone Quests**, or `/zq`.
 ### Priority Rotation — one-button play
 An accessibility tool: press one key, or hold it with your keyboard or mouse software's key repeat, to step through a list of spells, macros and trinkets that **you** choose. You decide how often each ability comes up, which ones follow others, and which only fire in combat. Each specialization keeps its own list, and starter lists are included for many specs.
 
-To set it up, open `/pr`, click **Create / Update Macro**, drag the `Attack` macro onto any action bar (1–8), bind a key to it, and click **Scan & Bind**.
+To set it up, open `/pr`, click **Create / Update Macro**, drag the `Attack` macro onto any action bar (1–8), bind a key to it, and click **Scan & Bind** at the bottom of the Settings tab. On the Rotation tab, drag a slot up or down to change the order, and hover a column's heading to see what it does.
 
 To switch specialization quickly, hover **VeritasUI — Priority Rotation** in the AddOns menu by the minimap and pick a spec from the list that opens.
 

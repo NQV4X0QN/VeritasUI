@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.35.11] - 2026-10-30
+
+### Changed
+
+- `VeritasUI_PriorityRotation` — **The window looks like Blizzard's own.** It now has the same frame as Advanced Options: a recessed centre panel with the Auction House's flat background and a button bar along the bottom, where **Scan & Bind** now sits (`Settings.lua`)
+- `VeritasUI_PriorityRotation` — **Rotation rows look like the mount list.** Each ability sits on the Collections mount list's dark block, every icon has the bags' slot border, and empty slots use the bags' current empty-slot art (`Editor.lua`)
+- `VeritasUI_PriorityRotation` — **Drag a slot to reorder it.** The up/down arrows are gone: drag a slot by its block or icon to where you want it; hovering a slot says so (`Editor.lua`)
+- `VeritasUI_PriorityRotation` — **Frequency arrows are the Journeys arrows.** They glow on hover and shift slightly when clicked instead of jumping, and grey out at x1 and x5 (`Editor.lua`)
+- `VeritasUI_PriorityRotation` — **Explanations moved into tooltips.** The paragraph above the rotation is gone; hover each column's heading instead. The Settings tab's Rotation Columns section, which repeated it, is gone too, and the tab has even margins (`Editor.lua`, `Settings.lua`, `README.md`)
+
+
 ## [1.35.10] - 2026-10-30
 
 ### Changed
