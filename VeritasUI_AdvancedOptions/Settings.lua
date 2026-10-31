@@ -29,12 +29,13 @@ VUI.RegisterManagedPanel("AdvancedOptionsMainWindow", {
 ----------------------------------------------------------------
 --  Portrait — gear icon for a settings-oriented panel.
 ----------------------------------------------------------------
+-- Through Blizzard's own PortraitFrameMixin calls, the way SetPortraitToSpecIcon
+-- does it (PortraitFrame.lua:78-79): the full icon, no border trim, so the zoom
+-- matches Blizzard's portraits (e.g. Character Info).
 local function ApplyPortrait(frame)
-    local portrait = (frame.PortraitContainer and frame.PortraitContainer.portrait)
-                  or frame.portrait
-    if not portrait then return end
-    portrait:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
-    portrait:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    if not frame.SetPortraitToAsset then return end
+    frame:SetPortraitTexCoord(0, 1, 0, 1)
+    frame:SetPortraitToAsset("Interface\\Icons\\INV_Misc_Gear_01")
 end
 
 ----------------------------------------------------------------

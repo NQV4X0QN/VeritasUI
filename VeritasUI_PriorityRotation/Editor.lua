@@ -239,11 +239,12 @@ function PR:BuildEditor(parent, contentWidth)
     -- the header fontstrings above divLine).
     local divLine = parent:CreateTexture(nil, "ARTWORK")
     divLine:SetHeight(1)
-    divLine:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, -26)
-    -- Width matches the rows exactly (they anchor to this line's BOTTOMLEFT
-    -- and are W-12 wide). The old TOPRIGHT-to-parent anchor used the panel's
-    -- own inset (-6), which fell a few px short of the rows' right edge.
-    divLine:SetWidth(W - 12)
+    divLine:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -26)
+    -- Right end matches the rows' right edge (rows start 4 px left of this line
+    -- and are W-12 wide, so both end 8 px inside the panel). The left end is
+    -- inset 8 px too so the line sits evenly between the borders (owner's
+    -- request): the rows' 4 px left inset holds the "#" column, not the line.
+    divLine:SetWidth(W - 16)
     divLine:SetColorTexture(0.35, 0.35, 0.35, 0.9)
 
     -- ── Control-column grid (Frequency / After / Combat) ─────────
@@ -271,14 +272,15 @@ function PR:BuildEditor(parent, contentWidth)
 
     -- ── Rows ─────────────────────────────────────────────────
     local rows = {}
-    local prevAnchor, prevPt, prevOffY = divLine, "BOTTOMLEFT", -4
+    -- Row 1 anchors 4 px left of divLine's start (divLine is inset 8, rows 4).
+    local prevAnchor, prevPt, prevOffX, prevOffY = divLine, "BOTTOMLEFT", -4, -4
 
     for i = 1, PR.MAX_SLOTS do
         local row = CreateFrame("Button", nil, parent)
         row:SetSize(W - 12, ROW_H)
-        row:SetPoint("TOPLEFT", prevAnchor, prevPt, 0, prevOffY)
+        row:SetPoint("TOPLEFT", prevAnchor, prevPt, prevOffX, prevOffY)
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        prevAnchor, prevPt, prevOffY = row, "BOTTOMLEFT", -4
+        prevAnchor, prevPt, prevOffX, prevOffY = row, "BOTTOMLEFT", 0, -4
 
         row:SetScript("OnClick", function(_, btn)
             if btn == "RightButton" then
@@ -703,7 +705,7 @@ function PR:BuildEditor(parent, contentWidth)
     -- ── Sequence preview card ────────────────────────────────────
     -- Wraps the "Compiled Sequence:" header + preview text in a card
     -- with the rows' dark block art (PetList-ButtonBackground). Width is anchored to the last row's bottom
-    -- corners so the card matches the row width exactly. The bottom
+    -- corners: the right edge matches the rows, the left is inset 4 (below). The bottom
     -- edge anchors to parent's bottom so the card auto-fills the
     -- remaining vertical space, providing room for the scrollable
     -- preview text within. Empty rotation slots themselves accept
@@ -711,7 +713,9 @@ function PR:BuildEditor(parent, contentWidth)
     -- zone is needed — and the Spellbook / Macros buttons in the
     -- Settings tab cover the "open spellbook" affordance.
     local seqCard = CreateFrame("Frame", nil, parent)
-    seqCard:SetPoint("TOPLEFT",  rows[PR.MAX_SLOTS], "BOTTOMLEFT",  0, -8)
+    -- Left wall inset 4 px past the rows' left edge so the card sits 8 px from
+    -- both panel borders (the right edge already matches the rows; owner's request).
+    seqCard:SetPoint("TOPLEFT",  rows[PR.MAX_SLOTS], "BOTTOMLEFT",  4, -8)
     seqCard:SetPoint("TOPRIGHT", rows[PR.MAX_SLOTS], "BOTTOMRIGHT", 0, -8)
     seqCard:SetPoint("BOTTOM",   parent,             "BOTTOM",      0,  4)
 
