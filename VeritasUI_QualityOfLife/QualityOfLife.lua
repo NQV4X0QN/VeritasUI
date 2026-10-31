@@ -3045,10 +3045,7 @@ local GreatVault = {}
     -- SIZE: the vault art is 36 px with 32 px visible (incl. its soft edge); the mail icon is
     -- drawn at its 20 px atlas size with 18 px visible. 20 puts the vault at 17.8 wide vs the
     -- mail's 18 (measured from both atlas textures, 2026-10-30; 22 drew it 19.6 wide).
-    -- NUDGE_X: the vault's solid art sits 0.3 right of its frame's centre (left edge 2.2 in,
-    -- right 1.7 in at 20 px; the envelope is 1.0 in on both sides), so -0.3 centres it under
-    -- the envelope (measured from both atlas textures, 2026-10-30).
-    local SIZE, GAP, OPACITY, NUDGE_X = 20, 2, 0.8, -0.3
+    local SIZE, GAP, OPACITY = 20, 2, 0.8
     local button, watcher, anchoredTo, sinceCheck = nil, nil, nil, 0
     local enabled, active = false, false
     local function Secret(v) return issecretvalue and issecretvalue(v) end
@@ -3090,7 +3087,7 @@ local GreatVault = {}
         local key = tostring(target) .. rel
         if key ~= anchoredTo then
             button:ClearAllPoints()
-            button:SetPoint(point, target, rel, NUDGE_X, y)
+            button:SetPoint(point, target, rel, 0, y)
             anchoredTo = key
         end
         local scale = ind:GetEffectiveScale() / UIParent:GetEffectiveScale()
