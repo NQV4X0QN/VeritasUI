@@ -25,7 +25,10 @@ local InCombatLockdown = InCombatLockdown
 --  CVar cache — populated once, reused across sessions
 ----------------------------------------------------------------
 local cvarList       = nil   -- sorted array of { name=, value=, default=, locked= }
-local cvarByName     = {}    -- [name] → entry ref
+-- ⚠ Keyed by the LOWER-CASED name (audit O1): CVar names are not case-sensitive, and the lists
+-- that feed this index spell some differently (KNOWN_CVARS "StatusTextDisplay", ElvUI's
+-- "statusTextDisplay"), which gave one setting two rows.
+local cvarByName     = {}    -- [strlower(name)] → entry ref
 local filteredList   = {}    -- current search-filtered view
 
 ----------------------------------------------------------------
@@ -216,14 +219,14 @@ local function EnumerateCVars()
                         help    = cmd.help or "",
                     }
                     cvarList[#cvarList + 1] = entry
-                    cvarByName[name] = entry
+                    cvarByName[strlower(name)] = entry
                 end
             end
         end
     else
         -- Strategy 3: probe known CVars by name
         for _, name in ipairs(KNOWN_CVARS) do
-            if not cvarByName[name] then
+            if not cvarByName[strlower(name)] then
                 local val, def, server, locked = AO:GetCVarInfo(name)
                 if val ~= nil then
                     local entry = {
@@ -235,7 +238,7 @@ local function EnumerateCVars()
                         help    = "",
                     }
                     cvarList[#cvarList + 1] = entry
-                    cvarByName[name] = entry
+                    cvarByName[strlower(name)] = entry
                 end
             end
         end
@@ -252,7 +255,7 @@ local function EnumerateCVars()
     for _, name in ipairs(AO.ELLESMEREUI_CVARS or {}) do extra[#extra + 1] = name end
     do
         for _, name in ipairs(extra) do
-            if name and not cvarByName[name] then
+            if name and not cvarByName[strlower(name)] then
                 local val, def, server, locked = AO:GetCVarInfo(name)
                 if val ~= nil then
                     local entry = {
@@ -264,7 +267,7 @@ local function EnumerateCVars()
                         help    = "",
                     }
                     cvarList[#cvarList + 1] = entry
-                    cvarByName[name] = entry
+                    cvarByName[strlower(name)] = entry
                 end
             end
         end
