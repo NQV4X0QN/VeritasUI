@@ -3515,6 +3515,17 @@ end
 local npcFrame = CreateFrame("Frame")
 local NPC_EVENTS = { "GOSSIP_SHOW", "QUEST_GREETING", "QUEST_DETAIL", "QUEST_PROGRESS", "QUEST_COMPLETE" }
 
+-- /qol npc -- what the NPC shortcuts saw and decided, last 12 lines (owner report 2026-10-30: one
+-- grey quest, "Fuselight, Ho!", was accepted where every other grey quest nearby was refused).
+-- Kept on npcFrame, not as new locals: this file's main chunk is near Lua's 200-locals limit.
+npcFrame._log = {}
+npcFrame.Note = function(fmt, ...)
+    local ok, line = pcall(string.format, fmt, ...)
+    local log = npcFrame._log
+    log[#log + 1] = date("%H:%M:%S ") .. (ok and line or tostring(fmt))
+    if #log > 12 then table.remove(log, 1) end
+end
+
 local function NpcPaused()
     return IsShiftKeyDown and IsShiftKeyDown()
 end
@@ -3529,7 +3540,14 @@ local function OnGossipShow()
     end
     if db.autoAcceptQuest and G.GetAvailableQuests then
         for _, q in ipairs(G.GetAvailableQuests() or {}) do
-            if not q.isTrivial and q.questID then G.SelectAvailableQuest(q.questID); return end
+            npcFrame.Note("gossip offer %q id=%s isTrivial=%s", tostring(q.title), tostring(q.questID),
+                tostring(q.isTrivial))
+        end
+        for _, q in ipairs(G.GetAvailableQuests() or {}) do
+            if not q.isTrivial and q.questID then
+                npcFrame.Note("gossip -> select %q id=%s", tostring(q.title), tostring(q.questID))
+                G.SelectAvailableQuest(q.questID); return
+            end
         end
     end
     if db.pickOnlyGossip and G.GetOptions then
@@ -3554,6 +3572,8 @@ local function OnQuestGreeting()
     if db.autoAcceptQuest and GetNumAvailableQuests then
         for i = 1, GetNumAvailableQuests() do
             local isTrivial = GetAvailableQuestInfo(i)
+            npcFrame.Note("greeting offer %d %q isTrivial=%s", i,
+                tostring(GetAvailableTitle and GetAvailableTitle(i)), tostring(isTrivial))
             if not isTrivial then SelectAvailableQuest(i); return end
         end
     end
@@ -3571,11 +3591,18 @@ npcFrame:SetScript("OnEvent", function(_, event)
         -- An NPC with one quest opens it straight away (QuestFrame.lua:37-63), skipping the
         -- gossip/greeting lists that filter grey quests, so check here too (audit Q1).
         local QL = C_QuestLog
+        local qid = GetQuestID and GetQuestID()
+        local okT, trivial
         if QL and QL.IsQuestTrivial and GetQuestID then
-            local okT, trivial = pcall(function() return QL.IsQuestTrivial(GetQuestID()) end)
-            if okT and trivial == true then return end
+            okT, trivial = pcall(function() return QL.IsQuestTrivial(GetQuestID()) end)
         end
-        if QuestGetAutoAccept and QuestGetAutoAccept() then
+        local auto = QuestGetAutoAccept and QuestGetAutoAccept()
+        npcFrame.Note("detail %q id=%s IsQuestTrivial=%s(%s) autoAccept=%s",
+            tostring(GetTitleText and GetTitleText()), tostring(qid), tostring(trivial),
+            okT and "ok" or "err", tostring(auto))
+        if okT and trivial == true then npcFrame.Note("detail -> left for you (grey)"); return end
+        npcFrame.Note("detail -> accepted")
+        if auto then
             if AcknowledgeAutoAcceptQuest then AcknowledgeAutoAcceptQuest() end
         else
             AcceptQuest()
@@ -4701,6 +4728,12 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
     local arg = (msg and strtrim(msg)) or ""
     if arg:lower() == "mappins" then DumpMapPins(); return end
     if arg:lower() == "notes" then DumpMapNotes(); return end
+    if arg:lower() == "npc" then
+        print("|cFF00CCFF[VeritasUI NPC shortcuts]|r last decisions (oldest first):")
+        if #npcFrame._log == 0 then print("  nothing yet - talk to a quest giver") end
+        for _, line in ipairs(npcFrame._log) do print("  " .. line) end
+        return
+    end
     local ntail = arg:lower():match("^delvenudge%s*(.*)$")
     if ntail then
         -- Guarded: these branches return before the handler's own db nil-check below,
