@@ -651,6 +651,25 @@ end
 --  itself doesn't need to exist yet.
 ----------------------------------------------------------------
 
+-- Flat, modern background for a ButtonFrameTemplate window's recessed Inset (AO v1.35.10, PR
+-- v1.35.11). The Inset's own Bg is the old marble tile; the Auction House's lists use
+-- auctionhouse-background-index (Blizzard_AuctionHouseBrowseResultsFrame.xml:10), laid 3 px inside
+-- the same InsetFrameTemplate border (AuctionHouseBackgroundMixin:OnLoad,
+-- Blizzard_AuctionHouseSharedTemplates.lua:25-34). Atlases come from the client, not the Auction
+-- House addon, so it shows without that UI loaded. Stretched to the Inset's size. Owner-chosen look.
+function VUI.UseFlatInsetBackground(win)
+    local inset = win and win.Inset
+    if type(inset) ~= "table" or type(inset.Bg) ~= "table" then return false end
+    local bg = inset.Bg
+    bg:SetHorizTile(false)
+    bg:SetVertTile(false)
+    bg:SetAtlas("auctionhouse-background-index")
+    bg:ClearAllPoints()
+    bg:SetPoint("TOPLEFT",     inset, "TOPLEFT",      3, -3)
+    bg:SetPoint("BOTTOMRIGHT", inset, "BOTTOMRIGHT", -3,  3)
+    return true
+end
+
 function VUI.RegisterManagedPanel(frameName, opts)
     -- Frame doesn't need to exist yet — UIPanelWindows is a string-keyed
     -- lookup the manager consults at ShowUIPanel time. Registering at file

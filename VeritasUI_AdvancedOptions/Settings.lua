@@ -80,20 +80,8 @@ local function BuildMainWindow()
     -- ── Content panels ────────────────────────────────────────
     -- Inside Blizzard's recessed Inset. The fallback anchors match ButtonFrameTemplate's own Inset
     -- (TOPLEFT 4,-60 / BOTTOMRIGHT -6,26) should a client ever lack it.
-    -- The Inset's own background is the old marble tile. The Auction House's lists use a flat,
-    -- modern one, auctionhouse-background-index (Blizzard_AuctionHouseBrowseResultsFrame.xml:10),
-    -- laid 3 px inside the same InsetFrameTemplate border (AuctionHouseBackgroundMixin:OnLoad,
-    -- Blizzard_AuctionHouseSharedTemplates.lua:25-34). Atlases come from the client, not the
-    -- Auction House addon, so it shows without that UI loaded. Stretched to the Inset's size.
-    if win.Inset and win.Inset.Bg then
-        local bg = win.Inset.Bg
-        bg:SetHorizTile(false)
-        bg:SetVertTile(false)
-        bg:SetAtlas("auctionhouse-background-index")
-        bg:ClearAllPoints()
-        bg:SetPoint("TOPLEFT",     win.Inset, "TOPLEFT",      3, -3)
-        bg:SetPoint("BOTTOMRIGHT", win.Inset, "BOTTOMRIGHT", -3,  3)
-    end
+    -- Flat Auction House background in the Inset instead of the old marble (Lib).
+    VUI.UseFlatInsetBackground(win)
 
     local CONTENT = CreateFrame("Frame", nil, win)
     if win.Inset then
