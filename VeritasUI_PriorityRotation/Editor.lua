@@ -8,6 +8,9 @@ if not VUI then return end   -- Core.lua already printed the error
 
 local ICON_SZ = 28
 local ROW_H   = 38
+-- Left edge of a row's dark block: past the slot number (4+18), arrows (1+20) and icon (4+28),
+-- plus a 3 px gap -- the mount list's icon-outside-the-block layout.
+local BLOCK_X = 4 + 18 + 1 + 20 + 4 + ICON_SZ + 3
 
 -- Spellbook / Macro toggles, shared by empty rotation slots and the Settings-tab buttons.
 --
@@ -290,36 +293,25 @@ function PR:BuildEditor(parent, contentWidth)
             })
         end
 
-        -- Card treatment: dark fill (BACKGROUND) + warm 1px border (BORDER).
-        -- BACKGROUND/BORDER draw layers ensure all child frames (icon, text,
-        -- arrows) render on top without any stacking workarounds.
-        local cardFill = row:CreateTexture(nil, "BACKGROUND")
-        cardFill:SetAllPoints()
-        cardFill:SetColorTexture(0.07, 0.06, 0.05, 0.90)
-
-        local CR, CG, CB, CA = 0.32, 0.26, 0.15, 0.80  -- warm amber border
-        local bTop = row:CreateTexture(nil, "BORDER")
-        bTop:SetColorTexture(CR, CG, CB, CA)
-        bTop:SetPoint("TOPLEFT",  row, "TOPLEFT",  0, 0)
-        bTop:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
-        bTop:SetHeight(1)
-        local bBot = row:CreateTexture(nil, "BORDER")
-        bBot:SetColorTexture(CR, CG, CB, CA)
-        bBot:SetPoint("BOTTOMLEFT",  row, "BOTTOMLEFT",  0, 0)
-        bBot:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-        bBot:SetHeight(1)
-        local bLft = row:CreateTexture(nil, "BORDER")
-        bLft:SetColorTexture(CR, CG, CB, CA)
-        bLft:SetPoint("TOPLEFT",    row, "TOPLEFT",    0, 0)
-        bLft:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
-        bLft:SetWidth(1)
-        local bRgt = row:CreateTexture(nil, "BORDER")
-        bRgt:SetColorTexture(CR, CG, CB, CA)
-        bRgt:SetPoint("TOPRIGHT",    row, "TOPRIGHT",    0, 0)
-        bRgt:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
-        bRgt:SetWidth(1)
+        -- ⚠ Blizzard's mount-list row (MountListButtonTemplate, Blizzard_Collections/Mainline/
+        -- Blizzard_MountCollection.xml:80-130): the dark block is the PetList-ButtonBackground atlas,
+        -- the icon sits outside it to the left, and PetList-ButtonHighlight lights it on hover
+        -- (owner's request, v1.35.11; was a hand-drawn dark fill with a 1 px amber border). Here the
+        -- slot number, arrows and icon stay left of the block; the block runs from just past the
+        -- icon (BLOCK_X) to the row's right edge, under the name and the three control columns.
+        local block = row:CreateTexture(nil, "BACKGROUND")
+        block:SetAtlas("PetList-ButtonBackground")
+        block:SetPoint("TOPLEFT",     row, "TOPLEFT",     BLOCK_X, 0)
+        block:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0,       0)
+        row:SetHighlightAtlas("PetList-ButtonHighlight")
+        local hl = row:GetHighlightTexture()
+        if hl then
+            hl:ClearAllPoints()
+            hl:SetPoint("TOPLEFT",     block, "TOPLEFT",     0, 0)
+            hl:SetPoint("BOTTOMRIGHT", block, "BOTTOMRIGHT", 0, 0)
+        end
         -- Kept for a restyling addon (VeritasUI_ElvUI), which swaps the card for its own panel.
-        row.cardArt = { cardFill, bTop, bBot, bLft, bRgt }
+        row.cardArt = { block }
 
         local numLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         numLbl:SetPoint("LEFT", row, "LEFT", 4, 0)
@@ -715,9 +707,7 @@ function PR:BuildEditor(parent, contentWidth)
 
     -- ── Sequence preview card ────────────────────────────────────
     -- Wraps the "Compiled Sequence:" header + preview text in a card
-    -- matching the row card style: dark fill (BACKGROUND) + 1px
-    -- warm-amber border (BORDER) for visual consistency with the
-    -- rotation rows above. Width is anchored to the last row's bottom
+    -- with the rows' dark block art (PetList-ButtonBackground). Width is anchored to the last row's bottom
     -- corners so the card matches the row width exactly. The bottom
     -- edge anchors to parent's bottom so the card auto-fills the
     -- remaining vertical space, providing room for the scrollable
@@ -730,33 +720,11 @@ function PR:BuildEditor(parent, contentWidth)
     seqCard:SetPoint("TOPRIGHT", rows[PR.MAX_SLOTS], "BOTTOMRIGHT", 0, -8)
     seqCard:SetPoint("BOTTOM",   parent,             "BOTTOM",      0,  4)
 
+    -- The same dark block as the rows (PetList-ButtonBackground), stretched to the card.
     local seqFill = seqCard:CreateTexture(nil, "BACKGROUND")
+    seqFill:SetAtlas("PetList-ButtonBackground")
     seqFill:SetAllPoints()
-    seqFill:SetColorTexture(0.07, 0.06, 0.05, 0.90)
-
-    -- Same warm-amber border tint as the rotation row cards.
-    local SCR, SCG, SCB, SCA = 0.32, 0.26, 0.15, 0.80
-    local sBTop = seqCard:CreateTexture(nil, "BORDER")
-    sBTop:SetColorTexture(SCR, SCG, SCB, SCA)
-    sBTop:SetPoint("TOPLEFT",  seqCard, "TOPLEFT",  0, 0)
-    sBTop:SetPoint("TOPRIGHT", seqCard, "TOPRIGHT", 0, 0)
-    sBTop:SetHeight(1)
-    local sBBot = seqCard:CreateTexture(nil, "BORDER")
-    sBBot:SetColorTexture(SCR, SCG, SCB, SCA)
-    sBBot:SetPoint("BOTTOMLEFT",  seqCard, "BOTTOMLEFT",  0, 0)
-    sBBot:SetPoint("BOTTOMRIGHT", seqCard, "BOTTOMRIGHT", 0, 0)
-    sBBot:SetHeight(1)
-    local sBLft = seqCard:CreateTexture(nil, "BORDER")
-    sBLft:SetColorTexture(SCR, SCG, SCB, SCA)
-    sBLft:SetPoint("TOPLEFT",    seqCard, "TOPLEFT",    0, 0)
-    sBLft:SetPoint("BOTTOMLEFT", seqCard, "BOTTOMLEFT", 0, 0)
-    sBLft:SetWidth(1)
-    local sBRgt = seqCard:CreateTexture(nil, "BORDER")
-    sBRgt:SetColorTexture(SCR, SCG, SCB, SCA)
-    sBRgt:SetPoint("TOPRIGHT",    seqCard, "TOPRIGHT",    0, 0)
-    sBRgt:SetPoint("BOTTOMRIGHT", seqCard, "BOTTOMRIGHT", 0, 0)
-    sBRgt:SetWidth(1)
-    seqCard.cardArt = { seqFill, sBTop, sBBot, sBLft, sBRgt }
+    seqCard.cardArt = { seqFill }
     VUI.AnnounceFrame("PriorityRotation.SequenceCard", seqCard)
 
     -- Header at top of card with padding.
