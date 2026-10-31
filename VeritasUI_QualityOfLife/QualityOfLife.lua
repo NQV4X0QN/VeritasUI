@@ -1,6 +1,6 @@
 -- VeritasUI_QualityOfLife / QualityOfLife.lua
 -- Functional enhancements: item levels, auto-repair, auto-sell, AFK screen.
--- Settings: Options → AddOns → Quality of Life  |  /qol
+-- Settings: Options → AddOns → VeritasUI → Quality of Life  |  /qol
 
 local ADDON_NAME     = "VeritasUI_QualityOfLife"
 local SETTINGS_LABEL = "Quality of Life"
@@ -210,14 +210,15 @@ local PERCHAR = {
 
 
 local db   -- ACCOUNT-wide table
--- ⚠ Declared here, above every reader. `cdb` is the PER-CHARACTER table (repairFunding and
--- afkUIDirty only) and is nil until PLAYER_LOGIN: VUI.BindScopedDB deliberately does not fall
+-- ⚠ Declared here, above every reader. `cdb` is the PER-CHARACTER table (the three PERCHAR keys:
+-- repairFunding, afkUIDirty, mapNotes) and is nil until PLAYER_LOGIN: VUI.BindScopedDB deliberately does not fall
 -- back to the account root.
 local cdb  -- PER-CHARACTER table; nil before PLAYER_LOGIN
 
--- Merchant features another addon may have taken over (VUI.SetOptionUnavailable, set before
--- PLAYER_LOGIN by VeritasUI_ElvUI when ElvUI's own repair / grey-selling is on). The saved
--- value is left alone; only whether the feature runs this session changes.
+-- Options another addon has taken over (VUI.SetOptionUnavailable, set before InitializeOptions).
+-- Today the only caller is this file's own TomTom check for /way at PLAYER_LOGIN; the retired
+-- VeritasUI_ElvUI also marked the merchant features when ElvUI's own repair / grey-selling was on.
+-- The saved value is left alone; only whether the feature runs this session changes.
 local function OptionUnavailable(key)
     return VUI.OptionUnavailable and VUI.OptionUnavailable(ADDON_NAME, key) or nil
 end
@@ -4114,9 +4115,9 @@ local function InitializeOptions()
         end
     end
 
-    -- An option another addon has taken over (VUI.SetOptionUnavailable; today VeritasUI_ElvUI,
-    -- when ElvUI's own repair or grey-selling is switched on): greyed, with the reason added to
-    -- the tooltip. The runtime gates are SellJunkOn / RepairOn.
+    -- An option another addon has taken over (VUI.SetOptionUnavailable; today only /way, when
+    -- TomTom is installed -- the retired VeritasUI_ElvUI also used it for repair and grey-selling):
+    -- greyed, with the reason added to the tooltip. The runtime gates are SellJunkOn / RepairOn.
     local function TipWithReason(tip, key)
         local reason = OptionUnavailable(key)
         if type(reason) ~= "string" then return tip end
@@ -4374,7 +4375,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
 
     elseif event == "PLAYER_LOGIN" then
         -- Identity is available: bind BOTH tables. `db` is account-wide, so every universal
-        -- read site below is unchanged; `cdb` holds repairFunding and afkUIDirty.
+        -- read site below is unchanged; `cdb` holds repairFunding, afkUIDirty and mapNotes.
         db, cdb = VUI.BindScopedDB("VeritasUI_QualityOfLifeDB", UNIVERSAL, PERCHAR)
 
         -- ⚠ MUST run before any universal read below, or every feature acts on the pre-migration
