@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.37.0] - 2026-10-31
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Class-Colored Names in Tooltips.** Hover a player, friend or foe, and their name shows in their class color; the rest of the tooltip is unchanged. NPCs and pets keep their usual colors, and where the game hides a player's class from addons the name is left as it is. In Quality of Life's Tooltips section (`QualityOfLife.lua`)
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **Most options are now on for new installs.** Great Vault button, renown level on the reputation bar, Train All, Pick Only Dialogue Option, the tooltip Target, Mount and class-colored name options, the character sheet's enchants and gems (with class-colored labels), durability and Mythic+ rating, and Timestamp Every Message. Still off until you turn them on: Fill In DELETE, Skip Cinematics, Auto Accept and Auto Turn In Quests, and Track Latest Reputation. If you already use VeritasUI, your settings stay exactly as they are (`QualityOfLife.lua`, `README.md`)
+- `VeritasUI_CleanSolo` — **Hide Profession Gear is on for new installs.** Hide Talking Head, Mute Talking Head and Hide Top Banners stay off. Existing settings are unchanged (`CleanSolo.lua`, `README.md`)
+
+
 ## [1.36.0] - 2026-10-31
 
 ### Changed
