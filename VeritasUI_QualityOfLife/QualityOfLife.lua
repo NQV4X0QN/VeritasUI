@@ -3919,23 +3919,34 @@ end
 --     padding, so the tooltip's text area is 230 and the sentence came out on THREE lines.
 --   * test build 2 (breaks + word wrap off): "\n" is ignored on a non-wrapping line -- one line,
 --     truncated "Dra...", and the tooltip pulsed (our re-Show fighting Blizzard's refresh).
--- So the text is never touched and nothing is re-shown. The text area is too narrow because it is
--- only what is left beside the item's padding; we raise the tooltip's MINIMUM WIDTH to the reward
--- item's own width (its width + the 9 Blizzard adds, :259, minus the 10 px text inset each side), so
--- Blizzard's own wrapping uses the tooltip's whole width. Blizzard re-sets the minimum width to 140 each
--- time it rebuilds this tooltip (GameTooltip_AddProgressBar, :544); our hook runs straight after, in
--- the same call, so no frame is ever drawn at 140. Put back to 0 when the bar is left.
+--   * test build 3 (minimum width only, no re-Show): padding 0 and the tooltip 373 wide, but the line
+--     again 460 wide on one line -- and EVERY line at its unwrapped width (127.2, 121.1, 460, 50.6),
+--     exactly as Blizzard leaves it. In build 1, after a Show(), every line was laid out (230.4).
+-- So: the lines are wrapped only when the tooltip is SHOWN. Blizzard shows it once on hover, then
+-- rebuilds it every refresh (frame.UpdateTooltip = ReputationParagonFrame_SetupParagonTooltip,
+-- ReputationFrame.lua:691) without showing it, which leaves the long line unwrapped: the bug.
+-- Fix: the text is never touched. After each build we raise the tooltip's MINIMUM WIDTH to the reward
+-- item's own width (its width + the 9 Blizzard adds, GameTooltip.lua:259, minus the 10 px text inset
+-- each side) -- so the wrap width is the whole tooltip and the item's padding drops to 0, which keeps
+-- the size steady -- and show it again so it lays its lines out. Blizzard re-sets the minimum width to
+-- 140 on every rebuild (GameTooltip_AddProgressBar, :544); our hook runs straight after, in the same
+-- call, so no frame is drawn in between. Put back to 0 when the bar is left.
 ;(function()
-    local hooked, widened = false, false
+    local hooked, widened, busy = false, false, false
     local function Widen()
         local tip = _G.EmbeddedItemTooltip
-        if not (db and db.tooltipWrapParagon) or not (tip and tip.SetMinimumWidth) then return end
+        if busy or not (db and db.tooltipWrapParagon) or not (tip and tip.SetMinimumWidth) then return end
         local item = tip.ItemTooltip
         if not (item and item:IsShown()) then return end
         local w = (item:GetWidth() or 0) + 9 - 20
         if w <= 140 then return end
         tip:SetMinimumWidth(w)
         widened = true
+        if tip:IsShown() then
+            busy = true
+            pcall(tip.Show, tip)
+            busy = false
+        end
     end
     -- Installed once at login whatever the option says (no top-level local is left for a handle: the
     -- main chunk is at Lua's 200-locals limit); the option is read on every call, so it applies at once.
