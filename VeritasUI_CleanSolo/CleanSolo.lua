@@ -916,6 +916,38 @@ do
     end
 end
 
+-- TEMPORARY PROBE 2: a per-frame watch on the reputation bar. The bars are raised without any
+-- SetAlpha call (probe 1), so the stack cannot name the cause; the moment can. When bar 1's alpha
+-- jumps from 0 to above 0 this records the time, the last events the game fired, Blizzard's
+-- container animations, and each layer's alpha -- and does NOT correct it (enforce is off in this
+-- build), so the first jump is the real one.
+do
+    local events, jumps = {}, {}
+    VUI._csJumps = jumps
+    local w = CreateFrame("Frame")
+    w:RegisterAllEvents()
+    w:SetScript("OnEvent", function(_, ev)
+        events[#events + 1] = string.format("%.2f %s", GetTime(), ev)
+        if #events > 8 then table.remove(events, 1) end
+    end)
+    local last
+    w:SetScript("OnUpdate", function()
+        local c = _G.MainStatusTrackingBarContainer
+        local bar = c and c.bars and c.bars[1]
+        if not bar then return end
+        local a = bar:GetAlpha()
+        if last and last <= 0.01 and a > 0.01 and #jumps < 3 then
+            local function play(anim) return anim and anim.IsPlaying and tostring(anim:IsPlaying()) or "-" end
+            jumps[#jumps + 1] = string.format(
+                "t=%.2f bar %.2f->%.2f art %.2f holder %.2f fadeIn %s fadeOut %s maxFade %s shown %s editMode %s | %s",
+                GetTime(), last, a, c.BarFrameTexture and c.BarFrameTexture:GetAlpha() or -1, c:GetAlpha(),
+                play(c.FadeInAnimation), play(c.FadeOutAnimation), play(c.MaxLevelFadeOutAnimation),
+                tostring(bar:IsShown()), tostring(IsEditModeActive()), table.concat(events, ", "))
+        end
+        last = a
+    end)
+end
+
 local function SetupStatusBarFade()
     VUI._csProbe("setup", { IsShown = function() return true end }, 0, nil)
     local containers = { _G.MainStatusTrackingBarContainer, _G.SecondaryStatusTrackingBarContainer }
@@ -955,8 +987,8 @@ local function SetupStatusBarFade()
             if c and c:IsVisible() and c:IsMouseOver() then return true end
         end
         return false
-    end, nil, true)
-    if C_Timer and C_Timer.NewTicker then
+    end, nil, false)   -- TEMPORARY: enforce off so the probe sees the first, real jump
+    if false and C_Timer and C_Timer.NewTicker then
         C_Timer.NewTicker(0.1, function()
             for _, c in ipairs(containers) do
                 local art = c and c.BarFrameTexture
@@ -1462,6 +1494,8 @@ SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
         for _, line in ipairs(VUI._csBarLog or {}) do VUI.Print("Clean Solo", "set: " .. line) end
         if not (VUI._csBarLog and VUI._csBarLog[1]) then VUI.Print("Clean Solo", "set: nothing recorded") end
         VUI.Print("Clean Solo", "hidden bars set to 0: " .. tostring(VUI._csHiddenZero))
+        for _, j in ipairs(VUI._csJumps or {}) do VUI.Print("Clean Solo", "JUMP: " .. j) end
+        if not (VUI._csJumps and VUI._csJumps[1]) then VUI.Print("Clean Solo", "JUMP: none seen") end
         return
     end
     -- Guard against nil (options init not yet run, or failed) — same
