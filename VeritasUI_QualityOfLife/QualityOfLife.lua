@@ -3910,61 +3910,32 @@ end
 -- Hovering the reputation bar of a faction past its last rank shows Blizzard's paragon tooltip
 -- (ReputationParagonWatchBar_OnEnter -> ReputationUtil.AddParagonRewardsToTooltip,
 -- Blizzard_UIPanels_Game/Mainline/ReputationFrame.lua:680-694, Blizzard_FrameXMLUtil/Mainline
--- /ReputationUtil.lua:12-57). Its "Continue earning reputation with ..." line is added as a wrapping
--- line (SharedTooltipTemplates.lua:166-171) but runs off the right edge, with or without VeritasUI.
--- MEASURED in game (owner, /qol tipprobe, 2026-11-01): tooltip 372.5 wide with right padding 133
--- (room for the reward item, GameTooltip_CalculatePadding, GameTooltip.lua:236-291); that line's
--- font string 460 wide = its whole text, word wrap on, ONE line. So the game never wrapped it.
--- Fix: after Blizzard builds the tooltip, any line wider than the tooltip's text area (width - 20) gets
--- line breaks at word boundaries, measured with a font string of our own in the same font, then the
--- tooltip is shown again so it lays itself out for the taller line.
--- ⚠ MEASURED (test build 1, owner): with the line still word-wrapping, that re-show wraps it AGAIN, at
--- the 230 px left of the reward item's padding, so our two parts became three lines ("too aggressive").
--- So the line's own word wrap is turned off (FontString:SetWordWrap) and only our breaks apply.
--- GameTooltip:AddLine sets each line's wrap from its argument on every call (Blizzard's tooltips mix
--- wrapping and non-wrapping lines on the same font strings constantly), so this does not carry over to
--- the next tooltip. Only this one Blizzard function is hooked; nothing else of the shared tooltip is
--- touched.
+-- /ReputationUtil.lua:12-57): a wrapping "Continue earning reputation with ..." line, a progress bar,
+-- and the reward item embedded below. The line runs off the right edge, with or without VeritasUI.
+-- MEASURED in game (owner, /qol tipprobe, 2026-11-01):
+--   * as Blizzard leaves it: tooltip 372.5 wide, right padding 133 (room for the 363.5-wide reward item,
+--     GameTooltip_CalculatePadding, GameTooltip.lua:236-291); the line 460 wide, one line.
+--   * test build 1 (line breaks + re-Show): every line laid out at 230.4 = the width left of that
+--     padding, so the tooltip's text area is 230 and the sentence came out on THREE lines.
+--   * test build 2 (breaks + word wrap off): "\n" is ignored on a non-wrapping line -- one line,
+--     truncated "Dra...", and the tooltip pulsed (our re-Show fighting Blizzard's refresh).
+-- So the text is never touched and nothing is re-shown. The text area is too narrow because it is
+-- only what is left beside the item's padding; we raise the tooltip's MINIMUM WIDTH to the reward
+-- item's own width (its width + the 9 Blizzard adds, :259, minus the 10 px text inset each side), so
+-- Blizzard's own wrapping uses the tooltip's whole width. Blizzard re-sets the minimum width to 140 each
+-- time it rebuilds this tooltip (GameTooltip_AddProgressBar, :544); our hook runs straight after, in
+-- the same call, so no frame is ever drawn at 140. Put back to 0 when the bar is left.
 ;(function()
-    local hooked, busy, measure = false, false, nil
-    local function Rewrap(tip)
-        if busy or not (db and db.tooltipWrapParagon) or not (tip and tip.NumLines and tip:IsShown()) then return end
-        local avail = (tip:GetWidth() or 0) - 20                     -- 10 px text inset each side
-        if avail <= 40 then return end
-        local changed = false
-        for i = 1, tip:NumLines() do
-            local fs = _G[(tip:GetName() or "") .. "TextLeft" .. i]
-            local text = fs and fs:GetText()
-            if text and not (issecretvalue and issecretvalue(text)) and not text:find("\n", 1, true)
-                and (fs:GetWidth() or 0) > avail + 1 then
-                if not measure then measure = UIParent:CreateFontString(nil, "BACKGROUND") end
-                local font, size, flags = fs:GetFont()
-                if font then measure:SetFont(font, size, flags) end
-                measure:Hide()
-                local out, cur = {}, ""
-                for word in text:gmatch("%S+") do
-                    local cand = cur == "" and word or (cur .. " " .. word)
-                    measure:SetText(cand)
-                    if cur ~= "" and measure:GetStringWidth() > avail then
-                        out[#out + 1] = cur
-                        cur = word
-                    else
-                        cur = cand
-                    end
-                end
-                if cur ~= "" then out[#out + 1] = cur end
-                if #out > 1 then
-                    if fs.SetWordWrap then fs:SetWordWrap(false) end
-                    fs:SetText(table.concat(out, "\n"))
-                    changed = true
-                end
-            end
-        end
-        if changed then
-            busy = true
-            pcall(tip.Show, tip)
-            busy = false
-        end
+    local hooked, widened = false, false
+    local function Widen()
+        local tip = _G.EmbeddedItemTooltip
+        if not (db and db.tooltipWrapParagon) or not (tip and tip.SetMinimumWidth) then return end
+        local item = tip.ItemTooltip
+        if not (item and item:IsShown()) then return end
+        local w = (item:GetWidth() or 0) + 9 - 20
+        if w <= 140 then return end
+        tip:SetMinimumWidth(w)
+        widened = true
     end
     -- Installed once at login whatever the option says (no top-level local is left for a handle: the
     -- main chunk is at Lua's 200-locals limit); the option is read on every call, so it applies at once.
@@ -3973,12 +3944,13 @@ end
     loader:SetScript("OnEvent", function()
         if hooked or type(_G.ReputationParagonFrame_SetupParagonTooltip) ~= "function" then return end
         hooked = true
-        hooksecurefunc("ReputationParagonFrame_SetupParagonTooltip", function()
-            pcall(Rewrap, _G.EmbeddedItemTooltip)
-        end)
-        if type(_G.ReputationParagonWatchBar_OnEnter) == "function" then
-            hooksecurefunc("ReputationParagonWatchBar_OnEnter", function()
-                pcall(Rewrap, _G.EmbeddedItemTooltip)
+        hooksecurefunc("ReputationParagonFrame_SetupParagonTooltip", function() pcall(Widen) end)
+        if type(_G.ReputationParagonWatchBar_OnLeave) == "function" then
+            hooksecurefunc("ReputationParagonWatchBar_OnLeave", function()
+                if widened and _G.EmbeddedItemTooltip then
+                    widened = false
+                    pcall(_G.EmbeddedItemTooltip.SetMinimumWidth, _G.EmbeddedItemTooltip, 0)
+                end
             end)
         end
     end)
