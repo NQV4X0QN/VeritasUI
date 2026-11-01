@@ -3912,7 +3912,7 @@ end
 -- Blizzard_UIPanels_Game/Mainline/ReputationFrame.lua:680-694, Blizzard_FrameXMLUtil/Mainline
 -- /ReputationUtil.lua:12-57): a wrapping "Continue earning reputation with ..." line, a progress bar,
 -- and the reward item embedded below. The line runs off the right edge, with or without VeritasUI.
--- MEASURED in game (owner, /qol tipprobe, 2026-11-01):
+-- MEASURED in game (owner, with a temporary /qol tipprobe dump, 2026-11-01; removed at release):
 --   * as Blizzard leaves it: tooltip 372.5 wide, right padding 133 (room for the 363.5-wide reward item,
 --     GameTooltip_CalculatePadding, GameTooltip.lua:236-291); the line 460 wide, one line.
 --   * test build 1 (line breaks + re-Show): every line laid out at 230.4 = the width left of that
@@ -4942,47 +4942,6 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
     local arg = (msg and strtrim(msg)) or ""
     if arg:lower() == "mappins" then DumpMapPins(); return end
     if arg:lower() == "notes" then DumpMapNotes(); return end
-    if arg:lower() == "tipprobe" then
-        -- TEMPORARY PROBE (2026-11-01): the reputation bar's max-renown tooltip line runs off the
-        -- right edge (owner, Blizzard bug, happens without VeritasUI). Measures the tooltip after
-        -- 5 s, so there is time to hover the bar. Read only. Remove once the fix is designed.
-        VUI.Print("Quality of Life", "Hover your reputation bar now; measuring in 5 seconds.")
-        C_Timer.After(5, function()
-            local tip = _G.EmbeddedItemTooltip
-            local function n(v) return type(v) == "number" and format("%.1f", v) or tostring(v) end
-            local function call(o, m, ...)
-                if not (o and o[m]) then return "-" end
-                local ok, a1, a2, a3, a4 = pcall(o[m], o, ...)
-                if not ok then return "err" end
-                return table.concat({ n(a1), a2 ~= nil and n(a2) or nil, a3 ~= nil and n(a3) or nil,
-                    a4 ~= nil and n(a4) or nil }, ",")
-            end
-            if not (tip and tip:IsShown()) then
-                VUI.Print("Quality of Life", "probe: the reputation tooltip was not shown")
-                return
-            end
-            VUI.Print("Quality of Life", "probe: tooltip width " .. call(tip, "GetWidth")
-                .. ", padding " .. call(tip, "GetPadding") .. ", lines " .. call(tip, "NumLines")
-                .. ", item " .. tostring(tip.ItemTooltip and tip.ItemTooltip:IsShown())
-                .. " w " .. call(tip.ItemTooltip, "GetWidth"))
-            for i = 1, (tip:NumLines() or 0) do
-                local fs = _G["EmbeddedItemTooltipTextLeft" .. i]
-                local text = fs and fs:GetText()
-                if text and text ~= "" then
-                    VUI.Print("Quality of Life", format("  %d '%s' w %s str %s wrap %s lines %s trunc %s", i,
-                        text:sub(1, 24), call(fs, "GetWidth"), call(fs, "GetStringWidth"),
-                        call(fs, "CanWordWrap"), call(fs, "GetNumLines"), call(fs, "IsTruncated")))
-                end
-            end
-        end)
-        return
-    end
-    if arg:lower() == "npc" then
-        print("|cFF00CCFF[VeritasUI NPC shortcuts]|r last decisions (oldest first):")
-        if #npcFrame._log == 0 then print("  nothing yet - talk to a quest giver") end
-        for _, line in ipairs(npcFrame._log) do print("  " .. line) end
-        return
-    end
     local ntail = arg:lower():match("^delvenudge%s*(.*)$")
     if ntail then
         -- Guarded: these branches return before the handler's own db nil-check below,

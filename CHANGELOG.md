@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.46.1] - 2026-11-01
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **Max-renown reputation tooltips wrap properly.** A Blizzard bug: past a faction's last renown rank, the "Continue earning reputation…" line in its tooltip ran off the right edge. It now wraps onto two lines inside the tooltip, on the reputation bar, the Reputation panel and the Renown page. New option Wrap Long Reputation Tooltip Lines, in the Tooltips section, on by default (`QualityOfLife.lua`, `README.md`)
+
+
 ## [1.46.0] - 2026-11-01
 
 ### Added
