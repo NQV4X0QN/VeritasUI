@@ -299,7 +299,7 @@ local function BuildMainWindow()
             .."4.  Click |cFFFFFF00Scan & Bind|r to activate")
 
         -- ── Action Buttons ────────────────────────────────────────
-        -- All four buttons use MagicButtonTemplate for the gold-bordered
+        -- Every button on this tab uses MagicButtonTemplate for the gold-bordered
         -- premium look that matches Blizzard's modern frame chrome (e.g. the
         -- Specialization "Activate" button, Talent "Reset" button). The
         -- template's default text height is ~22px; we keep slightly taller

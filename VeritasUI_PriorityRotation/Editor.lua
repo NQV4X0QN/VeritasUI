@@ -267,7 +267,7 @@ function PR:BuildEditor(parent, contentWidth)
     divLine:SetColorTexture(0.35, 0.35, 0.35, 0.9)
 
     -- ── Control-column grid (Frequency / After / Combat) ─────────
-    -- The identity cluster (#, arrows, icon, name) is a compact left-
+    -- The identity cluster (#, icon, name) is a compact left-
     -- aligned unit ending at x=212; the three CONTROL columns to its right
     -- sit on a computed grid. Geometry is exact, not eyeballed: PNL_W=420 →
     -- CONTENT_W=402 (Settings.lua) → ROW_W=390.
@@ -667,8 +667,8 @@ function PR:BuildEditor(parent, contentWidth)
     --
     -- X offsets are hardcoded to match the row-column layout above:
     --   numLbl    LEFT=4,   width=18   → center=13
-    --   iconBtn   LEFT=47,  width=28   → center=61
-    --   nameLbl   LEFT=82,  width=130  → LEFT=82 (left-justified header)
+    --   iconBtn   LEFT=27,  width=28   → center=41
+    --   nameLbl   LEFT=66,  width=146  → LEFT=66 (left-justified header)
     -- The three control columns sit on the computed equal-gap grid
     -- (FREQ_L / AFTER_L / CHK_L above) — headers center on element
     -- centers derived from the same constants, so they stay aligned
