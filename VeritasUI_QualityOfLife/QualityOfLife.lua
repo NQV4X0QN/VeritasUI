@@ -3858,33 +3858,14 @@ local function OnUnitTooltip(tooltip, data)
     -- Inline, not a file-level helper: this file's main chunk is near Lua's 200-locals limit
     -- (locals_headroom_test).
     if db.tooltipClassNames then pcall(function()
-        -- TEMPORARY PROBE (/qol tipprobe, test/tooltip-class-names): which step stops the colour.
-        local P = VUI._qolTipProbe and { guid = data.guid }
         local first = data.lines and data.lines[1]
         local nameType = Enum.TooltipDataLineType and Enum.TooltipDataLineType.UnitName
-        if P then P.type, P.want, P.n = first and first.type, nameType, data.lines and #data.lines end
-        local function Report(stage)
-            if not P or VUI._qolTipProbe.last == P.guid then return end
-            VUI._qolTipProbe.last = P.guid
-            local line = _G.GameTooltipTextLeft1
-            local function rgb() local r, g, b = line:GetTextColor(); return format("%.2f,%.2f,%.2f", r, g, b) end
-            local now = line and rgb() or "?"
-            VUI.Print("Quality of Life", format("tipprobe: stage=%s lines=%s type1=%s UnitName=%s player=%s class=%s colour now=%s",
-                stage, tostring(P.n), tostring(P.type), tostring(P.want), tostring(P.player), tostring(P.class), now))
-            if line then
-                C_Timer.After(0, function() VUI.Print("Quality of Life", "tipprobe: next frame=" .. rgb()) end)
-                C_Timer.After(0.5, function() VUI.Print("Quality of Life", "tipprobe: 0.5 s later=" .. rgb()) end)
-            end
-        end
-        if not (first and nameType and first.type == nameType) then Report("line1-not-name"); return end
-        if P then P.player = Read(UnitIsPlayer, unit) end
-        if not Read(UnitIsPlayer, unit) then Report("not-player"); return end
+        if not (first and nameType and first.type == nameType) then return end
+        if not Read(UnitIsPlayer, unit) then return end
         local _, class = Read(UnitClass, unit)
-        if P then P.class = class end
         local c = class and C_ClassColor and C_ClassColor.GetClassColor and Read(C_ClassColor.GetClassColor, class)
         local line = _G.GameTooltipTextLeft1
         if c and line then line:SetTextColor(c.r, c.g, c.b) end
-        Report(c and "coloured" or "no-colour")
     end) end
     if db.tooltipTarget then pcall(TargetLine, tooltip, unit) end
     if db.tooltipMount then pcall(MountLine, tooltip, unit) end
@@ -4851,11 +4832,6 @@ end
 
 SlashCmdList["VERITASUI_QOL"] = function(msg)
     local arg = (msg and strtrim(msg)) or ""
-    if arg:lower() == "tipprobe" then   -- TEMPORARY PROBE (test/tooltip-class-names)
-        VUI._qolTipProbe = (not VUI._qolTipProbe) and {} or nil
-        VUI.Print("Quality of Life", "Tooltip probe " .. (VUI._qolTipProbe and "ON — hover a player, then an NPC." or "OFF."))
-        return
-    end
     if arg:lower() == "mappins" then DumpMapPins(); return end
     if arg:lower() == "notes" then DumpMapNotes(); return end
     if arg:lower() == "npc" then
