@@ -146,33 +146,39 @@ local UNIVERSAL = {
     -- the toggles above: it overrides a faction the player chose to watch, and the suite ships
     -- to other players who never asked for that.
     followReputationGains = false,
-    repBarRenownLevel = false,    -- "[18/20]" beside the name on the reputation bar (owner, 2026-10-30)
-    greatVaultButton  = false,    -- Great Vault button by the minimap's mail icon (owner, 2026-10-30)
+    -- ON by default since v1.37.0 (owner, 2026-10-31: "People download the addon because they want a
+    -- change"). Still OFF: options that act for the player in a way that is hard to undo or that
+    -- remove game content -- Track Latest Reputation above, Fill In DELETE, Skip Cinematics, Auto
+    -- Accept / Turn In Quests, and CleanSolo's Talking Head and Top Banners hides. Defaults only
+    -- seed missing keys, so existing players keep what they have.
+    repBarRenownLevel = true,     -- "[18/20]" beside the name on the reputation bar (owner, 2026-10-30)
+    greatVaultButton  = true,     -- Great Vault button by the minimap's mail icon (owner, 2026-10-30)
     -- /way was always on and had no option until v1.34.4 (owner: a feature we mention must be one the
     -- player can see and switch). ON by default, unlike the options above, so nobody loses it.
     wayCommand        = true,
     mapNotesEnabled   = true,     -- /note and the notes' map pins; same reason, on by default (v1.34.4)
     journeysShortcuts = true,     -- Journeys.lua's card checkbox and bar clicks; same (v1.34.4)
-    -- EllesmereUI-inspired plan, phase 2 (v1.28.0). OFF by default for the same reason: they
-    -- change how two of Blizzard's own confirmations behave.
+    -- EllesmereUI-inspired plan, phase 2 (v1.28.0). OFF by default: they change how two of
+    -- Blizzard's own confirmations behave.
     fillDeleteConfirm = false,   -- types DELETE into the delete-item confirmation
     skipCinematics    = false,   -- Escape skips a cinematic or movie without asking
-    -- Phase 3 (v1.29.0): NPC shortcuts, all off by default; Shift held pauses the first three.
-    pickOnlyGossip    = false,   -- pick an NPC's only dialogue option
+    -- Phase 3 (v1.29.0): NPC shortcuts; Shift held pauses the first three. The two quest ones stay
+    -- OFF; the others are on since v1.37.0.
+    pickOnlyGossip    = true,    -- pick an NPC's only dialogue option
     autoAcceptQuest   = false,   -- take offered quests (separate from turn-in, owner's request)
     autoTurnInQuest   = false,   -- hand in completed quests
-    trainAllButton    = false,   -- Train All button on the trainer window
-    -- Phase 4 (v1.30.0): extra unit tooltip lines, off by default, independent.
-    tooltipTarget     = false,   -- "Target: <name>", green "You" when it is you
-    tooltipMount      = false,   -- the mount a player rides, check or red X for owned
-    tooltipClassNames = false,   -- a player's name line in their class colour
-    -- Phase 6 (v1.32.0): character sheet details, off by default, independent.
-    charEnchants      = false,   -- each slot's enchant beside it
-    charDurability    = false,   -- each slot's durability %, below 100%
-    charMythicRating  = false,   -- Mythic+ rating under the item level
-    charLabelClassColor = false, -- sub-option: "Enchant:" / "Gem:" in class colour (owner, 2026-10-30)
-    -- Phase 5 (v1.31.0): Blizzard's timestamp on system/loot/money/... lines too. Off by default.
-    timestampAllMessages = false,
+    trainAllButton    = true,    -- Train All button on the trainer window
+    -- Phase 4 (v1.30.0): extra unit tooltip lines, independent; on since v1.37.0.
+    tooltipTarget     = true,    -- "Target: <name>", green "You" when it is you
+    tooltipMount      = true,    -- the mount a player rides, check or red X for owned
+    tooltipClassNames = true,    -- a player's name line in their class colour (v1.37.0)
+    -- Phase 6 (v1.32.0): character sheet details, independent; on since v1.37.0.
+    charEnchants      = true,    -- each slot's enchant beside it
+    charDurability    = true,    -- each slot's durability %, below 100%
+    charMythicRating  = true,    -- Mythic+ rating under the item level
+    charLabelClassColor = true,  -- sub-option: "Enchant:" / "Gem:" in class colour (owner, 2026-10-30)
+    -- Phase 5 (v1.31.0): Blizzard's timestamp on system/loot/money/... lines too. On since v1.37.0.
+    timestampAllMessages = true,
     -- The icon the next /note starts with: the last one chosen from a note's menu.
     mapNoteIcon = "Waypoint-MapPin-Untracked",
 }

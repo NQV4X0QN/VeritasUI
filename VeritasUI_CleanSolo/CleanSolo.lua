@@ -91,7 +91,7 @@ local UNIVERSAL = {
     hideTalkingHead     = false,
     muteTalkingHead     = false,
     hideTopBanners      = false,
-    hideProfessionGear  = false,   -- v1.27.0, owner's request; applies at once
+    hideProfessionGear  = true,    -- v1.27.0, owner's request; applies at once. ON since v1.37.0 (owner)
 }
 
 -- ⚠ PER-CHARACTER. These two are the reason per-character storage was requested in the first

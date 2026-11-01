@@ -17,7 +17,7 @@ Hides or fades the parts of the interface you don't need most of the time.
 - Optionally hides the social button, the chat menu and voice buttons, the bag bar, and macro names on action buttons
 - Optionally hides the **talking head** story popup and, separately, **mutes its voice**, so you can keep either one
 - Optionally hides the **top banners**: the zone name when you travel, event banners such as level up and scenario stages, and the boss kill and loot banner
-- Optionally **hides profession gear**: keeps your own outfit on while you craft, gather or fish, instead of the profession outfit the game puts on you. If one still shows, `/cs gear` lists what you're wearing
+- **Hides profession gear**: keeps your own outfit on while you craft, gather or fish, instead of the profession outfit the game puts on you. If one still shows, `/cs gear` lists what you're wearing
 - Hides red error text — all of it, or only the kinds you pick (combat, spells and cooldowns, items and bags, mail/vendors/bank, looting, mounts and flight paths), so "Internal mail database error." can go while "You are too far away!" stays
 
 Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped under **Fade** and **Hide**. Changes apply after a `/reload`, except Fade Delay and Hide Profession Gear, which apply at once.
@@ -30,15 +30,15 @@ Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped
 - **Delve counts** shown right on the Delve objective icon instead of only in its tooltip: the Nemesis count, and in a Labyrinth the Treasure Room chambers completed, with a checkmark at 9
 - **Map notes** (on unless you turn it off): `/note <text>` leaves a note on the map where you're standing. Click a note to change its icon or remove it; `/note clear` removes the notes on your current map. Notes left inside a Labyrinth or other instance are removed when you leave it
 - **Track latest reputation** (off until you turn it on): the reputation bar switches to whichever faction you most recently earned reputation with
-- **Renown level on the reputation bar** (off until you turn it on): your renown level at the end of the bar's text, such as [18/20], and past the top the levels earned beyond it, such as [21/20]
-- **Great Vault button by the minimap** (off until you turn it on): the Great Vault button sits under the minimap's mail icon whenever your vault holds something, including last week's rewards; click it to open the vault
+- **Renown level on the reputation bar**: your renown level at the end of the bar's text, such as [18/20], and past the top the levels earned beyond it, such as [21/20]
+- **Great Vault button by the minimap**: the Great Vault button sits under the minimap's mail icon whenever your vault holds something, including last week's rewards; click it to open the vault
 - **Fill In DELETE** (off until you turn it on): when you delete a valuable item, DELETE is typed in for you, so Enter or Yes confirms
 - **Skip Cinematics** (off until you turn it on): Escape skips a cinematic or movie straight away instead of asking first
-- **NPC shortcuts** (each off until you turn it on): pick an NPC's only dialogue option, **auto accept** quests, and **auto turn in** completed quests — separate options, and holding Shift while you talk to the NPC pauses them. Reward choices and quests that cost gold are always left to you
-- **Train All** button at trainers (off until you turn it on): learns everything available that you can afford in one click
-- **Tooltip lines** (each off until you turn it on): who a player or NPC is targeting, green when it's you, and the mount a player is riding, with a check or red X for whether you own it. Left out where the game hides this from addons
-- **Timestamp every message** (off until you turn it on): Blizzard's chat timestamp on system, loot, money, achievement, experience and reputation lines and VeritasUI's own messages, not just player chat. Uses the format from Options → Social → Chat Timestamps
-- **Character sheet** (each off until you turn it on): a green check beside each slot whose enchant and gems are all there, or a red X on Epic and Legendary gear when one is missing, with a tooltip naming what's there and what's missing (optionally with the labels in your class colour); durability on each slot below 100%; and your Mythic+ rating under your item level
+- **NPC shortcuts**: picks an NPC's only dialogue option, and, if you turn them on, **auto accept** quests and **auto turn in** completed quests — separate options, and holding Shift while you talk to the NPC pauses them. Reward choices and quests that cost gold are always left to you
+- **Train All** button at trainers: learns everything available that you can afford in one click
+- **Tooltips**: who a player or NPC is targeting, green when it's you; the mount a player is riding, with a check or red X for whether you own it; and players' names in their class color. Each is its own option, and each is left out where the game hides it from addons
+- **Timestamp every message**: Blizzard's chat timestamp on system, loot, money, achievement, experience and reputation lines and VeritasUI's own messages, not just player chat. Uses the format from Options → Social → Chat Timestamps
+- **Character sheet**: a green check beside each slot whose enchant and gems are all there, or a red X on Epic and Legendary gear when one is missing, with a tooltip naming what's there and what's missing (optionally with the labels in your class colour); durability on each slot below 100%; and your Mythic+ rating under your item level
 - **Journeys shortcuts** (on unless you turn it off): adds the "Show as Experience Bar" checkbox to Delves and Prey cards, and lets you click the reputation or honor bar to open that faction's page or the PvP window
 
 For map and minimap coordinates, use WoW's own options in **Options → Interface**.
