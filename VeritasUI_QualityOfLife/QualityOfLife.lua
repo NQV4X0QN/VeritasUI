@@ -4945,6 +4945,12 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
     local arg = (msg and strtrim(msg)) or ""
     if arg:lower() == "mappins" then DumpMapPins(); return end
     if arg:lower() == "notes" then DumpMapNotes(); return end
+    if arg:lower() == "npc" then
+        print("|cFF00CCFF[VeritasUI NPC shortcuts]|r last decisions (oldest first):")
+        if #npcFrame._log == 0 then print("  nothing yet - talk to a quest giver") end
+        for _, line in ipairs(npcFrame._log) do print("  " .. line) end
+        return
+    end
     local ntail = arg:lower():match("^delvenudge%s*(.*)$")
     if ntail then
         -- Guarded: these branches return before the handler's own db nil-check below,
