@@ -150,9 +150,9 @@ rotBtn:Show()
 
 -- Initialize macros table immediately to prevent nil-access if
 -- a click arrives before the first InjectSequence call.
-PR.AFTER_PRESSES = 7
+PR.AFTER_PRESSES = 4
 rotBtn:Execute("macros = newtable(); macros[1] = ''; links = newtable(); armed = newtable(); nextLink = 0;"
-    .. " armPresses = " .. PR.AFTER_PRESSES)
+    .. " followerTurn = true; armPresses = " .. PR.AFTER_PRESSES)
 
 -- PARITY BUG (found 2026-07-11, latent since inception): the keybind path
 -- (SetOverrideBindingClick) delivers TWO clicks per physical press — key-down
@@ -169,43 +169,55 @@ rotBtn:Execute("macros = newtable(); macros[1] = ''; links = newtable(); armed =
 -- the same edge that casts.
 --
 -- "After" links (v1.36.0) are decided here, per press, not in the compiled list.
--- links[i] = { "[channeling:<target>] 1", <follower macrotext> }. A press that lands while
--- the target channels re-arms every link on it for PR.AFTER_PRESSES presses and otherwise steps
--- as normal (its step carries [nochanneling], so it does nothing). The presses after the channel
--- ends cast the armed followers, taking turns in profile order, instead of advancing the step; a
--- follower still on cooldown just fails, and waits for the next channel.
--- WHY 7 (measured 2026-10-31, /pr afterlog, 8 Eye Beams): at 2 presses each, Blade Dance and
--- Essence Break's four tries all landed inside ONE global cooldown, so whichever cast first left
--- the other nothing; Essence Break missed 5 of the first 5. The snippet cannot see time
--- (no GetTime in RestrictedEnvironment.lua), so the window is counted in presses: 7 each = 14
--- alternating presses, about 1.5 s at the owner's ~9 presses/s (18 per Eye Beam channel), which is
--- more than one global cooldown and less than two. A faster presser gets a shorter window. SecureCmdOptionParse is
--- allowed in this environment (RestrictedEnvironment.lua:82); the 2026-10-31 probe measured
--- [channeling:Eye Beam] true on every press during 6 channels and false on all 1302 outside.
+-- links[i] = { "[channeling:<target>] 1", <follower macrotext> }, Only After followers first.
+-- A press that lands while the target channels re-arms every link on it for PR.AFTER_PRESSES
+-- tries and otherwise steps as normal (its step carries [nochanneling], so it does nothing).
+-- After the channel, presses ALTERNATE: an armed follower (taking turns), then the normal
+-- rotation step, until every link's tries are spent. A follower still on cooldown just fails
+-- and waits for the next channel.
+-- WHY (measured 2026-10-31 with /pr afterlog, two runs of 8 Eye Beams):
+--   * 2 tries each, back to back: all four landed inside ONE global cooldown, so whichever cast
+--     first left the other nothing (Essence Break missed 5 of the first 5).
+--   * 7 tries each, back to back (~1.5 s): Essence Break cast at every Eye Beam its cooldown
+--     allowed, but when both followers were on cooldown the character stood still ~1.5 s.
+--   Alternating with the rotation keeps both: the tries span more than one global cooldown, and
+--   every other press is a normal step, so nothing ever stands idle. The snippet cannot see time
+--   (no GetTime in RestrictedEnvironment.lua), so the window is counted in presses.
+-- SecureCmdOptionParse is allowed in this environment (RestrictedEnvironment.lua:82); the
+-- 2026-10-31 probe measured [channeling:Eye Beam] true on every press during 6 channels and false
+-- on all 1302 outside.
 rotBtn:WrapScript(rotBtn, "OnClick", [=[
     if down then return end
     -- TEMPORARY PROBE (/pr afterlog): counts presses so the log can list what each one cast.
     self:SetAttribute('vui-press', (tonumber(self:GetAttribute('vui-press')) or 0) + 1)
     if links and #links > 0 then
-        local channeling = false
+        local channeling, open = false, false
         for i = 1, #links do
             if SecureCmdOptionParse(links[i][1]) then
                 armed[i] = armPresses
                 channeling = true
+            elseif (armed[i] or 0) > 0 then
+                open = true
             end
         end
         if channeling then
             nextLink = 0
-        else
-            local n = #links
-            for k = 1, n do
-                local i = (nextLink + k - 1) % n + 1
-                if (armed[i] or 0) > 0 then
-                    armed[i] = armed[i] - 1
-                    nextLink = i
-                    self:SetAttribute('macrotext', links[i][2])
-                    return
+            followerTurn = true
+        elseif open then
+            if followerTurn then
+                followerTurn = false
+                local n = #links
+                for k = 1, n do
+                    local i = (nextLink + k - 1) % n + 1
+                    if (armed[i] or 0) > 0 then
+                        armed[i] = armed[i] - 1
+                        nextLink = i
+                        self:SetAttribute('macrotext', links[i][2])
+                        return
+                    end
                 end
+            else
+                followerTurn = true
             end
         end
     end
@@ -513,7 +525,12 @@ function PR:CompileSequence()
         for _, it in ipairs(entries) do
             if it.key and not byKey[it.key] then byKey[it.key] = it end
         end
-        for _, it in ipairs(entries) do
+        -- Only After links first: this window is a held ability's only chance, while an Also
+        -- After one still has its normal slots.
+        local linked = {}
+        for _, it in ipairs(entries) do if it.only then linked[#linked + 1] = it end end
+        for _, it in ipairs(entries) do if not it.only then linked[#linked + 1] = it end end
+        for _, it in ipairs(linked) do
             local target = it.follows and byKey[it.follows]
             if target and target ~= it and target.chanName then
                 links[#links + 1] = {
@@ -591,7 +608,8 @@ end
 
 function PR:InjectSequence(seq, links)
     if InCombatLockdown() then return end
-    local lines = { "macros = newtable()", "links = newtable()", "armed = newtable()", "nextLink = 0" }
+    local lines = { "macros = newtable()", "links = newtable()", "armed = newtable()", "nextLink = 0",
+                    "followerTurn = true" }
     if #seq > 0 then
         for i, macro in ipairs(seq) do
             lines[#lines + 1] = "macros[" .. i .. "] = " .. SafeQuote(macro)
