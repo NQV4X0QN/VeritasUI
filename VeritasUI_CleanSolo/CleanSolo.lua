@@ -96,6 +96,7 @@ local UNIVERSAL = {
     -- and the reputation / experience / honor bars sit in the same place on every character.
     fadeDamageMeter     = true,    -- shown in combat or on hover
     fadeStatusBars      = true,    -- shown on hover
+    fadeStatusBarsOnRep = true,    -- sub-option: also shown for a few seconds after a reputation gain
 }
 
 -- ⚠ PER-CHARACTER. These two are the reason per-character storage was requested in the first
@@ -893,11 +894,25 @@ end
 -- (StatusTrackingBar.xml:5-7), so test build 2 faded the coloured bar and left the frame (owner). The
 -- texture follows its container's SHOWN bar: every alpha we give that bar is copied to it (Blizzard
 -- never sets that texture's alpha).
+-- Shown for this long after a reputation gain (sub-option fadeStatusBarsOnRep, owner's request
+-- 2026-10-31: draw the eye to the bar, then fade it again). FACTION_STANDING_CHANGED fires on every
+-- gain, in the same frame as the chat line (measured 2026-10-24, QualityOfLife.lua Follow Reputation
+-- Gains); its payload is not read, so a secret one does not matter.
+local REP_GAIN_SHOW_SECONDS = 3
+local repShownUntil = 0
+
 local function SetupStatusBarFade()
+    if liveFadeHooked.fadeStatusBars then return end   -- turned off and on again: already installed
     local containers = { _G.MainStatusTrackingBarContainer, _G.SecondaryStatusTrackingBarContainer }
     local bars = {}
+    local repWatch = CreateFrame("Frame")
+    repWatch:RegisterEvent("FACTION_STANDING_CHANGED")
+    repWatch:SetScript("OnEvent", function()
+        if db.fadeStatusBarsOnRep then repShownUntil = GetTime() + REP_GAIN_SHOW_SECONDS end
+    end)
     local function Revealed()
         if not db.fadeStatusBars then return true end
+        if db.fadeStatusBarsOnRep and GetTime() < repShownUntil then return true end
         for _, c in ipairs(containers) do
             if c and c:IsVisible() and c:IsMouseOver() then return true end
         end
@@ -1055,6 +1070,10 @@ local function InitializeOptions()
           tip = "The reputation, experience and honor bars fade out unless you're mousing over them. "
              .. "Applies at once.",
           apply = function(value) if value then SetupStatusBarFade() end end },
+        { key = "fadeStatusBarsOnRep", name = "Show on Reputation Gain", parent = "fadeStatusBars",
+          tip = "The reputation bar appears for a few seconds when you gain reputation, then fades "
+             .. "again. Applies at once.",
+          apply = function() end },
         { key = "fadeMainActionBar",   name = "Fade Main Action Bar",
           tip = "Action Bar 1 fades out unless you're in combat, flying, or mousing over it. Applies at once.",
           apply = function(value) if value then SetupMainActionBarFade() end end },
@@ -1101,6 +1120,7 @@ local function InitializeOptions()
     -- panel would then read and write a value the runtime code never looks at. Blizzard captures
     -- the table by reference (Blizzard_Setting.lua:420), so getting this wrong stays invisible
     -- until a setting fails to persist or leaks across characters.
+    local inits = {}
     local function AddCheckboxes(list)
         for _, opt in ipairs(list) do
             local perChar  = PERCHAR[opt.key] ~= nil
@@ -1124,6 +1144,14 @@ local function InitializeOptions()
             end)
             local init = Settings.CreateCheckbox(category, setting, TipWithReason(opt.tip, opt.key))
             GreyIfUnavailable(init, opt.key)
+            inits[opt.key] = init
+            -- A refinement is a sub-option: indented under its parent and greyed while the parent is
+            -- off (Blizzard_SettingControls.lua:120), as Quality of Life does.
+            local parentInit = opt.parent and inits[opt.parent]
+            if parentInit and init.SetParentInitializer then
+                local parentOwner = PERCHAR[opt.parent] ~= nil and cdb or db
+                init:SetParentInitializer(parentInit, function() return parentOwner[opt.parent] end)
+            end
         end
     end
 
