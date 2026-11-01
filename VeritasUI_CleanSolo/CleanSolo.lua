@@ -1664,9 +1664,9 @@ local function InitializeOptions()
         end)
     end
     local delayInit = Settings.CreateSlider(category, delaySetting, delayOptions, TipWithReason(
-        "How long the faded micro menu, player frame and action bars stay visible after you move "
-        .. "the mouse away, before they fade. 0 keeps the usual short delay. The chat window and "
-        .. "its tabs keep Blizzard's own timing. Applies at once.", "fadeDelay"))
+        "How long a faded element stays visible after you move the mouse away, before it fades: "
+        .. "every Fade option above. 0 keeps the usual short delay. The chat window and its tabs "
+        .. "keep Blizzard's own timing. Applies at once.", "fadeDelay"))
     GreyIfUnavailable(delayInit, "fadeDelay")
 
 
