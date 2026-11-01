@@ -13,7 +13,7 @@ Hides or fades the parts of the interface you don't need most of the time.
 
 - The **chat window** fades when you're not using chat and comes back on mouseover: its background, its tabs and the chat buttons you haven't hidden (with Chat Style set to IM, the box you type in too). The messages stay readable
 - The micro menu, chosen action bars (2–8) and your player frame fade out when idle and reappear on mouseover, in combat, or when you take damage
-- **Action Bar 1** fades out unless you're in combat, flying or mousing over it
+- **Action Bar 1** fades out unless you're in combat or mousing over it, and is shown in full while it holds vehicle or quest controls; tick **Show While Flying** (on by default) to keep it up in flight
 - Your **buffs and debuffs** by the minimap fade out unless you're in combat or mousing over them
 - The **minimap alerts** (mail and crafting order icons, and Quality of Life's Great Vault button) fade out until you mouse over them
 - The **damage meter** fades out unless you're in combat or mousing over it

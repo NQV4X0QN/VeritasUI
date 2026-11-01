@@ -105,6 +105,9 @@ local UNIVERSAL = {
     -- v1.44.0 (owner's request): the alert icons by the minimap (mail, crafting orders, and Quality
     -- of Life's Great Vault button), shown on hover.
     fadeMinimapAlerts   = true,
+    -- v1.45.0 (owner's request): sub-option of Fade Main Action Bar, ON so the behaviour before it is
+    -- kept: the bar is shown in flight. Off, flying is like any other time out of combat.
+    fadeMainActionBarShowFlying = true,
     -- Sub-option, OFF by default (owner: some players want the bars only on hover, others want
     -- them shown on gains -- "an option that people can check if they want it").
     fadeStatusBarsOnGain = false,  -- also shown for 3 s after a reputation, experience or honor gain
@@ -1149,10 +1152,31 @@ local function SetupMinimapAlertsFade()
         true, Opacity("fadeMinimapAlertsOpacity"))
 end
 
+-- Shown in full while the game puts vehicle or quest controls on it (v1.45.0, owner's request).
+-- Blizzard swaps Action Bar 1's page to the vehicle, override or temporary-shapeshift bar when there
+-- is one without its own art (ActionBarController_UpdateAll, Blizzard_ActionBarController
+-- /ActionBarController.lua:153-165); with its own art it shows OverrideActionBar instead (:148-152),
+-- which is never faded. The bonus bar (stances, cat form, stealth) is a class bar, not an event, and
+-- is left out on purpose.
+local function BarTakenOver()
+    local ab = _G.C_ActionBar
+    if not ab then return false end
+    for _, fn in ipairs({ ab.HasVehicleActionBar, ab.HasOverrideActionBar, ab.HasTempShapeshiftActionBar }) do
+        if fn then
+            local ok, on = pcall(fn)
+            if ok and on == true then return true end
+        end
+    end
+    return false
+end
+
 local function SetupMainActionBarFade()
     -- No OnEnter hook on Action Bar 1 (see VUI.HookHoverFade): the poll alone reveals it.
     SetupLiveFade("fadeMainActionBar", { _G.MainActionBar },
-        function() return not cdb.fadeMainActionBar or InCombatLockdown() or (_G.IsFlying and _G.IsFlying()) end,
+        function()
+            return not cdb.fadeMainActionBar or InCombatLockdown() or BarTakenOver()
+                or (db.fadeMainActionBarShowFlying and _G.IsFlying and _G.IsFlying())
+        end,
         true, Opacity("fadeActionBarsOpacity"))
 end
 
@@ -1418,10 +1442,15 @@ local function InitializeOptions()
              .. "your tracked reputation changes, then fade again. Applies at once.",
           apply = function() end },
         { key = "fadeMainActionBar",   name = "Fade Main Action Bar",
-          tip = "Action Bar 1 fades out unless you're in combat, flying, or mousing over it. Applies at once.",
+          tip = "Action Bar 1 fades out unless you're in combat or mousing over it. It is shown in full "
+             .. "while it holds vehicle or quest controls. Applies at once.",
           apply = function(value) if value then SetupMainActionBarFade() end end,
           opacity = "fadeActionBarsOpacity",
           opacityTip = " Also sets how faded the bars picked in Fade Action Bars get." },
+        { key = "fadeMainActionBarShowFlying", name = "Show While Flying", parent = "fadeMainActionBar",
+          tip = "Action Bar 1 is shown in full while you fly. Turn it off and it stays faded in flight, "
+             .. "like any other time out of combat. Applies at once.",
+          apply = function() end },
     }
     local HIDE_OPTIONS = {
         { key = "hideSocialButton",    name = "Hide Social Button",
