@@ -3915,10 +3915,16 @@ end
 -- MEASURED in game (owner, /qol tipprobe, 2026-11-01): tooltip 372.5 wide with right padding 133
 -- (room for the reward item, GameTooltip_CalculatePadding, GameTooltip.lua:236-291); that line's
 -- font string 460 wide = its whole text, word wrap on, ONE line. So the game never wrapped it.
--- Fix: after Blizzard builds the tooltip, any line wider than the tooltip's text area gets line breaks
--- at word boundaries, measured with a font string of our own in the same font, then the tooltip is
--- shown again so it lays itself out for the taller line. Only this one Blizzard function is hooked;
--- nothing else of the shared tooltip is touched.
+-- Fix: after Blizzard builds the tooltip, any line wider than the tooltip's text area (width - 20) gets
+-- line breaks at word boundaries, measured with a font string of our own in the same font, then the
+-- tooltip is shown again so it lays itself out for the taller line.
+-- ⚠ MEASURED (test build 1, owner): with the line still word-wrapping, that re-show wraps it AGAIN, at
+-- the 230 px left of the reward item's padding, so our two parts became three lines ("too aggressive").
+-- So the line's own word wrap is turned off (FontString:SetWordWrap) and only our breaks apply.
+-- GameTooltip:AddLine sets each line's wrap from its argument on every call (Blizzard's tooltips mix
+-- wrapping and non-wrapping lines on the same font strings constantly), so this does not carry over to
+-- the next tooltip. Only this one Blizzard function is hooked; nothing else of the shared tooltip is
+-- touched.
 ;(function()
     local hooked, busy, measure = false, false, nil
     local function Rewrap(tip)
@@ -3947,7 +3953,11 @@ end
                     end
                 end
                 if cur ~= "" then out[#out + 1] = cur end
-                if #out > 1 then fs:SetText(table.concat(out, "\n")); changed = true end
+                if #out > 1 then
+                    if fs.SetWordWrap then fs:SetWordWrap(false) end
+                    fs:SetText(table.concat(out, "\n"))
+                    changed = true
+                end
             end
         end
         if changed then
