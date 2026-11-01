@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.43.0] - 2026-10-31
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Fade Buffs and Debuffs.** Your buffs and debuffs by the minimap fade out unless you're in combat or mousing over them, to the opacity set by the slider beside the option; hovering either row shows both. Right-click still cancels a buff; applies at once (`CleanSolo.lua`, `README.md`)
+
+
 ## [1.42.0] - 2026-10-31
 
 ### Added
