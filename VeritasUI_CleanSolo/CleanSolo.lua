@@ -1003,23 +1003,112 @@ local function SetupDamageMeterFade()
     end
 end
 
--- The All Objectives tracker (v1.42.0, owner's request). Blizzard never sets ObjectiveTrackerFrame's
--- own alpha, only its NineSlice's and its blocks' (Blizzard_ObjectiveTrackerContainer.lua:170,
--- Blizzard_BonusObjectiveTracker.lua), which multiply under ours. Its height follows its content
--- (Container.lua:199-208), so hovering any tracked line reveals it. No OnEnter hook, poll only, as on
--- Action Bar 1: the tracker holds the quest item buttons, whose click uses a quest item through a
--- protected call (UseQuestLogSpecialItem, Blizzard_ObjectiveTrackerShared.lua:94-102), so we stay off
--- its scripts. Not load-on-demand in 12.1.5; the fallback is for safety.
+-- The All Objectives tracker (v1.42.0, owner's request), faded SECTION BY SECTION since v1.44.1.
+-- Owner, 2026-10-31: in a Delve, Mythic+, Void Incursion or similar event, that event's objective must
+-- stay at full opacity while the rest of the tracker keeps the slider's opacity. The tracker's own alpha
+-- multiplies into every section, so it is left at 1 and each child of ObjectiveTrackerFrame is faded
+-- instead: the header and every module (Blizzard_ObjectiveTrackerManager.lua:190-216 puts all modules
+-- in this container, Module.lua:65 parents them to it).
+--   * Event modules are never faded: ScenarioObjectiveTracker (scenarios, Delves, Mythic+),
+--     UIWidgetObjectiveTracker (event progress widgets) and BonusObjectiveTracker (objectives of the
+--     area you are in). Blizzard shows a module only while it has contents and hides it otherwise
+--     (Module.lua:201-214), so "never faded" is "full while the event is on".
+--   * The background (NineSlice) is Blizzard's Edit Mode opacity (Container.lua:169-171): its SetAlpha is
+--     owned as the chat window's is (landmine 140) -- Blizzard's value is kept and multiplied by ours, and
+--     it stays full while an event module is shown, so the event keeps its background.
+--   * Hovering the tracker shows every section. Blizzard never sets a module's or the header's own
+--     alpha (source, 2026-10-31); blocks set their own, which multiply under ours.
+-- Poll only, as before: no script hooks on a frame holding the quest item buttons, whose click is a
+-- protected call (UseQuestLogSpecialItem, Blizzard_ObjectiveTrackerShared.lua:94-102).
+local OT_EVENT_MODULES = { "ScenarioObjectiveTracker", "UIWidgetObjectiveTracker", "BonusObjectiveTracker" }
+local OT_FADE_IN, OT_FADE_OUT, OT_POLL = 0.2, 0.5, 0.1   -- the hover fade's speeds (Lib HookHoverFade)
+local otHooked = false
+
 local function SetupObjectiveTrackerFade()
-    local function Hook()
-        SetupLiveFade("fadeObjectiveTracker", { _G.ObjectiveTrackerFrame },
-            function() return not db.fadeObjectiveTracker end,
-            true, Opacity("fadeObjectiveTrackerOpacity"))
+    if otHooked then return end
+    local otf = _G.ObjectiveTrackerFrame
+    if type(otf) ~= "table" or not otf.GetChildren then
+        if EventUtil and EventUtil.ContinueOnAddOnLoaded then
+            EventUtil.ContinueOnAddOnLoaded("Blizzard_ObjectiveTracker", SetupObjectiveTrackerFade)
+        end
+        return
     end
-    if _G.ObjectiveTrackerFrame then Hook()
-    elseif EventUtil and EventUtil.ContinueOnAddOnLoaded then
-        EventUtil.ContinueOnAddOnLoaded("Blizzard_ObjectiveTracker", Hook)
+    otHooked = true
+    local opacity = Opacity("fadeObjectiveTrackerOpacity")
+    local isEvent = {}
+    for _, name in ipairs(OT_EVENT_MODULES) do
+        local f = _G[name]
+        if f then isEvent[f] = true end
     end
+    local nine = otf.NineSlice
+    local sections, last = {}, {}
+    local function Collect()
+        sections = {}
+        for _, child in ipairs({ otf:GetChildren() }) do
+            if child ~= nine and not isEvent[child] and child.SetAlpha then sections[#sections + 1] = child end
+        end
+    end
+    Collect()
+
+    -- Background: Blizzard's own alpha x ours, put back whenever Blizzard writes it.
+    local nineBlizz, nineOurs, nineInHook = 1, 1, false
+    local function ApplyNine()
+        if not nine then return end
+        nineInHook = true
+        nine:SetAlpha(nineBlizz * nineOurs)
+        nineInHook = false
+    end
+    if type(nine) == "table" and nine.SetAlpha then
+        nineBlizz = nine.GetAlpha and nine:GetAlpha() or 1
+        hooksecurefunc(nine, "SetAlpha", function(_, a)
+            if nineInHook then return end
+            nineBlizz = tonumber(a) or 1
+            ApplyNine()
+        end)
+    else
+        nine = nil
+    end
+
+    local function EventShown()
+        for f in pairs(isEvent) do if f:IsShown() then return true end end
+        return false
+    end
+
+    local hoverUntil, sinceCollect = 0, 0
+    local function Evaluate(instant)
+        local now = GetTime()
+        if otf:IsVisible() and otf:IsMouseOver() then
+            hoverUntil = now + math.max(0.15, (VUI.GetFadeDelay and VUI.GetFadeDelay()) or 0)
+        end
+        local show = not db.fadeObjectiveTracker or now < hoverUntil or IsEditModeActive()
+        local faded = VUI.FadedAlpha(opacity)
+        local target = show and 1 or faded
+        for _, f in ipairs(sections) do
+            if last[f] ~= target then
+                last[f] = target
+                if instant then f:SetAlpha(target)
+                else VUI.SmoothFade(f, target > (f:GetAlpha() or 0) and OT_FADE_IN or OT_FADE_OUT, target) end
+            end
+        end
+        for f in pairs(isEvent) do
+            if last[f] ~= 1 then last[f] = 1; f:SetAlpha(1) end
+        end
+        local nineTarget = (show or EventShown()) and 1 or faded
+        if nine and math.abs(nineOurs - nineTarget) > 0.001 then
+            nineOurs = nineTarget
+            ApplyNine()
+        end
+    end
+    Evaluate(true)
+    local poll = CreateFrame("Frame")
+    poll:SetScript("OnUpdate", function(self, elapsed)
+        self._t = (self._t or 0) + (elapsed or 0)
+        if self._t < OT_POLL then return end
+        sinceCollect = sinceCollect + self._t
+        self._t = 0
+        if sinceCollect >= 1 then sinceCollect = 0; Collect() end
+        Evaluate(false)
+    end)
 end
 
 -- Your buffs and debuffs by the minimap (v1.43.0, owner's request): BuffFrame and DebuffFrame
@@ -1756,6 +1845,20 @@ SLASH_VERITASUI_CLEANSOLO1 = "/cleansolo"
 SLASH_VERITASUI_CLEANSOLO2 = "/cs"
 SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
     if strtrim(msg or ""):lower() == "gear" then PrintGearDiag(); return end
+    if strtrim(msg or ""):lower() == "tracker" then
+        -- Which tracker sections are shown, and their alpha: if an event's objective still fades,
+        -- this names the section it is in, so it can be added to OT_EVENT_MODULES.
+        local otf = _G.ObjectiveTrackerFrame
+        if not (otf and otf.GetChildren) then VUI.Print("Clean Solo", "no objective tracker"); return end
+        for _, c in ipairs({ otf:GetChildren() }) do
+            if c:IsShown() then
+                local name = (c.GetName and c:GetName()) or (c == otf.Header and "Header")
+                    or (c == otf.NineSlice and "Background") or "?"
+                VUI.Print("Clean Solo", string.format("%s  alpha %.2f", tostring(name), c:GetAlpha()))
+            end
+        end
+        return
+    end
     if strtrim(msg or ""):lower() == "bars" then
         -- Reports every alpha between the screen and the reputation / experience bars, so a bar that
         -- shows when it should be faded points at the layer that is wrong.
