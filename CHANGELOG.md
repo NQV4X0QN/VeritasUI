@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.46.2] - 2026-11-01
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **`/qol npc` is back.** v1.46.1 removed it by mistake along with a temporary test command; it lists the last things Pick Only Dialogue Option, Auto Accept and Auto Turn In saw and decided (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Mythic+ rating on the character sheet in your game's language.** The "Mythic+ Rating:" label now uses the game's own translated text instead of always showing English (`QualityOfLife.lua`)
+
+
 ## [1.46.1] - 2026-11-01
 
 ### Fixed
