@@ -11,14 +11,14 @@ The suite is split into modules. Each one does one job and has its own settings,
 ### Clean Solo — a quieter screen
 Hides or fades the parts of the interface you don't need most of the time.
 
-- Chat tabs and the chat background fade away when you're not using chat, and come back on mouseover (with Chat Style set to IM, so does the box you type in)
+- The **chat window** fades when you're not using chat and comes back on mouseover: its background, its tabs and the chat buttons you haven't hidden (with Chat Style set to IM, the box you type in too). The messages stay readable
 - The micro menu, chosen action bars (2–8) and your player frame fade out when idle and reappear on mouseover, in combat, or when you take damage
 - **Action Bar 1** fades out unless you're in combat, flying or mousing over it
 - The **damage meter** fades out unless you're in combat or mousing over it
 - The **reputation, experience and honor bars** fade out until you mouse over them; tick **Show on Gains** to have them appear for 3 seconds whenever you gain reputation, experience or honor
 - **Faded opacity**: a slider beside each Fade option sets how much still shows while faded, from 0% (hidden) to 100%; the one beside Fade Main Action Bar covers every faded action bar
 - **Fade Delay**: keep the micro menu, action bars and player frame up for 0 to 5 seconds after the mouse leaves, before they fade (the chat window keeps Blizzard's own timing)
-- Optionally hides the social button, the chat menu and voice buttons, the bag bar, and macro names on action buttons
+- Optionally hides the social button, the chat menu and voice buttons (left shown, they fade with the chat window), the bag bar, and macro names on action buttons
 - Optionally hides the **talking head** story popup and, separately, **mutes its voice**, so you can keep either one
 - Optionally hides the **top banners**: the zone name when you travel, event banners such as level up and scenario stages, and the boss kill and loot banner
 - **Hides profession gear**: keeps your own outfit on while you craft, gather or fish, instead of the profession outfit the game puts on you. If one still shows, `/cs gear` lists what you're wearing

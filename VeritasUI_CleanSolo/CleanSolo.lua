@@ -7,7 +7,7 @@
 -- ────────────────────────────────────────────────────────────────
 --
 --  CleanSolo's features are implemented almost entirely via
---  hooksecurefunc — chat-tab fade, transparent chat background, the
+--  hooksecurefunc — the chat window fade, the
 --  social/voice/chat button hides, micro menu fade, player frame fade,
 --  bag button hides, macro name hide, and error text suppression all
 --  install Blizzard secure-function hooks at PLAYER_LOGIN.
@@ -70,8 +70,8 @@ end
 -- Shared by every character: chrome-hiding and chat cosmetics are choices about the interface
 -- itself, not about how a particular character is played.
 local UNIVERSAL = {
+    -- Fade Chat Window (label since v1.41.0; the key keeps its old name so saved choices carry over)
     fadeChatTabs        = true,
-    transparentChatBG   = true,
     hideSocialButton    = true,
     hideChatButtons     = true,
     hideVoiceChatButton = true,
@@ -145,63 +145,10 @@ end
 -- Set by SetupChatTabFading: puts already-faded tabs and type bars at a new opacity.
 local chatTabsApplyOpacity
 
--- ── Feature: Transparent Chat Background ────────────────────
--- Writes alpha=0 to each chat frame's backdrop via Blizzard's
--- FCF_SetWindowAlpha API (the same setting the right slider in
--- /chatconfig → "Edit Window Appearance" controls). The color
--- component is left untouched — users who set a non-default tint
--- keep it. Blizzard's built-in hover-to-reveal behavior handles
--- the rest: background is invisible when idle, visible on
--- mouseover, exactly matching the Clean Solo aesthetic.
---
--- Runs once at PLAYER_LOGIN, then hooks FCF_SetWindowColor and
--- FCF_SetWindowAlpha so that any time the user opens the tab
--- right-click → "Background" color picker (or any other code path
--- changes the chat window color/alpha), alpha=0 is re-applied.
--- This is required because Blizzard's color picker fires its
--- opacityFunc on open with its cached value, which would otherwise
--- overwrite our setting.
---
--- The hooks gate on db.transparentChatBG so toggling the feature
--- off + /reload cleanly disables enforcement — hooksecurefunc
--- itself can't be unhooked, but db-gating has the same effect.
-local function SetupTransparentChatBG()
-    if not FCF_SetWindowAlpha then return end
-
-    local function ApplyAlphaZero(cf)
-        -- Third arg `true` is FCF_SetWindowAlpha's `doNotSave` flag —
-        -- skips persistence to Blizzard's chat-config saved state so our
-        -- hook-enforced alpha=0 stays session-volatile. This means
-        -- toggling the feature off and /reloading restores Blizzard's
-        -- saved alpha rather than leaving alpha=0 baked into the profile.
-        if cf and cf._vui_inAlphaHook then return end
-        if cf then cf._vui_inAlphaHook = true end
-        pcall(FCF_SetWindowAlpha, cf, 0, true)
-        if cf then cf._vui_inAlphaHook = false end
-    end
-
-    -- Initial pass: transparent every existing chat frame.
-    for i = 1, (NUM_CHAT_WINDOWS or 10) do
-        ApplyAlphaZero(_G["ChatFrame" .. i])
-    end
-
-    -- Enforce on user-driven color changes (tab right-click → Background).
-    if FCF_SetWindowColor then
-        hooksecurefunc("FCF_SetWindowColor", function(cf)
-            if db and db.transparentChatBG then ApplyAlphaZero(cf) end
-        end)
-    end
-
-    -- Enforce on any alpha-change attempt (e.g. opacity slider in the
-    -- color picker, or Blizzard's opacityFunc firing on dialog open).
-    -- The re-entry guard inside ApplyAlphaZero prevents our own 0-write
-    -- from looping through the hook.
-    hooksecurefunc("FCF_SetWindowAlpha", function(cf, alpha)
-        if db and db.transparentChatBG and alpha and alpha > 0 then
-            ApplyAlphaZero(cf)
-        end
-    end)
-end
+-- Transparent Chat Background (v1.6.4-v1.40.0) is RETIRED: Fade Chat Window now fades the window
+-- itself to the slider's opacity, so 0% is what that option did. It forced the window's alpha to 0
+-- through FCF_SetWindowAlpha and had to fight Blizzard's colour picker for it (landmine 70); the
+-- window fade below leaves Blizzard's alpha alone. Its saved key is deleted at login.
 
 -- ── Feature: Hide Social Button ─────────────────────────────
 local function HideSocialButton()
@@ -220,7 +167,7 @@ end
 --   FADING_OUT — monotonic: alpha may only decrease (our fade),
 --                any increase (Blizzard) is slammed back down
 --   HIDDEN     — hard clamp: held at the faded opacity
--- The faded opacity is the slider beside Fade Chat Tabs (v1.40.0), 0 by default.
+-- The faded opacity is the slider beside Fade Chat Window (v1.40.0), 0 by default.
 local function SetupChatTabFading()
     local FADE_IN    = CHAT_FRAME_FADE_TIME     or 0.15
     local FADE_OUT   = CHAT_FRAME_FADE_OUT_TIME or 2.0
@@ -372,8 +319,96 @@ local function SetupChatTabFading()
         if not cf.hasBeenFaded then FadeBar(cf, BarFaded(), 0) else BarOf(cf) end
     end
 
-    -- The opacity slider moved: tabs and type bars that are faded now take the new value at once.
-    -- A fading or shown tab picks it up when it next fades.
+    -- ── The window itself and the chat buttons (v1.41.0, owner's request) ──
+    -- The window's background and border are the textures Blizzard lists in CHAT_FRAME_TEXTURES
+    -- (FloatingChatFrame.lua:43-64). Blizzard animates their ALPHA on hover, between your own
+    -- Background opacity and at least DEFAULT_CHATFRAME_ALPHA (FCF_FadeIn/OutChatFrame, :1052-1117).
+    -- We leave that alone and fade their VERTEX alpha instead, which multiplies with it: 1 while the
+    -- window is shown, the slider's value while it is faded. So 100% is Blizzard's own look, 0% is
+    -- transparent, and your own background opacity and colour keep working. Blizzard's colour
+    -- setter writes the vertex colour without alpha (:849-866), so it is hooked to put ours back.
+    -- The messages are the frame's own text and are never touched (owner: they stay readable).
+    -- The scroll bar keeps Blizzard's fade to 0 (FCF_FadeOutScrollbar, :1037-1050).
+    --
+    -- The chat buttons Clean Solo can hide (social, chat menu, voice) fade with ChatFrame1 when
+    -- they are not hidden: none of them has its alpha set by Blizzard (source, 2026-10-31), and
+    -- the menu and channel buttons sit in ChatFrame1's button frame, which Blizzard leaves at 1 while
+    -- docked (FCF_DockFrame, :1971). Hovering them, or the social button, already brings the window
+    -- in: Blizzard counts both in its hover test (FCF_OnUpdate, :1138-1143).
+    -- Own driver, not VUI.SmoothFade: the window is many textures moved by one value.
+    local winTex, winMult = {}, {}
+    for cf in pairs(tabs) do
+        local list, name = {}, cf.GetName and cf:GetName()
+        for _, suffix in ipairs(_G.CHAT_FRAME_TEXTURES or {}) do
+            local t = name and _G[name .. suffix]
+            if type(t) == "table" and t.GetObjectType and t:GetObjectType() == "Texture" then
+                list[#list + 1] = t
+            end
+        end
+        winTex[cf] = list
+    end
+    local function SetWindowMult(cf, m)
+        winMult[cf] = m
+        for _, t in ipairs(winTex[cf] or {}) do
+            local r, g, b = t:GetVertexColor()
+            t:SetVertexColor(r or 1, g or 1, b or 1, m)
+        end
+    end
+
+    local chatButtons = {}
+    local function AddButton(f, hiddenKey)
+        if type(f) == "table" and f.SetAlpha and not db[hiddenKey] then chatButtons[#chatButtons + 1] = f end
+    end
+    AddButton(_G.QuickJoinToastButton, "hideSocialButton")
+    AddButton(_G.ChatFrameMenuButton, "hideChatButtons")
+    AddButton(_G.ChatFrameChannelButton, "hideVoiceChatButton")
+    AddButton(_G.ChatFrameToggleVoiceDeafenButton, "hideVoiceChatButton")
+    AddButton(_G.ChatFrameToggleVoiceMuteButton, "hideVoiceChatButton")
+    local buttonsOwner = _G.ChatFrame1
+
+    local tweens = {}
+    local tweenDriver = CreateFrame("Frame")
+    tweenDriver:Hide()
+    tweenDriver:SetScript("OnUpdate", function(self, elapsed)
+        for key, tw in pairs(tweens) do
+            tw.t = tw.t + (elapsed or 0)
+            if tw.t >= tw.d then
+                tweens[key] = nil
+                tw.set(tw.to)
+            else
+                tw.set(tw.from + (tw.to - tw.from) * tw.t / tw.d)
+            end
+        end
+        if not next(tweens) then self:Hide() end
+    end)
+    local function Tween(key, from, to, dur, set)
+        if not dur or dur <= 0 or math.abs(to - from) < 0.001 then
+            tweens[key] = nil
+            set(to)
+            return
+        end
+        tweens[key] = { from = from, to = to, d = dur, t = 0, set = set }
+        tweenDriver:Show()
+    end
+    local function FadeWindow(cf, to, dur)
+        if not winTex[cf] then return end
+        Tween(cf, winMult[cf] or 1, to, dur, function(v) SetWindowMult(cf, v) end)
+        if cf == buttonsOwner then
+            for _, btn in ipairs(chatButtons) do
+                Tween(btn, btn:GetAlpha(), to, dur, function(v) btn:SetAlpha(v) end)
+            end
+        end
+    end
+
+    for cf in pairs(tabs) do FadeWindow(cf, cf.hasBeenFaded and 1 or TabAlpha(), 0) end
+    if _G.FCF_SetWindowColor then
+        hooksecurefunc("FCF_SetWindowColor", function(cf)
+            if winMult[cf] then SetWindowMult(cf, winMult[cf]) end
+        end)
+    end
+
+    -- The opacity slider moved: tabs, type bars, windows and buttons that are faded now take the new
+    -- value at once. Anything fading or shown picks it up when it next fades.
     function chatTabsApplyOpacity()
         local a = TabAlpha()
         for cf, tab in pairs(tabs) do
@@ -381,7 +416,10 @@ local function SetupChatTabFading()
                 tab._vui_prevAlpha = a
                 tab:SetAlpha(a)
             end
-            if not cf.hasBeenFaded then FadeBar(cf, BAR_ALPHA * a, 0) end
+            if not cf.hasBeenFaded then
+                FadeBar(cf, BAR_ALPHA * a, 0)
+                FadeWindow(cf, a, 0)
+            end
         end
     end
 
@@ -389,12 +427,14 @@ local function SetupChatTabFading()
         hooksecurefunc("FCF_FadeInChatFrame", function(cf)
             ShowTab(cf)
             FadeBar(cf, BAR_ALPHA, FADE_IN)
+            FadeWindow(cf, 1, FADE_IN)
         end)
     end
     if FCF_FadeOutChatFrame then
         hooksecurefunc("FCF_FadeOutChatFrame", function(cf)
             HideTab(cf)
             FadeBar(cf, BarFaded(), FADE_OUT)
+            FadeWindow(cf, TabAlpha(), FADE_OUT)
         end)
     end
 end
@@ -1148,16 +1188,13 @@ local function InitializeOptions()
     end
 
     local FADE_OPTIONS = {
-        { key = "fadeChatTabs",        name = "Fade Chat Tabs",
-          tip = "Chat tabs stay hidden until the chat window appears, then fade in and out with it. "
-             .. "With Chat Style set to IM, the box you type in does the same. "
+        { key = "fadeChatTabs",        name = "Fade Chat Window",
+          tip = "The chat window's background, its tabs and the chat buttons you haven't hidden "
+             .. "fade out when you're not using chat, and come back when you mouse over it. The "
+             .. "messages stay readable. With Chat Style set to IM, the box you type in fades too. "
              .. "Requires |cFFFFFF00/reload|r to apply.",
           opacity = "fadeChatTabsOpacity",
           opacityApply = function() if chatTabsApplyOpacity then chatTabsApplyOpacity() end end },
-        { key = "transparentChatBG",   name = "Transparent Chat Background",
-          tip = "Makes the chat background transparent until you mouse over it. Turn it off and "
-             .. "reload, and your own background comes back. "
-             .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "fadeMicroMenu",       name = "Fade Micro Menu",
           tip = "The bottom-right menu bar fades out unless moused over. "
              .. "Requires |cFFFFFF00/reload|r to apply.",
@@ -1187,14 +1224,17 @@ local function InitializeOptions()
     }
     local HIDE_OPTIONS = {
         { key = "hideSocialButton",    name = "Hide Social Button",
-          tip = "Hides the Quick Join / Communities toast button. "
+          tip = "Hides the Quick Join / Communities toast button. Left shown, it fades with the "
+             .. "chat window while Fade Chat Window is on. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideChatButtons",     name = "Hide Chat Buttons",
-          tip = "Hides the chat menu button (the speech bubble beside the chat window). "
+          tip = "Hides the chat menu button (the speech bubble beside the chat window). Left "
+             .. "shown, it fades with the chat window while Fade Chat Window is on. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideVoiceChatButton", name = "Hide Voice Chat Button",
           tip = "Hides the voice and channels button beside the chat window, and the mute and "
-             .. "deafen buttons shown while you are in a voice channel. "
+             .. "deafen buttons shown while you are in a voice channel. Left shown, they fade with "
+             .. "the chat window while Fade Chat Window is on. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "hideBagButtons",      name = "Hide Bag Buttons",
           tip = "Hides the bag bar buttons. You can still open bags with B. "
@@ -1553,7 +1593,10 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if VUI.SetFadeDelay then VUI.SetFadeDelay(db.fadeDelay) end
         if db.hideSocialButton and not Unavailable("hideSocialButton") then HideSocialButton() end
         if db.fadeChatTabs      and not Unavailable("fadeChatTabs")      then SetupChatTabFading()  end
-        if db.transparentChatBG and not Unavailable("transparentChatBG") then SetupTransparentChatBG() end
+        -- RETIRED v1.41.0: folded into Fade Chat Window (0% = transparent). Cleared from the
+        -- character slot too, where per-character builds before v1.14.4 could have left it.
+        db.transparentChatBG = nil
+        if cdb then cdb.transparentChatBG = nil end
         if db.hideChatButtons and not Unavailable("hideChatButtons") then HideChatButtons() end
         if db.hideVoiceChatButton and not Unavailable("hideVoiceChatButton") then HideVoiceChatButton() end
         if db.fadeMicroMenu    and not Unavailable("fadeMicroMenu")    then SetupMicroMenuFade()  end
