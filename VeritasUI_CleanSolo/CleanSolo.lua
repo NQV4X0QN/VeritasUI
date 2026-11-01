@@ -1473,6 +1473,29 @@ SLASH_VERITASUI_CLEANSOLO1 = "/cleansolo"
 SLASH_VERITASUI_CLEANSOLO2 = "/cs"
 SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
     if strtrim(msg or ""):lower() == "gear" then PrintGearDiag(); return end
+    if strtrim(msg or ""):lower() == "bartest" then
+        -- TEMPORARY EXPERIMENT: which layers does Blizzard's holder fade-in overwrite? Marks each
+        -- layer with its own value, replays Blizzard's own FadeInAnimation, and reads them 1 s later.
+        local c = _G.MainStatusTrackingBarContainer
+        local bar = c and c.GetShownBar and c:GetShownBar()
+        if not (c and bar and c.FadeInAnimation) then VUI.Print("Clean Solo", "bartest: no shown bar"); return end
+        if InCombatLockdown() then VUI.Print("Clean Solo", "bartest: not in combat"); return end
+        local art, fill, over = c.BarFrameTexture, bar.StatusBar, bar.OverlayFrame
+        bar:SetAlpha(0.2); fill:SetAlpha(0.3); over:SetAlpha(0.4); art:SetAlpha(0.5)
+        local vr, vg, vb, va = art:GetVertexColor()
+        art:SetVertexColor(vr, vg, vb, 0.6)
+        c:SetAlpha(0)
+        c.FadeInAnimation:Restart()
+        C_Timer.After(1, function()
+            local _, _, _, va2 = art:GetVertexColor()
+            VUI.Print("Clean Solo", string.format(
+                "bartest after Blizzard's fade-in: holder %.2f (was 0) | bar %.2f (was 0.20) | fill %.2f (was 0.30) | text layer %.2f (was 0.40) | frame art %.2f (was 0.50) | frame art vertex %.2f (was 0.60)",
+                c:GetAlpha(), bar:GetAlpha(), fill:GetAlpha(), over:GetAlpha(), art:GetAlpha(), va2 or -1))
+            art:SetVertexColor(vr, vg, vb, va or 1)
+            fill:SetAlpha(1); over:SetAlpha(1)
+        end)
+        return
+    end
     if strtrim(msg or ""):lower() == "bars" then
         -- Reports every alpha between the screen and the reputation / experience bars, so a bar that
         -- shows when it should be faded points at the layer that is wrong.
