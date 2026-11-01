@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.40.0] - 2026-10-31
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Faded opacity sliders.** Each Fade option (chat tabs, micro menu, player frame, damage meter, reputation and experience bars, Action Bar 1) now has a slider beside its checkbox, the way Blizzard pairs Ping Sounds with its volume: 0% hides the element completely while faded, 100% leaves it fully visible. The slider beside Fade Main Action Bar sets every faded action bar, including those picked in Fade Action Bars. Starts at 0%, so nothing changes until you move one; applies at once (`CleanSolo.lua`, `Lib.lua`, `README.md`)
+
+
 ## [1.39.1] - 2026-10-31
 
 ### Changed
