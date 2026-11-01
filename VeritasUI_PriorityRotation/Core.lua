@@ -791,8 +791,10 @@ PR._channelSeen = {}   -- [spellID] / [spellName] = true, this session
 
 -- The spell tooltip's cast-time row reads "Channeled" for a channel and "Instant" for an instant
 -- (measured 2026-10-31 with C_TooltipInfo.GetSpellByID on six Havoc spells: Eye Beam line 3 left =
--- "Channeled"; the other five "Instant"). English clients only: other languages translate it, and
--- for them the cast-event learning below still marks the spell after its first cast. Cached per
+-- "Channeled"; the other five "Instant"). The word is Blizzard's SPELL_CAST_CHANNELED ("Channeled",
+-- GlobalStrings row 14797), so other languages are matched by their own word (audit P1, 2026-11-01;
+-- that the tooltip row uses that global is inferred, not measured on a non-English client). The
+-- cast-event learning below still marks the spell after its first cast either way. Cached per
 -- spell ID; an empty or secret answer is not cached, so it is asked again later.
 PR._tipChannel = {}
 local function TooltipSaysChannel(spellID)
@@ -800,11 +802,12 @@ local function TooltipSaysChannel(spellID)
     if known ~= nil then return known end
     local ok, d = pcall(C_TooltipInfo.GetSpellByID, spellID)
     if not ok or not d or not d.lines or #d.lines < 2 then return false end
+    local word = _G.SPELL_CAST_CHANNELED or "Channeled"
     local found = false
     for i = 2, math.min(#d.lines, 5) do
         local t = d.lines[i].leftText
         if t == nil or (issecretvalue and issecretvalue(t)) then return false end
-        if t == "Channeled" then found = true end
+        if t == word or t == "Channeled" then found = true end
     end
     PR._tipChannel[spellID] = found
     return found
