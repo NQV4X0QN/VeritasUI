@@ -241,12 +241,12 @@ function PR:BuildDefaultProfile()
     -- v1.38.0 (owner): a new profile holds ONLY Blizzard's Single-Button Assistant -- running it
     -- without its hiccups (channels clipped by the next press, etc.) is what PR was made for. The
     -- spell comes from C_AssistedCombat.GetActionSpell (AssistedCombatDocumentation.lua); a plain
-    -- spell entry, so it compiles with [nochanneling] like any other. The starter list is the
-    -- fallback only where the game offers no assistant (too low a level, or not available).
+    -- spell entry, so it compiles with [nochanneling] like any other. Owner, 2026-10-31: he has run
+    -- it through PR for months with no problems, and every class has it from level 1. The starter
+    -- list is kept only for the case where the game names no assistant spell at all.
     local ac = _G.C_AssistedCombat
-    local okA, available = pcall(function() return ac and ac.IsAvailable and ac.IsAvailable() end)
     local okS, sbaID = pcall(function() return ac and ac.GetActionSpell and ac.GetActionSpell() end)
-    local sba = okA and available and okS and sbaID and C_Spell.GetSpellInfo(sbaID)
+    local sba = okS and sbaID and C_Spell.GetSpellInfo(sbaID)
     if sba and sba.name then
         table.insert(profile.spells, {
             spellID   = sbaID,
