@@ -836,10 +836,10 @@ end
 -- first time the option is on, and turning the option off makes shouldShow true, so it fades back
 -- in and stays. Blizzard never sets the alpha of any of these frames itself (source, 2026-10-31):
 -- DamageMeter sets only its session windows' alpha, which multiplies under ours
--- (DamageMeter.lua:298, :556); MainActionBar and the two status-bar containers have no SetAlpha
--- in Blizzard_ActionBar or Blizzard_EditMode. ⚠ Landmine 71 (Bar 1 "overridden by Blizzard's
--- alpha management") dates from the MainMenuBar era and was not re-measured; the test build is
--- that measurement.
+-- (DamageMeter.lua:298, :556); MainActionBar has no SetAlpha in Blizzard_ActionBar or
+-- Blizzard_EditMode. The status-bar CONTAINERS do animate their own alpha -- see
+-- SetupStatusBarFade. Landmine 71 (Bar 1 "overridden by Blizzard's alpha management") dated from
+-- the MainMenuBar era; the v1.39.0 test build measured Action Bar 1 fading correctly (owner).
 local liveFadeHooked = {}
 
 local function SetupLiveFade(key, targets, shouldShow, noEnterHook)
@@ -882,10 +882,26 @@ local function SetupMainActionBarFade()
         true)
 end
 
+-- ⚠ Fades the BARS inside the two containers, never the containers. Blizzard animates each
+-- container's own alpha: FadeInAnimation (alpha 0 -> 1, setToFinalAlpha) is restarted by
+-- StatusTrackingBarContainerMixin:FadeIn whenever a bar is shown and the container's alpha is below 1
+-- (StatusTrackingManager.lua:238-259, StatusTrackingBar.xml:3-16). Faded at the container, the bar came
+-- back after every /reload until first hovered (owner, test build 1), and would on any later FadeIn.
+-- Blizzard never sets a bar's own alpha, so the bars are ours to fade. Hovering either container
+-- shows every bar in both, as one strip.
 local function SetupStatusBarFade()
-    SetupLiveFade("fadeStatusBars",
-        { _G.MainStatusTrackingBarContainer, _G.SecondaryStatusTrackingBarContainer },
-        function() return not db.fadeStatusBars end)
+    local containers = { _G.MainStatusTrackingBarContainer, _G.SecondaryStatusTrackingBarContainer }
+    local bars = {}
+    for _, c in ipairs(containers) do
+        for _, bar in pairs(c and c.bars or {}) do bars[#bars + 1] = bar end
+    end
+    SetupLiveFade("fadeStatusBars", bars, function()
+        if not db.fadeStatusBars then return true end
+        for _, c in ipairs(containers) do
+            if c and c:IsVisible() and c:IsMouseOver() then return true end
+        end
+        return false
+    end)
 end
 
 -- ── Options Panel ───────────────────────────────────────────
