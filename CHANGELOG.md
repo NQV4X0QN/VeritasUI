@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.44.0] - 2026-10-31
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Fade Minimap Alerts.** The mail and crafting order icons by the minimap, and Quality of Life's Great Vault button, fade out until you mouse over them, to the opacity set by the slider beside the option; applies at once (`CleanSolo.lua`, `README.md`)
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **Great Vault button at full opacity.** It now matches the mail icon beside it; set how faded it gets with Clean Solo's Fade Minimap Alerts slider (`QualityOfLife.lua`)
+
+
 ## [1.43.0] - 2026-10-31
 
 ### Added
