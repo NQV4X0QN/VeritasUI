@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.46.4] - 2026-11-01
+
+### Fixed
+
+- `VeritasUI_CleanSolo` — **Fade Damage Meter and Fade Reputation and Experience Bars no longer hook Blizzard's Edit Mode frames.** Both put a mouse-over hook on frames that belong to Edit Mode, the kind of hook that once broke Edit Mode; they now notice the mouse the way Fade Main Action Bar does, so they come in up to a tenth of a second later (`CleanSolo.lua`)
+- `VeritasUI_CleanSolo` — **Fade Delay's tooltip lists everything it affects.** It named only the micro menu, player frame and action bars; it applies to every Fade option except the chat window (`CleanSolo.lua`)
+
+
 ## [1.46.3] - 2026-11-01
 
 ### Fixed
