@@ -889,11 +889,23 @@ end
 -- back after every /reload until first hovered (owner, test build 1), and would on any later FadeIn.
 -- Blizzard never sets a bar's own alpha, so the bars are ours to fade. Hovering either container
 -- shows every bar in both, as one strip.
+-- The bar's outer frame art is NOT in the bar: it is the container's BarFrameTexture
+-- (StatusTrackingBar.xml:5-7), so test build 2 faded the coloured bar and left the frame (owner). The
+-- texture follows its container's SHOWN bar: every alpha we give that bar is copied to it (Blizzard
+-- never sets that texture's alpha).
 local function SetupStatusBarFade()
     local containers = { _G.MainStatusTrackingBarContainer, _G.SecondaryStatusTrackingBarContainer }
     local bars = {}
     for _, c in ipairs(containers) do
-        for _, bar in pairs(c and c.bars or {}) do bars[#bars + 1] = bar end
+        for _, bar in pairs(c and c.bars or {}) do
+            bars[#bars + 1] = bar
+            local art = c.BarFrameTexture
+            if art then
+                hooksecurefunc(bar, "SetAlpha", function(self, a)
+                    if self:IsShown() and art.SetAlpha then art:SetAlpha(a) end
+                end)
+            end
+        end
     end
     SetupLiveFade("fadeStatusBars", bars, function()
         if not db.fadeStatusBars then return true end
@@ -1372,6 +1384,27 @@ SLASH_VERITASUI_CLEANSOLO1 = "/cleansolo"
 SLASH_VERITASUI_CLEANSOLO2 = "/cs"
 SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
     if strtrim(msg or ""):lower() == "gear" then PrintGearDiag(); return end
+    if strtrim(msg or ""):lower() == "bars" then
+        -- Reports every alpha between the screen and the reputation / experience bars, so a bar that
+        -- shows when it should be faded points at the layer that is wrong.
+        local function a(f) return f and f.GetAlpha and string.format("%.2f", f:GetAlpha()) or "-" end
+        for _, name in ipairs({ "MainStatusTrackingBarContainer", "SecondaryStatusTrackingBarContainer" }) do
+            local c = _G[name]
+            if c then
+                local shown = {}
+                for i, bar in pairs(c.bars or {}) do
+                    if bar:IsShown() then
+                        shown[#shown + 1] = string.format("bar %s alpha %s, fill %s",
+                            tostring(i), a(bar), a(bar.StatusBar))
+                    end
+                end
+                VUI.Print("Clean Solo", string.format("%s: shown %s, alpha %s, frame art %s; %s", name,
+                    tostring(c:IsShown()), a(c), a(c.BarFrameTexture),
+                    #shown > 0 and table.concat(shown, "; ") or "no bar shown"))
+            end
+        end
+        return
+    end
     -- Guard against nil (options init not yet run, or failed) — same
     -- "still loading" pattern as PriorityRotation / ZoneQuests / AH.
     if settingsCategoryID then
