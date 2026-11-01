@@ -92,6 +92,10 @@ local UNIVERSAL = {
     muteTalkingHead     = false,
     hideTopBanners      = false,
     hideProfessionGear  = true,    -- v1.27.0, owner's request; applies at once. ON since v1.37.0 (owner)
+    -- v1.39.0 (owner's request): two more hover fades, applied at once. Universal: the damage meter
+    -- and the reputation / experience / honor bars sit in the same place on every character.
+    fadeDamageMeter     = true,    -- shown in combat or on hover
+    fadeStatusBars      = true,    -- shown on hover
 }
 
 -- ⚠ PER-CHARACTER. These two are the reason per-character storage was requested in the first
@@ -106,6 +110,9 @@ local UNIVERSAL = {
 local PERCHAR = {
     fadeActionBars  = {},     -- [barIndex] = true; TABLE-typed, so it needs a per-character copy
     fadePlayerFrame = true,
+    -- v1.39.0: Action Bar 1, shown in combat, while flying or on hover. Per-character with the other
+    -- action bar fades, for the same reason (bars are used differently on each character).
+    fadeMainActionBar = true,
 }
 
 
@@ -823,6 +830,64 @@ local function SetupActionBarFading()
     end
 end
 
+-- ── Feature: Fade Damage Meter / Action Bar 1 / Status Bars (v1.39.0) ──
+-- Same hover fade as the bars above, with a shouldShow condition (VUI.HookHoverFade): while it is
+-- true the frame fades in and stays, as if hovered. Each applies at once: the hook is installed the
+-- first time the option is on, and turning the option off makes shouldShow true, so it fades back
+-- in and stays. Blizzard never sets the alpha of any of these frames itself (source, 2026-10-31):
+-- DamageMeter sets only its session windows' alpha, which multiplies under ours
+-- (DamageMeter.lua:298, :556); MainActionBar and the two status-bar containers have no SetAlpha
+-- in Blizzard_ActionBar or Blizzard_EditMode. ⚠ Landmine 71 (Bar 1 "overridden by Blizzard's
+-- alpha management") dates from the MainMenuBar era and was not re-measured; the test build is
+-- that measurement.
+local liveFadeHooked = {}
+
+local function SetupLiveFade(key, targets, shouldShow, noEnterHook)
+    if liveFadeHooked[key] then return end
+    local fadeOuts, refreshers = {}, {}
+    for _, target in ipairs(targets) do
+        if target then
+            local fo, rc = VUI.HookHoverFade(target, IsEditModeActive, shouldShow, noEnterHook)
+            if fo then fadeOuts[#fadeOuts + 1] = fo end
+            if rc then refreshers[#refreshers + 1] = rc end
+        end
+    end
+    if #fadeOuts == 0 then return end
+    liveFadeHooked[key] = true
+    if EditModeManagerFrame then
+        pcall(hooksecurefunc, EditModeManagerFrame, "ExitEditMode", function()
+            C_Timer.After(0.2, function()
+                for _, rc in ipairs(refreshers) do rc() end
+                for _, fo in ipairs(fadeOuts) do fo() end
+            end)
+        end)
+    end
+end
+
+local function SetupDamageMeterFade()
+    local function Hook()
+        SetupLiveFade("fadeDamageMeter", { _G.DamageMeter },
+            function() return not db.fadeDamageMeter or InCombatLockdown() end)
+    end
+    if _G.DamageMeter then Hook()
+    elseif EventUtil and EventUtil.ContinueOnAddOnLoaded then
+        EventUtil.ContinueOnAddOnLoaded("Blizzard_DamageMeter", Hook)
+    end
+end
+
+local function SetupMainActionBarFade()
+    -- No OnEnter hook on Action Bar 1 (see VUI.HookHoverFade): the poll alone reveals it.
+    SetupLiveFade("fadeMainActionBar", { _G.MainActionBar },
+        function() return not cdb.fadeMainActionBar or InCombatLockdown() or (_G.IsFlying and _G.IsFlying()) end,
+        true)
+end
+
+local function SetupStatusBarFade()
+    SetupLiveFade("fadeStatusBars",
+        { _G.MainStatusTrackingBarContainer, _G.SecondaryStatusTrackingBarContainer },
+        function() return not db.fadeStatusBars end)
+end
+
 -- ── Options Panel ───────────────────────────────────────────
 -- The two multi-select dropdowns (Hide Error Text, Fade Action Bars) use Blizzard's own
 -- tick-box rows, the control its Nameplates "Cast Bar Information" option uses:
@@ -923,6 +988,16 @@ local function InitializeOptions()
         { key = "fadePlayerFrame",     name = "Fade Player Frame",
           tip = "Your player frame fades out when idle and reappears in combat, when damaged, or on mouseover. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
+        { key = "fadeDamageMeter",     name = "Fade Damage Meter",
+          tip = "The damage meter fades out unless you're in combat or mousing over it. Applies at once.",
+          apply = function(value) if value then SetupDamageMeterFade() end end },
+        { key = "fadeStatusBars",      name = "Fade Reputation and Experience Bars",
+          tip = "The reputation, experience and honor bars fade out unless you're mousing over them. "
+             .. "Applies at once.",
+          apply = function(value) if value then SetupStatusBarFade() end end },
+        { key = "fadeMainActionBar",   name = "Fade Main Action Bar",
+          tip = "Action Bar 1 fades out unless you're in combat, flying, or mousing over it. Applies at once.",
+          apply = function(value) if value then SetupMainActionBarFade() end end },
     }
     local HIDE_OPTIONS = {
         { key = "hideSocialButton",    name = "Hide Social Button",
@@ -1250,6 +1325,9 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.hideErrorText       then HideErrorText()
         else                           HideErrorTypes()      end
         if not Unavailable("fadeActionBars") then SetupActionBarFading() end
+        if cdb.fadeMainActionBar and not Unavailable("fadeMainActionBar") then SetupMainActionBarFade() end
+        if db.fadeDamageMeter and not Unavailable("fadeDamageMeter") then SetupDamageMeterFade() end
+        if db.fadeStatusBars and not Unavailable("fadeStatusBars") then SetupStatusBarFade() end
 
         self:UnregisterEvent("PLAYER_LOGIN")
         -- Login line removed (suite-wide audit S2): Lib prints the one "VeritasUI vX loaded" line.

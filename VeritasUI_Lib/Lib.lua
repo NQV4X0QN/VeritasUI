@@ -248,13 +248,25 @@ end
 local HOVER_FLYOUT_GLOBALS = { "SpellFlyout", "PetActionBarFlyout" }
 local HOVER_WALK_MAX_DEPTH = 8   -- flyoutButton → flyout → actionButton → bar is 4
 
-function VUI.HookHoverFade(target, shouldStayVisible)
+-- shouldStayVisible: while it returns true the fade is FROZEN where it is (Edit Mode).
+-- shouldShow (v1.39.0): while it returns true the target fades IN and stays, exactly as if hovered
+--   (combat, flying, or the option being turned off live). nil = hover only, as before.
+-- noEnterHook (v1.39.0): skip the OnEnter hook and rely on the 10 Hz poll alone. Used for Action
+--   Bar 1, whose frame is the most taint-sensitive bar in the game (landmine: never HookScript a
+--   secure Blizzard frame); fade-in then starts within 0.1 s instead of at once.
+function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook)
     if not target then return end
-    target:SetAlpha(0)
 
     local function IsLocked()
         return shouldStayVisible and shouldStayVisible()
     end
+
+    local function IsForced()
+        return shouldShow and shouldShow()
+    end
+
+    -- Hooked while it must be shown (turned on mid-fight, or while flying): no drop to 0 and back.
+    if not IsForced() then target:SetAlpha(0) end
 
     -- Check target and all direct children — handles Edit Mode layouts
     -- where buttons extend beyond the parent bar frame's bounds.
@@ -318,7 +330,7 @@ function VUI.HookHoverFade(target, shouldStayVisible)
     local poll       = CreateFrame("Frame")
 
     local function FadeOut()
-        if not IsLocked() and not IsMouseOverAny() then
+        if not IsLocked() and not IsForced() and not IsMouseOverAny() then
             hovered    = false
             graceSince = nil
             SmoothFade(target, HOVER_FADE_OUT, 0)
@@ -344,7 +356,7 @@ function VUI.HookHoverFade(target, shouldStayVisible)
         if self._t < HOVER_FADE_POLL_RATE then return end
         self._t = 0
         if IsLocked() then graceSince = nil; return end
-        if IsMouseOverAny() then
+        if IsForced() or IsMouseOverAny() then
             graceSince = nil
             if not hovered then FadeIn() end
         elseif hovered then
@@ -359,7 +371,7 @@ function VUI.HookHoverFade(target, shouldStayVisible)
 
     -- Instant fade-in on the parent bar frame only.  Child buttons
     -- are detected by the poll to avoid tainting ActionButton frames.
-    target:HookScript("OnEnter", FadeIn)
+    if not noEnterHook then target:HookScript("OnEnter", FadeIn) end
 
     return FadeOut, RefreshChildren
 end
