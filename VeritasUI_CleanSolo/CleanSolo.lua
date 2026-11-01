@@ -907,9 +907,34 @@ local function SetupStatusBarFade()
     local bars = {}
     local repWatch = CreateFrame("Frame")
     repWatch:RegisterEvent("FACTION_STANDING_CHANGED")
+    -- A change of the WATCHED faction shows the bar too: Quality of Life's Track Latest Reputation
+    -- defers its switch to the end of combat (QualityOfLife.lua RepFollowOnEvent), long after the
+    -- gain's 3 s, and the owner switched factions and saw nothing (test build 9).
+    repWatch:RegisterEvent("UPDATE_FACTION")
+    local function WatchedID()
+        local ns = _G.C_Reputation
+        if not (ns and ns.GetWatchedFactionData) then return nil end
+        local ok, data = pcall(ns.GetWatchedFactionData)
+        local id = ok and data and data.factionID
+        if id == nil or (issecretvalue and issecretvalue(id)) then return nil end
+        return id
+    end
+    local lastWatched = WatchedID()
     local Revealed
-    repWatch:SetScript("OnEvent", function()
-        if db.fadeStatusBarsOnRep then repShownUntil = GetTime() + REP_GAIN_SHOW_SECONDS end
+    repWatch:SetScript("OnEvent", function(_, event)
+        if event == "UPDATE_FACTION" then
+            local id = WatchedID()
+            local changed = id and lastWatched and id ~= lastWatched
+            if id then lastWatched = id end
+            if not changed then return end
+        end
+        -- The bar starts to fade 3 s after the gain: the hover fade's own leave delay (Fade Delay
+        -- slider, at least 0.15 s) comes after this window, so it is taken off here (owner: it
+        -- lingered ~5 s with the plain 3 s window).
+        local delay = math.max(0.15, (VUI.GetFadeDelay and VUI.GetFadeDelay()) or 0)
+        if db.fadeStatusBarsOnRep then
+            repShownUntil = GetTime() + math.max(0.5, REP_GAIN_SHOW_SECONDS - delay)
+        end
         -- TEMPORARY PROBE (/cs bars): what the bar looked like half a second after the gain.
         VUI._csRepEvents = (VUI._csRepEvents or 0) + 1
         C_Timer.After(0.5, function()
