@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.46.3] - 2026-11-01
+
+### Fixed
+
+- `VeritasUI_PriorityRotation` — **After links recognise channelled spells in every language.** The check for a channelled spell read the English word "Channeled" from the spell's tooltip, so on other languages a link only turned on once the spell had been cast. It now uses the game's own word (`Core.lua`)
+
+
 ## [1.46.2] - 2026-11-01
 
 ### Fixed
