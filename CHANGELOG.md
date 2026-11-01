@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.36.0] - 2026-10-31
+
+### Changed
+
+- `VeritasUI_PriorityRotation` — **After now really waits for its spell.** Link an ability to a channelled spell such as Eye Beam and it is cast on the presses right after the channel ends. Until now After only added an extra try after the spell came up in the list, so an ability like Essence Break still went off the moment its cooldown ended (`Core.lua`, `Editor.lua`)
+- `VeritasUI_PriorityRotation` — **Only After holds an ability for its spell.** Right-click an After box to switch between Also After (cast after the spell and at its normal frequency) and Only After, shown by a small lock: the ability is then never cast on its own and waits for the next channel while it is on cooldown (`Core.lua`, `Editor.lua`)
+- `VeritasUI_PriorityRotation` — **No standing still after the channel.** The tries for linked abilities take turns with your normal rotation, which skips the channelled spell and the linked abilities while they are being tried, so there is always something to cast (`Core.lua`)
+- `VeritasUI_PriorityRotation` — **After only offers channelled spells.** Those are the only ones it can wait for. On English clients a spell is recognised from its tooltip as soon as it is in the rotation; on other languages, after you first cast it. A link waiting for a spell not yet recognised shows its icon in grey (`Core.lua`, `Editor.lua`)
+
+### Removed
+
+- `VeritasUI_PriorityRotation` — **After links to macros and trinkets.** They can never be a channel, so they are cleared once at login, with a line in chat saying how many (`Core.lua`)
+
+
 ## [1.35.14] - 2026-10-31
 
 ### Changed
