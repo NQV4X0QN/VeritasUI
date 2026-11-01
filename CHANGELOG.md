@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.42.0] - 2026-10-31
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Fade Objective Tracker.** The All Objectives tracker fades out until you mouse over it, to the opacity set by the slider beside it: 0% hides it completely, higher values leave it partly visible. Quests stay clickable while it is shown; applies at once (`CleanSolo.lua`, `README.md`)
+
+
 ## [1.41.0] - 2026-10-31
 
 ### Changed
