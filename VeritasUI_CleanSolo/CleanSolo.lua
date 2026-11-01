@@ -907,6 +907,15 @@ local function SetupStatusBarFade()
             end
         end
     end
+    -- ⚠ At PLAYER_LOGIN no bar is shown yet (Blizzard hides every bar at OnLoad and shows the
+    -- tracked one later, StatusTrackingManager.lua:170-177, :226), so the copy above skips the first
+    -- fade to 0 and the frame art stayed at 1 until the first hover (owner, test build 3). Start it at
+    -- 0 here, the same as the bars.
+    if db.fadeStatusBars then
+        for _, c in ipairs(containers) do
+            if c and c.BarFrameTexture and c.BarFrameTexture.SetAlpha then c.BarFrameTexture:SetAlpha(0) end
+        end
+    end
     SetupLiveFade("fadeStatusBars", bars, function()
         if not db.fadeStatusBars then return true end
         for _, c in ipairs(containers) do
