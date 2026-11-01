@@ -34,9 +34,10 @@
 --  event handlers that can be event-unregistered cleanly, whereas
 --  CS features are hooks that cannot.
 --
---  Two exceptions apply at once and say so: Fade Delay (read live
---  by VUI.SetFadeDelay) and Hide Profession Gear (plain events,
---  switched by its `apply`).  Every other CS tooltip and on-toggle
+--  Exceptions apply at once and say so: Fade Delay (read live
+--  by VUI.SetFadeDelay), the faded-opacity sliders (read at each
+--  fade, v1.40.0), Hide Profession Gear (plain events, switched by
+--  its `apply`) and the v1.39.0 fades with an `apply`.  Every other CS tooltip and on-toggle
 --  message mentions "/reload to apply" so the user is never
 --  surprised by the policy.  See the tooltip strings in the
 --  options{} table inside InitializeOptions for the wording.
@@ -99,6 +100,17 @@ local UNIVERSAL = {
     -- Sub-option, OFF by default (owner: some players want the bars only on hover, others want
     -- them shown on gains -- "an option that people can check if they want it").
     fadeStatusBarsOnGain = false,  -- also shown for 3 s after a reputation, experience or honor gain
+    -- v1.40.0 (owner's request): how much of each faded element still shows, 0-1, from the slider
+    -- beside its Fade option (Blizzard's checkbox + slider row, as in Options > Audio > Ping
+    -- Sounds). 0 = hidden, the behaviour before the sliders. Universal: how a fade looks is an
+    -- interface choice. One value covers every action bar: Action Bar 1 and the bars picked in
+    -- Fade Action Bars (owner: the slider beside Fade Main Action Bar handles them all).
+    fadeChatTabsOpacity    = 0,
+    fadeMicroMenuOpacity   = 0,
+    fadePlayerFrameOpacity = 0,
+    fadeDamageMeterOpacity = 0,
+    fadeStatusBarsOpacity  = 0,
+    fadeActionBarsOpacity  = 0,
 }
 
 -- ⚠ PER-CHARACTER. These two are the reason per-character storage was requested in the first
@@ -125,6 +137,13 @@ local db
 local cdb = nil
 local settingsCategoryID
 local frame = CreateFrame("Frame")
+
+-- Getter for a faded-opacity slider's value, read live (VUI.FadedAlpha clamps it to 0-1).
+local function Opacity(key)
+    return function() return db and db[key] or 0 end
+end
+-- Set by SetupChatTabFading: puts already-faded tabs and type bars at a new opacity.
+local chatTabsApplyOpacity
 
 -- ── Feature: Transparent Chat Background ────────────────────
 -- Writes alpha=0 to each chat frame's backdrop via Blizzard's
@@ -200,10 +219,13 @@ end
 --   VISIBLE    — no guard, alpha flows freely
 --   FADING_OUT — monotonic: alpha may only decrease (our fade),
 --                any increase (Blizzard) is slammed back down
---   HIDDEN     — hard clamp: any alpha > 0 is forced to 0
+--   HIDDEN     — hard clamp: held at the faded opacity
+-- The faded opacity is the slider beside Fade Chat Tabs (v1.40.0), 0 by default.
 local function SetupChatTabFading()
     local FADE_IN    = CHAT_FRAME_FADE_TIME     or 0.15
     local FADE_OUT   = CHAT_FRAME_FADE_OUT_TIME or 2.0
+    local tabOpacity = Opacity("fadeChatTabsOpacity")
+    local function TabAlpha() return VUI.FadedAlpha(tabOpacity) end
 
     local tabs = {}   -- chat window -> its tab
 
@@ -214,11 +236,11 @@ local function SetupChatTabFading()
         if cf and tab then
             tabs[cf] = tab
 
-            tab:SetAlpha(0)
+            tab:SetAlpha(TabAlpha())
 
             -- State: "VISIBLE", "FADING_OUT", or "HIDDEN"
             tab._vui_fadeState = "HIDDEN"
-            tab._vui_prevAlpha = 0
+            tab._vui_prevAlpha = TabAlpha()
             tab._vui_inHook    = false
 
             hooksecurefunc(tab, "SetAlpha", function(self, a)
@@ -226,12 +248,16 @@ local function SetupChatTabFading()
                 self._vui_inHook = true
 
                 local state = self._vui_fadeState
-                if state == "HIDDEN" and a > 0 then
-                    self:SetAlpha(0)
+                local floor = TabAlpha()
+                if state == "HIDDEN" and math.abs(a - floor) > 0.001 then
+                    self:SetAlpha(floor)
                 elseif state == "FADING_OUT" then
                     local prev = self._vui_prevAlpha or 0
                     if a > prev + 0.001 then
                         self:SetAlpha(prev)
+                    elseif a < floor - 0.001 then
+                        self:SetAlpha(floor)
+                        self._vui_prevAlpha = floor
                     else
                         self._vui_prevAlpha = a
                     end
@@ -275,12 +301,12 @@ local function SetupChatTabFading()
         if fadeDoneTimers[tab] then fadeDoneTimers[tab]:Cancel(); fadeDoneTimers[tab] = nil end
         tab._vui_fadeState = "FADING_OUT"
         tab._vui_prevAlpha = tab:GetAlpha()
-        VUI.SmoothFade(tab, FADE_OUT, 0)
+        VUI.SmoothFade(tab, FADE_OUT, TabAlpha())
         fadeDoneTimers[tab] = C_Timer.NewTimer(FADE_OUT + 0.05, function()
             fadeDoneTimers[tab] = nil
             if tab._vui_fadeState == "FADING_OUT" then
                 tab._vui_fadeState = "HIDDEN"
-                tab._vui_prevAlpha = 0
+                tab._vui_prevAlpha = TabAlpha()
             end
         end)
     end
@@ -297,6 +323,8 @@ local function SetupChatTabFading()
     --   running can never dim the box you are typing in. Own driver, not VUI.SmoothFade, for
     --   exactly that check.
     local BAR_ALPHA = 0.35   -- Blizzard's inactive IM edit box alpha (ChatFrameEditBox.lua:551)
+    -- Faded, the bar keeps the tabs' share of its own alpha: the slider at 50% leaves it at 0.175.
+    local function BarFaded() return BAR_ALPHA * TabAlpha() end
     local barFades, barHooked = {}, {}
     local barDriver = CreateFrame("Frame")
     barDriver:Hide()
@@ -325,7 +353,7 @@ local function SetupChatTabFading()
         if not barHooked[eb] and eb.Deactivate then
             barHooked[eb] = true
             hooksecurefunc(eb, "Deactivate", function()
-                if not cf.hasBeenFaded then FadeBar(cf, 0, FADE_OUT) end
+                if not cf.hasBeenFaded then FadeBar(cf, BarFaded(), FADE_OUT) end
             end)
         end
         return eb
@@ -341,7 +369,20 @@ local function SetupChatTabFading()
     -- Install the Deactivate hooks now, and take away the bar Blizzard has already shown at
     -- login, the way the tabs start hidden.
     for cf in pairs(tabs) do
-        if not cf.hasBeenFaded then FadeBar(cf, 0, 0) else BarOf(cf) end
+        if not cf.hasBeenFaded then FadeBar(cf, BarFaded(), 0) else BarOf(cf) end
+    end
+
+    -- The opacity slider moved: tabs and type bars that are faded now take the new value at once.
+    -- A fading or shown tab picks it up when it next fades.
+    function chatTabsApplyOpacity()
+        local a = TabAlpha()
+        for cf, tab in pairs(tabs) do
+            if tab._vui_fadeState == "HIDDEN" then
+                tab._vui_prevAlpha = a
+                tab:SetAlpha(a)
+            end
+            if not cf.hasBeenFaded then FadeBar(cf, BAR_ALPHA * a, 0) end
+        end
     end
 
     if FCF_FadeInChatFrame then
@@ -353,7 +394,7 @@ local function SetupChatTabFading()
     if FCF_FadeOutChatFrame then
         hooksecurefunc("FCF_FadeOutChatFrame", function(cf)
             HideTab(cf)
-            FadeBar(cf, 0, FADE_OUT)
+            FadeBar(cf, BarFaded(), FADE_OUT)
         end)
     end
 end
@@ -394,7 +435,7 @@ end
 -- disappears), which invalidates the child cache HookHoverFade builds at hook
 -- time.
 local function SetupMicroMenuFade()
-    local fo, rc = VUI.HookHoverFade(MicroMenu)
+    local fo, rc = VUI.HookHoverFade(MicroMenu, nil, nil, nil, Opacity("fadeMicroMenuOpacity"))
     if fo and EditModeManagerFrame then
         pcall(hooksecurefunc, EditModeManagerFrame, "ExitEditMode", function()
             C_Timer.After(0.2, function()
@@ -409,7 +450,8 @@ end
 local function SetupPlayerFrameFade()
     local evaluate, healthPing = VUI.HookPlayerFrameFade(
         PlayerFrame,
-        InCombatLockdown
+        InCombatLockdown,
+        Opacity("fadePlayerFrameOpacity")
     )
     frame._playerEvaluate   = evaluate
     frame._playerHealthPing = healthPing
@@ -814,7 +856,8 @@ local function SetupActionBarFading()
         if cdb.fadeActionBars[i] then
             local barFrame = _G[ACTION_BAR_FRAMES[i]]
             if barFrame then
-                local fo, rc = VUI.HookHoverFade(barFrame, IsEditModeActive)
+                local fo, rc = VUI.HookHoverFade(barFrame, IsEditModeActive, nil, nil,
+                    Opacity("fadeActionBarsOpacity"))
                 if fo then fadeOuts[#fadeOuts + 1] = fo end
                 if rc then refreshers[#refreshers + 1] = rc end
             end
@@ -845,12 +888,12 @@ end
 -- the MainMenuBar era; the v1.39.0 test build measured Action Bar 1 fading correctly (owner).
 local liveFadeHooked = {}
 
-local function SetupLiveFade(key, targets, shouldShow, noEnterHook)
+local function SetupLiveFade(key, targets, shouldShow, noEnterHook, fadedAlpha)
     if liveFadeHooked[key] then return end
     local fadeOuts, refreshers = {}, {}
     for _, target in ipairs(targets) do
         if target then
-            local fo, rc = VUI.HookHoverFade(target, IsEditModeActive, shouldShow, noEnterHook)
+            local fo, rc = VUI.HookHoverFade(target, IsEditModeActive, shouldShow, noEnterHook, fadedAlpha)
             if fo then fadeOuts[#fadeOuts + 1] = fo end
             if rc then refreshers[#refreshers + 1] = rc end
         end
@@ -870,7 +913,8 @@ end
 local function SetupDamageMeterFade()
     local function Hook()
         SetupLiveFade("fadeDamageMeter", { _G.DamageMeter },
-            function() return not db.fadeDamageMeter or InCombatLockdown() end)
+            function() return not db.fadeDamageMeter or InCombatLockdown() end,
+            nil, Opacity("fadeDamageMeterOpacity"))
     end
     if _G.DamageMeter then Hook()
     elseif EventUtil and EventUtil.ContinueOnAddOnLoaded then
@@ -882,7 +926,7 @@ local function SetupMainActionBarFade()
     -- No OnEnter hook on Action Bar 1 (see VUI.HookHoverFade): the poll alone reveals it.
     SetupLiveFade("fadeMainActionBar", { _G.MainActionBar },
         function() return not cdb.fadeMainActionBar or InCombatLockdown() or (_G.IsFlying and _G.IsFlying()) end,
-        true)
+        true, Opacity("fadeActionBarsOpacity"))
 end
 
 -- ⚠ Fades the BARS inside the two containers, never the containers. Blizzard animates each
@@ -911,6 +955,7 @@ local gainShownUntil = 0
 local function SetupStatusBarFade()
     if liveFadeHooked.fadeStatusBars then return end   -- turned off and on again: already installed
     local containers = { _G.MainStatusTrackingBarContainer, _G.SecondaryStatusTrackingBarContainer }
+    local barOpacity = Opacity("fadeStatusBarsOpacity")
     local bars = {}
     local gainWatch = CreateFrame("Frame")
     gainWatch:RegisterEvent("FACTION_STANDING_CHANGED")
@@ -989,7 +1034,7 @@ local function SetupStatusBarFade()
     -- loading screen; on its first frame the bar and frame art inside went from 0 to 1 with no SetAlpha
     -- call (probe: "JUMP ... fadeIn true", first frame after LOADING_SCREEN_DISABLED). So while the bars
     -- are faded we never let that fade-in run: stop it and put the holder at the alpha it would end on
-    -- (1), then the bars and art at 0 -- all in the same call, so nothing is drawn in between.
+    -- (1), then the bars and art at the faded opacity -- all in the same call, so nothing is drawn in between.
     -- Blizzard's FadeIn returns early once the holder is at 1 (:249), so it is not started again until
     -- a bar change. Stop() writes no Lua state (the group has no OnStop script), so this taints nothing;
     -- Blizzard re-runs UpdateBarsShown on its next event, which is what its OnFinished would have led to.
@@ -999,18 +1044,19 @@ local function SetupStatusBarFade()
         if fadeIn:IsPlaying() then fadeIn:Stop() end
         if c.GetShownBar and c:GetShownBar() then
             c:SetAlpha(1)
-            for _, bar in pairs(c.bars or {}) do bar:SetAlpha(0) end
-            if c.BarFrameTexture then c.BarFrameTexture:SetAlpha(0) end
+            local a = VUI.FadedAlpha(barOpacity)
+            for _, bar in pairs(c.bars or {}) do bar:SetAlpha(a) end
+            if c.BarFrameTexture then c.BarFrameTexture:SetAlpha(a) end
         end
     end
     for _, c in ipairs(containers) do
         if c and c.FadeIn then hooksecurefunc(c, "FadeIn", Settle) end
     end
 
-    SetupLiveFade("fadeStatusBars", bars, Revealed)
+    SetupLiveFade("fadeStatusBars", bars, Revealed, nil, barOpacity)
     if db.fadeStatusBars then
         for _, c in ipairs(containers) do
-            if c and c.BarFrameTexture then c.BarFrameTexture:SetAlpha(0) end
+            if c and c.BarFrameTexture then c.BarFrameTexture:SetAlpha(VUI.FadedAlpha(barOpacity)) end
             Settle(c)
         end
     end
@@ -1105,31 +1151,39 @@ local function InitializeOptions()
         { key = "fadeChatTabs",        name = "Fade Chat Tabs",
           tip = "Chat tabs stay hidden until the chat window appears, then fade in and out with it. "
              .. "With Chat Style set to IM, the box you type in does the same. "
-             .. "Requires |cFFFFFF00/reload|r to apply." },
+             .. "Requires |cFFFFFF00/reload|r to apply.",
+          opacity = "fadeChatTabsOpacity",
+          opacityApply = function() if chatTabsApplyOpacity then chatTabsApplyOpacity() end end },
         { key = "transparentChatBG",   name = "Transparent Chat Background",
           tip = "Makes the chat background transparent until you mouse over it. Turn it off and "
              .. "reload, and your own background comes back. "
              .. "Requires |cFFFFFF00/reload|r to apply." },
         { key = "fadeMicroMenu",       name = "Fade Micro Menu",
           tip = "The bottom-right menu bar fades out unless moused over. "
-             .. "Requires |cFFFFFF00/reload|r to apply." },
+             .. "Requires |cFFFFFF00/reload|r to apply.",
+          opacity = "fadeMicroMenuOpacity" },
         { key = "fadePlayerFrame",     name = "Fade Player Frame",
           tip = "Your player frame fades out when idle and reappears in combat, when damaged, or on mouseover. "
-             .. "Requires |cFFFFFF00/reload|r to apply." },
+             .. "Requires |cFFFFFF00/reload|r to apply.",
+          opacity = "fadePlayerFrameOpacity" },
         { key = "fadeDamageMeter",     name = "Fade Damage Meter",
           tip = "The damage meter fades out unless you're in combat or mousing over it. Applies at once.",
-          apply = function(value) if value then SetupDamageMeterFade() end end },
+          apply = function(value) if value then SetupDamageMeterFade() end end,
+          opacity = "fadeDamageMeterOpacity" },
         { key = "fadeStatusBars",      name = "Fade Reputation and Experience Bars",
           tip = "The reputation, experience and honor bars fade out unless you're mousing over them. "
              .. "Applies at once.",
-          apply = function(value) if value then SetupStatusBarFade() end end },
+          apply = function(value) if value then SetupStatusBarFade() end end,
+          opacity = "fadeStatusBarsOpacity" },
         { key = "fadeStatusBarsOnGain", name = "Show on Gains", parent = "fadeStatusBars",
           tip = "The bars appear for 3 seconds when you gain reputation, experience or honor, or "
              .. "your tracked reputation changes, then fade again. Applies at once.",
           apply = function() end },
         { key = "fadeMainActionBar",   name = "Fade Main Action Bar",
           tip = "Action Bar 1 fades out unless you're in combat, flying, or mousing over it. Applies at once.",
-          apply = function(value) if value then SetupMainActionBarFade() end end },
+          apply = function(value) if value then SetupMainActionBarFade() end end,
+          opacity = "fadeActionBarsOpacity",
+          opacityTip = " Also sets how faded the bars picked in Fade Action Bars get." },
     }
     local HIDE_OPTIONS = {
         { key = "hideSocialButton",    name = "Hide Social Button",
@@ -1174,6 +1228,52 @@ local function InitializeOptions()
     -- the table by reference (Blizzard_Setting.lua:420), so getting this wrong stays invisible
     -- until a setting fails to persist or leaks across characters.
     local inits = {}
+
+    -- ── Faded opacity: a slider beside a Fade checkbox (v1.40.0, owner's request) ──
+    -- Blizzard's own checkbox + slider row, the one Options > Audio > Ping Sounds uses: the slider
+    -- sits right of the checkbox and is greyed while it is off (CreateSettingsCheckboxSliderInitializer
+    -- and SettingsCheckboxSliderControlMixin:EvaluateState, Blizzard_SettingControls.lua:1271-1320;
+    -- 0-1 in 0.05 steps shown as a percentage, Mainline/AudioOverrides.lua:11-21). The faders read
+    -- the value each time they fade, so it applies at once. Without that template the checkbox is
+    -- plain and the value stays at its default.
+    local OPACITY_TIP = "How much of it still shows while faded. At 0% it is hidden completely. "
+        .. "Applies at once."
+    local function OpacitySliderOptions()
+        local o = Settings.CreateSliderOptions(0, 1, 0.05)
+        local right = MinimalSliderWithSteppersMixin and MinimalSliderWithSteppersMixin.Label
+            and MinimalSliderWithSteppersMixin.Label.Right
+        if right and o.SetLabelFormatter then
+            o:SetLabelFormatter(right, function(value)
+                if FormatPercentage then return FormatPercentage(value, true) end
+                return string.format("%d%%", math.floor(value * 100 + 0.5))
+            end)
+        end
+        return o
+    end
+    local function CreateCheckboxRow(opt, setting)
+        local canPair = opt.opacity and _G.CreateSettingsCheckboxSliderInitializer
+            and layout and layout.AddInitializer
+        if not canPair then
+            return Settings.CreateCheckbox(category, setting, TipWithReason(opt.tip, opt.key))
+        end
+        local slider = Settings.RegisterAddOnSetting(
+            category,
+            ADDON_NAME .. "_" .. opt.opacity,
+            opt.opacity,
+            db,                          -- UNIVERSAL: every opacity key
+            "number",
+            opt.name .. " Opacity",
+            UNIVERSAL[opt.opacity]
+        )
+        if opt.opacityApply then
+            slider:SetValueChangedCallback(function(_, value) opt.opacityApply(value) end)
+        end
+        local init = _G.CreateSettingsCheckboxSliderInitializer(
+            setting, opt.name, TipWithReason(opt.tip, opt.key),
+            slider, OpacitySliderOptions(), "Faded Opacity", OPACITY_TIP .. (opt.opacityTip or ""))
+        layout:AddInitializer(init)
+        return init
+    end
     local function AddCheckboxes(list)
         for _, opt in ipairs(list) do
             local perChar  = PERCHAR[opt.key] ~= nil
@@ -1195,7 +1295,7 @@ local function InitializeOptions()
                 printer("Clean Solo", opt.name, value)
                 if opt.apply and not Unavailable(opt.key) then opt.apply(value) end
             end)
-            local init = Settings.CreateCheckbox(category, setting, TipWithReason(opt.tip, opt.key))
+            local init = CreateCheckboxRow(opt, setting)
             GreyIfUnavailable(init, opt.key)
             inits[opt.key] = init
             -- A refinement is a sub-option: indented under its parent and greyed while the parent is
@@ -1259,7 +1359,8 @@ local function InitializeOptions()
     end)
 
     local fadeInit = Settings.CreateDropdown(category, fadeSetting, GetBarOptions, TipWithReason(
-        "Pick a bar to fade it out when idle; it reappears on mouseover. "
+        "Pick a bar to fade it out when idle; it reappears on mouseover. How faded it gets is set "
+        .. "by the slider beside Fade Main Action Bar. "
         .. "Requires |cFFFFFF00/reload|r to apply.", "fadeActionBars"))
     GreyIfUnavailable(fadeInit, "fadeActionBars")
 

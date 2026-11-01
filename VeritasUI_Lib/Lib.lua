@@ -226,6 +226,19 @@ function VUI.GetFadeDelay()
     return fadeDelay
 end
 
+-- Faded opacity (CleanSolo's per-fade sliders, v1.40.0): how much of a faded element still shows,
+-- 0-1. The hover and player-frame faders take an optional getter and read it every time they fade
+-- out, and while faded they follow a change at once, so a slider applies without /reload.
+-- No getter, or a bad value, is 0: fully hidden, the behaviour before the sliders.
+local function FadedAlpha(getter)
+    if not getter then return 0 end
+    local ok, a = pcall(getter)
+    a = ok and tonumber(a) or 0
+    if a < 0 then return 0 elseif a > 1 then return 1 end
+    return a
+end
+VUI.FadedAlpha = FadedAlpha
+
 -- Widgets that belong to a bar but are NOT direct children of it.
 --
 -- Spell flyouts — Pet Utility, mage teleports, profession tools, warlock demons —
@@ -254,8 +267,10 @@ local HOVER_WALK_MAX_DEPTH = 8   -- flyoutButton → flyout → actionButton →
 -- noEnterHook (v1.39.0): skip the OnEnter hook and rely on the 10 Hz poll alone. Used for Action
 --   Bar 1, whose frame is the most taint-sensitive bar in the game (landmine: never HookScript a
 --   secure Blizzard frame); fade-in then starts within 0.1 s instead of at once.
-function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook)
+-- fadedAlpha (v1.40.0): getter for the faded opacity (see FadedAlpha). nil = 0, as before.
+function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook, fadedAlpha)
     if not target then return end
+    local faded = FadedAlpha(fadedAlpha)
 
     local function IsLocked()
         return shouldStayVisible and shouldStayVisible()
@@ -266,7 +281,7 @@ function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook)
     end
 
     -- Hooked while it must be shown (turned on mid-fight, or while flying): no drop to 0 and back.
-    if not IsForced() then target:SetAlpha(0) end
+    if not IsForced() then target:SetAlpha(faded) end
 
     -- Check target and all direct children — handles Edit Mode layouts
     -- where buttons extend beyond the parent bar frame's bounds.
@@ -333,7 +348,8 @@ function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook)
         if not IsLocked() and not IsForced() and not IsMouseOverAny() then
             hovered    = false
             graceSince = nil
-            SmoothFade(target, HOVER_FADE_OUT, 0)
+            faded      = FadedAlpha(fadedAlpha)
+            SmoothFade(target, HOVER_FADE_OUT, faded)
         end
     end
 
@@ -366,6 +382,13 @@ function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook)
             elseif now - graceSince >= math.max(HOVER_LEAVE_GRACE, fadeDelay) then
                 FadeOut()
             end
+        elseif fadedAlpha then
+            -- Faded, and the opacity slider moved: follow it.
+            local a = FadedAlpha(fadedAlpha)
+            if math_abs(a - faded) > 0.001 then
+                faded = a
+                SmoothFade(target, HOVER_FADE_OUT, a)
+            end
         end
     end)
 
@@ -395,9 +418,11 @@ local HEALTH_IDLE_TIME = 3.0
 -- replace that hook without the fade-in feeling laggy.
 local PLAYER_FRAME_HOVER_POLL_RATE  = 0.10
 
-function VUI.HookPlayerFrameFade(frame, inCombatRef)
+-- fadedAlpha (v1.40.0): optional getter for the faded opacity, as in HookHoverFade.
+function VUI.HookPlayerFrameFade(frame, inCombatRef, fadedAlpha)
     if not frame then return end
-    frame:SetAlpha(0)
+    local faded = FadedAlpha(fadedAlpha)
+    frame:SetAlpha(faded)
 
     local delayTimer, healthTimer
     local wasShowing   = false
@@ -446,7 +471,8 @@ function VUI.HookPlayerFrameFade(frame, inCombatRef)
     local function DoFadeOut()
         delayTimer = nil
         if not ShouldShow() then
-            SmoothFade(frame, FADE_OUT_TIME, 0)
+            faded = FadedAlpha(fadedAlpha)
+            SmoothFade(frame, FADE_OUT_TIME, faded)
             wasShowing = false
         end
     end
@@ -460,6 +486,13 @@ function VUI.HookPlayerFrameFade(frame, inCombatRef)
             end
         elseif wasShowing and not delayTimer then
             delayTimer = C_Timer.NewTimer(math.max(FADE_OUT_DELAY, fadeDelay), DoFadeOut)
+        elseif not wasShowing and fadedAlpha then
+            -- Faded, and the opacity slider moved: follow it.
+            local a = FadedAlpha(fadedAlpha)
+            if math_abs(a - faded) > 0.001 then
+                faded = a
+                SmoothFade(frame, FADE_OUT_TIME, a)
+            end
         end
     end
 

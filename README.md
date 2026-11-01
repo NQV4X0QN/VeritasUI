@@ -16,6 +16,7 @@ Hides or fades the parts of the interface you don't need most of the time.
 - **Action Bar 1** fades out unless you're in combat, flying or mousing over it
 - The **damage meter** fades out unless you're in combat or mousing over it
 - The **reputation, experience and honor bars** fade out until you mouse over them; tick **Show on Gains** to have them appear for 3 seconds whenever you gain reputation, experience or honor
+- **Faded opacity**: a slider beside each Fade option sets how much still shows while faded, from 0% (hidden) to 100%; the one beside Fade Main Action Bar covers every faded action bar
 - **Fade Delay**: keep the micro menu, action bars and player frame up for 0 to 5 seconds after the mouse leaves, before they fade (the chat window keeps Blizzard's own timing)
 - Optionally hides the social button, the chat menu and voice buttons, the bag bar, and macro names on action buttons
 - Optionally hides the **talking head** story popup and, separately, **mutes its voice**, so you can keep either one
@@ -23,7 +24,7 @@ Hides or fades the parts of the interface you don't need most of the time.
 - **Hides profession gear**: keeps your own outfit on while you craft, gather or fish, instead of the profession outfit the game puts on you. If one still shows, `/cs gear` lists what you're wearing
 - Hides red error text — all of it, or only the kinds you pick (combat, spells and cooldowns, items and bags, mail/vendors/bank, looting, mounts and flight paths), so "Internal mail database error." can go while "You are too far away!" stays
 
-Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped under **Fade** and **Hide**. Changes apply after a `/reload`, except Fade Delay, Hide Profession Gear and the Action Bar 1, damage meter and reputation bar fades, which apply at once.
+Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped under **Fade** and **Hide**. Changes apply after a `/reload`, except Fade Delay, the opacity sliders, Hide Profession Gear and the Action Bar 1, damage meter and reputation bar fades, which apply at once.
 
 ### Quality of Life — small conveniences
 - **Item levels** on gear in your bags, bank, warband bank, character panel and at merchants
