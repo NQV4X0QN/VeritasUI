@@ -172,6 +172,7 @@ local UNIVERSAL = {
     tooltipTarget     = true,    -- "Target: <name>", green "You" when it is you
     tooltipMount      = true,    -- the mount a player rides, check or red X for owned
     tooltipClassNames = true,    -- a player's name line in their class colour (v1.37.0)
+    tooltipFactionColors = true, -- a player's Horde / Alliance line in Blizzard's faction colour (v1.46.0)
     -- Phase 6 (v1.32.0): character sheet details, independent; on since v1.37.0.
     charEnchants      = true,    -- each slot's enchant beside it
     charDurability    = true,    -- each slot's durability %, below 100%
@@ -3781,6 +3782,13 @@ end
 --     insecure line pre-call (Blizzard reads it back while rendering, and an addon-written value in
 --     that path is how tooltip taint starts); the post-call below only recolours the line's font
 --     string once the tooltip is built, the same insulated hook as the two lines above.
+--   tooltipFactionColors (v1.46.0, owner's request) -- recolours the "Horde" / "Alliance" line Blizzard
+--     already puts in a player's tooltip, in Blizzard's own faction colours: GetFactionColor
+--     (Blizzard_SharedXML/ColorUtil.lua:86-88) -> PLAYER_FACTION_COLORS (SharedColorConstants.lua:15-19),
+--     built from the client's GlobalColor constants PLAYER_FACTION_COLOR_HORDE (255, 41, 52) and
+--     PLAYER_FACTION_COLOR_ALLIANCE (0, 173, 240) (GlobalColor DB2 rows 76-77, wago.tools, 2026-11-01).
+--     The line is found by its text, the localized name UnitFactionGroup returns; no line with that
+--     text, no change.
 -- Hook: TooltipDataProcessor.AddTooltipPostCall(Unit) -- Blizzard's insulated path (landmine:
 -- never HookScript a shared tooltip). The unit comes from the tooltip data's GUID the way
 -- Blizzard's own TooltipUtil.GetDisplayedUnit does (Blizzard_SharedXMLGame/Tooltip/TooltipUtil.lua
@@ -3851,7 +3859,8 @@ local function MountLine(tooltip, unit)
 end
 
 local function OnUnitTooltip(tooltip, data)
-    if not db or not (db.tooltipTarget or db.tooltipMount or db.tooltipClassNames) then return end
+    if not db or not (db.tooltipTarget or db.tooltipMount or db.tooltipClassNames
+                      or db.tooltipFactionColors) then return end
     if tooltip ~= GameTooltip or not (data and data.guid) or not Readable(data.guid) then return end
     local unit = Read(UnitTokenFromGUID, data.guid)
     if not unit then return end
@@ -3866,6 +3875,23 @@ local function OnUnitTooltip(tooltip, data)
         local c = class and C_ClassColor and C_ClassColor.GetClassColor and Read(C_ClassColor.GetClassColor, class)
         local line = _G.GameTooltipTextLeft1
         if c and line then line:SetTextColor(c.r, c.g, c.b) end
+    end) end
+    if db.tooltipFactionColors then pcall(function()
+        if not Read(UnitIsPlayer, unit) then return end
+        local faction, localized = Read(_G.UnitFactionGroup, unit)
+        if type(faction) ~= "string" or type(localized) ~= "string" or localized == "" then return end
+        local c = (_G.GetFactionColor and _G.GetFactionColor(faction))
+            or (_G.PLAYER_FACTION_COLORS and _G.PLAYER_FACTION_GROUP
+                and _G.PLAYER_FACTION_COLORS[_G.PLAYER_FACTION_GROUP[faction]])
+        if not (c and c.r) then return end      -- Neutral (unchosen Pandaren) has no colour
+        for i = 2, tooltip:NumLines() do
+            local line = _G["GameTooltipTextLeft" .. i]
+            local text = line and line:GetText()
+            if text and Readable(text) and text == localized then
+                line:SetTextColor(c.r, c.g, c.b)
+                return
+            end
+        end
     end) end
     if db.tooltipTarget then pcall(TargetLine, tooltip, unit) end
     if db.tooltipMount then pcall(MountLine, tooltip, unit) end
@@ -4453,6 +4479,11 @@ local function InitializeOptions()
         .. "the tooltip is unchanged. Left as it is where the game hides a player's class from addons.",
         function(value) if value then SetupTooltipLines() end end)
 
+    AddCheckbox("tooltipFactionColors", "Faction Colors in Tooltips",
+        "Shows a player's faction, Horde or Alliance, in the game's own faction red or blue when you "
+        .. "hover them. The rest of the tooltip is unchanged.",
+        function(value) if value then SetupTooltipLines() end end)
+
     Header("General")
     AddCheckbox("afkScreen", "AFK Screen",
         "When you go AFK, hides the UI and slowly circles the camera, showing your name, level, item level and zone. Also helps prevent screen burn-in.",
@@ -4583,7 +4614,9 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.skipCinematics then SetupSkipCinematics() end
         UpdateNpcEvents()
         if db.trainAllButton then SetupTrainAll() end
-        if db.tooltipTarget or db.tooltipMount or db.tooltipClassNames then SetupTooltipLines() end
+        if db.tooltipTarget or db.tooltipMount or db.tooltipClassNames or db.tooltipFactionColors then
+            SetupTooltipLines()
+        end
         if db.timestampAllMessages then SetTimestampAll(true) end
         if db.charEnchants or db.charDurability or db.charMythicRating then SetupCharacterSheet() end
 
