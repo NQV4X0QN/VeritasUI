@@ -1,6 +1,6 @@
 # VeritasUI
 
-A World of Warcraft addon suite for **Midnight** (patch 12.1.0) that makes the default interface cleaner and more convenient, especially for solo play.
+A World of Warcraft addon suite for **Midnight** (patch 12.1.5) that makes the default interface cleaner and more convenient, especially for solo play.
 
 VeritasUI doesn't replace Blizzard's interface. It works inside it: its settings live in the normal **Options → AddOns** panel, all under one **VeritasUI** entry, its windows look and behave like Blizzard's own, and anything WoW already does well is left to WoW. If you didn't know VeritasUI was installed, most of it should just feel like the game.
 
@@ -99,7 +99,7 @@ Most modules are also listed in the minimap's addon menu (the addon compartment)
 ## Installation
 
 1. Download the latest `VeritasUI-vX.Y.Z.zip` from the [Releases page](https://github.com/NQV4X0QN/VeritasUI/releases/latest).
-2. Extract it and copy all eight `VeritasUI_*` folders into:
+2. Extract it and copy all seven `VeritasUI_*` folders into:
    ```
    World of Warcraft/_retail_/Interface/AddOns/
    ```
@@ -110,7 +110,7 @@ Install all seven folders together. They share one version number, and every mod
 
 ## Requirements
 
-- World of Warcraft: Midnight, patch 12.1.0
+- World of Warcraft: Midnight, patch 12.1.5
 - No other addons or libraries needed
 
 ## Design principles
