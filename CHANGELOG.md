@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.41.0] - 2026-10-31
+
+### Changed
+
+- `VeritasUI_CleanSolo` — **Fade Chat Window.** Fade Chat Tabs is now Fade Chat Window, and its opacity slider sets the whole window: the background and border fade out with the tabs and the IM type box when you leave chat and come back when you mouse over it, at Blizzard's own speed. The messages stay readable. At 100% the window looks just like Blizzard's, and your own Background colour and opacity apply again (`CleanSolo.lua`)
+- `VeritasUI_CleanSolo` — **Chat buttons fade with the chat window.** The social, chat menu and voice buttons, when you have not hidden them, fade in and out with the chat window at its opacity instead of sitting on screen (`CleanSolo.lua`)
+
+### Removed
+
+- `VeritasUI_CleanSolo` — **Transparent Chat Background.** Fade Chat Window at 0% does the same; the old setting is cleared (`CleanSolo.lua`, `README.md`)
+
+
 ## [1.40.0] - 2026-10-31
 
 ### Added
