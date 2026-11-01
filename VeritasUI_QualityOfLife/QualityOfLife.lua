@@ -4303,7 +4303,10 @@ local SetupCharacterSheet
         local hex = "ffffffff"
         local okC, color = pcall(C_ChallengeMode.GetDungeonScoreRarityColor, score)
         if okC and color and color.GenerateHexColor then hex = color:GenerateHexColor() end
-        ratingFrame.text:SetText(string.format("Mythic+ Rating: |c%s%d|r", hex, score))
+        -- Blizzard's own translated label, "Mythic+ Rating: %s" in English, filled the way
+        -- ItemRef.lua:266 fills it (audit Q2, 2026-11-01).
+        ratingFrame.text:SetText((_G.DUNGEON_SCORE_LINK_RATING or "Mythic+ Rating: %s")
+            :format(("|c%s%d|r"):format(hex, score)))
         ratingFrame:Show()
         ratingShown = true
         pane.AttributesCategory:ClearAllPoints()
