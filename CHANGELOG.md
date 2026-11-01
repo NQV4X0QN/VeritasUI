@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.39.0] - 2026-10-31
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Fade Main Action Bar.** Action Bar 1 fades out unless you're in combat, flying or mousing over it. Set per character, like the other action bar fades; applies at once (`CleanSolo.lua`, `Lib.lua`)
+- `VeritasUI_CleanSolo` — **Fade Damage Meter.** Blizzard's damage meter fades out unless you're in combat or mousing over it; applies at once (`CleanSolo.lua`)
+- `VeritasUI_CleanSolo` — **Fade Reputation and Experience Bars.** The reputation, experience and honor bars fade out until you mouse over them, and are already faded when the loading screen ends; applies at once (`CleanSolo.lua`)
+- `VeritasUI_CleanSolo` — **Show on Gains.** A sub-option of the bars fade, off until you tick it: the bars appear for 3 seconds when you gain reputation, experience or honor, or your tracked reputation changes, then fade again (`CleanSolo.lua`)
+
+
 ## [1.38.0] - 2026-10-31
 
 ### Changed
