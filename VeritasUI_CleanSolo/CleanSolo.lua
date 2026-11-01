@@ -96,7 +96,9 @@ local UNIVERSAL = {
     -- and the reputation / experience / honor bars sit in the same place on every character.
     fadeDamageMeter     = true,    -- shown in combat or on hover
     fadeStatusBars      = true,    -- shown on hover
-    fadeStatusBarsOnRep = true,    -- sub-option: also shown for a few seconds after a reputation gain
+    -- Sub-option, OFF by default (owner: some players want the bars only on hover, others want
+    -- them shown on gains -- "an option that people can check if they want it").
+    fadeStatusBarsOnGain = false,  -- also shown for 3 s after a reputation, experience or honor gain
 }
 
 -- ⚠ PER-CHARACTER. These two are the reason per-character storage was requested in the first
@@ -894,23 +896,38 @@ end
 -- (StatusTrackingBar.xml:5-7), so test build 2 faded the coloured bar and left the frame (owner). The
 -- texture follows its container's SHOWN bar: every alpha we give that bar is copied to it (Blizzard
 -- never sets that texture's alpha).
--- Shown for this long after a reputation gain (sub-option fadeStatusBarsOnRep, owner's request
--- 2026-10-31: draw the eye to the bar, then fade it again). FACTION_STANDING_CHANGED fires on every
--- gain, in the same frame as the chat line (measured 2026-10-24, QualityOfLife.lua Follow Reputation
--- Gains); its payload is not read, so a secret one does not matter.
-local REP_GAIN_SHOW_SECONDS = 3
-local repShownUntil = 0
+-- Shown for this long after a gain (sub-option fadeStatusBarsOnGain, owner's request 2026-10-31:
+-- draw the eye to the bar, then fade it again). Gains, all read without their payloads:
+--   reputation -- FACTION_STANDING_CHANGED, fires on every gain in the same frame as the chat line
+--                 (measured 2026-10-24, QualityOfLife.lua Follow Reputation Gains);
+--   watched faction changing -- UPDATE_FACTION with a new factionID (Track Latest Reputation
+--                 switches after combat, outside the gain's window);
+--   experience -- PLAYER_XP_UPDATE when UnitXP or UnitLevel went up (the event also fires on
+--                 changes that are not gains, so the value is compared);
+--   honor      -- HONOR_XP_UPDATE when UnitHonor went up (UnitDocumentation.lua).
+local GAIN_SHOW_SECONDS = 3
+local gainShownUntil = 0
 
 local function SetupStatusBarFade()
     if liveFadeHooked.fadeStatusBars then return end   -- turned off and on again: already installed
     local containers = { _G.MainStatusTrackingBarContainer, _G.SecondaryStatusTrackingBarContainer }
     local bars = {}
-    local repWatch = CreateFrame("Frame")
-    repWatch:RegisterEvent("FACTION_STANDING_CHANGED")
+    local gainWatch = CreateFrame("Frame")
+    gainWatch:RegisterEvent("FACTION_STANDING_CHANGED")
     -- A change of the WATCHED faction shows the bar too: Quality of Life's Track Latest Reputation
     -- defers its switch to the end of combat (QualityOfLife.lua RepFollowOnEvent), long after the
     -- gain's 3 s, and the owner switched factions and saw nothing (test build 9).
-    repWatch:RegisterEvent("UPDATE_FACTION")
+    gainWatch:RegisterEvent("UPDATE_FACTION")
+    gainWatch:RegisterEvent("PLAYER_XP_UPDATE")
+    gainWatch:RegisterEvent("HONOR_XP_UPDATE")
+    local function Num(fn, ...)
+        if type(fn) ~= "function" then return nil end
+        local ok, v = pcall(fn, ...)
+        if not ok or type(v) ~= "number" or (issecretvalue and issecretvalue(v)) then return nil end
+        return v
+    end
+    local lastXP, lastLevel = Num(_G.UnitXP, "player"), Num(_G.UnitLevel, "player")
+    local lastHonor = Num(_G.UnitHonor, "player")
     local function WatchedID()
         local ns = _G.C_Reputation
         if not (ns and ns.GetWatchedFactionData) then return nil end
@@ -921,36 +938,34 @@ local function SetupStatusBarFade()
     end
     local lastWatched = WatchedID()
     local Revealed
-    repWatch:SetScript("OnEvent", function(_, event)
+    gainWatch:SetScript("OnEvent", function(_, event)
         if event == "UPDATE_FACTION" then
             local id = WatchedID()
             local changed = id and lastWatched and id ~= lastWatched
             if id then lastWatched = id end
             if not changed then return end
+        elseif event == "PLAYER_XP_UPDATE" then
+            local xp, level = Num(_G.UnitXP, "player"), Num(_G.UnitLevel, "player")
+            local gained = (xp and lastXP and xp > lastXP) or (level and lastLevel and level > lastLevel)
+            lastXP, lastLevel = xp or lastXP, level or lastLevel
+            if not gained then return end
+        elseif event == "HONOR_XP_UPDATE" then
+            local honor = Num(_G.UnitHonor, "player")
+            local gained = honor and lastHonor and honor > lastHonor
+            lastHonor = honor or lastHonor
+            if not gained then return end
         end
         -- The bar starts to fade 3 s after the gain: the hover fade's own leave delay (Fade Delay
         -- slider, at least 0.15 s) comes after this window, so it is taken off here (owner: it
         -- lingered ~5 s with the plain 3 s window).
         local delay = math.max(0.15, (VUI.GetFadeDelay and VUI.GetFadeDelay()) or 0)
-        if db.fadeStatusBarsOnRep then
-            repShownUntil = GetTime() + math.max(0.5, REP_GAIN_SHOW_SECONDS - delay)
+        if db.fadeStatusBarsOnGain then
+            gainShownUntil = GetTime() + math.max(0.5, GAIN_SHOW_SECONDS - delay)
         end
-        -- TEMPORARY PROBE (/cs bars): what the bar looked like half a second after the gain.
-        VUI._csRepEvents = (VUI._csRepEvents or 0) + 1
-        C_Timer.After(0.5, function()
-            local c = _G.MainStatusTrackingBarContainer
-            local bar = c and c.GetShownBar and c:GetShownBar()
-            VUI._csRepSnap = string.format("0.5 s after gain #%d: revealed %s, holder %.2f, frame art %.2f, bar %s %s, fadeIn %s fadeOut %s",
-                VUI._csRepEvents, tostring(Revealed and Revealed()), c and c:GetAlpha() or -1,
-                c and c.BarFrameTexture and c.BarFrameTexture:GetAlpha() or -1,
-                tostring(bar and bar.barIndex), bar and string.format("%.2f", bar:GetAlpha()) or "none",
-                tostring(c and c.FadeInAnimation and c.FadeInAnimation:IsPlaying()),
-                tostring(c and c.FadeOutAnimation and c.FadeOutAnimation:IsPlaying()))
-        end)
     end)
     function Revealed()
         if not db.fadeStatusBars then return true end
-        if db.fadeStatusBarsOnRep and GetTime() < repShownUntil then return true end
+        if db.fadeStatusBarsOnGain and GetTime() < gainShownUntil then return true end
         for _, c in ipairs(containers) do
             if c and c:IsVisible() and c:IsMouseOver() then return true end
         end
@@ -1108,9 +1123,9 @@ local function InitializeOptions()
           tip = "The reputation, experience and honor bars fade out unless you're mousing over them. "
              .. "Applies at once.",
           apply = function(value) if value then SetupStatusBarFade() end end },
-        { key = "fadeStatusBarsOnRep", name = "Show on Reputation Gain", parent = "fadeStatusBars",
-          tip = "The reputation bar appears for a few seconds when you gain reputation, then fades "
-             .. "again. Applies at once.",
+        { key = "fadeStatusBarsOnGain", name = "Show on Gains", parent = "fadeStatusBars",
+          tip = "The bars appear for 3 seconds when you gain reputation, experience or honor, or "
+             .. "your tracked reputation changes, then fade again. Applies at once.",
           apply = function() end },
         { key = "fadeMainActionBar",   name = "Fade Main Action Bar",
           tip = "Action Bar 1 fades out unless you're in combat, flying, or mousing over it. Applies at once.",
@@ -1501,9 +1516,6 @@ SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
                     #shown > 0 and table.concat(shown, "; ") or "no bar shown"))
             end
         end
-        VUI.Print("Clean Solo", "reputation gains seen: " .. tostring(VUI._csRepEvents or 0)
-            .. "; Show on Reputation Gain " .. tostring(db.fadeStatusBarsOnRep))
-        if VUI._csRepSnap then VUI.Print("Clean Solo", VUI._csRepSnap) end
         return
     end
     -- Guard against nil (options init not yet run, or failed) — same
