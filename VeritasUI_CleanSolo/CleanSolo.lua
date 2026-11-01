@@ -102,6 +102,9 @@ local UNIVERSAL = {
     fadeObjectiveTracker = true,
     -- v1.43.0 (owner's request): your buffs and debuffs by the minimap, shown in combat or on hover.
     fadeAuras           = true,
+    -- v1.44.0 (owner's request): the alert icons by the minimap (mail, crafting orders, and Quality
+    -- of Life's Great Vault button), shown on hover.
+    fadeMinimapAlerts   = true,
     -- Sub-option, OFF by default (owner: some players want the bars only on hover, others want
     -- them shown on gains -- "an option that people can check if they want it").
     fadeStatusBarsOnGain = false,  -- also shown for 3 s after a reputation, experience or honor gain
@@ -116,6 +119,7 @@ local UNIVERSAL = {
     fadeDamageMeterOpacity = 0,
     fadeObjectiveTrackerOpacity = 0,
     fadeAurasOpacity = 0,
+    fadeMinimapAlertsOpacity = 0,
     fadeStatusBarsOpacity  = 0,
     fadeActionBarsOpacity  = 0,
 }
@@ -1038,6 +1042,24 @@ local function SetupAuraFade()
         true, Opacity("fadeAurasOpacity"))
 end
 
+-- The alert icons by the minimap (v1.44.0, owner's request): MinimapCluster.IndicatorFrame, the row
+-- holding the mail icon and the crafting-order icon (Blizzard_Minimap Mainline/Minimap.xml:83-149).
+-- Blizzard never sets that row's alpha (Minimap.lua). Quality of Life's Great Vault button follows the
+-- row's effective alpha (QualityOfLife.lua, Great Vault), so it fades with it for free; hovering it
+-- counts as hovering the row, read by its global name and simply absent when QoL is off. Poll only
+-- and nothing written but alpha: MinimapCluster is an Edit Mode system frame (landmine 114).
+local function SetupMinimapAlertsFade()
+    local ind = _G.MinimapCluster and _G.MinimapCluster.IndicatorFrame
+    if type(ind) ~= "table" or not ind.SetAlpha then return end
+    local function VaultHovered()
+        local v = _G.VUIQoLGreatVaultButton
+        return v and v.IsVisible and v:IsVisible() and v:IsMouseOver() or false
+    end
+    SetupLiveFade("fadeMinimapAlerts", { ind },
+        function() return not db.fadeMinimapAlerts or VaultHovered() end,
+        true, Opacity("fadeMinimapAlertsOpacity"))
+end
+
 local function SetupMainActionBarFade()
     -- No OnEnter hook on Action Bar 1 (see VUI.HookHoverFade): the poll alone reveals it.
     SetupLiveFade("fadeMainActionBar", { _G.MainActionBar },
@@ -1284,6 +1306,11 @@ local function InitializeOptions()
              .. "over them. Applies at once.",
           apply = function(value) if value then SetupAuraFade() end end,
           opacity = "fadeAurasOpacity" },
+        { key = "fadeMinimapAlerts",   name = "Fade Minimap Alerts",
+          tip = "The mail and crafting order icons by the minimap, and the Great Vault button, fade "
+             .. "out unless you're mousing over them. Applies at once.",
+          apply = function(value) if value then SetupMinimapAlertsFade() end end,
+          opacity = "fadeMinimapAlertsOpacity" },
         { key = "fadeDamageMeter",     name = "Fade Damage Meter",
           tip = "The damage meter fades out unless you're in combat or mousing over it. Applies at once.",
           apply = function(value) if value then SetupDamageMeterFade() end end,
@@ -1698,6 +1725,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if cdb.fadeMainActionBar and not Unavailable("fadeMainActionBar") then SetupMainActionBarFade() end
         if db.fadeDamageMeter and not Unavailable("fadeDamageMeter") then SetupDamageMeterFade() end
         if db.fadeAuras and not Unavailable("fadeAuras") then SetupAuraFade() end
+        if db.fadeMinimapAlerts and not Unavailable("fadeMinimapAlerts") then SetupMinimapAlertsFade() end
         if db.fadeObjectiveTracker and not Unavailable("fadeObjectiveTracker") then SetupObjectiveTrackerFade() end
         if db.fadeStatusBars and not Unavailable("fadeStatusBars") then SetupStatusBarFade() end
 
