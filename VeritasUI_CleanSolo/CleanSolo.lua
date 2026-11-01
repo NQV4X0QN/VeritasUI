@@ -994,11 +994,14 @@ local function SetupLiveFade(key, targets, shouldShow, noEnterHook, fadedAlpha)
     end
 end
 
+-- No OnEnter hook (audit C1, 2026-11-01): DamageMeter is an Edit Mode system frame
+-- (DamageMeter.xml:3 inherits EditModeDamageMeterSystemTemplate), the class of frame where a HookScript
+-- tainted Edit Mode once already (landmine 114). The poll reveals it within 0.1 s, as for Action Bar 1.
 local function SetupDamageMeterFade()
     local function Hook()
         SetupLiveFade("fadeDamageMeter", { _G.DamageMeter },
             function() return not db.fadeDamageMeter or InCombatLockdown() end,
-            nil, Opacity("fadeDamageMeterOpacity"))
+            true, Opacity("fadeDamageMeterOpacity"))
     end
     if _G.DamageMeter then Hook()
     elseif EventUtil and EventUtil.ContinueOnAddOnLoaded then
@@ -1304,7 +1307,9 @@ local function SetupStatusBarFade()
         if c and c.FadeIn then hooksecurefunc(c, "FadeIn", Settle) end
     end
 
-    SetupLiveFade("fadeStatusBars", bars, Revealed, nil, barOpacity)
+    -- No OnEnter hook (audit C1, 2026-11-01): the bars are inside Edit Mode's status-bar system, where
+    -- a HookScript tainted Edit Mode once already (landmine 114). Revealed() already sees the hover.
+    SetupLiveFade("fadeStatusBars", bars, Revealed, true, barOpacity)
     if db.fadeStatusBars then
         for _, c in ipairs(containers) do
             if c and c.BarFrameTexture then c.BarFrameTexture:SetAlpha(VUI.FadedAlpha(barOpacity)) end
