@@ -3930,11 +3930,18 @@ end
 -- each side) -- so the wrap width is the whole tooltip and the item's padding drops to 0, which keeps
 -- the size steady -- and show it again so it lays its lines out. Blizzard re-sets the minimum width to
 -- 140 on every rebuild (GameTooltip_AddProgressBar, :544); our hook runs straight after, in the same
--- call, so no frame is drawn in between. Put back to 0 when the bar is left.
+-- call, so no frame is drawn in between. Build 4 (this): owner-confirmed, two lines, no pulsing.
+-- WHERE: the hook is on ReputationUtil.AddParagonRewardsToTooltip itself, so it covers all three
+-- places Blizzard shows this tooltip -- the reputation bar and the Reputation panel's rows (both through
+-- ReputationParagonFrame_SetupParagonTooltip, ReputationFrame.lua:330-335, :680-694) and the Renown
+-- buttons of the expansion landing page (Blizzard_MajorFactionsLandingTemplates.lua:390-395). All three
+-- hide it with EmbeddedItemTooltip_Hide (ReputationFrame.lua:697-700, :401-407, Landing :305-318), which
+-- is where the minimum width is put back to 0, so it never carries over to EmbeddedItemTooltip's next use
+-- (world map quest rewards and the like).
 ;(function()
     local hooked, widened, busy = false, false, false
-    local function Widen()
-        local tip = _G.EmbeddedItemTooltip
+    local function Widen(tip)
+        if tip ~= _G.EmbeddedItemTooltip then return end
         if busy or not (db and db.tooltipWrapParagon) or not (tip and tip.SetMinimumWidth) then return end
         local item = tip.ItemTooltip
         if not (item and item:IsShown()) then return end
@@ -3953,14 +3960,16 @@ end
     local loader = CreateFrame("Frame")
     loader:RegisterEvent("PLAYER_LOGIN")
     loader:SetScript("OnEvent", function()
-        if hooked or type(_G.ReputationParagonFrame_SetupParagonTooltip) ~= "function" then return end
+        local util = _G.ReputationUtil
+        if hooked or not (util and type(util.AddParagonRewardsToTooltip) == "function") then return end
         hooked = true
-        hooksecurefunc("ReputationParagonFrame_SetupParagonTooltip", function() pcall(Widen) end)
-        if type(_G.ReputationParagonWatchBar_OnLeave) == "function" then
-            hooksecurefunc("ReputationParagonWatchBar_OnLeave", function()
-                if widened and _G.EmbeddedItemTooltip then
+        hooksecurefunc(util, "AddParagonRewardsToTooltip", function(tooltip) pcall(Widen, tooltip) end)
+        if type(_G.EmbeddedItemTooltip_Hide) == "function" then
+            hooksecurefunc("EmbeddedItemTooltip_Hide", function()
+                local tip = _G.EmbeddedItemTooltip
+                if widened and tip and not tip:IsShown() then
                     widened = false
-                    pcall(_G.EmbeddedItemTooltip.SetMinimumWidth, _G.EmbeddedItemTooltip, 0)
+                    pcall(tip.SetMinimumWidth, tip, 0)
                 end
             end)
         end
