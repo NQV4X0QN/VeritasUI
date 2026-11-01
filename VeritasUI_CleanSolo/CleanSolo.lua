@@ -321,12 +321,17 @@ local function SetupChatTabFading()
 
     -- ── The window itself and the chat buttons (v1.41.0, owner's request) ──
     -- The window's background and border are the textures Blizzard lists in CHAT_FRAME_TEXTURES
-    -- (FloatingChatFrame.lua:43-64). Blizzard animates their ALPHA on hover, between your own
-    -- Background opacity and at least DEFAULT_CHATFRAME_ALPHA (FCF_FadeIn/OutChatFrame, :1052-1117).
-    -- We leave that alone and fade their VERTEX alpha instead, which multiplies with it: 1 while the
-    -- window is shown, the slider's value while it is faded. So 100% is Blizzard's own look, 0% is
-    -- transparent, and your own background opacity and colour keep working. Blizzard's colour
-    -- setter writes the vertex colour without alpha (:849-866), so it is hooked to put ours back.
+    -- (FloatingChatFrame.lua:43-64). Blizzard fades their alpha itself: in to max(oldAlpha,
+    -- DEFAULT_CHATFRAME_ALPHA), out to oldAlpha, your own Background opacity (FCF_FadeIn/OutChatFrame,
+    -- :1052-1117, through UIFrameFade, which sets the alpha every frame).
+    -- ⚠ We OWN that alpha, the way the tabs are owned: each texture's SetAlpha is hooked and put back
+    -- to our value in the same call, so Blizzard's fade can never show for a frame. Test build 1 faded
+    -- the VERTEX alpha instead, expecting it to multiply with Blizzard's: the window stayed after
+    -- the mouse left and flickered on hover (owner, 2026-10-31), i.e. Blizzard's writes won.
+    -- Our value goes between Blizzard's two ends: shown = max(oldAlpha, default), as Blizzard; faded =
+    -- slider x oldAlpha, so 100% is Blizzard's own look and 0% is transparent. Both are read when
+    -- applied, so a change to your Background opacity (FCF_SetWindowAlpha stores oldAlpha, :868-878)
+    -- or to the slider applies at once. Blizzard's colour setter (:849-866) is hooked to put ours back.
     -- The messages are the frame's own text and are never touched (owner: they stay readable).
     -- The scroll bar keeps Blizzard's fade to 0 (FCF_FadeOutScrollbar, :1037-1050).
     --
@@ -336,23 +341,40 @@ local function SetupChatTabFading()
     -- docked (FCF_DockFrame, :1971). Hovering them, or the social button, already brings the window
     -- in: Blizzard counts both in its hover test (FCF_OnUpdate, :1138-1143).
     -- Own driver, not VUI.SmoothFade: the window is many textures moved by one value.
-    local winTex, winMult = {}, {}
+    local DEFAULT_BG = _G.DEFAULT_CHATFRAME_ALPHA or 0.25
+    local winTex, winShown, winAlpha, winInHook = {}, {}, {}, {}
+    local function OldAlpha(cf)
+        local a = tonumber(rawget(cf, "oldAlpha"))
+        return a or DEFAULT_BG
+    end
+    -- p: 0 = faded, 1 = shown.
+    local function ApplyWindow(cf)
+        local p = winShown[cf] or 0
+        local old = OldAlpha(cf)
+        local faded, shown = TabAlpha() * old, math.max(old, DEFAULT_BG)
+        local a = faded + (shown - faded) * p
+        winAlpha[cf] = a
+        winInHook[cf] = true
+        for _, t in ipairs(winTex[cf] or {}) do t:SetAlpha(a) end
+        winInHook[cf] = false
+    end
     for cf in pairs(tabs) do
         local list, name = {}, cf.GetName and cf:GetName()
         for _, suffix in ipairs(_G.CHAT_FRAME_TEXTURES or {}) do
             local t = name and _G[name .. suffix]
-            if type(t) == "table" and t.GetObjectType and t:GetObjectType() == "Texture" then
+            if type(t) == "table" and t.GetObjectType and t:GetObjectType() == "Texture" and t.SetAlpha then
                 list[#list + 1] = t
+                hooksecurefunc(t, "SetAlpha", function(self, a)
+                    if winInHook[cf] or not winAlpha[cf] then return end
+                    if not a or math.abs(a - winAlpha[cf]) > 0.001 then
+                        winInHook[cf] = true
+                        self:SetAlpha(winAlpha[cf])
+                        winInHook[cf] = false
+                    end
+                end)
             end
         end
         winTex[cf] = list
-    end
-    local function SetWindowMult(cf, m)
-        winMult[cf] = m
-        for _, t in ipairs(winTex[cf] or {}) do
-            local r, g, b = t:GetVertexColor()
-            t:SetVertexColor(r or 1, g or 1, b or 1, m)
-        end
     end
 
     local chatButtons = {}
@@ -390,21 +412,28 @@ local function SetupChatTabFading()
         tweens[key] = { from = from, to = to, d = dur, t = 0, set = set }
         tweenDriver:Show()
     end
-    local function FadeWindow(cf, to, dur)
+    -- shown: true = Blizzard's shown look, false = faded to the slider.
+    local function FadeWindow(cf, shown, dur)
         if not winTex[cf] then return end
-        Tween(cf, winMult[cf] or 1, to, dur, function(v) SetWindowMult(cf, v) end)
+        Tween(cf, winShown[cf] or 0, shown and 1 or 0, dur, function(v) winShown[cf] = v; ApplyWindow(cf) end)
         if cf == buttonsOwner then
             for _, btn in ipairs(chatButtons) do
-                Tween(btn, btn:GetAlpha(), to, dur, function(v) btn:SetAlpha(v) end)
+                Tween(btn, btn:GetAlpha(), shown and 1 or TabAlpha(), dur, function(v) btn:SetAlpha(v) end)
             end
         end
     end
 
-    for cf in pairs(tabs) do FadeWindow(cf, cf.hasBeenFaded and 1 or TabAlpha(), 0) end
+    for cf in pairs(tabs) do
+        winShown[cf] = cf.hasBeenFaded and 1 or 0
+        FadeWindow(cf, cf.hasBeenFaded and true or false, 0)
+        ApplyWindow(cf)
+    end
+    -- Colour and opacity changes from the Background picker write the textures directly.
     if _G.FCF_SetWindowColor then
-        hooksecurefunc("FCF_SetWindowColor", function(cf)
-            if winMult[cf] then SetWindowMult(cf, winMult[cf]) end
-        end)
+        hooksecurefunc("FCF_SetWindowColor", function(cf) if winTex[cf] then ApplyWindow(cf) end end)
+    end
+    if _G.FCF_SetWindowAlpha then
+        hooksecurefunc("FCF_SetWindowAlpha", function(cf) if winTex[cf] then ApplyWindow(cf) end end)
     end
 
     -- The opacity slider moved: tabs, type bars, windows and buttons that are faded now take the new
@@ -418,8 +447,9 @@ local function SetupChatTabFading()
             end
             if not cf.hasBeenFaded then
                 FadeBar(cf, BAR_ALPHA * a, 0)
-                FadeWindow(cf, a, 0)
+                FadeWindow(cf, false, 0)
             end
+            if winTex[cf] then ApplyWindow(cf) end
         end
     end
 
@@ -427,14 +457,14 @@ local function SetupChatTabFading()
         hooksecurefunc("FCF_FadeInChatFrame", function(cf)
             ShowTab(cf)
             FadeBar(cf, BAR_ALPHA, FADE_IN)
-            FadeWindow(cf, 1, FADE_IN)
+            FadeWindow(cf, true, FADE_IN)
         end)
     end
     if FCF_FadeOutChatFrame then
         hooksecurefunc("FCF_FadeOutChatFrame", function(cf)
             HideTab(cf)
             FadeBar(cf, BarFaded(), FADE_OUT)
-            FadeWindow(cf, TabAlpha(), FADE_OUT)
+            FadeWindow(cf, false, FADE_OUT)
         end)
     end
 end
