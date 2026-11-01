@@ -100,6 +100,8 @@ local UNIVERSAL = {
     -- v1.42.0 (owner's request): the All Objectives tracker, shown on hover. Universal, like the
     -- other interface fades.
     fadeObjectiveTracker = true,
+    -- v1.43.0 (owner's request): your buffs and debuffs by the minimap, shown in combat or on hover.
+    fadeAuras           = true,
     -- Sub-option, OFF by default (owner: some players want the bars only on hover, others want
     -- them shown on gains -- "an option that people can check if they want it").
     fadeStatusBarsOnGain = false,  -- also shown for 3 s after a reputation, experience or honor gain
@@ -113,6 +115,7 @@ local UNIVERSAL = {
     fadePlayerFrameOpacity = 0,
     fadeDamageMeterOpacity = 0,
     fadeObjectiveTrackerOpacity = 0,
+    fadeAurasOpacity = 0,
     fadeStatusBarsOpacity  = 0,
     fadeActionBarsOpacity  = 0,
 }
@@ -1015,6 +1018,26 @@ local function SetupObjectiveTrackerFade()
     end
 end
 
+-- Your buffs and debuffs by the minimap (v1.43.0, owner's request): BuffFrame and DebuffFrame
+-- (Blizzard_BuffFrame/BuffFrame.xml:6, :87). Shown in combat like Action Bar 1 and the damage meter,
+-- and on hover; hovering either shows both, as one group. Blizzard never sets either frame's own alpha,
+-- only single aura buttons' (the expiry flash, BuffFrame.lua:956, :1045), which multiply under ours.
+-- Poll only, no OnEnter hook: a right-click cancels a buff through a protected call (CancelUnitBuff,
+-- BuffFrame.lua:868-877), so we stay off their scripts. External Defensives, at the top of the screen,
+-- is not by the minimap and is left alone.
+local function SetupAuraFade()
+    local frames = { _G.BuffFrame, _G.DebuffFrame }
+    local function Hovered()
+        for _, f in ipairs(frames) do
+            if f and f:IsVisible() and f:IsMouseOver() then return true end
+        end
+        return false
+    end
+    SetupLiveFade("fadeAuras", frames,
+        function() return not db.fadeAuras or InCombatLockdown() or Hovered() end,
+        true, Opacity("fadeAurasOpacity"))
+end
+
 local function SetupMainActionBarFade()
     -- No OnEnter hook on Action Bar 1 (see VUI.HookHoverFade): the poll alone reveals it.
     SetupLiveFade("fadeMainActionBar", { _G.MainActionBar },
@@ -1256,6 +1279,11 @@ local function InitializeOptions()
           tip = "Your player frame fades out when idle and reappears in combat, when damaged, or on mouseover. "
              .. "Requires |cFFFFFF00/reload|r to apply.",
           opacity = "fadePlayerFrameOpacity" },
+        { key = "fadeAuras",           name = "Fade Buffs and Debuffs",
+          tip = "Your buffs and debuffs by the minimap fade out unless you're in combat or mousing "
+             .. "over them. Applies at once.",
+          apply = function(value) if value then SetupAuraFade() end end,
+          opacity = "fadeAurasOpacity" },
         { key = "fadeDamageMeter",     name = "Fade Damage Meter",
           tip = "The damage meter fades out unless you're in combat or mousing over it. Applies at once.",
           apply = function(value) if value then SetupDamageMeterFade() end end,
@@ -1669,6 +1697,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if not Unavailable("fadeActionBars") then SetupActionBarFading() end
         if cdb.fadeMainActionBar and not Unavailable("fadeMainActionBar") then SetupMainActionBarFade() end
         if db.fadeDamageMeter and not Unavailable("fadeDamageMeter") then SetupDamageMeterFade() end
+        if db.fadeAuras and not Unavailable("fadeAuras") then SetupAuraFade() end
         if db.fadeObjectiveTracker and not Unavailable("fadeObjectiveTracker") then SetupObjectiveTrackerFade() end
         if db.fadeStatusBars and not Unavailable("fadeStatusBars") then SetupStatusBarFade() end
 
