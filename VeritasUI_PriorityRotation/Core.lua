@@ -175,7 +175,7 @@ rotBtn:Execute("macros = newtable(); macros[1] = ''; links = newtable(); armed =
 -- After the channel, presses ALTERNATE: an armed follower (taking turns), then the normal
 -- rotation step, until every link's tries are spent. A follower still on cooldown just fails
 -- and waits for the next channel.
--- WHY (measured 2026-10-31 with /pr afterlog, two runs of 8 Eye Beams):
+-- WHY (measured 2026-10-31 with a temporary press log, four runs of 8-9 Eye Beams):
 --   * 2 tries each, back to back: all four landed inside ONE global cooldown, so whichever cast
 --     first left the other nothing (Essence Break missed 5 of the first 5).
 --   * 7 tries each, back to back (~1.5 s): Essence Break cast at every Eye Beam its cooldown
@@ -186,15 +186,16 @@ rotBtn:Execute("macros = newtable(); macros[1] = ''; links = newtable(); armed =
 --     allowed, but the character still stood ~1 s twice: the normal steps in the window were
 --     Eye Beam (just cast) and Blade Dance (on cooldown, and already being tried as a follower).
 --     So during the window the normal step skips skip[] — steps that are a link's target or a
---     linked follower — and lands on something that can cast. The snippet cannot see time
+--     linked follower — and lands on something that can cast.
+--   * With the skip (fourth run, 9 Eye Beams): Essence Break cast after #1, #3, #5, #7, #9 (all its
+--     40 s cooldown allows at ~20 s Eye Beams), window steps were Immolation Aura / Chaos Strike /
+--     Throw Glaive, no idle; owner: "a lot more fluid". The snippet cannot see time
 --   (no GetTime in RestrictedEnvironment.lua), so the window is counted in presses.
 -- SecureCmdOptionParse is allowed in this environment (RestrictedEnvironment.lua:82); the
 -- 2026-10-31 probe measured [channeling:Eye Beam] true on every press during 6 channels and false
 -- on all 1302 outside.
 rotBtn:WrapScript(rotBtn, "OnClick", [=[
     if down then return end
-    -- TEMPORARY PROBE (/pr afterlog): counts presses so the log can list what each one cast.
-    self:SetAttribute('vui-press', (tonumber(self:GetAttribute('vui-press')) or 0) + 1)
     local inWindow = false
     if links and #links > 0 then
         local channeling, open = false, false
@@ -244,104 +245,6 @@ rotBtn:WrapScript(rotBtn, "OnClick", [=[
 ]=])
 
 PR.rotBtn = rotBtn
-
-----------------------------------------------------------------
---  TEMPORARY PROBE (test/after-hold) — /pr afterlog. Not for release.
---  Owner saw Only After skip three Eye Beams in a row. For each end of a channel that an After
---  link waits for, records for 2.5 s: each follower's cooldown at the channel's end, whether it
---  cast (UNIT_SPELLCAST_SUCCEEDED) or failed, and what the first presses after it cast. Read-only:
---  it polls rotBtn's attributes and listens to the player's own cast events.
-----------------------------------------------------------------
-local alog
-local alogFrame = CreateFrame("Frame")
-alogFrame:Hide()
-
-local function AlogName(id)
-    if id == nil or (issecretvalue and issecretvalue(id)) then return nil end
-    return C_Spell.GetSpellName(id)
-end
-
-local function AlogCooldown(name)
-    local ok, cd = pcall(C_Spell.GetSpellCooldown, name)
-    if not ok or not cd then return "cd ?" end
-    if issecretvalue and (issecretvalue(cd.startTime) or issecretvalue(cd.duration)) then return "cd secret" end
-    local left = (cd.startTime or 0) + (cd.duration or 0) - GetTime()
-    if (cd.duration or 0) <= 1.6 or left <= 0 then return "ready" end
-    return format("%.1fs left", left)
-end
-
-local function AlogFlush()
-    local wdw = alog.window
-    alog.window = nil
-    local parts = {}
-    for _, f in ipairs(wdw.followers) do
-        parts[#parts + 1] = format("%s%s: %s, %s%s", f.name, f.only and " (only)" or "", f.cd,
-            f.cast and "|cFF00FF00cast|r" or "|cFFFF4444not cast|r",
-            f.failed > 0 and format(" (%d failed)", f.failed) or "")
-    end
-    VUI.Print("Priority Rotation", format("|cFFFFFF00%s #%d|r — %s. Presses: %s", wdw.target, wdw.n,
-        tconcat(parts, "; "), #wdw.presses > 0 and tconcat(wdw.presses, ", ") or "none"))
-end
-
-alogFrame:SetScript("OnEvent", function(_, event, _, _, spellID)
-    if not alog then return end
-    local name = AlogName(spellID)
-    if event == "UNIT_SPELLCAST_CHANNEL_STOP" then
-        if not name then return end
-        local followers = {}
-        for _, l in ipairs(PR.compiledLinks or {}) do
-            if l.target == name then
-                -- Blade Dance casts as Death Sweep in Metamorphosis: match the override too.
-                local ok, oid = pcall(C_Spell.GetOverrideSpell, l.name)
-                followers[#followers + 1] = { name = l.name, only = l.only, cd = AlogCooldown(l.name),
-                                              alt = ok and AlogName(oid) or nil, cast = false, failed = 0 }
-            end
-        end
-        if #followers == 0 then return end
-        if alog.window then AlogFlush() end
-        alog.count[name] = (alog.count[name] or 0) + 1
-        alog.window = { target = name, n = alog.count[name], t0 = GetTime(), followers = followers,
-                        presses = {} }
-    elseif alog.window and name then
-        for _, f in ipairs(alog.window.followers) do
-            if f.name == name or f.alt == name then
-                if event == "UNIT_SPELLCAST_SUCCEEDED" then f.cast = true else f.failed = f.failed + 1 end
-            end
-        end
-    end
-end)
-
-alogFrame:SetScript("OnUpdate", function()
-    if not alog then return end
-    local n = rotBtn:GetAttribute("vui-press")
-    if n ~= alog.lastPress then
-        alog.lastPress = n
-        local w = alog.window
-        if w and #w.presses < 8 then
-            local text = rotBtn:GetAttribute("macrotext") or ""
-            local lastLine = text:match("([^\n]*)$") or text
-            w.presses[#w.presses + 1] = lastLine:match("%]%s*(.+)$") or lastLine:gsub("^/%a+%s*", "")
-        end
-    end
-    if alog.window and GetTime() - alog.window.t0 > 2.5 then AlogFlush() end
-end)
-
-function PR:ToggleAfterLog()
-    if alog then
-        alog = nil
-        alogFrame:UnregisterAllEvents()
-        alogFrame:Hide()
-        VUI.Print("Priority Rotation", "After log OFF.")
-        return
-    end
-    alog = { count = {}, lastPress = rotBtn:GetAttribute("vui-press") }
-    for _, ev in ipairs({ "UNIT_SPELLCAST_CHANNEL_STOP", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_FAILED" }) do
-        alogFrame:RegisterUnitEvent(ev, "player")
-    end
-    alogFrame:Show()
-    VUI.Print("Priority Rotation", "After log ON — one line per Eye Beam (or other After target)."
-        .. " |cFFFFFF00/pr afterlog|r again to stop.")
-end
 
 ----------------------------------------------------------------
 --  Debounced compile — editor changes batch into a single compile
@@ -1307,9 +1210,6 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         VUI.Print("Priority Rotation", "    • Open world (no secrets)")
         VUI.Print("Priority Rotation", "    • Inside M+/raid (secrets active)")
         VUI.Print("Priority Rotation", "    • In combat vs. out of combat")
-
-    elseif cmd == "afterlog" then
-        PR:ToggleAfterLog()   -- TEMPORARY PROBE
 
     elseif cmd == "help" then
         VUI.Print("Priority Rotation", "Commands:")
