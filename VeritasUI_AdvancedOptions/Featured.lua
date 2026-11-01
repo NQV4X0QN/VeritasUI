@@ -519,8 +519,8 @@ function AO:BuildFeaturedContent(parent, buttonBar)
         -- additions or removals in the data provider", falling back to ScrollToBegin only when
         -- the scroll range collapses to zero. So retaining does not leave the view past the end.
         --
-        -- Only two callers reach here: the header OnClick (where retaining is the point) and the
-        -- one-time initial populate (where there is no position to retain). Tab switches never
+        -- Callers: the header OnClick and Expand All / Collapse All (where retaining is the point),
+        -- and the one-time initial populate (where there is no position to retain). Tab switches never
         -- rebuild the provider at all -- OnShow is wired to RefreshValues, values only.
         scrollBox:SetDataProvider(dp, true)
     end
