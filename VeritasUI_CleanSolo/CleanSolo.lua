@@ -907,10 +907,23 @@ local function SetupStatusBarFade()
     local bars = {}
     local repWatch = CreateFrame("Frame")
     repWatch:RegisterEvent("FACTION_STANDING_CHANGED")
+    local Revealed
     repWatch:SetScript("OnEvent", function()
         if db.fadeStatusBarsOnRep then repShownUntil = GetTime() + REP_GAIN_SHOW_SECONDS end
+        -- TEMPORARY PROBE (/cs bars): what the bar looked like half a second after the gain.
+        VUI._csRepEvents = (VUI._csRepEvents or 0) + 1
+        C_Timer.After(0.5, function()
+            local c = _G.MainStatusTrackingBarContainer
+            local bar = c and c.GetShownBar and c:GetShownBar()
+            VUI._csRepSnap = string.format("0.5 s after gain #%d: revealed %s, holder %.2f, frame art %.2f, bar %s %s, fadeIn %s fadeOut %s",
+                VUI._csRepEvents, tostring(Revealed and Revealed()), c and c:GetAlpha() or -1,
+                c and c.BarFrameTexture and c.BarFrameTexture:GetAlpha() or -1,
+                tostring(bar and bar.barIndex), bar and string.format("%.2f", bar:GetAlpha()) or "none",
+                tostring(c and c.FadeInAnimation and c.FadeInAnimation:IsPlaying()),
+                tostring(c and c.FadeOutAnimation and c.FadeOutAnimation:IsPlaying()))
+        end)
     end)
-    local function Revealed()
+    function Revealed()
         if not db.fadeStatusBars then return true end
         if db.fadeStatusBarsOnRep and GetTime() < repShownUntil then return true end
         for _, c in ipairs(containers) do
@@ -1463,6 +1476,9 @@ SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
                     #shown > 0 and table.concat(shown, "; ") or "no bar shown"))
             end
         end
+        VUI.Print("Clean Solo", "reputation gains seen: " .. tostring(VUI._csRepEvents or 0)
+            .. "; Show on Reputation Gain " .. tostring(db.fadeStatusBarsOnRep))
+        if VUI._csRepSnap then VUI.Print("Clean Solo", VUI._csRepSnap) end
         return
     end
     -- Guard against nil (options init not yet run, or failed) — same
