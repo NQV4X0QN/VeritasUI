@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.45.0] - 2026-10-31
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Show While Flying.** A sub-option of Fade Main Action Bar, on by default: Action Bar 1 comes up in full while you fly. Turn it off and the bar keeps its faded opacity in flight, like any other time out of combat; applies at once (`CleanSolo.lua`, `README.md`)
+
+### Changed
+
+- `VeritasUI_CleanSolo` — **Action Bar 1 shown for vehicle and quest controls.** While the game puts vehicle, world quest or scenario abilities on Action Bar 1, it is shown in full. Class forms and stances such as cat form or stealth still fade as usual (`CleanSolo.lua`)
+
+
 ## [1.44.1] - 2026-10-31
 
 ### Changed
