@@ -173,6 +173,7 @@ local UNIVERSAL = {
     tooltipMount      = true,    -- the mount a player rides, check or red X for owned
     tooltipClassNames = true,    -- a player's name line in their class colour (v1.37.0)
     tooltipFactionColors = true, -- a player's Horde / Alliance line in Blizzard's faction colour (v1.46.0)
+    tooltipWrapParagon   = true, -- wrap the max-renown reputation tooltip's long line (v1.46.1, Blizzard bug)
     -- Phase 6 (v1.32.0): character sheet details, independent; on since v1.37.0.
     charEnchants      = true,    -- each slot's enchant beside it
     charDurability    = true,    -- each slot's durability %, below 100%
@@ -3905,6 +3906,74 @@ local function SetupTooltipLines()
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, OnUnitTooltip)
 end
 
+-- ── Wrap the max-renown reputation tooltip (v1.46.1, a Blizzard bug) ──
+-- Hovering the reputation bar of a faction past its last rank shows Blizzard's paragon tooltip
+-- (ReputationParagonWatchBar_OnEnter -> ReputationUtil.AddParagonRewardsToTooltip,
+-- Blizzard_UIPanels_Game/Mainline/ReputationFrame.lua:680-694, Blizzard_FrameXMLUtil/Mainline
+-- /ReputationUtil.lua:12-57). Its "Continue earning reputation with ..." line is added as a wrapping
+-- line (SharedTooltipTemplates.lua:166-171) but runs off the right edge, with or without VeritasUI.
+-- MEASURED in game (owner, /qol tipprobe, 2026-11-01): tooltip 372.5 wide with right padding 133
+-- (room for the reward item, GameTooltip_CalculatePadding, GameTooltip.lua:236-291); that line's
+-- font string 460 wide = its whole text, word wrap on, ONE line. So the game never wrapped it.
+-- Fix: after Blizzard builds the tooltip, any line wider than the tooltip's text area gets line breaks
+-- at word boundaries, measured with a font string of our own in the same font, then the tooltip is
+-- shown again so it lays itself out for the taller line. Only this one Blizzard function is hooked;
+-- nothing else of the shared tooltip is touched.
+;(function()
+    local hooked, busy, measure = false, false, nil
+    local function Rewrap(tip)
+        if busy or not (db and db.tooltipWrapParagon) or not (tip and tip.NumLines and tip:IsShown()) then return end
+        local avail = (tip:GetWidth() or 0) - 20                     -- 10 px text inset each side
+        if avail <= 40 then return end
+        local changed = false
+        for i = 1, tip:NumLines() do
+            local fs = _G[(tip:GetName() or "") .. "TextLeft" .. i]
+            local text = fs and fs:GetText()
+            if text and not (issecretvalue and issecretvalue(text)) and not text:find("\n", 1, true)
+                and (fs:GetWidth() or 0) > avail + 1 then
+                if not measure then measure = UIParent:CreateFontString(nil, "BACKGROUND") end
+                local font, size, flags = fs:GetFont()
+                if font then measure:SetFont(font, size, flags) end
+                measure:Hide()
+                local out, cur = {}, ""
+                for word in text:gmatch("%S+") do
+                    local cand = cur == "" and word or (cur .. " " .. word)
+                    measure:SetText(cand)
+                    if cur ~= "" and measure:GetStringWidth() > avail then
+                        out[#out + 1] = cur
+                        cur = word
+                    else
+                        cur = cand
+                    end
+                end
+                if cur ~= "" then out[#out + 1] = cur end
+                if #out > 1 then fs:SetText(table.concat(out, "\n")); changed = true end
+            end
+        end
+        if changed then
+            busy = true
+            pcall(tip.Show, tip)
+            busy = false
+        end
+    end
+    -- Installed once at login whatever the option says (no top-level local is left for a handle: the
+    -- main chunk is at Lua's 200-locals limit); the option is read on every call, so it applies at once.
+    local loader = CreateFrame("Frame")
+    loader:RegisterEvent("PLAYER_LOGIN")
+    loader:SetScript("OnEvent", function()
+        if hooked or type(_G.ReputationParagonFrame_SetupParagonTooltip) ~= "function" then return end
+        hooked = true
+        hooksecurefunc("ReputationParagonFrame_SetupParagonTooltip", function()
+            pcall(Rewrap, _G.EmbeddedItemTooltip)
+        end)
+        if type(_G.ReputationParagonWatchBar_OnEnter) == "function" then
+            hooksecurefunc("ReputationParagonWatchBar_OnEnter", function()
+                pcall(Rewrap, _G.EmbeddedItemTooltip)
+            end)
+        end
+    end)
+end)()
+
 -- ── Timestamp Every Message (v1.31.0, EllesmereUI-inspired plan phase 5) ──
 -- Blizzard timestamps player chat itself (Blizzard_ChatFrameBase/Mainline/ChatFrameOverrides.lua
 -- :659-663) but adds system, loot, money, currency, skill, achievement, XP/reputation and similar
@@ -4478,6 +4547,10 @@ local function InitializeOptions()
         "Shows a player's name in their class color when you hover them, friend or foe. The rest of "
         .. "the tooltip is unchanged. Left as it is where the game hides a player's class from addons.",
         function(value) if value then SetupTooltipLines() end end)
+
+    AddCheckbox("tooltipWrapParagon", "Wrap Long Reputation Tooltip Lines",
+        "Fixes the tooltip of a reputation past its last rank, whose long line runs off the right edge: "
+        .. "the line is wrapped to fit inside the tooltip.")
 
     AddCheckbox("tooltipFactionColors", "Faction Colors in Tooltips",
         "Shows a player's faction, Horde or Alliance, in the game's own faction red or blue when you "
