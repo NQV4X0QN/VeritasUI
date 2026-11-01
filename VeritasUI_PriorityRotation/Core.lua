@@ -152,7 +152,7 @@ rotBtn:Show()
 -- a click arrives before the first InjectSequence call.
 PR.AFTER_PRESSES = 4
 rotBtn:Execute("macros = newtable(); macros[1] = ''; links = newtable(); armed = newtable(); nextLink = 0;"
-    .. " followerTurn = true; armPresses = " .. PR.AFTER_PRESSES)
+    .. " followerTurn = true; skip = newtable(); armPresses = " .. PR.AFTER_PRESSES)
 
 -- PARITY BUG (found 2026-07-11, latent since inception): the keybind path
 -- (SetOverrideBindingClick) delivers TWO clicks per physical press — key-down
@@ -181,7 +181,12 @@ rotBtn:Execute("macros = newtable(); macros[1] = ''; links = newtable(); armed =
 --   * 7 tries each, back to back (~1.5 s): Essence Break cast at every Eye Beam its cooldown
 --     allowed, but when both followers were on cooldown the character stood still ~1.5 s.
 --   Alternating with the rotation keeps both: the tries span more than one global cooldown, and
---   every other press is a normal step, so nothing ever stands idle. The snippet cannot see time
+--   every other press is a normal step.
+--   * Alternating (third run, 9 Eye Beams): Essence Break cast at every Eye Beam its cooldown
+--     allowed, but the character still stood ~1 s twice: the normal steps in the window were
+--     Eye Beam (just cast) and Blade Dance (on cooldown, and already being tried as a follower).
+--     So during the window the normal step skips skip[] — steps that are a link's target or a
+--     linked follower — and lands on something that can cast. The snippet cannot see time
 --   (no GetTime in RestrictedEnvironment.lua), so the window is counted in presses.
 -- SecureCmdOptionParse is allowed in this environment (RestrictedEnvironment.lua:82); the
 -- 2026-10-31 probe measured [channeling:Eye Beam] true on every press during 6 channels and false
@@ -190,6 +195,7 @@ rotBtn:WrapScript(rotBtn, "OnClick", [=[
     if down then return end
     -- TEMPORARY PROBE (/pr afterlog): counts presses so the log can list what each one cast.
     self:SetAttribute('vui-press', (tonumber(self:GetAttribute('vui-press')) or 0) + 1)
+    local inWindow = false
     if links and #links > 0 then
         local channeling, open = false, false
         for i = 1, #links do
@@ -203,7 +209,9 @@ rotBtn:WrapScript(rotBtn, "OnClick", [=[
         if channeling then
             nextLink = 0
             followerTurn = true
-        elseif open then
+        elseif open or not followerTurn then
+            -- "not followerTurn": the press after the last try is still in the window.
+            inWindow = true
             if followerTurn then
                 followerTurn = false
                 local n = #links
@@ -223,6 +231,13 @@ rotBtn:WrapScript(rotBtn, "OnClick", [=[
     end
     local step = tonumber(self:GetAttribute('step'))
     if not macros or #macros == 0 then return end
+    if inWindow then
+        local guard = #macros
+        while skip[step] and guard > 1 do
+            step = step % #macros + 1
+            guard = guard - 1
+        end
+    end
     self:SetAttribute('macrotext', macros[step] or '')
     step = step % #macros + 1
     self:SetAttribute('step', step)
@@ -538,6 +553,7 @@ function PR:CompileSequence()
                     text   = it.text,
                     name   = it.name,
                     target = target.name,
+                    targetText = target.text,
                     only   = it.only,
                 }
                 it.held = it.only
@@ -585,7 +601,13 @@ function PR:CompileSequence()
     self.compiledSequence = seq
     self.compiledNames    = names
     self.compiledLinks    = links
-    self:InjectSequence(seq, links)
+    -- Steps the window skips (see the press snippet): a target's own step is on cooldown right
+    -- after its channel, and a follower's own step is already being tried by the window.
+    local skipText = {}
+    for _, l in ipairs(links) do skipText[l.text] = true; skipText[l.targetText] = true end
+    local skip = {}
+    for i, t in ipairs(seq) do if skipText[t] then skip[#skip + 1] = i end end
+    self:InjectSequence(seq, links, skip)
     self:ScheduleScan(0.5)
     -- The editor redraws the instant a change is made, but the compile it triggers is debounced
     -- (ScheduleCompile, 0.3 s), so without this the preview showed the PREVIOUS sequence until
@@ -606,10 +628,10 @@ local function SafeQuote(s)
     return "[" .. eq .. "[" .. s .. "]" .. eq .. "]"
 end
 
-function PR:InjectSequence(seq, links)
+function PR:InjectSequence(seq, links, skip)
     if InCombatLockdown() then return end
     local lines = { "macros = newtable()", "links = newtable()", "armed = newtable()", "nextLink = 0",
-                    "followerTurn = true" }
+                    "followerTurn = true", "skip = newtable()" }
     if #seq > 0 then
         for i, macro in ipairs(seq) do
             lines[#lines + 1] = "macros[" .. i .. "] = " .. SafeQuote(macro)
@@ -621,6 +643,7 @@ function PR:InjectSequence(seq, links)
         lines[#lines + 1] = "links[" .. i .. "] = newtable(" .. SafeQuote(l.cond) .. ", "
             .. SafeQuote(l.text) .. ")"
     end
+    for _, i in ipairs(skip or {}) do lines[#lines + 1] = "skip[" .. i .. "] = true" end
     rotBtn:Execute(tconcat(lines, "\n"))
     rotBtn:SetAttribute("macrotext", seq[1] or "")
     rotBtn:SetAttribute("step", 1)
