@@ -893,32 +893,45 @@ end
 -- (StatusTrackingBar.xml:5-7), so test build 2 faded the coloured bar and left the frame (owner). The
 -- texture follows its container's SHOWN bar: every alpha we give that bar is copied to it (Blizzard
 -- never sets that texture's alpha).
+-- TEMPORARY PROBE (/cs bars, test/more-fades): records every alpha written to a bar or a frame art,
+-- shown or not, with the mouse checks and the caller, errors included.
+do
+    local log = {}
+    VUI._csBarLog = log
+    VUI._csHiddenZero = 0
+    function VUI._csProbe(what, f, a, c)
+        -- The login fade of the hidden bars (12 writes of 0) is counted, not listed.
+        if a == 0 and what:find("^bar") and not (f.IsShown and f:IsShown()) then
+            VUI._csHiddenZero = VUI._csHiddenZero + 1
+            return
+        end
+        if #log >= 14 then return end
+        local ok, line = pcall(function()
+            local stack = (_G.debugstack and _G.debugstack(3, 3, 0)) or ""
+            stack = stack:gsub("\n", " / "):gsub("Interface/AddOns/", "")
+            return string.format("t=%.1f %s a=%.2f shown=%s holderOver=%s | %s", GetTime(), what, a or -1,
+                tostring(f.IsShown and f:IsShown()), tostring(c and c:IsVisible() and c:IsMouseOver()), stack)
+        end)
+        log[#log + 1] = ok and line or ("probe error: " .. tostring(line))
+    end
+end
+
 local function SetupStatusBarFade()
+    VUI._csProbe("setup", { IsShown = function() return true end }, 0, nil)
     local containers = { _G.MainStatusTrackingBarContainer, _G.SecondaryStatusTrackingBarContainer }
     local bars = {}
     for _, c in ipairs(containers) do
         for _, bar in pairs(c and c.bars or {}) do
             bars[#bars + 1] = bar
             local art = c.BarFrameTexture
+            if art and not art._vuiProbe then
+                art._vuiProbe = true
+                hooksecurefunc(art, "SetAlpha", function(self, a) VUI._csProbe("art", self, a, c) end)
+            end
             if art then
                 hooksecurefunc(bar, "SetAlpha", function(self, a)
                     if self:IsShown() and art.SetAlpha then art:SetAlpha(a) end
-                    -- TEMPORARY PROBE (/cs bars): who raises a shown bar's alpha, and what the
-                    -- mouse checks said at that moment.
-                    if self:IsShown() and a and a > 0.5 then
-                        local log = VUI._csBarLog or {}
-                        VUI._csBarLog = log
-                        if #log < 6 then
-                            local kids = {}
-                            for _, k in ipairs({ self:GetChildren() }) do
-                                if k:IsVisible() and k:IsMouseOver() then kids[#kids + 1] = tostring(k:GetName() or k:GetObjectType()) end
-                            end
-                            log[#log + 1] = string.format("t=%.1f a=%.2f containerOver=%s barOver=%s kidsOver=%s | %s",
-                                GetTime(), a, tostring(c:IsVisible() and c:IsMouseOver()), tostring(self:IsMouseOver()),
-                                #kids > 0 and table.concat(kids, ",") or "none",
-                                ((_G.debugstack and _G.debugstack(2, 4, 0)) or ""):gsub("\n", " / "):gsub("Interface/AddOns/", ""))
-                        end
-                    end
+                    if VUI._csProbe then VUI._csProbe("bar " .. tostring(self.barIndex), self, a, c) end
                 end)
             end
         end
@@ -1430,8 +1443,9 @@ SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
         end
         VUI.Print("Clean Solo", string.format("now %.1f, mouse over Main holder: %s", GetTime(),
             tostring(_G.MainStatusTrackingBarContainer and _G.MainStatusTrackingBarContainer:IsMouseOver())))
-        for _, line in ipairs(VUI._csBarLog or {}) do VUI.Print("Clean Solo", "raised: " .. line) end
-        if not VUI._csBarLog then VUI.Print("Clean Solo", "raised: nothing recorded") end
+        for _, line in ipairs(VUI._csBarLog or {}) do VUI.Print("Clean Solo", "set: " .. line) end
+        if not (VUI._csBarLog and VUI._csBarLog[1]) then VUI.Print("Clean Solo", "set: nothing recorded") end
+        VUI.Print("Clean Solo", "hidden bars set to 0: " .. tostring(VUI._csHiddenZero))
         return
     end
     -- Guard against nil (options init not yet run, or failed) — same
