@@ -97,6 +97,9 @@ local UNIVERSAL = {
     -- and the reputation / experience / honor bars sit in the same place on every character.
     fadeDamageMeter     = true,    -- shown in combat or on hover
     fadeStatusBars      = true,    -- shown on hover
+    -- v1.42.0 (owner's request): the All Objectives tracker, shown on hover. Universal, like the
+    -- other interface fades.
+    fadeObjectiveTracker = true,
     -- Sub-option, OFF by default (owner: some players want the bars only on hover, others want
     -- them shown on gains -- "an option that people can check if they want it").
     fadeStatusBarsOnGain = false,  -- also shown for 3 s after a reputation, experience or honor gain
@@ -109,6 +112,7 @@ local UNIVERSAL = {
     fadeMicroMenuOpacity   = 0,
     fadePlayerFrameOpacity = 0,
     fadeDamageMeterOpacity = 0,
+    fadeObjectiveTrackerOpacity = 0,
     fadeStatusBarsOpacity  = 0,
     fadeActionBarsOpacity  = 0,
 }
@@ -992,6 +996,25 @@ local function SetupDamageMeterFade()
     end
 end
 
+-- The All Objectives tracker (v1.42.0, owner's request). Blizzard never sets ObjectiveTrackerFrame's
+-- own alpha, only its NineSlice's and its blocks' (Blizzard_ObjectiveTrackerContainer.lua:170,
+-- Blizzard_BonusObjectiveTracker.lua), which multiply under ours. Its height follows its content
+-- (Container.lua:199-208), so hovering any tracked line reveals it. No OnEnter hook, poll only, as on
+-- Action Bar 1: the tracker holds the quest item buttons, whose click uses a quest item through a
+-- protected call (UseQuestLogSpecialItem, Blizzard_ObjectiveTrackerShared.lua:94-102), so we stay off
+-- its scripts. Not load-on-demand in 12.1.5; the fallback is for safety.
+local function SetupObjectiveTrackerFade()
+    local function Hook()
+        SetupLiveFade("fadeObjectiveTracker", { _G.ObjectiveTrackerFrame },
+            function() return not db.fadeObjectiveTracker end,
+            true, Opacity("fadeObjectiveTrackerOpacity"))
+    end
+    if _G.ObjectiveTrackerFrame then Hook()
+    elseif EventUtil and EventUtil.ContinueOnAddOnLoaded then
+        EventUtil.ContinueOnAddOnLoaded("Blizzard_ObjectiveTracker", Hook)
+    end
+end
+
 local function SetupMainActionBarFade()
     -- No OnEnter hook on Action Bar 1 (see VUI.HookHoverFade): the poll alone reveals it.
     SetupLiveFade("fadeMainActionBar", { _G.MainActionBar },
@@ -1237,6 +1260,10 @@ local function InitializeOptions()
           tip = "The damage meter fades out unless you're in combat or mousing over it. Applies at once.",
           apply = function(value) if value then SetupDamageMeterFade() end end,
           opacity = "fadeDamageMeterOpacity" },
+        { key = "fadeObjectiveTracker", name = "Fade Objective Tracker",
+          tip = "The All Objectives tracker fades out unless you're mousing over it. Applies at once.",
+          apply = function(value) if value then SetupObjectiveTrackerFade() end end,
+          opacity = "fadeObjectiveTrackerOpacity" },
         { key = "fadeStatusBars",      name = "Fade Reputation and Experience Bars",
           tip = "The reputation, experience and honor bars fade out unless you're mousing over them. "
              .. "Applies at once.",
@@ -1642,6 +1669,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if not Unavailable("fadeActionBars") then SetupActionBarFading() end
         if cdb.fadeMainActionBar and not Unavailable("fadeMainActionBar") then SetupMainActionBarFade() end
         if db.fadeDamageMeter and not Unavailable("fadeDamageMeter") then SetupDamageMeterFade() end
+        if db.fadeObjectiveTracker and not Unavailable("fadeObjectiveTracker") then SetupObjectiveTrackerFade() end
         if db.fadeStatusBars and not Unavailable("fadeStatusBars") then SetupStatusBarFade() end
 
         self:UnregisterEvent("PLAYER_LOGIN")
