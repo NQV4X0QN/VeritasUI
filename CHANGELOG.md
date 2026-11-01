@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.39.1] - 2026-10-31
+
+### Changed
+
+- `VeritasUI_AdvancedOptions` — **Sun Shafts is now an on/off checkbox.** It was an Off / Low / High list, but Low and High look the same in game, so a single checkbox replaces it. If you had picked High, the box shows ticked (`Featured.lua`, `Controls.lua`)
+
+
 ## [1.39.0] - 2026-10-31
 
 ### Added

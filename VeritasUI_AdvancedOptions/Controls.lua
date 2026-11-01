@@ -164,6 +164,7 @@ end
 --      tooltip  = "Optional tooltip body text",
 --      restart  = false,          -- requires /reload or GX restart
 --      invert   = false,          -- display inverted (checked = "0")
+--      anyNonZero = false,        -- checked for any value but "0" (a level CVar shown as on/off)
 --  }
 ----------------------------------------------------------------
 function AO:CreateCheckbox(parent, cfg)
@@ -181,7 +182,13 @@ function AO:CreateCheckbox(parent, cfg)
 
     -- Read initial value
     local function IsChecked()
-        local val = AO:GetCVarBool(cfg.cvar)
+        local val
+        if cfg.anyNonZero then
+            local raw = AO:GetCVar(cfg.cvar)
+            val = raw ~= nil and raw ~= "0"
+        else
+            val = AO:GetCVarBool(cfg.cvar)
+        end
         if cfg.invert then val = not val end
         return val and true or false
     end

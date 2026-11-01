@@ -352,17 +352,15 @@ AO.FEATURED_CATEGORIES = {
                 tooltip = "Shows the nether warp visual effect in Outland and similar zones.",
                 restart = true,
             },
+            -- On/off, not Off/Low/High: owner-tested 2026-10-31, Off turns the rays off but Low and
+            -- High look the same. A "2" saved by the old dropdown still shows as on (anyNonZero).
             {
-                type    = "dropdown",
+                type    = "checkbox",
                 cvar    = "sunShafts",
-                label   = "Sun Shaft Quality",
-                tooltip = "Quality of volumetric sun ray effects (god rays).",
+                label   = "Sun Shafts",
+                tooltip = "Shows rays of sunlight (god rays).",
                 restart = true,
-                options = {
-                    { value = "0", text = "Off" },
-                    { value = "1", text = "Low" },
-                    { value = "2", text = "High" },
-                },
+                anyNonZero = true,
             },
         },
     },
