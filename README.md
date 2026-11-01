@@ -59,7 +59,7 @@ Shows only quests for the zone you're in, updating as you travel. Campaign, impo
 Settings: **Options → AddOns → VeritasUI → Zone Quests**, or `/zq`.
 
 ### Priority Rotation — one-button play
-An accessibility tool: press one key, or hold it with your keyboard or mouse software's key repeat, to step through a list of spells, macros and trinkets that **you** choose. You decide how often each ability comes up, which ones wait for a channelled spell such as Eye Beam (cast right after it, or held for it and never cast on their own), and which only fire in combat. Each specialization keeps its own list, and starter lists are included for many specs.
+An accessibility tool: press one key, or hold it with your keyboard or mouse software's key repeat, to step through a list of spells, macros and trinkets that **you** choose. You decide how often each ability comes up, which ones wait for a channelled spell such as Eye Beam (cast right after it, or held for it and never cast on their own), and which only fire in combat. Each specialization keeps its own list. A new list starts with Blizzard's **Single-Button Assistant**, so one key plays a full rotation from the start, with channelled spells such as Eye Beam no longer cut short by the next press; add, remove or reorder abilities whenever you like.
 
 To set it up, open `/pr`, click **Create / Update Macro**, drag the `Attack` macro onto any action bar (1–8), bind a key to it, and click **Scan & Bind** at the bottom of the Settings tab. On the Rotation tab, drag a slot up or down to change the order, and hover a column's heading to see what it does.
 

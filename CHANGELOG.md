@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.38.0] - 2026-10-31
+
+### Changed
+
+- `VeritasUI_PriorityRotation` — **New rotation lists start with the Single-Button Assistant.** A spec with no list yet, or one reset with `/pr reset`, now holds just Blizzard's Single-Button Assistant instead of a generic spell list, so one key plays a full rotation from the start, with channelled spells no longer cut short by the next press. Lists you already have are not changed (`Profiles.lua`, `README.md`)
+
+
 ## [1.37.0] - 2026-10-31
 
 ### Added

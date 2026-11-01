@@ -1,7 +1,7 @@
 ## Interface: 120105
 ## Title: VeritasUI Library
 ## Notes: Shared core for the VeritasUI suite, required by every module. |cFF888888Must load first.|r
-## Version: 1.37.0
+## Version: 1.38.0
 ## Author: NQV4X0QN
 ## SavedVariables: VeritasUI_LibDB
 
