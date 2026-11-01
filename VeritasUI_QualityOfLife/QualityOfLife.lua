@@ -165,6 +165,7 @@ local UNIVERSAL = {
     -- Phase 4 (v1.30.0): extra unit tooltip lines, off by default, independent.
     tooltipTarget     = false,   -- "Target: <name>", green "You" when it is you
     tooltipMount      = false,   -- the mount a player rides, check or red X for owned
+    tooltipClassNames = false,   -- a player's name line in their class colour
     -- Phase 6 (v1.32.0): character sheet details, off by default, independent.
     charEnchants      = false,   -- each slot's enchant beside it
     charDurability    = false,   -- each slot's durability %, below 100%
@@ -3767,6 +3768,13 @@ end
 -- Two independent options adding a line to unit tooltips:
 --   tooltipTarget -- who the hovered unit is targeting; "You" in green when it is you.
 --   tooltipMount  -- the mount a player is riding, with a check if you own it, a red X if not.
+--   tooltipClassNames (v1.37.0) -- recolours a player's NAME line in their class colour (hostile
+--     players too: owner, 2026-10-31 -- the nameplate already shows hostility). Blizzard colours that
+--     line by reaction in a secure line pre-call (TooltipDataRules.UnitName -> GameTooltip_UnitColor,
+--     Blizzard_SharedXMLGame/Tooltip/TooltipDataRules.lua:7-16). We do NOT write lineData from an
+--     insecure line pre-call (Blizzard reads it back while rendering, and an addon-written value in
+--     that path is how tooltip taint starts); the post-call below only recolours the line's font
+--     string once the tooltip is built, the same insulated hook as the two lines above.
 -- Hook: TooltipDataProcessor.AddTooltipPostCall(Unit) -- Blizzard's insulated path (landmine:
 -- never HookScript a shared tooltip). The unit comes from the tooltip data's GUID the way
 -- Blizzard's own TooltipUtil.GetDisplayedUnit does (Blizzard_SharedXMLGame/Tooltip/TooltipUtil.lua
@@ -3837,10 +3845,22 @@ local function MountLine(tooltip, unit)
 end
 
 local function OnUnitTooltip(tooltip, data)
-    if not db or not (db.tooltipTarget or db.tooltipMount) then return end
+    if not db or not (db.tooltipTarget or db.tooltipMount or db.tooltipClassNames) then return end
     if tooltip ~= GameTooltip or not (data and data.guid) or not Readable(data.guid) then return end
     local unit = Read(UnitTokenFromGUID, data.guid)
     if not unit then return end
+    -- Inline, not a file-level helper: this file's main chunk is near Lua's 200-locals limit
+    -- (locals_headroom_test).
+    if db.tooltipClassNames then pcall(function()
+        local first = data.lines and data.lines[1]
+        local nameType = Enum.TooltipDataLineType and Enum.TooltipDataLineType.UnitName
+        if not (first and nameType and first.type == nameType) then return end
+        if not Read(UnitIsPlayer, unit) then return end
+        local _, class = Read(UnitClass, unit)
+        local c = class and C_ClassColor and C_ClassColor.GetClassColor and Read(C_ClassColor.GetClassColor, class)
+        local line = _G.GameTooltipTextLeft1
+        if c and line then line:SetTextColor(c.r, c.g, c.b) end
+    end) end
     if db.tooltipTarget then pcall(TargetLine, tooltip, unit) end
     if db.tooltipMount then pcall(MountLine, tooltip, unit) end
 end
@@ -4422,6 +4442,11 @@ local function InitializeOptions()
         .. "if you don't. Left out where the game hides buffs from addons, such as in instances.",
         function(value) if value then SetupTooltipLines() end end)
 
+    AddCheckbox("tooltipClassNames", "Class-Colored Names in Tooltips",
+        "Shows a player's name in their class color when you hover them, friend or foe. The rest of "
+        .. "the tooltip is unchanged. Left as it is where the game hides a player's class from addons.",
+        function(value) if value then SetupTooltipLines() end end)
+
     Header("General")
     AddCheckbox("afkScreen", "AFK Screen",
         "When you go AFK, hides the UI and slowly circles the camera, showing your name, level, item level and zone. Also helps prevent screen burn-in.",
@@ -4552,7 +4577,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.skipCinematics then SetupSkipCinematics() end
         UpdateNpcEvents()
         if db.trainAllButton then SetupTrainAll() end
-        if db.tooltipTarget or db.tooltipMount then SetupTooltipLines() end
+        if db.tooltipTarget or db.tooltipMount or db.tooltipClassNames then SetupTooltipLines() end
         if db.timestampAllMessages then SetTimestampAll(true) end
         if db.charEnchants or db.charDurability or db.charMythicRating then SetupCharacterSheet() end
 
