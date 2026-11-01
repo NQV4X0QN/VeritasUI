@@ -926,12 +926,8 @@ do
     VUI._csJumps = jumps
     local w = CreateFrame("Frame")
     w:RegisterAllEvents()
-    w:SetScript("OnEvent", function(_, ev)
-        events[#events + 1] = string.format("%.2f %s", GetTime(), ev)
-        if #events > 8 then table.remove(events, 1) end
-    end)
     local last
-    w:SetScript("OnUpdate", function()
+    local function Check(where)
         local c = _G.MainStatusTrackingBarContainer
         local bar = c and c.bars and c.bars[1]
         if not bar then return end
@@ -942,10 +938,17 @@ do
                 "t=%.2f bar %.2f->%.2f art %.2f holder %.2f fadeIn %s fadeOut %s maxFade %s shown %s editMode %s | %s",
                 GetTime(), last, a, c.BarFrameTexture and c.BarFrameTexture:GetAlpha() or -1, c:GetAlpha(),
                 play(c.FadeInAnimation), play(c.FadeOutAnimation), play(c.MaxLevelFadeOutAnimation),
-                tostring(bar:IsShown()), tostring(IsEditModeActive()), table.concat(events, ", "))
+                tostring(bar:IsShown()), tostring(IsEditModeActive()), table.concat(events, ", ")) .. " | seen at " .. where
         end
         last = a
+    end
+    -- Events still fire during the loading screen, when no OnUpdate runs: check after each one.
+    w:SetScript("OnEvent", function(_, ev)
+        events[#events + 1] = string.format("%.2f %s", GetTime(), ev)
+        if #events > 8 then table.remove(events, 1) end
+        Check("event " .. ev)
     end)
+    w:SetScript("OnUpdate", function() Check("frame") end)
 end
 
 local function SetupStatusBarFade()
@@ -1496,6 +1499,17 @@ SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
         VUI.Print("Clean Solo", "hidden bars set to 0: " .. tostring(VUI._csHiddenZero))
         for _, j in ipairs(VUI._csJumps or {}) do VUI.Print("Clean Solo", "JUMP: " .. j) end
         if not (VUI._csJumps and VUI._csJumps[1]) then VUI.Print("Clean Solo", "JUMP: none seen") end
+        local others = {}
+        local CA = _G.C_AddOns
+        if CA and CA.GetNumAddOns then
+            for i = 1, CA.GetNumAddOns() do
+                local name = CA.GetAddOnInfo(i)
+                if name and CA.IsAddOnLoaded(i) and not name:find("^VeritasUI") and not name:find("^Blizzard_") then
+                    others[#others + 1] = name
+                end
+            end
+        end
+        VUI.Print("Clean Solo", "other addons loaded: " .. (#others > 0 and table.concat(others, ", ") or "none"))
         return
     end
     -- Guard against nil (options init not yet run, or failed) — same
