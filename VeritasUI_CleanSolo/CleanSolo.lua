@@ -903,6 +903,22 @@ local function SetupStatusBarFade()
             if art then
                 hooksecurefunc(bar, "SetAlpha", function(self, a)
                     if self:IsShown() and art.SetAlpha then art:SetAlpha(a) end
+                    -- TEMPORARY PROBE (/cs bars): who raises a shown bar's alpha, and what the
+                    -- mouse checks said at that moment.
+                    if self:IsShown() and a and a > 0.5 then
+                        local log = VUI._csBarLog or {}
+                        VUI._csBarLog = log
+                        if #log < 6 then
+                            local kids = {}
+                            for _, k in ipairs({ self:GetChildren() }) do
+                                if k:IsVisible() and k:IsMouseOver() then kids[#kids + 1] = tostring(k:GetName() or k:GetObjectType()) end
+                            end
+                            log[#log + 1] = string.format("t=%.1f a=%.2f containerOver=%s barOver=%s kidsOver=%s | %s",
+                                GetTime(), a, tostring(c:IsVisible() and c:IsMouseOver()), tostring(self:IsMouseOver()),
+                                #kids > 0 and table.concat(kids, ",") or "none",
+                                ((_G.debugstack and _G.debugstack(2, 4, 0)) or ""):gsub("\n", " / "):gsub("Interface/AddOns/", ""))
+                        end
+                    end
                 end)
             end
         end
@@ -1412,6 +1428,10 @@ SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
                     #shown > 0 and table.concat(shown, "; ") or "no bar shown"))
             end
         end
+        VUI.Print("Clean Solo", string.format("now %.1f, mouse over Main holder: %s", GetTime(),
+            tostring(_G.MainStatusTrackingBarContainer and _G.MainStatusTrackingBarContainer:IsMouseOver())))
+        for _, line in ipairs(VUI._csBarLog or {}) do VUI.Print("Clean Solo", "raised: " .. line) end
+        if not VUI._csBarLog then VUI.Print("Clean Solo", "raised: nothing recorded") end
         return
     end
     -- Guard against nil (options init not yet run, or failed) — same
