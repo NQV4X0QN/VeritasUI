@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.46.0] - 2026-11-01
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Faction Colors in Tooltips.** Hover a player and their Horde or Alliance line shows in the game's own faction red or blue, the colors Blizzard defines for each faction; the rest of the tooltip is unchanged. In Quality of Life's Tooltips section (`QualityOfLife.lua`, `README.md`)
+
+
 ## [1.45.0] - 2026-10-31
 
 ### Added
