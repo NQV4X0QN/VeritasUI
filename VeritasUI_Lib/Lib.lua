@@ -254,10 +254,7 @@ local HOVER_WALK_MAX_DEPTH = 8   -- flyoutButton → flyout → actionButton →
 -- noEnterHook (v1.39.0): skip the OnEnter hook and rely on the 10 Hz poll alone. Used for Action
 --   Bar 1, whose frame is the most taint-sensitive bar in the game (landmine: never HookScript a
 --   secure Blizzard frame); fade-in then starts within 0.1 s instead of at once.
--- enforce (v1.39.0): while faded, put the alpha back to 0 if anything raised it. For the status
---   bars, whose alpha the game raised back to 1 after login with no SetAlpha call an addon can see
---   (measured 2026-10-31 with a probe on every SetAlpha of the bar and its frame art).
-function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook, enforce)
+function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook)
     if not target then return end
 
     local function IsLocked()
@@ -362,8 +359,6 @@ function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook, e
         if IsForced() or IsMouseOverAny() then
             graceSince = nil
             if not hovered then FadeIn() end
-        elseif enforce and not hovered and not fadeFrames[target] and target:GetAlpha() > 0.01 then
-            target:SetAlpha(0)
         elseif hovered then
             local now = GetTime()
             if not graceSince then

@@ -842,12 +842,12 @@ end
 -- the MainMenuBar era; the v1.39.0 test build measured Action Bar 1 fading correctly (owner).
 local liveFadeHooked = {}
 
-local function SetupLiveFade(key, targets, shouldShow, noEnterHook, enforce)
+local function SetupLiveFade(key, targets, shouldShow, noEnterHook)
     if liveFadeHooked[key] then return end
     local fadeOuts, refreshers = {}, {}
     for _, target in ipairs(targets) do
         if target then
-            local fo, rc = VUI.HookHoverFade(target, IsEditModeActive, shouldShow, noEnterHook, enforce)
+            local fo, rc = VUI.HookHoverFade(target, IsEditModeActive, shouldShow, noEnterHook)
             if fo then fadeOuts[#fadeOuts + 1] = fo end
             if rc then refreshers[#refreshers + 1] = rc end
         end
@@ -893,115 +893,58 @@ end
 -- (StatusTrackingBar.xml:5-7), so test build 2 faded the coloured bar and left the frame (owner). The
 -- texture follows its container's SHOWN bar: every alpha we give that bar is copied to it (Blizzard
 -- never sets that texture's alpha).
--- TEMPORARY PROBE (/cs bars, test/more-fades): records every alpha written to a bar or a frame art,
--- shown or not, with the mouse checks and the caller, errors included.
-do
-    local log = {}
-    VUI._csBarLog = log
-    VUI._csHiddenZero = 0
-    function VUI._csProbe(what, f, a, c)
-        -- The login fade of the hidden bars (12 writes of 0) is counted, not listed.
-        if a == 0 and what:find("^bar") and not (f.IsShown and f:IsShown()) then
-            VUI._csHiddenZero = VUI._csHiddenZero + 1
-            return
-        end
-        if #log >= 14 then return end
-        local ok, line = pcall(function()
-            local stack = (_G.debugstack and _G.debugstack(3, 3, 0)) or ""
-            stack = stack:gsub("\n", " / "):gsub("Interface/AddOns/", "")
-            return string.format("t=%.1f %s a=%.2f shown=%s holderOver=%s | %s", GetTime(), what, a or -1,
-                tostring(f.IsShown and f:IsShown()), tostring(c and c:IsVisible() and c:IsMouseOver()), stack)
-        end)
-        log[#log + 1] = ok and line or ("probe error: " .. tostring(line))
-    end
-end
-
--- TEMPORARY PROBE 2: a per-frame watch on the reputation bar. The bars are raised without any
--- SetAlpha call (probe 1), so the stack cannot name the cause; the moment can. When bar 1's alpha
--- jumps from 0 to above 0 this records the time, the last events the game fired, Blizzard's
--- container animations, and each layer's alpha -- and does NOT correct it (enforce is off in this
--- build), so the first jump is the real one.
-do
-    local events, jumps = {}, {}
-    VUI._csJumps = jumps
-    local w = CreateFrame("Frame")
-    w:RegisterAllEvents()
-    local last
-    local function Check(where)
-        local c = _G.MainStatusTrackingBarContainer
-        local bar = c and c.bars and c.bars[1]
-        if not bar then return end
-        local a = bar:GetAlpha()
-        if last and last <= 0.01 and a > 0.01 and #jumps < 3 then
-            local function play(anim) return anim and anim.IsPlaying and tostring(anim:IsPlaying()) or "-" end
-            jumps[#jumps + 1] = string.format(
-                "t=%.2f bar %.2f->%.2f art %.2f holder %.2f fadeIn %s fadeOut %s maxFade %s shown %s editMode %s | %s",
-                GetTime(), last, a, c.BarFrameTexture and c.BarFrameTexture:GetAlpha() or -1, c:GetAlpha(),
-                play(c.FadeInAnimation), play(c.FadeOutAnimation), play(c.MaxLevelFadeOutAnimation),
-                tostring(bar:IsShown()), tostring(IsEditModeActive()), table.concat(events, ", ")) .. " | seen at " .. where
-        end
-        last = a
-    end
-    -- Events still fire during the loading screen, when no OnUpdate runs: check after each one.
-    w:SetScript("OnEvent", function(_, ev)
-        events[#events + 1] = string.format("%.2f %s", GetTime(), ev)
-        if #events > 8 then table.remove(events, 1) end
-        Check("event " .. ev)
-    end)
-    w:SetScript("OnUpdate", function() Check("frame") end)
-end
-
 local function SetupStatusBarFade()
-    VUI._csProbe("setup", { IsShown = function() return true end }, 0, nil)
     local containers = { _G.MainStatusTrackingBarContainer, _G.SecondaryStatusTrackingBarContainer }
     local bars = {}
-    for _, c in ipairs(containers) do
-        for _, bar in pairs(c and c.bars or {}) do
-            bars[#bars + 1] = bar
-            local art = c.BarFrameTexture
-            if art and not art._vuiProbe then
-                art._vuiProbe = true
-                hooksecurefunc(art, "SetAlpha", function(self, a) VUI._csProbe("art", self, a, c) end)
-            end
-            if art then
-                hooksecurefunc(bar, "SetAlpha", function(self, a)
-                    if self:IsShown() and art.SetAlpha then art:SetAlpha(a) end
-                    if VUI._csProbe then VUI._csProbe("bar " .. tostring(self.barIndex), self, a, c) end
-                end)
-            end
-        end
-    end
-    -- ⚠ At PLAYER_LOGIN no bar is shown yet (Blizzard hides every bar at OnLoad and shows the
-    -- tracked one later, StatusTrackingManager.lua:170-177, :226), so the copy above skips the first
-    -- fade to 0 and the frame art stayed at 1 until the first hover (owner, test build 3). Start it at
-    -- 0 here, the same as the bars.
-    if db.fadeStatusBars then
-        for _, c in ipairs(containers) do
-            if c and c.BarFrameTexture and c.BarFrameTexture.SetAlpha then c.BarFrameTexture:SetAlpha(0) end
-        end
-    end
-    -- enforce = true: after login the game raised the shown bar and its frame art back to 1 with no
-    -- SetAlpha call that a hook sees (test build 4 probe, owner 2026-10-31). The cause is not known;
-    -- re-applying the faded state every 0.1 s fixes it whatever it is. The frame art is re-applied the
-    -- same way here, copied from its container's shown bar.
-    SetupLiveFade("fadeStatusBars", bars, function()
+    local function Revealed()
         if not db.fadeStatusBars then return true end
         for _, c in ipairs(containers) do
             if c and c:IsVisible() and c:IsMouseOver() then return true end
         end
         return false
-    end, nil, false)   -- TEMPORARY: enforce off so the probe sees the first, real jump
-    if false and C_Timer and C_Timer.NewTicker then
-        C_Timer.NewTicker(0.1, function()
-            for _, c in ipairs(containers) do
-                local art = c and c.BarFrameTexture
-                local shown = c and c.GetShownBar and c:GetShownBar()
-                if art and shown and math.abs(art:GetAlpha() - shown:GetAlpha()) > 0.01 then
-                    if VUI._csProbe then VUI._csProbe("art fixed", art, shown:GetAlpha(), c) end
-                    art:SetAlpha(shown:GetAlpha())
-                end
+    end
+    for _, c in ipairs(containers) do
+        local art = c and c.BarFrameTexture
+        for _, bar in pairs(c and c.bars or {}) do
+            bars[#bars + 1] = bar
+            if art then
+                hooksecurefunc(bar, "SetAlpha", function(self, a)
+                    if self:IsShown() and art.SetAlpha then art:SetAlpha(a) end
+                end)
             end
-        end)
+        end
+    end
+
+    -- ⚠ ROOT CAUSE (measured 2026-10-31, owner's test builds 4-7): Blizzard's holder starts at alpha 0
+    -- (StatusTrackingBar.xml:3) and fades itself in with FadeInAnimation whenever it is below 1 and a
+    -- bar is shown (StatusTrackingManager.lua:238-259). At login that animation is queued during the
+    -- loading screen; on its first frame the bar and frame art inside went from 0 to 1 with no SetAlpha
+    -- call (probe: "JUMP ... fadeIn true", first frame after LOADING_SCREEN_DISABLED). So while the bars
+    -- are faded we never let that fade-in run: stop it and put the holder at the alpha it would end on
+    -- (1), then the bars and art at 0 -- all in the same call, so nothing is drawn in between.
+    -- Blizzard's FadeIn returns early once the holder is at 1 (:249), so it is not started again until
+    -- a bar change. Stop() writes no Lua state (the group has no OnStop script), so this taints nothing;
+    -- Blizzard re-runs UpdateBarsShown on its next event, which is what its OnFinished would have led to.
+    local function Settle(c)
+        local fadeIn = c and c.FadeInAnimation
+        if type(fadeIn) ~= "table" or not db.fadeStatusBars or Revealed() then return end
+        if fadeIn:IsPlaying() then fadeIn:Stop() end
+        if c.GetShownBar and c:GetShownBar() then
+            c:SetAlpha(1)
+            for _, bar in pairs(c.bars or {}) do bar:SetAlpha(0) end
+            if c.BarFrameTexture then c.BarFrameTexture:SetAlpha(0) end
+        end
+    end
+    for _, c in ipairs(containers) do
+        if c and c.FadeIn then hooksecurefunc(c, "FadeIn", Settle) end
+    end
+
+    SetupLiveFade("fadeStatusBars", bars, Revealed)
+    if db.fadeStatusBars then
+        for _, c in ipairs(containers) do
+            if c and c.BarFrameTexture then c.BarFrameTexture:SetAlpha(0) end
+            Settle(c)
+        end
     end
 end
 
@@ -1473,29 +1416,6 @@ SLASH_VERITASUI_CLEANSOLO1 = "/cleansolo"
 SLASH_VERITASUI_CLEANSOLO2 = "/cs"
 SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
     if strtrim(msg or ""):lower() == "gear" then PrintGearDiag(); return end
-    if strtrim(msg or ""):lower() == "bartest" then
-        -- TEMPORARY EXPERIMENT: which layers does Blizzard's holder fade-in overwrite? Marks each
-        -- layer with its own value, replays Blizzard's own FadeInAnimation, and reads them 1 s later.
-        local c = _G.MainStatusTrackingBarContainer
-        local bar = c and c.GetShownBar and c:GetShownBar()
-        if not (c and bar and c.FadeInAnimation) then VUI.Print("Clean Solo", "bartest: no shown bar"); return end
-        if InCombatLockdown() then VUI.Print("Clean Solo", "bartest: not in combat"); return end
-        local art, fill, over = c.BarFrameTexture, bar.StatusBar, bar.OverlayFrame
-        bar:SetAlpha(0.2); fill:SetAlpha(0.3); over:SetAlpha(0.4); art:SetAlpha(0.5)
-        local vr, vg, vb, va = art:GetVertexColor()
-        art:SetVertexColor(vr, vg, vb, 0.6)
-        c:SetAlpha(0)
-        c.FadeInAnimation:Restart()
-        C_Timer.After(1, function()
-            local _, _, _, va2 = art:GetVertexColor()
-            VUI.Print("Clean Solo", string.format(
-                "bartest after Blizzard's fade-in: holder %.2f (was 0) | bar %.2f (was 0.20) | fill %.2f (was 0.30) | text layer %.2f (was 0.40) | frame art %.2f (was 0.50) | frame art vertex %.2f (was 0.60)",
-                c:GetAlpha(), bar:GetAlpha(), fill:GetAlpha(), over:GetAlpha(), art:GetAlpha(), va2 or -1))
-            art:SetVertexColor(vr, vg, vb, va or 1)
-            fill:SetAlpha(1); over:SetAlpha(1)
-        end)
-        return
-    end
     if strtrim(msg or ""):lower() == "bars" then
         -- Reports every alpha between the screen and the reputation / experience bars, so a bar that
         -- shows when it should be faded points at the layer that is wrong.
@@ -1515,24 +1435,6 @@ SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
                     #shown > 0 and table.concat(shown, "; ") or "no bar shown"))
             end
         end
-        VUI.Print("Clean Solo", string.format("now %.1f, mouse over Main holder: %s", GetTime(),
-            tostring(_G.MainStatusTrackingBarContainer and _G.MainStatusTrackingBarContainer:IsMouseOver())))
-        for _, line in ipairs(VUI._csBarLog or {}) do VUI.Print("Clean Solo", "set: " .. line) end
-        if not (VUI._csBarLog and VUI._csBarLog[1]) then VUI.Print("Clean Solo", "set: nothing recorded") end
-        VUI.Print("Clean Solo", "hidden bars set to 0: " .. tostring(VUI._csHiddenZero))
-        for _, j in ipairs(VUI._csJumps or {}) do VUI.Print("Clean Solo", "JUMP: " .. j) end
-        if not (VUI._csJumps and VUI._csJumps[1]) then VUI.Print("Clean Solo", "JUMP: none seen") end
-        local others = {}
-        local CA = _G.C_AddOns
-        if CA and CA.GetNumAddOns then
-            for i = 1, CA.GetNumAddOns() do
-                local name = CA.GetAddOnInfo(i)
-                if name and CA.IsAddOnLoaded(i) and not name:find("^VeritasUI") and not name:find("^Blizzard_") then
-                    others[#others + 1] = name
-                end
-            end
-        end
-        VUI.Print("Clean Solo", "other addons loaded: " .. (#others > 0 and table.concat(others, ", ") or "none"))
         return
     end
     -- Guard against nil (options init not yet run, or failed) — same
