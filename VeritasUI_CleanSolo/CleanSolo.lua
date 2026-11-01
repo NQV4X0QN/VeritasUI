@@ -842,12 +842,12 @@ end
 -- the MainMenuBar era; the v1.39.0 test build measured Action Bar 1 fading correctly (owner).
 local liveFadeHooked = {}
 
-local function SetupLiveFade(key, targets, shouldShow, noEnterHook)
+local function SetupLiveFade(key, targets, shouldShow, noEnterHook, enforce)
     if liveFadeHooked[key] then return end
     local fadeOuts, refreshers = {}, {}
     for _, target in ipairs(targets) do
         if target then
-            local fo, rc = VUI.HookHoverFade(target, IsEditModeActive, shouldShow, noEnterHook)
+            local fo, rc = VUI.HookHoverFade(target, IsEditModeActive, shouldShow, noEnterHook, enforce)
             if fo then fadeOuts[#fadeOuts + 1] = fo end
             if rc then refreshers[#refreshers + 1] = rc end
         end
@@ -945,13 +945,29 @@ local function SetupStatusBarFade()
             if c and c.BarFrameTexture and c.BarFrameTexture.SetAlpha then c.BarFrameTexture:SetAlpha(0) end
         end
     end
+    -- enforce = true: after login the game raised the shown bar and its frame art back to 1 with no
+    -- SetAlpha call that a hook sees (test build 4 probe, owner 2026-10-31). The cause is not known;
+    -- re-applying the faded state every 0.1 s fixes it whatever it is. The frame art is re-applied the
+    -- same way here, copied from its container's shown bar.
     SetupLiveFade("fadeStatusBars", bars, function()
         if not db.fadeStatusBars then return true end
         for _, c in ipairs(containers) do
             if c and c:IsVisible() and c:IsMouseOver() then return true end
         end
         return false
-    end)
+    end, nil, true)
+    if C_Timer and C_Timer.NewTicker then
+        C_Timer.NewTicker(0.1, function()
+            for _, c in ipairs(containers) do
+                local art = c and c.BarFrameTexture
+                local shown = c and c.GetShownBar and c:GetShownBar()
+                if art and shown and math.abs(art:GetAlpha() - shown:GetAlpha()) > 0.01 then
+                    if VUI._csProbe then VUI._csProbe("art fixed", art, shown:GetAlpha(), c) end
+                    art:SetAlpha(shown:GetAlpha())
+                end
+            end
+        end)
+    end
 end
 
 -- ── Options Panel ───────────────────────────────────────────
