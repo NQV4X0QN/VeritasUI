@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.44.1] - 2026-10-31
+
+### Changed
+
+- `VeritasUI_CleanSolo` — **Event objectives stay at full opacity.** With Fade Objective Tracker on, the objective of an event you are in (a Delve, Mythic+, a Void Incursion, a scenario or an area objective) stays fully visible, with its background, while the rest of the tracker keeps the opacity set by the slider; when the event ends it all goes back to that opacity. `/cs tracker` lists the tracker's sections and their opacity (`CleanSolo.lua`)
+
+
 ## [1.44.0] - 2026-10-31
 
 ### Added
