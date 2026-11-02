@@ -1401,7 +1401,9 @@ local function SetupObjectiveTrackerFade()
             elseif raidHidden then target = 0
             else target = VUI.FadedAlpha(function() return SectionOpacity(m.sec) end) end
             FadeTo(m.f, target, instant)
-            if target <= 0 and not show then collapsed[m.f] = true end
+            -- Collapsed only once its fade-out has FINISHED (owner, 2026-11-01): parking it as soon as
+            -- the target is 0 cut the fade short, so the tracker popped out instead of fading like the rest.
+            if target <= 0 and not show and (m.f:GetAlpha() or 0) <= 0.01 then collapsed[m.f] = true end
             if m.f:IsShown() and target > top then top = target end
         end
         if show then top = 1 end
