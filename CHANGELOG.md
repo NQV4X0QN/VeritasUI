@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.53.0] - 2026-11-01
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Show Diminishing Returns.** The character window's Critical Strike, Haste, Mastery, Versatility, Leech, Avoidance and Speed tooltips show how much of your rating diminishing returns take away, and how much more rating you can add before the next penalty (or the cap). The numbers come from the game's own rating calculation. On by default (`CharacterStats.lua`, new; `QualityOfLife.lua`, `README.md`)
+- `VeritasUI_QualityOfLife` — **Highlight Gear for Stats.** Hover one of those stats in the character window and the gear that has it lights up, with the slot's own highlight. On by default (`CharacterStats.lua`, `QualityOfLife.lua`)
+
 ## [1.52.0] - 2026-11-01
 
 ### Added
