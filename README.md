@@ -17,7 +17,7 @@ Hides or fades the parts of the interface you don't need most of the time.
 - Your **buffs and debuffs** by the minimap fade out unless you're in combat or mousing over them
 - The **minimap alerts** (mail and crafting order icons, and Quality of Life's Great Vault button) fade out until you mouse over them
 - The **damage meter** fades out unless you're in combat or mousing over it
-- The **objective tracker** (All Objectives) fades out until you mouse over it
+- The **objective tracker** (All Objectives) fades out until you mouse over it, each section (quests, world quests, campaign, scenario and the rest) to its own opacity. A section at 0% folds away so the ones below move up; your focused quest stays at full opacity at the top of its section, under its header. Optionally hidden in raids, or only during raid boss fights
 - The **reputation, experience and honor bars** fade out until you mouse over them; tick **Show on Gains** to have them appear for 3 seconds whenever you gain reputation, experience or honor
 - **Faded opacity**: a slider beside each Fade option sets how much still shows while faded, from 0% (hidden) to 100%; the one beside Fade Main Action Bar covers every faded action bar
 - **Fade Delay**: keep the micro menu, action bars and player frame up for 0 to 5 seconds after the mouse leaves, before they fade (the chat window keeps Blizzard's own timing)
@@ -43,6 +43,7 @@ Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped
 - **Fill In DELETE** (off until you turn it on): when you delete a valuable item, DELETE is typed in for you, so Enter or Yes confirms
 - **Skip Cinematics** (off until you turn it on): Escape skips a cinematic or movie straight away instead of asking first
 - **NPC shortcuts**: picks an NPC's only dialogue option, and, if you turn them on, **auto accept** quests and **auto turn in** completed quests — separate options, and holding Shift while you talk to the NPC pauses them. Reward choices and quests that cost gold are always left to you
+- **Untrack World Quests When Unfocused**: a world quest you clicked on the map leaves the tracker when you click it again; ones you tracked yourself stay
 - **Train All** button at trainers: learns everything available that you can afford in one click
 - **Tooltips**: who a player or NPC is targeting, green when it's you; the mount a player is riding, with a check or red X for whether you own it; players' names in their class color; and their faction, Horde or Alliance, in the game's own faction red or blue. It also fixes Blizzard's max-renown reputation tooltip, whose long line ran off the edge. Each is its own option, and each is left out where the game hides it from addons
 - **Timestamp every message**: Blizzard's chat timestamp on system, loot, money, achievement, experience and reputation lines and VeritasUI's own messages, not just player chat. Uses the format from Options → Social → Chat Timestamps

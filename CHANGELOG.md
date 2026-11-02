@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.51.0] - 2026-11-01
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Fade Objective Tracker, section by section.** Each section of the tracker (Scenario, Event Objectives, Campaign, Quests, Collections, Achievements, Traveler's Log, Endeavors, Professions, Bonus Objectives, World Quests) has its own faded-opacity slider under Fade Objective Tracker. Scenario, event and bonus objectives start at 100% as before; the others take your old tracker opacity (`CleanSolo.lua`, `README.md`)
+- `VeritasUI_CleanSolo` — **Sections at 0% fold away.** Once a 0% section has faded out, the sections below it move up, so a section you keep visible no longer sits under an empty gap. Hovering the tracker shows every section in its usual place (`CleanSolo.lua`)
+- `VeritasUI_CleanSolo` — **Your focused quest stays in view.** The quest with the arrow stays at full opacity, with its section header, while its section is faded. It comes first in its section, and its section comes before any section that is hidden while faded, so hovering never moves it from under your mouse. Unfocused, it fades out with the tracker and goes back to its place (`CleanSolo.lua`)
+- `VeritasUI_CleanSolo` — **In Raids.** Under Fade Objective Tracker: Normal, Hide in Raids, or Hide During Boss Fights. Hovering still shows the tracker (`CleanSolo.lua`)
+- `VeritasUI_QualityOfLife` — **Untrack World Quests When Unfocused.** A world quest you clicked on the map leaves the tracker when you click it again, as other quests stop being highlighted. World quests you tracked yourself stay. On by default (`WorldQuestUntrack.lua`, new; `QualityOfLife.lua`, `README.md`)
+
+### Changed
+
+- `VeritasUI_CleanSolo` — **Fade Objective Tracker's single opacity slider** is replaced by the per-section sliders (`CleanSolo.lua`)
+
+
 ## [1.50.0] - 2026-11-01
 
 ### Added
