@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.50.0] - 2026-11-01
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Hide Minimap Buttons.** A dropdown of the pieces around the minimap to hide: zone name, clock, calendar, tracking, zoom buttons, addon compartment, expansion summary button and instance difficulty, with None and All. A hidden piece can't be clicked either; untick it and it comes back as it was. A hidden clock's alarm still plays its sound. Applies at once (`CleanSolo.lua`, `README.md`)
+
+
 ## [1.49.0] - 2026-11-01
 
 ### Added
