@@ -166,7 +166,6 @@ local function BuildNativeSettingsPanel()
                 if not AO.MainWindow then return end
                 if tab then AO.MainWindow:ShowTab(tab) elseif not AO.MainWindow:IsShown() then AO:ShowWindow() end
             end,
-            window = function() return AO.MainWindow end,
         }
     end
     if layout and layout.AddInitializer and CreateSettingsButtonInitializer then

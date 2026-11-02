@@ -1023,7 +1023,7 @@ local reloadBtn
 local copyBtn
 local openBtn
 
--- opts (v1.58.0, owner's request): { open = function, window = function -> frame } for a module whose
+-- opts (v1.58.0, owner's request): { open = function } for a module whose
 -- settings live in its own window (Priority Rotation, Advanced Options). Its page then shows an Open
 -- button where Reload UI and Copy From... sit on the other pages; Copy From... copies every module, so it
 -- stays reachable from those.
@@ -1032,26 +1032,30 @@ function VUI.RegisterSettingsLabel(label, opts)
     if not VUI._reloadBtnHooked then VUI._InitReloadButton() end
 end
 
--- Open a module's window from its Settings page. Blizzard's Settings window (frameStrata HIGH,
--- Blizzard_SettingsPanel.xml:4) is NOT closed from here: its Close/OnHide commit settings, save
--- bindings and update the micro buttons (Blizzard_SettingsPanel.lua:204-286), and running that from
--- addon code would taint them (the Settings taint landmine). The window opens above it instead, at
--- DIALOG, and goes back to its own strata when it closes.
+-- Open a module's window from its Settings page. While Blizzard's Settings window is up no other panel may
+-- open (the owner measured it: the first test build's Open did nothing), so Settings is closed first the way
+-- Blizzard's own Settings buttons do it: SettingsPanel:Close(true), as the Assisted Combat "view spellbook"
+-- button does before opening the spellbook (Blizzard_SettingsDefinitions_Frame/AdvancedOptions.lua:39-43).
+-- true = skipTransitionBackToOpeningPanel: Settings closes without bringing the Game Menu back
+-- (ExitWithCommit, Blizzard_SettingsPanel.lua:259-267) -- the two Escape presses in one. If you have
+-- unapplied changes, Blizzard asks first (Close, :231-237) and Settings stays: nothing opens, and Open
+-- can be clicked again after answering. Otherwise the window opens on the next frame, once Settings is gone.
+local pendingOpen, settingsHooked
+local function OpenNow(opts) pcall(opts.open) end
 function VUI._OpenFromSettings(opts)
-    local ok = pcall(opts.open)
-    if not ok then return end
-    local win = opts.window and opts.window()
-    if type(win) ~= "table" or not win.SetFrameStrata then return end
-    if SettingsPanel and SettingsPanel:IsShown() and win:GetFrameStrata() ~= "DIALOG" then
-        win._vuiStrata = win._vuiStrata or win:GetFrameStrata()
-        win:SetFrameStrata("DIALOG")
-        if not win._vuiStrataHooked then
-            win._vuiStrataHooked = true
-            win:HookScript("OnHide", function(self)
-                if self._vuiStrata then self:SetFrameStrata(self._vuiStrata); self._vuiStrata = nil end
-            end)
-        end
+    local panel = _G.SettingsPanel
+    if not (panel and panel.IsShown and panel:IsShown() and panel.Close) then OpenNow(opts); return end
+    pendingOpen = opts
+    if not settingsHooked then
+        settingsHooked = true
+        panel:HookScript("OnHide", function()
+            local o = pendingOpen
+            pendingOpen = nil
+            if o then C_Timer.After(0, function() OpenNow(o) end) end
+        end)
     end
+    pcall(panel.Close, panel, true)
+    if panel:IsShown() then pendingOpen = nil end   -- Blizzard asked about unapplied changes
 end
 
 function VUI._InitReloadButton()

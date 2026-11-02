@@ -530,7 +530,6 @@ local function BuildNativeSettingsPanel()
         open = function()
             if PR.MainWindow and not PR.MainWindow:IsShown() then PR.MainWindow:ShowTab("editor") end
         end,
-        window = function() return PR.MainWindow end,
     })
 end
 
