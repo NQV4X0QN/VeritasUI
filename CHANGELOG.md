@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.58.6] - 2026-11-02
+
+### Changed
+
+- `VeritasUI_AuctionHouse` — **Auction House uses Blizzard's colours.** The `/ah` command list, scan messages, tooltip price lines and option tooltips now take their colours from the game's named colours. With this, every VeritasUI module uses only Blizzard's colours (`Core.lua`, `Browse.lua`, `Replicate.lua`, `Settings.lua`, `Tooltip.lua`)
+
+
 ## [1.58.5] - 2026-11-02
 
 ### Changed
