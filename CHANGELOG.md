@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.55.0] - 2026-11-01
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Remember Chat Lines.** Each chat window's last 100 lines come back, in grey and with their links still working, when you log in or reload, above anything new. Kept for each character on your computer, whispers included; the combat log is not kept. Turning it off deletes them. On by default (`Chat.lua`, `QualityOfLife.lua`, `VeritasUI_QualityOfLife.toc`, `README.md`)
+
 ## [1.54.0] - 2026-11-01
 
 ### Added
