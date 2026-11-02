@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.54.0] - 2026-11-01
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Item Tooltips in Chat.** Hover an item, spell, achievement, quest or currency link in chat to see its tooltip at the cursor, without clicking it. On by default (`Chat.lua`, new; `QualityOfLife.lua`, `README.md`)
+- `VeritasUI_QualityOfLife` — **Class-Colored Names in Messages.** The names of people in your group are shown in their class colour where they appear in a chat message, not only as the sender. Whole names only, and never inside a link. On by default (`Chat.lua`, `QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Whisper Sound.** Choose the sound for a whisper: Blizzard's own, None, Battle.net Toast, Raid Warning, Ready Check, Role Check, Map Ping, Alarm Clock or Boss Whisper. Picking one plays it. Like Blizzard's, it plays once, then not again until no whisper has come for 5 minutes (`Chat.lua`, `QualityOfLife.lua`)
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **A Chat section** on the options page holds the chat options, Timestamp Every Message included (`QualityOfLife.lua`)
+
 ## [1.53.0] - 2026-11-01
 
 ### Added
