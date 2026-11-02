@@ -129,7 +129,23 @@ local UNIVERSAL = {
     fadeMicroMenuOpacity   = 0,
     fadePlayerFrameOpacity = 0,
     fadeDamageMeterOpacity = 0,
-    fadeObjectiveTrackerOpacity = 0,
+    -- v1.51.0 (feature batch item 5): one faded opacity per tracker section (OT_SECTIONS), replacing
+    -- fadeObjectiveTrackerOpacity (whose value the non-event sections take on upgrade). The three event
+    -- sections default to 100%, which is how they behaved before. A section at 0% is also collapsed.
+    -- One key per line: scope_map_test reads the defaults table line by line.
+    otOpacity_scenario = 1,
+    otOpacity_event = 1,
+    otOpacity_bonus = 1,
+    otOpacity_campaign = 0,
+    otOpacity_quests = 0,
+    otOpacity_collections = 0,
+    otOpacity_achievements = 0,
+    otOpacity_travelerslog = 0,
+    otOpacity_endeavors = 0,
+    otOpacity_professions = 0,
+    otOpacity_worldquests = 0,
+    -- "normal" | "raid" (every section hidden in a raid) | "boss" (hidden during a raid boss fight).
+    fadeObjectiveTrackerRaid = "normal",
     fadeAurasOpacity = 0,
     fadeMinimapAlertsOpacity = 0,
     fadeStatusBarsOpacity  = 0,
@@ -1238,9 +1254,45 @@ end
 --     alpha (source, 2026-10-31); blocks set their own, which multiply under ours.
 -- Poll only, as before: no script hooks on a frame holding the quest item buttons, whose click is a
 -- protected call (UseQuestLogSpecialItem, Blizzard_ObjectiveTrackerShared.lua:94-102).
-local OT_EVENT_MODULES = { "ScenarioObjectiveTracker", "UIWidgetObjectiveTracker", "BonusObjectiveTracker" }
+-- ⚠ Since v1.51.0 the event modules are no longer "never faded": they have sliders like the rest, at
+-- 100% by default, which is the same thing until a player lowers one.
+-- v1.51.0 (feature batch item 5): each section has its own faded opacity, and a section at 0% is
+-- COLLAPSED (owner, 2026-11-01): the sections below it move up, so a section kept at 100% does not sit
+-- alone at the bottom under an invisible gap. Collapsing is done by re-anchoring the modules ourselves
+-- with Blizzard's own formula (Container.lua:73-96: first module TOP at -topModulePadding, the rest TOP
+-- to the previous module's BOTTOM at -moduleSpacing, LEFT at module.leftMargin; the background's BOTTOM
+-- to the last module's at -bottomModulePadding). Only ClearAllPoints/SetPoint, never a write to the
+-- tracker's Lua state and never module:SetCollapsed (which writes isCollapsed and re-runs the layout
+-- that places the quest item buttons): nothing of Blizzard's runs from our code, so nothing is tainted.
+-- Neither the modules nor the background are protected frames, so this works in combat too. Blizzard
+-- re-anchors on its next update; the poll puts our chain back within a tenth of a second.
+-- "In Raids" (fadeObjectiveTrackerRaid): hide every section in a raid, or only during a raid boss fight.
+local OT_SECTIONS = {
+    { id = "scenario",     frame = "ScenarioObjectiveTracker",          label = "Scenario",          full = true },
+    { id = "event",        frame = "UIWidgetObjectiveTracker",          label = "Event Objectives",  full = true },
+    { id = "campaign",     frame = "CampaignQuestObjectiveTracker",     label = "Campaign" },
+    { id = "quests",       frame = "QuestObjectiveTracker",             label = "Quests" },
+    { id = "collections",  frame = "AdventureObjectiveTracker",         label = "Collections" },
+    { id = "achievements", frame = "AchievementObjectiveTracker",       label = "Achievements" },
+    { id = "travelerslog", frame = "MonthlyActivitiesObjectiveTracker", label = "Traveler's Log" },
+    { id = "endeavors",    frame = "InitiativeTasksObjectiveTracker",   label = "Endeavors" },
+    { id = "professions",  frame = "ProfessionsRecipeTracker",          label = "Professions" },
+    { id = "bonus",        frame = "BonusObjectiveTracker",             label = "Bonus Objectives",  full = true },
+    { id = "worldquests",  frame = "WorldQuestObjectiveTracker",        label = "World Quests" },
+}
 local OT_FADE_IN, OT_FADE_OUT, OT_POLL = 0.2, 0.5, 0.1   -- the hover fade's speeds (Lib HookHoverFade)
 local otHooked = false
+
+local function SectionOpacity(sec) return db and tonumber(db["otOpacity_" .. sec.id]) or (sec.full and 1 or 0) end
+
+local otEncounter = false   -- a boss fight is on (ENCOUNTER_START .. ENCOUNTER_END)
+local function OTRaidHidden()
+    local mode = db and db.fadeObjectiveTrackerRaid or "normal"
+    if mode == "normal" then return false end
+    local ok, inInstance, kind = pcall(IsInInstance)
+    if not (ok and inInstance and kind == "raid") then return false end
+    return mode == "raid" or otEncounter
+end
 
 local function SetupObjectiveTrackerFade()
     if otHooked then return end
@@ -1252,23 +1304,24 @@ local function SetupObjectiveTrackerFade()
         return
     end
     otHooked = true
-    local opacity = Opacity("fadeObjectiveTrackerOpacity")
-    local isEvent = {}
-    for _, name in ipairs(OT_EVENT_MODULES) do
-        local f = _G[name]
-        if f then isEvent[f] = true end
+    local nine, header = otf.NineSlice, otf.Header
+    local mods = {}         -- { frame, sec } in Blizzard's order (Manager.lua:194-206)
+    for _, sec in ipairs(OT_SECTIONS) do
+        local f = _G[sec.frame]
+        if type(f) == "table" and f.SetAlpha then mods[#mods + 1] = { f = f, sec = sec } end
     end
-    local nine = otf.NineSlice
-    local sections, last = {}, {}
+    local known = { [nine or false] = true, [header or false] = true }
+    for _, m in ipairs(mods) do known[m.f] = true end
+    local extras = {}       -- any other child of the tracker: faded like the most-visible section
     local function Collect()
-        sections = {}
+        extras = {}
         for _, child in ipairs({ otf:GetChildren() }) do
-            if child ~= nine and not isEvent[child] and child.SetAlpha then sections[#sections + 1] = child end
+            if not known[child] and child.SetAlpha then extras[#extras + 1] = child end
         end
     end
     Collect()
 
-    -- Background: Blizzard's own alpha x ours, put back whenever Blizzard writes it.
+    -- Background: Blizzard's own alpha x ours, put back whenever Blizzard writes it (landmine 140).
     local nineBlizz, nineOurs, nineInHook = 1, 1, false
     local function ApplyNine()
         if not nine then return end
@@ -1287,9 +1340,50 @@ local function SetupObjectiveTrackerFade()
         nine = nil
     end
 
-    local function EventShown()
-        for f in pairs(isEvent) do if f:IsShown() then return true end end
-        return false
+    -- Re-anchor the shown modules, leaving out the collapsed ones. A collapsed module is PARKED far below
+    -- the tracker: left where Blizzard put it, the invisible section would lie over the ones that moved
+    -- up and take their clicks.
+    local PARK_Y = -4000
+    local function Relayout(collapsed)
+        local prev
+        for _, m in ipairs(mods) do
+            local f = m.f
+            if f:IsShown() and collapsed[f] then
+                local p1, rel, _, _, y = f:GetPoint(1)
+                if p1 ~= "TOP" or rel ~= otf or y ~= PARK_Y then
+                    f:ClearAllPoints()
+                    f:SetPoint("TOP", otf, "BOTTOM", 0, PARK_Y)
+                end
+            elseif f:IsShown() then
+                local p1, rel, _, _, y = f:GetPoint(1)
+                local wantRel = prev or otf
+                local wantY = prev and -(otf.moduleSpacing or 10) or -(otf.topModulePadding or 0)
+                if p1 ~= "TOP" or rel ~= wantRel or math.abs((y or 0) - wantY) > 0.5 then
+                    f:ClearAllPoints()
+                    if prev then f:SetPoint("TOP", prev, "BOTTOM", 0, wantY)
+                    else f:SetPoint("TOP", 0, wantY) end
+                    f:SetPoint("LEFT", otf, "LEFT", f.leftMargin or 0, 0)
+                end
+                prev = f
+            end
+        end
+        if nine and prev and nine.GetPoint then
+            for i = 1, (nine.GetNumPoints and nine:GetNumPoints() or 0) do
+                local p, rel, _, _, y = nine:GetPoint(i)
+                local wantY = -(otf.bottomModulePadding or 10)
+                if p == "BOTTOM" and (rel ~= prev or math.abs((y or 0) - wantY) > 0.5) then
+                    nine:SetPoint("BOTTOM", prev, "BOTTOM", 0, wantY)
+                end
+            end
+        end
+    end
+
+    local last = {}
+    local function FadeTo(f, target, instant)
+        if last[f] == target then return end
+        last[f] = target
+        if instant then f:SetAlpha(target)
+        else VUI.SmoothFade(f, target > (f:GetAlpha() or 0) and OT_FADE_IN or OT_FADE_OUT, target) end
     end
 
     local hoverUntil, sinceCollect = 0, 0
@@ -1299,26 +1393,31 @@ local function SetupObjectiveTrackerFade()
             hoverUntil = now + math.max(0.15, (VUI.GetFadeDelay and VUI.GetFadeDelay()) or 0)
         end
         local show = not db.fadeObjectiveTracker or now < hoverUntil or IsEditModeActive()
-        local faded = VUI.FadedAlpha(opacity)
-        local target = show and 1 or faded
-        for _, f in ipairs(sections) do
-            if last[f] ~= target then
-                last[f] = target
-                if instant then f:SetAlpha(target)
-                else VUI.SmoothFade(f, target > (f:GetAlpha() or 0) and OT_FADE_IN or OT_FADE_OUT, target) end
-            end
+        local raidHidden = db.fadeObjectiveTracker and OTRaidHidden() and not show
+        local collapsed, top = {}, 0
+        for _, m in ipairs(mods) do
+            local target
+            if show then target = 1
+            elseif raidHidden then target = 0
+            else target = VUI.FadedAlpha(function() return SectionOpacity(m.sec) end) end
+            FadeTo(m.f, target, instant)
+            if target <= 0 and not show then collapsed[m.f] = true end
+            if m.f:IsShown() and target > top then top = target end
         end
-        for f in pairs(isEvent) do
-            if last[f] ~= 1 then last[f] = 1; f:SetAlpha(1) end
-        end
-        local nineTarget = (show or EventShown()) and 1 or faded
-        if nine and math.abs(nineOurs - nineTarget) > 0.001 then
-            nineOurs = nineTarget
+        if show then top = 1 end
+        if header then FadeTo(header, top, instant) end
+        for _, f in ipairs(extras) do FadeTo(f, top, instant) end
+        if nine and math.abs(nineOurs - top) > 0.001 then
+            nineOurs = top
             ApplyNine()
         end
+        if not IsEditModeActive() then Relayout(raidHidden and {} or collapsed) end
     end
     Evaluate(true)
     local poll = CreateFrame("Frame")
+    poll:RegisterEvent("ENCOUNTER_START")
+    poll:RegisterEvent("ENCOUNTER_END")
+    poll:SetScript("OnEvent", function(_, event) otEncounter = (event == "ENCOUNTER_START") end)
     poll:SetScript("OnUpdate", function(self, elapsed)
         self._t = (self._t or 0) + (elapsed or 0)
         if self._t < OT_POLL then return end
@@ -1603,6 +1702,7 @@ local function InitializeOptions()
         end
     end
 
+    local BuildTrackerSectionOptions   -- defined below, called from AddCheckboxes
     local FADE_OPTIONS = {
         { key = "fadeChatTabs",        name = "Fade Chat Window",
           tip = "The chat window's background, its tabs and the chat buttons you haven't hidden "
@@ -1634,9 +1734,11 @@ local function InitializeOptions()
           apply = function(value) if value then SetupDamageMeterFade() end end,
           opacity = "fadeDamageMeterOpacity" },
         { key = "fadeObjectiveTracker", name = "Fade Objective Tracker",
-          tip = "The All Objectives tracker fades out unless you're mousing over it. Applies at once.",
-          apply = function(value) if value then SetupObjectiveTrackerFade() end end,
-          opacity = "fadeObjectiveTrackerOpacity" },
+          tip = "The All Objectives tracker fades out unless you're mousing over it; each section fades to "
+             .. "its own opacity, set below. Applies at once.",
+          apply = function(value) if value then SetupObjectiveTrackerFade() end end },
+        -- v1.51.0: In Raids + one opacity slider per section, indented under it (built below).
+        { key = "fadeObjectiveTrackerRaid", build = function() BuildTrackerSectionOptions() end },
         { key = "fadeStatusBars",      name = "Fade Reputation and Experience Bars",
           tip = "The reputation, experience and honor bars fade out unless you're mousing over them. "
              .. "Applies at once.",
@@ -1863,6 +1965,36 @@ local function InitializeOptions()
             TipWithReason(spec.tip, spec.unavailableKey))
         GreyIfUnavailable(init, spec.unavailableKey)
         return init
+    end
+
+    -- ── Fade Objective Tracker's sub-options (v1.51.0): In Raids, then a faded-opacity slider for each
+    -- section, all indented under Fade Objective Tracker and greyed while it is off (SetParentInitializer,
+    -- Blizzard_SettingControls.lua:120). Every value is read by the tracker's poll, so all apply at once.
+    function BuildTrackerSectionOptions()
+        local parentInit = inits.fadeObjectiveTracker
+        local function Under(init)
+            if parentInit and init and init.SetParentInitializer then
+                init:SetParentInitializer(parentInit, function() return db.fadeObjectiveTracker end)
+            end
+        end
+        local raidSetting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_fadeObjectiveTrackerRaid",
+            "fadeObjectiveTrackerRaid", db, "string", "In Raids", UNIVERSAL.fadeObjectiveTrackerRaid)
+        Under(Settings.CreateDropdown(category, raidSetting, function()
+            local c = Settings.CreateControlTextContainer()
+            c:Add("normal", "Normal")
+            c:Add("raid", "Hide in Raids")
+            c:Add("boss", "Hide During Boss Fights")
+            return c:GetData()
+        end, "Hide the whole tracker in a raid, or only while a raid boss fight is on. Hovering still "
+            .. "shows it, and a hidden quest item button can still be clicked. Applies at once."))
+        for _, sec in ipairs(OT_SECTIONS) do
+            local key = "otOpacity_" .. sec.id
+            local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_" .. key, key, db,
+                "number", sec.label, UNIVERSAL[key])
+            Under(Settings.CreateSlider(category, setting, OpacitySliderOptions(),
+                "How much of the " .. sec.label .. " section still shows while the tracker is faded. At 0% it "
+                .. "is hidden and the sections below move up into its place. Applies at once."))
+        end
     end
 
     Header("Fade")
@@ -2140,6 +2272,13 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             for _, g in ipairs(TOP_BANNER_GROUPS) do db.hideTopBannerTypes[g.id] = true end
         end
         db.hideTopBanners = nil
+        -- v1.51.0: the single tracker opacity becomes every non-event section's own.
+        if db.fadeObjectiveTrackerOpacity ~= nil then
+            for _, sec in ipairs(OT_SECTIONS) do
+                if not sec.full then db["otOpacity_" .. sec.id] = db.fadeObjectiveTrackerOpacity end
+            end
+            db.fadeObjectiveTrackerOpacity = nil
+        end
         -- v1.49.0: Hide Profession Gear becomes the Profession Gear row of Hide Transforms.
         if db.hideProfessionGear ~= nil then
             db.hideTransformTypes.professions = (db.hideProfessionGear == true) or nil
