@@ -12,4 +12,5 @@ QualityOfLife.lua
 Journeys.lua
 WorldQuestUntrack.lua
 Automation.lua
+CharacterStats.lua
 MapNotes.xml

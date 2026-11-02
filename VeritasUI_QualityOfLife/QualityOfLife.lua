@@ -191,6 +191,8 @@ local UNIVERSAL = {
     charEnchants      = true,    -- each slot's enchant beside it
     charDurability    = true,    -- each slot's durability %, below 100%
     charMythicRating  = true,    -- Mythic+ rating under the item level
+    charDiminishingReturns = true,   -- CharacterStats.lua (v1.53.0): DR lines in stat tooltips
+    charStatHighlight = true,    -- CharacterStats.lua (v1.53.0): hovered stat lights its gear
     charLabelClassColor = true,  -- sub-option: "Enchant:" / "Gem:" in class colour (owner, 2026-10-30)
     -- Phase 5 (v1.31.0): Blizzard's timestamp on system/loot/money/... lines too. On since v1.37.0.
     timestampAllMessages = true,
@@ -4445,6 +4447,16 @@ local function InitializeOptions()
         "Shows your Mythic+ rating just below your item level, in its rating colour. Hidden while "
         .. "you have no rating.",
         CharSheetChanged)
+
+    -- CharacterStats.lua reads both at hover time, so they apply at once with no callback.
+    AddCheckbox("charDiminishingReturns", "Show Diminishing Returns",
+        "In the character window's Critical Strike, Haste, Mastery, Versatility, Leech, Avoidance and "
+        .. "Speed tooltips: how much of your rating diminishing returns take away, and how much more "
+        .. "rating you can add before the next penalty.")
+
+    AddCheckbox("charStatHighlight", "Highlight Gear for Stats",
+        "Hover Critical Strike, Haste, Mastery, Versatility, Leech, Avoidance or Speed in the character "
+        .. "window to highlight the gear that has it.")
 
     Header("Merchants and Trainers")
     -- Mid-session enable: MERCHANT_SHOW/CLOSED are registered at PLAYER_LOGIN
