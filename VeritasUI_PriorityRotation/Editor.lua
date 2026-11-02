@@ -604,22 +604,23 @@ function PR:BuildEditor(parent, contentWidth)
             local target = FindEntryByKey(e.follows)
             local me = EntryDisplayName(e)
             if target and target.channel then
-                GameTooltip:SetText(e.followOnly and "Only After" or "Also After", 1, 0.82, 0)
+                -- Blizzard's tooltip colours (owner, 2026-11-01): title white, description gold.
+                GameTooltip:SetText(e.followOnly and "Only After" or "Also After", 1, 1, 1)
                 GameTooltip:AddLine(format(e.followOnly
-                    and "|cFFFFFF00%s|r is held until |cFF00CCFF%s|r finishes channelling, then cast"
+                    and "|cFFFFFFFF%s|r is held until |cFF00CCFF%s|r finishes channelling, then cast"
                         .. " on the next press. It is never cast on its own."
-                    or  "|cFFFFFF00%s|r is cast on the next press after |cFF00CCFF%s|r finishes"
+                    or  "|cFFFFFFFF%s|r is cast on the next press after |cFF00CCFF%s|r finishes"
                         .. " channelling, and also at its normal frequency.",
-                    me, EntryDisplayName(target)), 1, 1, 1, true)
+                    me, EntryDisplayName(target)), 1, 0.82, 0, true)
             elseif target then
-                GameTooltip:SetText("After", 1, 0.82, 0)
+                GameTooltip:SetText("After", 1, 1, 1)
                 GameTooltip:AddLine(format("Not active: |cFF00CCFF%s|r is not a channelled spell,"
                     .. " and only a channel can be waited for. If it is one, cast it once and the"
                     .. " link turns on.", EntryDisplayName(target)), 1, 0.13, 0.13, true)
             else
-                GameTooltip:SetText("After", 1, 0.82, 0)
+                GameTooltip:SetText("After", 1, 1, 1)
                 GameTooltip:AddLine("Not linked. Pick a channelled spell (such as Eye Beam) and this"
-                    .. " ability is cast right after it finishes.", 1, 1, 1, true)
+                    .. " ability is cast right after it finishes.", 1, 0.82, 0, true)
             end
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine(e.follows and "Click to change · Right-click: Also / Only After"
@@ -645,12 +646,12 @@ function PR:BuildEditor(parent, contentWidth)
         end)
         combatChk:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine("Combat only", 1, 0.82, 0)
+            GameTooltip:AddLine("Combat only", 1, 1, 1)
             GameTooltip:AddLine(
-                "Checked: compiled with |cFFFFFF00[combat]|r — this ability only"
+                "Checked: compiled with |cFFFFFFFF[combat]|r — this ability only"
                 .. " casts while in combat. Leave your opener unchecked so a key"
                 .. " press out of combat can start the fight.",
-                0.8, 0.8, 0.8, true)
+                1, 0.82, 0, true)
             GameTooltip:Show()
         end)
         combatChk:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -704,8 +705,9 @@ function PR:BuildEditor(parent, contentWidth)
         hit:EnableMouse(true)
         hit:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(text == "#" and "Order" or text, 1, 0.82, 0)
-            GameTooltip:AddLine(tip, 1, 1, 1, true)
+            -- Blizzard's tooltip colours (owner, 2026-11-01): the header's name white, its text gold.
+            GameTooltip:SetText(text == "#" and "Order" or text, 1, 1, 1)
+            GameTooltip:AddLine(tip, 1, 0.82, 0, true)
             GameTooltip:Show()
         end)
         hit:SetScript("OnLeave", function() GameTooltip:Hide() end)

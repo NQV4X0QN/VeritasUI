@@ -42,11 +42,14 @@ AO.CONTROL_HEIGHTS = {
 ----------------------------------------------------------------
 --  Tooltip helper
 ----------------------------------------------------------------
+-- Blizzard's settings tooltip: the name in white, the description in gold (Settings.InitTooltip,
+-- Blizzard_Settings.lua: GameTooltip_AddHighlightLine + GameTooltip_AddNormalLine). Owner, 2026-11-01:
+-- the description was grey.
 local function ShowTooltip(owner, title, body)
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
     GameTooltip:SetText(title, 1, 1, 1)
     if body then
-        GameTooltip:AddLine(body, 0.75, 0.75, 0.75, true)
+        GameTooltip:AddLine(body, 1, 0.82, 0, true)
     end
     GameTooltip:Show()
 end

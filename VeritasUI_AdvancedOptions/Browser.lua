@@ -890,7 +890,7 @@ function AO:BuildBrowserContent(parent, buttonBar)
                 if e and e.help and e.help ~= "" then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     GameTooltip:SetText(e.name, 1, 1, 1)
-                    GameTooltip:AddLine(e.help, 0.75, 0.75, 0.75, true)
+                    GameTooltip:AddLine(e.help, 1, 0.82, 0, true)   -- Blizzard's description gold
                     if e.locked then
                         GameTooltip:AddLine("Locked by graphics engine", 1, 0.6, 0)
                     end
