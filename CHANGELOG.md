@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.58.5] - 2026-11-02
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **Quality of Life uses Blizzard's colours.** Chat messages, `/way` and `/note` help, the junk-sale line, character-sheet tooltips and the unavailable-option reason now take their colours from the game's named colours. On the AFK screen the line under your name is now white (`QualityOfLife.lua`)
+
+
 ## [1.58.4] - 2026-11-02
 
 ### Changed
