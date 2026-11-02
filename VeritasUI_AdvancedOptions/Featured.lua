@@ -313,6 +313,7 @@ AO.FEATURED_CATEGORIES = {
                 cvar    = "hideHelptips",
                 register = "0",
                 invert  = true,
+                restart = true,   -- owner-tested 2026-11-01: applies only after a /reload
                 label   = "Show Help Tips",
                 tooltip = "Show the yellow help boxes that point at new buttons and features.",
             },
