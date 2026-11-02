@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.58.1] - 2026-11-02
+
+### Changed
+
+- `VeritasUI_Lib` — **VeritasUI's own chat messages use Blizzard's colours.** The suite-wide messages (turned on / turned off, the `/vui` command list, Copy From…, the blocked-action notice) now take their green, red, yellow, orange and gray from the game's named colours, so they match Blizzard's own text (`Lib.lua`)
+
+
 ## [1.58.0] - 2026-11-02
 
 ### Added
