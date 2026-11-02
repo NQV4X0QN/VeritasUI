@@ -95,7 +95,7 @@ local function BuildMainWindow()
     local subtitle = win:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     subtitle:SetPoint("TOP", win, "TOP", 0, -32)
     subtitle:SetJustifyH("CENTER")
-    subtitle:SetTextColor(1, 1, 1)
+    subtitle:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
     subtitle:SetText("Featured Settings")
 
     -- Featured tab content container
@@ -191,11 +191,11 @@ initFrame:SetScript("OnEvent", function()
     local ok1, err1 = pcall(BuildMainWindow)
     if not ok1 then
         VUI.Print("Advanced Options",
-            "|cFFFF4444Window error:|r " .. tostring(err1))
+            VUI.COL.RED .. "Window error:|r " .. tostring(err1))
     end
     local ok2, err2 = pcall(BuildNativeSettingsPanel)
     if not ok2 then
-        VUI.Print("Advanced Options", "|cFFFF4444Settings page error:|r " .. tostring(err2))
+        VUI.Print("Advanced Options", VUI.COL.RED .. "Settings page error:|r " .. tostring(err2))
     end
 
     initFrame:UnregisterAllEvents()

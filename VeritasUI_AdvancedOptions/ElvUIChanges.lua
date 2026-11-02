@@ -91,7 +91,7 @@ function AO:ElvUI_OnLogin(cdb)
         local n = #AO:ElvUIChangedCVars()
         if n > 0 then
             VUI.Print("Advanced Options", format("ElvUI is off. %d setting%s it changed can go back "
-                .. "to Blizzard's defaults: |cFFFFFF00/ao elvui|r", n, n == 1 and "" or "s"))
+                .. "to Blizzard's defaults: " .. VUI.COL.YELLOW .. "/ao elvui|r", n, n == 1 and "" or "s"))
         end
     end
     AO.elvuiRelevant = cdb.elvuiSeen and true or false

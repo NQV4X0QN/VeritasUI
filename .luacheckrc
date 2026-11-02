@@ -147,6 +147,7 @@ read_globals = {
     "GetSpellCritChance", "GetRangedCritChance", "GetCritChance", "BreakUpLargeNumbers", "GetCombatRating",
     "NORMAL_FONT_COLOR", "HIGHLIGHT_FONT_COLOR", "YELLOW_FONT_COLOR", "RED_FONT_COLOR", "GREEN_FONT_COLOR",
     "GRAY_FONT_COLOR", "DISABLED_FONT_COLOR", "ORANGE_FONT_COLOR", "LIGHTBLUE_FONT_COLOR", "BRIGHTBLUE_FONT_COLOR",
+    "LIGHTGRAY_FONT_COLOR",
     "GetRealmName",
     "MoveViewRightStart", "MoveViewRightStop", "MinimapCluster",
     "NumberFontNormal", "NumberFontNormalRight",

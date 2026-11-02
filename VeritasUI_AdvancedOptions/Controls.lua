@@ -47,9 +47,9 @@ AO.CONTROL_HEIGHTS = {
 -- the description was grey.
 local function ShowTooltip(owner, title, body)
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-    GameTooltip:SetText(title, 1, 1, 1)
+    GameTooltip:SetText(title, HIGHLIGHT_FONT_COLOR:GetRGB())
     if body then
-        GameTooltip:AddLine(body, 1, 0.82, 0, true)
+        GameTooltip:AddLine(body, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
     end
     GameTooltip:Show()
 end
@@ -85,7 +85,7 @@ local function CreateResetButton(parent, cvarName, onReset)
         self._icon:SetVertexColor(1, 0.82, 0)
         ShowTooltip(self, "Reset to Default", isList
             and "Restore every choice in this list to its default."
-            or "Restore |cFFFFFF00" .. cvarName .. "|r to its default value.")
+            or "Restore " .. VUI.COL.YELLOW .. cvarName .. "|r to its default value.")
     end)
     btn:SetScript("OnLeave", function(self)
         self._icon:SetVertexColor(0.55, 0.55, 0.55)
@@ -116,7 +116,7 @@ end
 local function CreateRestartIndicator(parent)
     local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetText("!")
-    fs:SetTextColor(1, 0.5, 0)
+    fs:SetTextColor(ORANGE_FONT_COLOR:GetRGB())
     return fs
 end
 
@@ -164,7 +164,7 @@ local function FinishRow(row, cfg, Refresh, resetY, resetNames)
         row:EnableMouse(true)
         row:SetScript("OnEnter", function(self)
             ShowTooltip(self, cfg.label, cfg.tooltip
-                .. (cfg.restart and "\n\n|cFFFF8800Requires /reload to take effect.|r" or ""))
+                .. (cfg.restart and "\n\n" .. VUI.COL.ORANGE .. "Requires /reload to take effect.|r" or ""))
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end

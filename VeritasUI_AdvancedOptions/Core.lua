@@ -4,7 +4,7 @@
 local ADDON_NAME, AO = ...
 local VUI = _G.VeritasUI
 if not VUI then
-    print("|cFFFF4444[VeritasUI] Lib failed to load — " .. ADDON_NAME .. " disabled.|r")
+    print(RED_FONT_COLOR:WrapTextInColorCode("[VeritasUI] Lib failed to load — " .. ADDON_NAME .. " disabled."))
     return
 end
 
@@ -177,20 +177,20 @@ function AO:SetCVar(name, value)
                 if cdb then cdb.cvarCache[name] = value end
             else
                 VUI.Print("Advanced Options",
-                    format("|cFFFF4444Failed to set %s:|r %s", name, tostring(err)))
+                    format(VUI.COL.RED .. "Failed to set %s:|r %s", name, tostring(err)))
             end
         end)
         -- Optimistically cache even for deferred writes so the UI
         -- reflects the pending value immediately.
         if cdb then cdb.cvarCache[name] = value end
         VUI.Print("Advanced Options",
-            format("|cFFFFFF00%s|r will be set after combat.", name))
+            format(VUI.COL.YELLOW .. "%s|r will be set after combat.", name))
         return false
     end
     local ok, err = pcall(C_CVar.SetCVar, name, value)
     if not ok then
         VUI.Print("Advanced Options",
-            format("|cFFFF4444Failed to set %s:|r %s", name, tostring(err)))
+            format(VUI.COL.RED .. "Failed to set %s:|r %s", name, tostring(err)))
         return false
     end
     if db and db.addonCVars[name] ~= nil then db.addonCVars[name] = tostring(value) end
@@ -198,7 +198,7 @@ function AO:SetCVar(name, value)
     -- Show Damage Numbers (pre-_v2 names) and Show Help Tips changed nothing for months, silently
     -- (landmine 143). Say so.
     if err == false then
-        VUI.Print("Advanced Options", format("|cFFFF4444%s|r is not a setting this game client has.", name))
+        VUI.Print("Advanced Options", format(VUI.COL.RED .. "%s|r is not a setting this game client has.", name))
         return false
     end
     if cdb then cdb.cvarCache[name] = value end
@@ -328,23 +328,24 @@ SlashCmdList["VERITASUI_AO"] = function(msg)
     -- deliberately graceful rather than a dead command.
     if cmd == "help" then
         VUI.Print("Advanced Options", "Commands:")
-        VUI.Print("Advanced Options", "  |cFFFFFF00/ao|r           — toggle window")
-        VUI.Print("Advanced Options", "  |cFFFFFF00/ao help|r      — show this help")
-        VUI.Print("Advanced Options", "  |cFFFFFF00/ao elvui|r     — settings ElvUI changed")
-        VUI.Print("Advanced Options", "  |cFFFFFF00/ao changed|r   — every setting not at Blizzard's default")
+        VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao|r           — toggle window")
+        VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao help|r      — show this help")
+        VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao elvui|r     — settings ElvUI changed")
+        VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao changed|r   — every setting not at "
+            .. "Blizzard's default")
 
     elseif cmd == "elvui" then
         if AO.ShowElvUIChanges then
             AO:ShowElvUIChanges()
         else
-            VUI.Print("Advanced Options", "|cFFFF4444Window failed to load. Try /reload|r")
+            VUI.Print("Advanced Options", VUI.COL.RED .. "Window failed to load. Try /reload|r")
         end
 
     elseif cmd == "changed" then
         if AO.ShowChangedCVars then
             AO:ShowChangedCVars()
         else
-            VUI.Print("Advanced Options", "|cFFFF4444Window failed to load. Try /reload|r")
+            VUI.Print("Advanced Options", VUI.COL.RED .. "Window failed to load. Try /reload|r")
         end
 
     else
@@ -357,7 +358,7 @@ SlashCmdList["VERITASUI_AO"] = function(msg)
             end
         else
             VUI.Print("Advanced Options",
-                "|cFFFF4444Window failed to load. Try /reload|r")
+                VUI.COL.RED .. "Window failed to load. Try /reload|r")
         end
     end
 end

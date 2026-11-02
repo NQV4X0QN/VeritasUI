@@ -354,9 +354,9 @@ end
 -- displays a pending value the live CVar has not caught up to yet.
 local function PaintValue(fs, entry, shownValue)
     if (shownValue or entry.value) ~= entry.default then
-        fs:SetTextColor(0.4, 0.8, 1)
+        fs:SetTextColor(BRIGHTBLUE_FONT_COLOR:GetRGB())
     else
-        fs:SetTextColor(0.75, 0.75, 0.75)
+        fs:SetTextColor(LIGHTGRAY_FONT_COLOR:GetRGB())
     end
 end
 
@@ -466,7 +466,7 @@ function AO:ReportAfterResetEverything()
         VUI.Print("Advanced Options", "Every setting is back at Blizzard's default.")
     else
         VUI.Print("Advanced Options", format("Reset everything. %d setting%s listed here still differ%s "
-            .. "from Blizzard's default: |cFFFFFF00/ao changed|r", left, left == 1 and "" or "s",
+            .. "from Blizzard's default: " .. VUI.COL.YELLOW .. "/ao changed|r", left, left == 1 and "" or "s",
             left == 1 and "s" or ""))
     end
     if AO.RefreshBrowser then AO:RefreshBrowser() end
@@ -497,12 +497,12 @@ end
 
 function AO:ResetEverything()
     if InCombatLockdown() then
-        VUI.Print("Advanced Options", "|cFFFF4444Can't reset everything during combat.|r Try again afterwards.")
+        VUI.Print("Advanced Options", VUI.COL.RED .. "Can't reset everything during combat.|r Try again afterwards.")
         return false
     end
     local open = (ChatFrameUtil and ChatFrameUtil.OpenChat) or _G.ChatFrame_OpenChat
     if type(open) ~= "function" or not pcall(open, RESET_COMMAND) then
-        VUI.Print("Advanced Options", "Type |cFFFFFF00" .. RESET_COMMAND .. "|r in chat to reset everything.")
+        VUI.Print("Advanced Options", "Type " .. VUI.COL.YELLOW .. RESET_COMMAND .. "|r in chat to reset everything.")
         return false
     end
     WatchForReset()
@@ -614,21 +614,21 @@ function AO:BuildBrowserContent(parent, buttonBar)
     hdrName:SetWidth(COL_NAME_W)
     hdrName:SetJustifyH("LEFT")
     hdrName:SetText("CVar")
-    hdrName:SetTextColor(1, 0.82, 0)
+    hdrName:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
 
     local hdrValue = headerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hdrValue:SetPoint("LEFT", hdrName, "RIGHT", 4, 0)
     hdrValue:SetWidth(COL_VAL_W)
     hdrValue:SetJustifyH("LEFT")
     hdrValue:SetText("Value")
-    hdrValue:SetTextColor(1, 0.82, 0)
+    hdrValue:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
 
     local hdrDefault = headerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hdrDefault:SetPoint("LEFT", hdrValue, "RIGHT", 4, 0)
     hdrDefault:SetWidth(COL_DEF_W)
     hdrDefault:SetJustifyH("LEFT")
     hdrDefault:SetText("Default")
-    hdrDefault:SetTextColor(1, 0.82, 0)
+    hdrDefault:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
 
     local divider = parent:CreateTexture(nil, "ARTWORK")
     divider:SetHeight(1)
@@ -739,7 +739,7 @@ function AO:BuildBrowserContent(parent, buttonBar)
         if changedOnly then
             local running = RunningRewriter()
             if running then
-                lead = format("|cFFFF4444%s is running|r and may set some of these again when it loads. "
+                lead = format(VUI.COL.RED .. "%s is running|r and may set some of these again when it loads. "
                     .. "Turn it off in the AddOns list before resetting.", running)
             elseif everything then
                 lead = (shown == 0 and "Every setting listed here is at Blizzard's default. "
@@ -752,7 +752,7 @@ function AO:BuildBrowserContent(parent, buttonBar)
                     .. "Reset All to Default resets only the rows listed."
             end
         elseif AO.ElvUILoaded() then
-            lead = "|cFFFF4444ElvUI is running|r and sets its nameplate settings again at every login. "
+            lead = VUI.COL.RED .. "ElvUI is running|r and sets its nameplate settings again at every login. "
                 .. "Turn it off in the AddOns list before resetting."
         elseif shown == 0 then
             lead = "Everything ElvUI changed is back at Blizzard's defaults."
@@ -890,7 +890,7 @@ function AO:BuildBrowserContent(parent, buttonBar)
             defFs:SetPoint("LEFT", valFs, "RIGHT", 4, 0)
             defFs:SetWidth(COL_DEF_W)
             defFs:SetJustifyH("LEFT")
-            defFs:SetTextColor(0.5, 0.5, 0.5)
+            defFs:SetTextColor(GRAY_FONT_COLOR:GetRGB())
             row._defFs = defFs
 
             -- ── Row click handlers — wired ONCE per pool frame ──
@@ -939,19 +939,21 @@ function AO:BuildBrowserContent(parent, buttonBar)
                 local e = self._entry
                 if e and e.help and e.help ~= "" then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText(e.name, 1, 1, 1)
+                    GameTooltip:SetText(e.name, HIGHLIGHT_FONT_COLOR:GetRGB())
                     local intro, items = SplitHelp(e.help)
+                    local gold = NORMAL_FONT_COLOR   -- Blizzard's description gold
                     if items then
-                        if intro then GameTooltip:AddLine(intro, 1, 0.82, 0, true) end
+                        if intro then GameTooltip:AddLine(intro, gold.r, gold.g, gold.b, true) end
                         for _, it in ipairs(items) do
                             GameTooltip:AddLine(" ")
-                            GameTooltip:AddLine("|cFFFFFFFF" .. it[1] .. ":|r " .. it[2], 1, 0.82, 0, true)
+                            GameTooltip:AddLine(VUI.COL.HIGHLIGHT .. it[1] .. ":|r " .. it[2],
+                                gold.r, gold.g, gold.b, true)
                         end
                     else
-                        GameTooltip:AddLine(e.help, 1, 0.82, 0, true)   -- Blizzard's description gold
+                        GameTooltip:AddLine(e.help, gold.r, gold.g, gold.b, true)
                     end
                     if e.locked then
-                        GameTooltip:AddLine("Locked by graphics engine", 1, 0.6, 0)
+                        GameTooltip:AddLine("Locked by graphics engine", RED_FONT_COLOR:GetRGB())
                     end
                     GameTooltip:Show()
                 end
