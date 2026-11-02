@@ -249,7 +249,12 @@ local function EnumerateCVars()
     -- which enumeration strategy fired. All load before Browser.lua, so the lists are populated.
     local extra = {}
     for _, cat in ipairs(AO.FEATURED_CATEGORIES) do
-        for _, ctrl in ipairs(cat.controls) do extra[#extra + 1] = ctrl.cvar end
+        for _, ctrl in ipairs(cat.controls) do
+            extra[#extra + 1] = ctrl.cvar
+            for _, opt in ipairs(ctrl.type == "multiselect" and ctrl.options or {}) do
+                extra[#extra + 1] = opt.cvar
+            end
+        end
     end
     for _, name in ipairs(AO.ELVUI_CVARS or {}) do extra[#extra + 1] = name end
     for _, name in ipairs(AO.ELLESMEREUI_CVARS or {}) do extra[#extra + 1] = name end

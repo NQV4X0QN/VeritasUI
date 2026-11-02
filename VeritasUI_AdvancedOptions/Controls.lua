@@ -33,9 +33,10 @@ local RESET_SIZE     = 14
 -- Exported for Featured.lua's extent calculator.
 -- GAP between controls is a layout concern (Featured.lua) and is not included here.
 AO.CONTROL_HEIGHTS = {
-    checkbox = ROW_HEIGHT,        -- 26
-    slider   = ROW_HEIGHT + 8,    -- 34
-    dropdown = ROW_HEIGHT + 4,    -- 30
+    checkbox    = ROW_HEIGHT,        -- 26
+    slider      = ROW_HEIGHT + 8,    -- 34
+    dropdown    = ROW_HEIGHT + 4,    -- 30
+    multiselect = ROW_HEIGHT + 4,    -- 30, same dropdown
 }
 
 ----------------------------------------------------------------
@@ -58,6 +59,7 @@ end
 --  The onReset callback lets the owning control refresh its
 --  visual state after the reset.
 ----------------------------------------------------------------
+-- cvarName may be a list (a multi-select row): every CVar in it is reset.
 local function CreateResetButton(parent, cvarName, onReset)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(RESET_SIZE + 4, RESET_SIZE + 4)
@@ -69,17 +71,23 @@ local function CreateResetButton(parent, cvarName, onReset)
     icon:SetVertexColor(0.55, 0.55, 0.55)
     btn._icon = icon
 
+    local isList = type(cvarName) == "table"
     btn:SetScript("OnEnter", function(self)
         self._icon:SetVertexColor(1, 0.82, 0)
-        ShowTooltip(self, "Reset to Default",
-            "Restore |cFFFFFF00" .. cvarName .. "|r to its default value.")
+        ShowTooltip(self, "Reset to Default", isList
+            and "Restore every choice in this list to its default."
+            or "Restore |cFFFFFF00" .. cvarName .. "|r to its default value.")
     end)
     btn:SetScript("OnLeave", function(self)
         self._icon:SetVertexColor(0.55, 0.55, 0.55)
         GameTooltip:Hide()
     end)
     btn:SetScript("OnClick", function()
-        AO:ResetCVar(cvarName)
+        if isList then
+            for _, name in ipairs(cvarName) do AO:ResetCVar(name) end
+        else
+            AO:ResetCVar(cvarName)
+        end
         if onReset then onReset() end
     end)
     return btn
@@ -132,9 +140,10 @@ end
 -- resetY: raises the reset button off the row's centre. A slider row is taller than its slider
 -- (room under the bar), so a centred button sat below the slider (owner, 2026-10-30); sliders
 -- pass SLIDER_RESET_RAISE.
+-- resetNames: the multi-select's list of CVars, reset together; other rows reset cfg.cvar.
 local SLIDER_RESET_RAISE = 9   -- owner, 2026-10-30: tuned in game (4, 8, 10, then 9)
-local function FinishRow(row, cfg, Refresh, resetY)
-    local resetBtn = CreateResetButton(row, cfg.cvar, Refresh)
+local function FinishRow(row, cfg, Refresh, resetY, resetNames)
+    local resetBtn = CreateResetButton(row, resetNames or cfg.cvar, Refresh)
     resetBtn:SetPoint("RIGHT", row, "RIGHT", 8, resetY or 0)
 
     if cfg.restart then
@@ -407,4 +416,94 @@ function AO:CreateDropdown(parent, cfg)
     Refresh()
 
     return FinishRow(row, cfg, Refresh)
+end
+
+----------------------------------------------------------------
+--  4. MULTISELECT — several on/off CVars in one dropdown
+--
+--  cfg = {
+--      label    = "Display Label",
+--      tooltip  = "Optional tooltip body text",
+--      requires = nil,            -- optional master CVar; rows grey out while it is off
+--      options  = { { cvar = "cvarName", text = "Row label" }, ... },
+--  }
+--
+--  Blizzard's dropdown with checkbox rows (MenuTemplates.CreateCheckbox, MenuTemplates.lua:330-342:
+--  a tick keeps the menu open, MenuResponse.Refresh). Each row reads and writes its own CVar; there
+--  is no saved state of ours. A CVar this client does not have is left out of the list.
+----------------------------------------------------------------
+function AO:CreateMultiSelect(parent, cfg)
+    local row = CreateRow(parent, ROW_HEIGHT + 4)
+
+    local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("LEFT", row, "LEFT", 0, 0)
+    label:SetWidth(LABEL_WIDTH)
+    label:SetJustifyH("LEFT")
+    label:SetText(cfg.label)
+
+    local options, names = {}, {}
+    for _, opt in ipairs(cfg.options) do
+        if AO:GetCVarInfo(opt.cvar) ~= nil then
+            options[#options + 1] = opt
+            names[#names + 1] = opt.cvar
+        end
+    end
+
+    local dropdown
+    local okDD = pcall(function()
+        dropdown = CreateFrame("DropdownButton", nil, row, "WowStyle1DropdownTemplate")
+    end)
+    if not okDD or not dropdown then
+        row.Refresh = function() end
+        return row
+    end
+    dropdown:SetPoint("LEFT", label, "RIGHT", 4, 0)
+    dropdown:SetWidth(150)
+
+    -- A tick in combat is written when combat ends (AO:SetCVar); until then the live CVar still
+    -- holds the old value, so the row shows the pending one instead.
+    local pending = {}
+    local function IsOn(opt)
+        if pending[opt.cvar] ~= nil then return pending[opt.cvar] == "1" end
+        return AO:GetCVar(opt.cvar) == "1"
+    end
+
+    local function CurrentText()
+        local on = {}
+        for _, opt in ipairs(options) do
+            if IsOn(opt) then on[#on + 1] = opt.text end
+        end
+        if #on == 0 then return _G.NONE or "None" end
+        if #on == #options then return _G.ALL or "All" end
+        return table.concat(on, ", ")
+    end
+
+    local function Refresh()
+        if not InCombatLockdown() then wipe(pending) end
+        if dropdown.OverrideText then dropdown:OverrideText(CurrentText()) end
+    end
+
+    local function MasterOn()
+        return not cfg.requires or AO:GetCVar(cfg.requires) == "1"
+    end
+
+    dropdown:SetupMenu(function(_, root)
+        -- WoWUIBugs #783 taint workaround, as CreateDropdown
+        root:SetMinimumWidth(150)
+        for _, opt in ipairs(options) do
+            local cb = root:CreateCheckbox(opt.text,
+                function() return IsOn(opt) end,
+                function()
+                    local value = IsOn(opt) and "0" or "1"
+                    if not AO:SetCVar(opt.cvar, value) and InCombatLockdown() then
+                        pending[opt.cvar] = value
+                    end
+                    Refresh()
+                end)
+            if cb and cb.SetEnabled then cb:SetEnabled(MasterOn) end
+        end
+    end)
+    Refresh()
+
+    return FinishRow(row, cfg, Refresh, nil, names)
 end

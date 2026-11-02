@@ -30,7 +30,7 @@ local InCombatLockdown = InCombatLockdown
 --  display title, and an ordered list of controls.  Each control
 --  is a table consumed by the matching factory in Controls.lua.
 --
---  type = "checkbox" | "slider" | "dropdown"
+--  type = "checkbox" | "slider" | "dropdown" | "multiselect"
 --  (plus any fields the factory expects — see Controls.lua)
 ----------------------------------------------------------------
 -- Soft-target CVars take Enum.SoftTargetEnableFlags: None 0 / Gamepad 1 / Kbm 2 / Any 3
@@ -149,6 +149,31 @@ AO.FEATURED_CATEGORIES = {
                 cvar    = "enableFloatingCombatText",
                 label   = "Enable Floating Combat Text",
                 tooltip = "Master toggle for all floating combat numbers above your character.",
+            },
+            -- The per-type CVars Blizzard_CombatText reads for its own scrolling text (Shared/
+            -- CombatTextConstants.lua:29-66 and the CombatTextCachableCVars list, :109-124). None
+            -- of them is in Blizzard's Options. Rows grey out while the master above is off; a
+            -- CVar this client does not have is left out.
+            {
+                type     = "multiselect",
+                label    = "Combat Text Shows",
+                tooltip  = "Pick what Floating Combat Text shows over your character. "
+                        .. "Needs Enable Floating Combat Text.",
+                requires = "enableFloatingCombatText",
+                options  = {
+                    { cvar = "floatingCombatTextDodgeParryMiss_v2",      text = "Dodge, Parry & Miss" },
+                    { cvar = "floatingCombatTextDamageReduction_v2",     text = "Resist, Block & Absorb" },
+                    { cvar = "floatingCombatTextAuras_v2",               text = "Auras Gained & Lost" },
+                    { cvar = "floatingCombatTextReactives_v2",           text = "Abilities Ready to Use" },
+                    { cvar = "floatingCombatTextLowManaHealth_v2",       text = "Low Health & Mana" },
+                    { cvar = "floatingCombatTextEnergyGains_v2",         text = "Power Gains" },
+                    { cvar = "floatingCombatTextPeriodicEnergyGains_v2", text = "Power Gains Over Time" },
+                    { cvar = "floatingCombatTextComboPoints_v2",         text = "Combo Points" },
+                    { cvar = "floatingCombatTextCombatState_v2",         text = "Entering & Leaving Combat" },
+                    { cvar = "floatingCombatTextRepChanges_v2",          text = "Reputation Changes" },
+                    { cvar = "floatingCombatTextHonorGains_v2",          text = "Honor Gains" },
+                    { cvar = "floatingCombatTextFriendlyHealers_v2",     text = "Names of Friendly Healers" },
+                },
             },
             {
                 type    = "checkbox",
@@ -279,6 +304,15 @@ AO.FEATURED_CATEGORIES = {
                 label   = "Show Tutorials",
                 tooltip = "Display tutorial pop-ups and hints.",
             },
+            -- HelpTip:AreHelpTipsEnabled reads hideHelptips (Blizzard_SharedXML/HelpTip.lua:162);
+            -- Show Tutorials above drives only the tutorial manager. Not in Blizzard's Options.
+            {
+                type    = "checkbox",
+                cvar    = "hideHelptips",
+                invert  = true,
+                label   = "Show Help Tips",
+                tooltip = "Show the yellow help boxes that point at new buttons and features.",
+            },
         },
     },
     {
@@ -361,6 +395,16 @@ AO.FEATURED_CATEGORIES = {
                 tooltip = "Shows rays of sunlight (god rays).",
                 restart = true,
                 anyNonZero = true,
+            },
+            -- Owner-tested 2026-11-01 at 100% render scale: with this at 0, moving Options ->
+            -- Graphics -> Resample Sharpness changed nothing; at 1 the picture sharpened. Applies
+            -- without a reload. Blizzard has only the slider (Graphics.lua:1414-1436).
+            {
+                type    = "checkbox",
+                cvar    = "ResampleAlwaysSharpen",
+                label   = "Sharpen at Full Resolution",
+                tooltip = "Lets Options > Graphics > Resample Sharpness sharpen the picture when Render "
+                       .. "Scale is 100%. Without it, the slider does nothing at 100%.",
             },
         },
     },
@@ -676,6 +720,8 @@ function AO:BuildFeaturedContent(parent, buttonBar)
                     ctrl = self:CreateSlider(parent, cfg)
                 elseif cfg.type == "dropdown" then
                     ctrl = self:CreateDropdown(parent, cfg)
+                elseif cfg.type == "multiselect" then
+                    ctrl = self:CreateMultiSelect(parent, cfg)
                 end
                 if ctrl then
                     controlCache[key] = ctrl
