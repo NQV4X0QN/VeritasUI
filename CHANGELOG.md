@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.52.0] - 2026-11-01
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Auto Accept Resurrection.** A resurrection another player casts on you is accepted as soon as the game allows it. On by default. **Also in Combat** (off by default) accepts one cast during combat too, such as a battle resurrection (`Automation.lua`, new; `QualityOfLife.lua`, `README.md`)
+- `VeritasUI_QualityOfLife` — **Auto Unwrap Collections.** New mounts, pets and toys are unwrapped for you, so they are ready to use without clicking the gift in the Collections journal first. On by default (`Automation.lua`, `QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Auto Open Containers.** Bags, satchels and other Right Click to Open items are opened as they reach your bags, one at a time. Never in combat, never while a vendor, bank, mailbox, guild bank, auction house or trade window is open, and never a locked lockbox. **Not Warbound Containers** (on by default) leaves warbound ones for you to open on the character you choose. Off until you turn it on (`Automation.lua`, `QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Quest Options.** A dropdown of rules for Pick Only Dialogue Option, Auto Accept Quests and Auto Turn In Quests: Skip Older-Expansion Quests (at max level, outside Chromie Time), Not When an NPC Offers Several, Hold Shift to Use (instead of pausing with Shift) and Off in Dungeons and Raids, with None and All. All start unticked (`Automation.lua`, `QualityOfLife.lua`)
+
+### Changed
+
+- `VeritasUI_CleanSolo` `VeritasUI_QualityOfLife` — **Each dropdown choice has its own tooltip.** Hover a row in Quest Options, Hide Top Banners, Hide Transforms, Hide Minimap Buttons, Hide Error Text or In Raids to see what it does, in Blizzard's own style: name in white, text in gold (`CleanSolo.lua`, `Automation.lua`)
+- `VeritasUI_PriorityRotation` `VeritasUI_AdvancedOptions` — **Tooltips in Blizzard's colours.** Titles are white and descriptions gold, as in Blizzard's own tooltips (`Editor.lua`, `Settings.lua`, `Controls.lua`, `Browser.lua`)
+- `VeritasUI_AdvancedOptions` — **All CVars help is easier to read.** A setting whose help lists its values shows each value on its own line, in Blizzard's dropdown-option style (`Browser.lua`)
+- `VeritasUI_PriorityRotation` `VeritasUI_Lib` — **Only Blizzard's own colours.** Every colour in Priority Rotation now comes from the game's named colours: headings and row numbers gold, text white, "Click to…" hints light blue, warnings red. VeritasUI's chat tag uses Blizzard's bright blue (`Lib.lua`, `Core.lua`, `Editor.lua`, `Settings.lua`)
+
 ## [1.51.0] - 2026-11-01
 
 ### Added
