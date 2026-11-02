@@ -83,7 +83,7 @@ end
 
 local VUI = _G.VeritasUI
 if not VUI then
-    print("|cFFFF4444[VeritasUI] Lib failed to load — " .. ADDON_NAME .. " disabled.|r")
+    print(RED_FONT_COLOR:WrapTextInColorCode("[VeritasUI] Lib failed to load — " .. ADDON_NAME .. " disabled."))
     return
 end
 
@@ -272,7 +272,7 @@ local function SetWayCommand(on)
     SLASH_VERITASUI_WAY1 = "/way"
     SlashCmdList["VERITASUI_WAY"] = function(msg)
         if not (db and db.wayCommand) then
-            VUI.Print("Quality of Life", "|cFFFFFF00/way|r is turned off in Quality of Life's options.")
+            VUI.Print("Quality of Life", VUI.COL.YELLOW .. "/way|r is turned off in Quality of Life's options.")
             return
         end
         WayCommand(msg)
@@ -423,7 +423,7 @@ local function PrintSold(remainingValue, remainingCount)
     local soldValue = (saleTotal or 0) - (remainingValue or 0)
     if soldCount > 0 and soldValue > 0 then
         VUI.Print("Quality of Life", format(
-            "Sold |cFFFFFF00%d|r junk item%s for %s",
+            "Sold " .. VUI.COL.YELLOW .. "%d|r junk item%s for %s",
             soldCount, soldCount > 1 and "s" or "",
             Coins(soldValue)))
     end
@@ -1299,7 +1299,7 @@ local function AFK_CreateOverlay()
     local infoText = cluster:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     infoText:SetPoint("TOP", nameText, "BOTTOM", 0, -4)
     infoText:SetJustifyH("CENTER")
-    infoText:SetTextColor(0.78, 0.78, 0.78)
+    infoText:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
     infoText:SetShadowColor(0, 0, 0, 1)
     infoText:SetShadowOffset(1, -1)
     f._infoText = infoText
@@ -1308,7 +1308,7 @@ local function AFK_CreateOverlay()
     local clockText = cluster:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     clockText:SetPoint("TOP", infoText, "BOTTOM", 0, -6)
     clockText:SetJustifyH("CENTER")
-    clockText:SetTextColor(0.50, 0.50, 0.50)
+    clockText:SetTextColor(GRAY_FONT_COLOR:GetRGB())
     clockText:SetShadowColor(0, 0, 0, 1)
     clockText:SetShadowOffset(1, -1)
     f._clockText = clockText
@@ -2598,7 +2598,7 @@ local function DelveDumpSpellFrame(indent, sf)
 end
 
 local function DumpDelvePlacardProbe()
-    print("|cFF00CCFF[VeritasUI Delve placard probe]|r")
+    print(VUI.COL.BRIGHTBLUE .. "[VeritasUI Delve placard probe]|r")
     print("  Stand at a Delve ENTRANCE with the placard showing, then run this.")
 
     -- The two reference font objects, printed unconditionally so the comparison table is
@@ -2720,7 +2720,7 @@ end
 
 local function DumpDelveProbe()
     local tracker = _G.ScenarioObjectiveTracker
-    print("|cFF00CCFF[VeritasUI Delve probe]|r")
+    print(VUI.COL.BRIGHTBLUE .. "[VeritasUI Delve probe]|r")
     print(("  ScenarioObjectiveTracker: %s   StageBlock: %s   WidgetContainer: %s")
         :format(tostring(tracker ~= nil),
                 tostring(tracker and tracker.StageBlock ~= nil),
@@ -3370,7 +3370,7 @@ end
 -- the prunes run since login.
 local function DumpMapNotes()
     local name, instType, _, _, _, _, _, instID = GetInstanceInfo()
-    print(("|cFF00CCFF[VeritasUI notes]|r inInstance=%s type=%s instanceID=%s name=%s map=%s")
+    print((VUI.COL.BRIGHTBLUE .. "[VeritasUI notes]|r inInstance=%s type=%s instanceID=%s name=%s map=%s")
         :format(tostring(IsInInstance()), tostring(instType), tostring(instID), tostring(name),
                 tostring(C_Map.GetBestMapForUnit("player"))))
     for _, n in ipairs((cdb and cdb.mapNotes) or {}) do
@@ -3407,14 +3407,14 @@ local function MapNoteCommand(msg)
     -- Registered while the option is on; unticked mid-session it stays registered (slash commands
     -- are cached by the chat frame), so it answers that it is off.
     if not (db and db.mapNotesEnabled) then
-        VUI.Print("Quality of Life", "|cFFFFFF00/note|r is turned off in Quality of Life's options.")
+        VUI.Print("Quality of Life", VUI.COL.YELLOW .. "/note|r is turned off in Quality of Life's options.")
         return
     end
     local text = strtrim(msg or "")
     if text == "" then
-        VUI.Print("Quality of Life", "|cFFFFFF00/note <text>|r leaves a note on the map where you're "
+        VUI.Print("Quality of Life", VUI.COL.YELLOW .. "/note <text>|r leaves a note on the map where you're "
             .. "standing. Click a note on the map to change its icon or remove it. "
-            .. "|cFFFFFF00/note clear|r removes "
+            .. VUI.COL.YELLOW .. "/note clear|r removes "
             .. "the notes on your current map.")
         return
     end
@@ -4187,8 +4187,9 @@ local SetupCharacterSheet
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 -- The item's name is the title (Blizzard's tooltip draws line 1 in its larger
                 -- header font), so every Enchant / Gem line below is the same body size.
-                GameTooltip:SetText(self._title or " ", self._tr or 1, self._tg or 1, self._tb or 1)
-                for _, line in ipairs(self._tip) do GameTooltip:AddLine(line, 1, 1, 1) end
+                GameTooltip:SetText(self._title or " ", self._tr or HIGHLIGHT_FONT_COLOR.r,
+                    self._tg or HIGHLIGHT_FONT_COLOR.g, self._tb or HIGHLIGHT_FONT_COLOR.b)
+                for _, line in ipairs(self._tip) do GameTooltip:AddLine(line, HIGHLIGHT_FONT_COLOR:GetRGB()) end
                 GameTooltip:Show()
             end)
             f:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -4290,7 +4291,7 @@ local SetupCharacterSheet
                 local idx = SLOT_ALERT_INDEX[slotID]
                 local okA, status = pcall(GetInventoryAlertStatus, idx or 0)
                 local c = idx and okA and INVENTORY_ALERT_COLORS and INVENTORY_ALERT_COLORS[status]
-                if c then fs:SetTextColor(c.r, c.g, c.b) else fs:SetTextColor(1, 1, 1) end
+                if c then fs:SetTextColor(c.r, c.g, c.b) else fs:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB()) end
                 fs:Show()
             else
                 fs:Hide()
@@ -4390,7 +4391,7 @@ local function InitializeOptions()
     local function TipWithReason(tip, key)
         local reason = OptionUnavailable(key)
         if type(reason) ~= "string" then return tip end
-        return tip .. "\n\n|cFFFF4444" .. reason .. "|r"
+        return tip .. "\n\n" .. VUI.COL.RED .. reason .. "|r"
     end
     local function GreyIfUnavailable(initializer, key)
         if OptionUnavailable(key) and initializer and initializer.AddModifyPredicate then
@@ -4816,7 +4817,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- /way: registered only while the option is on and TomTom is absent (both addons claim it).
         if OptionUnavailable("wayCommand") then
             VUI.Print("Quality of Life",
-                "TomTom detected — |cFFFFFF00/way|r is handled by TomTom.")
+                "TomTom detected — " .. VUI.COL.YELLOW .. "/way|r is handled by TomTom.")
         elseif db.wayCommand then
             SetWayCommand(true)
         end
@@ -4942,7 +4943,7 @@ end)
 local function DumpIlvlDiag(link)
     local TAG = "Quality of Life"
     if not link or link == "" then
-        VUI.Print(TAG, "Usage: |cFFFFFF00/qol ilvl|r then SHIFT-CLICK an item into the chat box.")
+        VUI.Print(TAG, "Usage: " .. VUI.COL.YELLOW .. "/qol ilvl|r then SHIFT-CLICK an item into the chat box.")
         VUI.Print(TAG, "  Compares the overlay's item-level source against the tooltip's.")
         return
     end
@@ -5036,7 +5037,7 @@ local function DumpMapPins()
         VUI.Print("Quality of Life", "mappins: this client's map has no pin pools to read.")
         return
     end
-    print(("|cFF00CCFF[VeritasUI map pins]|r map %s"):format(tostring(map:GetMapID())))
+    print((VUI.COL.BRIGHTBLUE .. "[VeritasUI map pins]|r map %s"):format(tostring(map:GetMapID())))
     local all = {}
     for template in pairs(map.pinPools) do
         for pin in map:EnumeratePinsByTemplate(template) do all[#all + 1] = pin end
@@ -5061,7 +5062,7 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
     if arg:lower() == "mappins" then DumpMapPins(); return end
     if arg:lower() == "notes" then DumpMapNotes(); return end
     if arg:lower() == "npc" then
-        print("|cFF00CCFF[VeritasUI NPC shortcuts]|r last decisions (oldest first):")
+        print(VUI.COL.BRIGHTBLUE .. "[VeritasUI NPC shortcuts]|r last decisions (oldest first):")
         if #npcFrame._log == 0 then print("  nothing yet - talk to a quest giver") end
         for _, line in ipairs(npcFrame._log) do print("  " .. line) end
         return
@@ -5080,9 +5081,9 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
             VUI.Print("Quality of Life", "Still loading — try again in a moment.")
         elseif not ny then
             VUI.Print("Quality of Life", format(
-                "Delve count sits |cFFFFFF00%d|r px up from the icon's bottom edge and "
-                .. "|cFFFFFF00%d|r px in from its right edge. "
-                .. "|cFFFFFF00/qol delvenudge <up> [left]|r to change it "
+                "Delve count sits " .. VUI.COL.YELLOW .. "%d|r px up from the icon's bottom edge and "
+                .. VUI.COL.YELLOW .. "%d|r px in from its right edge. "
+                .. VUI.COL.YELLOW .. "/qol delvenudge <up> [left]|r to change it "
                 .. "(negatives push it outside the icon).",
                 tonumber(db.delveCountInsetY) or DELVE_COUNT_INSET_Y,
                 tonumber(db.delveCountInsetX) or DELVE_COUNT_INSET_X))
@@ -5092,7 +5093,7 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
             -- Applies on the next poll tick (<=0.5s) with no reload: the anchor
             -- helper re-anchors as soon as it sees a different value.
             VUI.Print("Quality of Life", format(
-                "Delve count set to |cFFFFFF00%d|r px up, |cFFFFFF00%d|r px in from the "
+                "Delve count set to " .. VUI.COL.YELLOW .. "%d|r px up, " .. VUI.COL.YELLOW .. "%d|r px in from the "
                 .. "icon's bottom-right corner.",
                 db.delveCountInsetY,
                 tonumber(db.delveCountInsetX) or DELVE_COUNT_INSET_X))
@@ -5105,9 +5106,9 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
             VUI.Print("Quality of Life", "Still loading — try again in a moment.")
         elseif fsize == "" then
             VUI.Print("Quality of Life", format(
-                "Delve count font is Blizzard's size |cFFFFFF00%+d|r. "
-                .. "|cFFFFFF00/qol delvesize <n>|r to change it (0 = Blizzard's own size). "
-                .. "Run |cFFFFFF00/qol delve|r to see the resulting pixel size.",
+                "Delve count font is Blizzard's size " .. VUI.COL.YELLOW .. "%+d|r. "
+                .. VUI.COL.YELLOW .. "/qol delvesize <n>|r to change it (0 = Blizzard's own size). "
+                .. "Run " .. VUI.COL.YELLOW .. "/qol delve|r to see the resulting pixel size.",
                 tonumber(db.delveFontDelta) or 0))
         else
             -- Clamped to a sane band: the number has to stay inside a 24px circle, and a
@@ -5116,7 +5117,7 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
             if v < -6 then v = -6 elseif v > 6 then v = 6 end
             db.delveFontDelta = v
             VUI.Print("Quality of Life", format(
-                "Delve count font set to Blizzard's size |cFFFFFF00%+d|r.", v))
+                "Delve count font set to Blizzard's size " .. VUI.COL.YELLOW .. "%+d|r.", v))
         end
         return
     end
@@ -5128,8 +5129,8 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
             VUI.Print("Quality of Life", "Still loading — try again in a moment.")
         elseif chk == "" then
             VUI.Print("Quality of Life", format(
-                "Delve checkmark extends |cFFFFFF00%+d|r px past the icon. "
-                .. "|cFFFFFF00/qol delvecheck <n>|r to change it "
+                "Delve checkmark extends " .. VUI.COL.YELLOW .. "%+d|r px past the icon. "
+                .. VUI.COL.YELLOW .. "/qol delvecheck <n>|r to change it "
                 .. "(0 = flush with the icon, negatives shrink it further).",
                 tonumber(db.delveCheckOutset) or DELVE_CHECK_OUTSET))
         else
@@ -5140,7 +5141,7 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
             if v < -8 then v = -8 elseif v > 8 then v = 8 end
             db.delveCheckOutset = v
             VUI.Print("Quality of Life", format(
-                "Delve checkmark outset set to |cFFFFFF00%+d|r px.", v))
+                "Delve checkmark outset set to " .. VUI.COL.YELLOW .. "%+d|r px.", v))
         end
         return
     end
@@ -5155,10 +5156,11 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
             local g  = tonumber(db.delveCountInsetX) or DELVE_COUNT_INSET_X
             local d1 = tonumber(db.delveCountInsetX1) or DELVE_COUNT_INSET_X_BY_COUNT[1] or 0
             VUI.Print("Quality of Life", format(
-                "The digit |cFFFFFF001|r is nudged |cFFFFFF00%+d|r px relative to the other "
-                .. "digits, so it sits at |cFFFFFF00%d|r px in while they sit at "
-                .. "|cFFFFFF00%d|r. |cFFFFFF000|r means no correction. "
-                .. "|cFFFFFF00/qol delveone <n>|r to change it. Only the horizontal axis: "
+                "The digit " .. VUI.COL.YELLOW .. "1|r is nudged "
+                    .. VUI.COL.YELLOW .. "%+d|r px relative to the other "
+                .. "digits, so it sits at " .. VUI.COL.YELLOW .. "%d|r px in while they sit at "
+                .. VUI.COL.YELLOW .. "%d|r. " .. VUI.COL.YELLOW .. "0|r means no correction. "
+                .. VUI.COL.YELLOW .. "/qol delveone <n>|r to change it. Only the horizontal axis: "
                 .. "digits share a baseline, so the vertical never differs.",
                 d1, g + d1, g))
         else
@@ -5167,8 +5169,9 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
             -- The old "N px in from the right edge" described the pre-v1.14.14 absolute model.
             local g = tonumber(db.delveCountInsetX) or DELVE_COUNT_INSET_X
             VUI.Print("Quality of Life", format(
-                "The digit |cFFFFFF001|r is now nudged |cFFFFFF00%+d|r px relative to the other "
-                .. "digits (|cFFFFFF00%d|r px in).", db.delveCountInsetX1, g + db.delveCountInsetX1))
+                "The digit " .. VUI.COL.YELLOW .. "1|r is now nudged "
+                    .. VUI.COL.YELLOW .. "%+d|r px relative to the other "
+                .. "digits (" .. VUI.COL.YELLOW .. "%d|r px in).", db.delveCountInsetX1, g + db.delveCountInsetX1))
         end
         return
     end
@@ -5181,18 +5184,19 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
             VUI.Print("Quality of Life", "Still loading — try again in a moment.")
         elseif dface == "" then
             VUI.Print("Quality of Life", format(
-                "Delve count typeface is |cFFFFFF00%s|r. |cFFFFFF00/qol delveface "
+                "Delve count typeface is " .. VUI.COL.YELLOW .. "%s|r. " .. VUI.COL.YELLOW .. "/qol delveface "
                 .. "blizzard|r uses the face Blizzard draws its own count in (ARIALN, from "
-                .. "NumberFontNormal); |cFFFFFF00/qol delveface plaque|r uses the plaque's "
+                .. "NumberFontNormal); " .. VUI.COL.YELLOW .. "/qol delveface plaque|r uses the plaque's "
                 .. "own face (Friz Quadrata). Applies within half a second, no reload.",
                 tostring(db.delveCountFace)))
         elseif dface ~= "blizzard" and dface ~= "plaque" then
             VUI.Print("Quality of Life",
-                "Use |cFFFFFF00/qol delveface blizzard|r or |cFFFFFF00/qol delveface plaque|r.")
+                "Use " .. VUI.COL.YELLOW .. "/qol delveface blizzard|r or "
+                    .. VUI.COL.YELLOW .. "/qol delveface plaque|r.")
         else
             db.delveCountFace = dface
             VUI.Print("Quality of Life", format(
-                "Delve count typeface set to |cFFFFFF00%s|r.", dface))
+                "Delve count typeface set to " .. VUI.COL.YELLOW .. "%s|r.", dface))
         end
         return
     end
@@ -5206,17 +5210,18 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
             VUI.Print("Quality of Life", "Still loading — try again in a moment.")
         elseif doutline == "" then
             VUI.Print("Quality of Life", format(
-                "Delve count outline is |cFFFFFF00%s|r. |cFFFFFF00/qol delveoutline "
-                .. "thick|normal|none|r — |cFFFFFF00normal|r is what Blizzard's own count "
+                "Delve count outline is " .. VUI.COL.YELLOW .. "%s|r. " .. VUI.COL.YELLOW .. "/qol delveoutline "
+                .. "thick|normal|none|r — " .. VUI.COL.YELLOW .. "normal|r is what Blizzard's own count "
                 .. "uses (NumberFont_Outline_Med declares outline=\"NORMAL\").",
                 tostring(OUTLINE_REV[db.delveCountOutline] or db.delveCountOutline)))
         elseif not OUTLINE_MAP[doutline] then
             VUI.Print("Quality of Life",
-                "Use |cFFFFFF00thick|r, |cFFFFFF00normal|r or |cFFFFFF00none|r.")
+                "Use " .. VUI.COL.YELLOW .. "thick|r, "
+                    .. VUI.COL.YELLOW .. "normal|r or " .. VUI.COL.YELLOW .. "none|r.")
         else
             db.delveCountOutline = OUTLINE_MAP[doutline]
             VUI.Print("Quality of Life", format(
-                "Delve count outline set to |cFFFFFF00%s|r.", doutline))
+                "Delve count outline set to " .. VUI.COL.YELLOW .. "%s|r.", doutline))
         end
         return
     end
@@ -5292,9 +5297,9 @@ WayCommand = function(msg)
 
     if not (mapID and x and y) then
         VUI.Print("Quality of Life",
-            "Usage: |cFFFFFF00/way #mapID x y|r or |cFFFFFF00/way x y|r  "
-            .. "(coordinates must be positive 0–100, e.g. |cFFFFFF00/way #2351 45.2 56.3|r)  —  "
-            .. "|cFFFFFF00/way clear|r to remove.")
+            "Usage: " .. VUI.COL.YELLOW .. "/way #mapID x y|r or " .. VUI.COL.YELLOW .. "/way x y|r  "
+            .. "(coordinates must be positive 0–100, e.g. " .. VUI.COL.YELLOW .. "/way #2351 45.2 56.3|r)  —  "
+            .. VUI.COL.YELLOW .. "/way clear|r to remove.")
         return
     end
 
@@ -5302,7 +5307,7 @@ WayCommand = function(msg)
     local mapInfo = C_Map.GetMapInfo(mapID)
     if not mapInfo then
         VUI.Print("Quality of Life",
-            format("Unknown map ID |cFFFFFF00%d|r.", mapID))
+            format("Unknown map ID " .. VUI.COL.YELLOW .. "%d|r.", mapID))
         return
     end
 
@@ -5332,9 +5337,9 @@ WayCommand = function(msg)
 
     -- Build confirmation message.
     local zoneName = mapInfo.name or ("Map " .. mapID)
-    local desc = (label ~= "") and format(" |cFFCCCCCC(%s)|r", label) or ""
+    local desc = (label ~= "") and (" " .. LIGHTGRAY_FONT_COLOR:WrapTextInColorCode("(" .. label .. ")")) or ""
     VUI.Print("Quality of Life",
-        format("Waypoint set: |cFFFFD200%s|r — |cFF00FF00%.1f, %.1f|r%s",
+        format("Waypoint set: " .. VUI.COL.NORMAL .. "%s|r — " .. VUI.COL.GREEN .. "%.1f, %.1f|r%s",
             zoneName, x, y, desc))
 end
 
