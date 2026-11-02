@@ -221,11 +221,16 @@ end
 VUI.QoL_NpcOptionRows = function()
     local rows = {}
     if _G.GetQuestExpansion and GetServerExpansionLevel then
-        rows[#rows + 1] = { id = "older", label = "Skip Older-Expansion Quests" }
+        rows[#rows + 1] = { id = "older", label = "Skip Older-Expansion Quests",
+            tip = "At max level, quests from an earlier expansion are left for you to accept. While levelling "
+               .. "or in Chromie Time they are accepted as before." }
     end
-    rows[#rows + 1] = { id = "several",   label = "Not When an NPC Offers Several" }
-    rows[#rows + 1] = { id = "shift",     label = "Hold Shift to Use" }
-    rows[#rows + 1] = { id = "instances", label = "Off in Dungeons and Raids" }
+    rows[#rows + 1] = { id = "several",   label = "Not When an NPC Offers Several",
+        tip = "An NPC offering more than one quest gets no auto accept, so you choose." }
+    rows[#rows + 1] = { id = "shift",     label = "Hold Shift to Use",
+        tip = "The shortcuts work only while you hold Shift, instead of pausing while you hold it." }
+    rows[#rows + 1] = { id = "instances", label = "Off in Dungeons and Raids",
+        tip = "None of the shortcuts run inside a dungeon or raid." }
     return rows
 end
 
@@ -321,9 +326,9 @@ VUI.QoL_NpcOptionsDropdown = function(category, db, addonName, TipWithReason)
         end
         return c:GetData()
     end
-    local tip = "Rules for the three options above. Skip Older-Expansion Quests: at max level, quests from an "
-        .. "earlier expansion are left for you to accept. Not When an NPC Offers Several: an NPC with more than "
-        .. "one quest is left to you. Hold Shift to Use: the shortcuts work only while you hold Shift, instead "
-        .. "of pausing while you hold it. Off in Dungeons and Raids. Applies at once."
+    local sections = {}
+    for _, r in ipairs(rows) do sections[#sections + 1] = { r.label, r.tip } end
+    local tip = VUI.SectionedTip("Rules for Pick Only Dialogue Option, Auto Accept Quests and Auto Turn In Quests.",
+        sections, "Applies at once.")
     Settings.CreateDropdown(category, setting, GetOptions, TipWithReason(tip, "npcOptions"))
 end

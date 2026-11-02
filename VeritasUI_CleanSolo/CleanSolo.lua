@@ -676,21 +676,25 @@ end
 -- stage names ("The Darkway") eventType Scenario; no boss banner fired. The toast rows follow
 -- Blizzard's own Enum.EventToastEventType (UIEventToastConstantsDocumentation.lua:32-67).
 local TOP_BANNER_GROUPS = {
-    { id = "zone",     label = "Zone Names",
+    { id = "zone",     label = "Zone Names", tip = "The zone name when you travel.",
       frame = "ZoneTextFrame", events = { "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA" } },
-    { id = "boss",     label = "Boss Kills and Loot",
+    { id = "boss",     label = "Boss Kills and Loot", tip = "The banner when a boss dies, and what it dropped.",
       frame = "BossBanner",    events = { "BOSS_KILL", "ENCOUNTER_LOOT_RECEIVED" } },
-    { id = "levelup",  label = "Level Up and New Spells",
+    { id = "levelup",  label = "Level Up and New Spells", tip = "Reaching a new level, and spells you learn.",
       types = { "LevelUp", "LevelUpSpell", "LevelUpDungeon", "LevelUpRaid", "LevelUpPvP", "LevelUpOther",
                 "SpellLearned" } },
-    { id = "scenario", label = "Scenario and Delve Stages", types = { "Scenario" } },
+    { id = "scenario", label = "Scenario and Delve Stages", tip = "Stage names, such as The Darkway.",
+      types = { "Scenario" } },
     { id = "messages", label = "Delve and Event Messages",
+      tip = "Messages during a Delve or event, such as Nemesis Strongbox Upgraded.",
       types = { "SpellScript", "WorldStateChange", "QuestBossEmote", "CriteriaUpdated", "PlayerAuraAdded",
                 "PlayerAuraRemoved" } },
     { id = "weekly",   label = "Weekly Rewards and Ratings",
+      tip = "The Great Vault, Mythic+ records and PvP rating changes.",
       types = { "WeeklyRewardUnlock", "WeeklyRewardUpgrade", "MythicPlusWeeklyRecord", "PvPTierUpdate" } },
-    { id = "renown",   label = "Renown", types = { "RenownFactionLeveledUp" } },
-    { id = "other",    label = "Everything Else", types = {} },   -- every toast type not named above
+    { id = "renown",   label = "Renown", tip = "A new renown level.", types = { "RenownFactionLeveledUp" } },
+    { id = "other",    label = "Everything Else", tip = "Flight points, pet battles, treasure, housing and the rest.",
+      types = {} },   -- every toast type not named above
 }
 
 -- Group id of an event toast, from its eventType; a type not listed (or a new one) is "other".
@@ -803,7 +807,8 @@ end
 -- are server data too, from EllesmereUI v9.7.2's transform list
 -- (EllesmereUIQoL.lua:4977-5015, read 2026-11-01), as the profession list was.
 local TRANSFORM_KINDS = {
-    { id = "professions", label = "Profession Gear", ids = {
+    { id = "professions", label = "Profession Gear", tip = "The outfit crafting, gathering and fishing put on you.",
+      ids = {
         388658,   -- Blacksmithing
         394015,   -- Jewelcrafting
         391312,   -- Tailoring
@@ -820,7 +825,8 @@ local TRANSFORM_KINDS = {
     } },
     -- Owner, 2026-11-01: groups, not one row per item, so a new costume or toy is one more ID in
     -- its group rather than one more row.
-    { id = "holiday", label = "Holiday Costumes", ids = {
+    { id = "holiday", label = "Holiday Costumes",
+      tip = "Hallowed Wand, Weighted Jack-o'-Lantern, Noblegarden Bunny and Pilgrim's Turkey.", ids = {
         44212,                               -- Weighted Jack-o'-Lantern
         172010, 218132, 191703, 24732, 191210, 172015, 24735, 24736, 191698, 191700,   -- Hallowed Wand
         172008, 24712, 24713, 191701, 191211, 24710, 24711, 191686, 191688, 24708,
@@ -828,7 +834,8 @@ local TRANSFORM_KINDS = {
         61734, 61716,                        -- Noblegarden Bunny
         61781,                               -- Pilgrim's Turkey
     } },
-    { id = "toys", label = "Toys", ids = {
+    { id = "toys", label = "Toys", tip = "Aqir Egg Cluster, Atomic Recalibrator and Regoblinator, Detoxified "
+      .. "Blight Grenade, Lucille's Sewing Needle and Spraybots.", ids = {
         318452,                              -- Aqir Egg Cluster
         399502,                              -- Atomic Recalibrator
         1215363,                             -- Atomic Regoblinator
@@ -836,7 +843,8 @@ local TRANSFORM_KINDS = {
         279509,                              -- Lucille's Sewing Needle
         301892, 301893, 301894,              -- Spraybots
     } },
-    { id = "consumables", label = "Consumables", ids = {
+    { id = "consumables", label = "Consumables", tip = "Cursed Pickaxe, Noggenfogger Elixir and Reflecting Prism.",
+      ids = {
         454405,                              -- Cursed Pickaxe
         16593, 1223630, 16595, 1223629, 1223631,   -- Noggenfogger Elixir
         163267,                              -- Reflecting Prism
@@ -920,24 +928,26 @@ end
 -- on these frames, so no hook is needed, nothing of Blizzard's runs from our code, and it applies and
 -- undoes at once. Mail and crafting orders stay with Fade Minimap Alerts.
 local MINIMAP_BUTTONS = {
-    { id = "zone",       label = "Zone Name",
+    { id = "zone",       label = "Zone Name", tip = "The zone name above the minimap.",
       frames = function() local c = _G.MinimapCluster; return c and { c.BorderTop, c.ZoneTextButton } end },
-    { id = "clock",      label = "Clock",           -- Blizzard_TimeManager is load-on-demand
+    { id = "clock",      label = "Clock", tip = "The clock. A hidden clock's alarm still plays its sound.",
+      -- Blizzard_TimeManager is load-on-demand
       frames = function() return { _G.TimeManagerClockButton } end },
-    { id = "calendar",   label = "Calendar",
+    { id = "calendar",   label = "Calendar", tip = "The calendar button.",
       frames = function() return { _G.GameTimeFrame } end },
-    { id = "tracking",   label = "Tracking",
+    { id = "tracking",   label = "Tracking", tip = "The tracking button.",
       frames = function()
           local t = _G.MinimapCluster and _G.MinimapCluster.Tracking
           return t and { t, t.Button }
       end },
-    { id = "zoom",       label = "Zoom Buttons",
+    { id = "zoom",       label = "Zoom Buttons", tip = "The + and - buttons shown when you hover the minimap.",
       frames = function() local m = _G.Minimap; return m and { m.ZoomIn, m.ZoomOut } end },
     { id = "compartment", label = "Addon Compartment",
+      tip = "The addon menu button, where VeritasUI's own shortcuts are listed.",
       frames = function() return { _G.AddonCompartmentFrame } end },
-    { id = "expansion",  label = "Expansion Summary Button",
+    { id = "expansion",  label = "Expansion Summary Button", tip = "The button that opens the expansion summary.",
       frames = function() return { _G.ExpansionLandingPageMinimapButton } end },
-    { id = "difficulty", label = "Instance Difficulty",
+    { id = "difficulty", label = "Instance Difficulty", tip = "The difficulty shown in a dungeon, raid or Delve.",
       frames = function() local c = _G.MinimapCluster; return c and { c.InstanceDifficulty } end },
 }
 
@@ -2118,8 +2128,14 @@ local function InitializeOptions()
             ignore = false
             if spec.onChanged then spec.onChanged() end
         end)
-        local init = Settings.CreateDropdown(category, setting, GetOptions,
-            TipWithReason(spec.tip, spec.unavailableKey))
+        -- spec.intro/outro + each item's tip: one paragraph per choice (VUI.SectionedTip).
+        local tip = spec.tip
+        if spec.intro and VUI.SectionedTip then
+            local sections = {}
+            for _, it in ipairs(items) do if it.tip then sections[#sections + 1] = { it.label, it.tip } end end
+            tip = VUI.SectionedTip(spec.intro, sections, spec.outro)
+        end
+        local init = Settings.CreateDropdown(category, setting, GetOptions, TipWithReason(tip, spec.unavailableKey))
         GreyIfUnavailable(init, spec.unavailableKey)
         return init
     end
@@ -2142,8 +2158,11 @@ local function InitializeOptions()
             c:Add("raid", "Hide in Raids")
             c:Add("boss", "Hide During Boss Fights")
             return c:GetData()
-        end, "Hide the whole tracker in a raid, or only while a raid boss fight is on. Hovering still "
-            .. "shows it, and a hidden quest item button can still be clicked. Applies at once."))
+        end, VUI.SectionedTip(nil, {
+            { "Normal", "The tracker fades as set above." },
+            { "Hide in Raids", "The whole tracker is hidden inside a raid." },
+            { "Hide During Boss Fights", "Hidden inside a raid only while a boss fight is on." },
+        }, "Hovering still shows it, and a hidden quest item button can still be clicked. Applies at once.")))
         for _, sec in ipairs(OT_SECTIONS) do
             local key = "otOpacity_" .. sec.id
             local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_" .. key, key, db,
@@ -2217,10 +2236,8 @@ local function InitializeOptions()
             setMask = function(v) db.hideTopBannersMask = v end,
             name = "Hide Top Banners", items = TOP_BANNER_GROUPS, truth = db.hideTopBannerTypes,
             unavailableKey = "hideTopBanners",
-            tip = "Pick the big messages at the top of the screen to stop: the zone name when you travel, "
-               .. "boss kill and loot banners, level up, scenario and Delve stage names, Delve and event "
-               .. "messages (such as Nemesis Strongbox Upgraded), weekly rewards, renown, and everything "
-               .. "else. The rest still show. Requires |cFFFFFF00/reload|r to apply.",
+            intro = "Pick the big messages at the top of the screen to stop. The rest still show.",
+            outro = "Requires |cFFFFFF00/reload|r to apply.",
             onItem = function(g, on)
                 VUI.Print("Clean Solo", "Hide Top Banners: " .. g.label .. " "
                     .. (on and "hidden" or "shown") .. " — |cFFFFFF00/reload|r to apply.")
@@ -2236,10 +2253,8 @@ local function InitializeOptions()
             setMask = function(v) db.hideMinimapButtonsMask = v end,
             name = "Hide Minimap Buttons", items = MINIMAP_BUTTONS, truth = db.hideMinimapButtons,
             unavailableKey = "hideMinimapButtons",
-            tip = "Pick the buttons and labels around the minimap to hide: the zone name above it, the "
-               .. "clock, the calendar, the tracking button, the zoom buttons, the addon compartment (where "
-               .. "VeritasUI's own shortcuts are listed), the expansion summary button and the instance "
-               .. "difficulty. A hidden clock's alarm still plays its sound. Applies at once.",
+            intro = "Pick the buttons and labels around the minimap to hide. A hidden one can't be clicked.",
+            outro = "Applies at once.",
             onChanged = function()
                 if not Unavailable("hideMinimapButtons") then ApplyMinimapButtons() end
             end,
@@ -2256,10 +2271,9 @@ local function InitializeOptions()
             name = "Hide Transforms", items = TRANSFORM_KINDS, truth = db.hideTransformTypes,
             defaultIds = { "professions" },          -- as UNIVERSAL.hideTransformTypes
             unavailableKey = "hideProfessionGear",
-            tip = "Pick the costumes and transformations to take off you as soon as they land, so your "
-               .. "own look stays: the outfit crafting, gathering and fishing put on you, holiday costumes, "
-               .. "and the transformations from some toys and consumables. Not during combat; anything "
-               .. "that lands in combat comes off when it ends. Applies at once.",
+            intro = "Pick the costumes and transformations to take off you as soon as they land, so your own "
+               .. "look stays.",
+            outro = "Not during combat; anything that lands in combat comes off when it ends. Applies at once.",
             onItem = function(k, on)
                 VUI.Print("Clean Solo", "Hide Transforms: " .. k.label .. " "
                     .. (on and "taken off" or "left on") .. ".")
@@ -2371,10 +2385,18 @@ local function InitializeOptions()
     end)
 
     Settings.CreateDropdown(category, errSetting, GetErrorTypeOptions,
-        "Pick the kinds of red error message to hide, and the spoken lines that go with them; "
-        .. "the rest still show. All hides every error message. Combat holds messages like "
-        .. "'You are too far away!' and 'You are facing the wrong way!'; Mail, Vendors & Bank "
-        .. "holds 'Internal mail database error.' Requires |cFFFFFF00/reload|r to apply.")
+        VUI.SectionedTip("Pick the kinds of red error message to hide, and the spoken lines that go with "
+            .. "them; the rest still show.", {
+            { "All", "Every error message." },
+            { "Combat: Range, Facing & Targets", "'You are too far away!', 'You are facing the wrong way!', "
+                .. "no target, and similar." },
+            { "Spells & Cooldowns", "Not ready yet, not enough mana, energy or rage, can't do that while "
+                .. "moving, and similar." },
+            { "Items & Bags", "Bags full, can't equip or use an item, and similar." },
+            { "Mail, Vendors & Bank", "Mailbox, vendor and bank errors, such as 'Internal mail database error.'" },
+            { "Looting & Objects", "Loot and object errors, such as being too far away to loot." },
+            { "Mounts & Flight Paths", "Mount and flight path errors." },
+        }, "Requires |cFFFFFF00/reload|r to apply."))
 
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
