@@ -95,7 +95,10 @@ local UNIVERSAL = {
     -- TABLE-typed. PAIRED: hideTopBannersMask (the dropdown's tick-box value) is derived from it, like
     -- hideErrorTypesMask. Replaces the hideTopBanners checkbox; a saved "on" becomes every row ticked.
     hideTopBannerTypes  = {},
-    hideProfessionGear  = true,    -- v1.27.0, owner's request; applies at once. ON since v1.37.0 (owner)
+    -- v1.49.0: Hide Transforms dropdown, [kindId] = true (TRANSFORM_KINDS). TABLE-typed. PAIRED with
+    -- hideTransformsMask (derived), like hideTopBannersMask. Replaces hideProfessionGear (v1.27.0, ON
+    -- since v1.37.0): Profession Gear stays ticked for new installs; the rest start off.
+    hideTransformTypes  = { professions = true },
     -- v1.39.0 (owner's request): two more hover fades, applied at once. Universal: the damage meter
     -- and the reputation / experience / honor bars sit in the same place on every character.
     fadeDamageMeter     = true,    -- shown in combat or on hover
@@ -776,21 +779,47 @@ end
 --
 -- Fishing is the exception: its outfit (394009) is re-applied for as long as the fishing channel
 -- (131476) runs, so it is removed when the channel stops.
-local PROFESSION_GEAR_AURAS = {
-    388658,   -- Blacksmithing
-    394015,   -- Jewelcrafting
-    391312,   -- Tailoring
-    394007,   -- Engineering
-    394008,   -- Enchanting
-    394003,   -- Alchemy
-    394016,   -- Inscription
-    394001,   -- Leatherworking
-    394005,   -- Herbalism
-    394006,   -- Mining
-    394011,   -- Skinning
-    391775,   -- Cooking (Chef's Hat)
-    394009,   -- Fishing (removed on channel stop, below)
+--
+-- v1.49.0 (feature batch item 3): Hide Transforms, a dropdown. Profession gear is one row; the
+-- holiday costumes, toys and consumables are a row each, so a player can keep a toy they use on
+-- purpose. Their aura IDs are server data too, from EllesmereUI v9.7.2's transform list
+-- (EllesmereUIQoL.lua:4977-5015, read 2026-11-01), as the profession list was.
+local TRANSFORM_KINDS = {
+    { id = "professions", label = "Profession Gear", ids = {
+        388658,   -- Blacksmithing
+        394015,   -- Jewelcrafting
+        391312,   -- Tailoring
+        394007,   -- Engineering
+        394008,   -- Enchanting
+        394003,   -- Alchemy
+        394016,   -- Inscription
+        394001,   -- Leatherworking
+        394005,   -- Herbalism
+        394006,   -- Mining
+        394011,   -- Skinning
+        391775,   -- Cooking (Chef's Hat)
+        394009,   -- Fishing (removed on channel stop, below)
+    } },
+    { id = "lantern",      label = "Weighted Jack-o'-Lantern", ids = { 44212 } },
+    { id = "hallowed",     label = "Hallowed Wand", ids = {
+        172010, 218132, 191703, 24732, 191210, 172015, 24735, 24736, 191698, 191700,
+        172008, 24712, 24713, 191701, 191211, 24710, 24711, 191686, 191688, 24708,
+        24709, 173958, 173959, 191682, 191683, 24723, 191702, 172003, 172020, 191208, 24740,
+    } },
+    { id = "noblebunny",   label = "Noblegarden Bunny",         ids = { 61734, 61716 } },
+    { id = "turkey",       label = "Pilgrim's Turkey",          ids = { 61781 } },
+    { id = "aqir",         label = "Aqir Egg Cluster",          ids = { 318452 } },
+    { id = "atomic",       label = "Atomic Recalibrator",       ids = { 399502 } },
+    { id = "atomgoblin",   label = "Atomic Regoblinator",       ids = { 1215363 } },
+    { id = "blight",       label = "Detoxified Blight Grenade", ids = { 290224 } },
+    { id = "witch",        label = "Lucille's Sewing Needle",   ids = { 279509 } },
+    { id = "spraybots",    label = "Spraybots",                 ids = { 301892, 301893, 301894 } },
+    { id = "pickaxe",      label = "Cursed Pickaxe",            ids = { 454405 } },
+    { id = "noggenfogger", label = "Noggenfogger Elixir",       ids = { 16593, 1223630, 16595, 1223629, 1223631 } },
+    { id = "prism",        label = "Reflecting Prism",          ids = { 163267 } },
 }
+-- The aura IDs of every ticked kind, rebuilt by SetHideTransforms.
+local hiddenTransformAuras = {}
 local FISHING_AURA, FISHING_CHANNEL = 394009, 131476
 
 local gearFrame = CreateFrame("Frame")
@@ -809,7 +838,7 @@ local function RemoveProfessionGear(includeFishing)
     end
     if InCombatLockdown() then gearPending = true; return 0 end
     local removed = 0
-    for _, id in ipairs(PROFESSION_GEAR_AURAS) do
+    for _, id in ipairs(hiddenTransformAuras) do
         if includeFishing or id ~= FISHING_AURA then
             local ok, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, id)
             local inst = ok and aura and not IsSecret(aura) and aura.auraInstanceID
@@ -837,8 +866,16 @@ gearFrame:SetScript("OnEvent", function(_, event, unit, _, spellID)
     end
 end)
 
-local function SetHideProfessionGear(on)
-    if on then
+-- Applies db.hideTransformTypes at once (no /reload): the event registration follows it.
+local function SetHideTransforms()
+    local ids = {}
+    for _, k in ipairs(TRANSFORM_KINDS) do
+        if db.hideTransformTypes[k.id] then
+            for _, id in ipairs(k.ids) do ids[#ids + 1] = id end
+        end
+    end
+    hiddenTransformAuras = ids
+    if #ids > 0 then
         gearFrame:RegisterUnitEvent("UNIT_AURA", "player")
         gearFrame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", "player")
         gearFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -853,8 +890,12 @@ end
 -- Lists the listed outfit auras found, then every buff's name and spell ID (scan pcall'd: aura
 -- data is secret in restricted content).
 local function PrintGearDiag()
-    VUI.Print("Clean Solo", "Hide Profession Gear: " .. ((db and db.hideProfessionGear) and "on" or "off")
-        .. ", last result: " .. gearLast)
+    local on = {}
+    for _, k in ipairs(TRANSFORM_KINDS) do
+        if db and db.hideTransformTypes[k.id] then on[#on + 1] = k.label end
+    end
+    VUI.Print("Clean Solo", "Hide Transforms: " .. (#on > 0 and table.concat(on, ", ") or "none")
+        .. "; last result: " .. gearLast)
     if not (C_UnitAuras and C_UnitAuras.GetBuffDataByIndex) then return end
     for i = 1, 40 do
         local ok, data = pcall(C_UnitAuras.GetBuffDataByIndex, "player", i)
@@ -1559,6 +1600,7 @@ local function InitializeOptions()
           apply = function() end },
     }
     local BuildTopBannersDropdown   -- defined after the Fade section, called from AddCheckboxes
+    local BuildTransformsDropdown   -- likewise
     local HIDE_OPTIONS = {
         { key = "hideSocialButton",    name = "Hide Social Button",
           tip = "Hides the Quick Join / Communities toast button. Left shown, it fades with the "
@@ -1588,10 +1630,8 @@ local function InitializeOptions()
              .. "still shows unless Hide Talking Head is on. Requires |cFFFFFF00/reload|r to apply." },
         -- v1.48.0: a tick-box dropdown, built where the checkbox was (BuildTopBannersDropdown below).
         { key = "hideTopBanners", build = function() BuildTopBannersDropdown() end },
-        { key = "hideProfessionGear",  name = "Hide Profession Gear",
-          tip = "Keeps your own outfit on while you craft, gather or fish, instead of the "
-             .. "profession outfit the game puts on you. Not during combat. Applies at once.",
-          apply = function(value) SetHideProfessionGear(value) end },
+        -- v1.49.0: Hide Transforms, a tick-box dropdown (BuildTransformsDropdown below).
+        { key = "hideProfessionGear", build = function() BuildTransformsDropdown() end },
     }
 
     -- ⚠ THESE CHECKBOXES ARE MIXED-SCOPE. All the keys but one are account-wide and one
@@ -1834,6 +1874,70 @@ local function InitializeOptions()
         GreyIfUnavailable(init, "hideTopBanners")
     end
 
+    -- ── Hide Transforms — tick-box dropdown, UNIVERSAL (mask paired with hideTransformTypes, both on
+    -- db). Same pattern as Hide Top Banners, but it applies at once: SetHideTransforms only changes
+    -- which aura IDs the UNIT_AURA handler removes and whether it is registered.
+    local TF_NONE, TF_FIRST = 1, 2
+    local TF_MAX = TF_FIRST + #TRANSFORM_KINDS - 1
+    local function TransformsMask()
+        local mask = 0
+        for i, k in ipairs(TRANSFORM_KINDS) do
+            if db.hideTransformTypes[k.id] then mask = mask + Bit(TF_FIRST + i - 1) end
+        end
+        return mask > 0 and mask or Bit(TF_NONE)
+    end
+    function BuildTransformsDropdown()
+        db.hideTransformsMask = TransformsMask()
+        local lastMask = db.hideTransformsMask
+        local setting = Settings.RegisterAddOnSetting(
+            category,
+            ADDON_NAME .. "_hideTransforms",
+            "hideTransformsMask",
+            db,                          -- UNIVERSAL: paired with hideTransformTypes
+            "number",
+            "Hide Transforms",
+            Bit(TF_FIRST)                -- default: Profession Gear, as UNIVERSAL.hideTransformTypes
+        )
+        local ignore = false
+        local function GetOptions()
+            local container = Settings.CreateControlTextContainer()
+            container:AddCheckbox(TF_NONE, "None")
+            for i, k in ipairs(TRANSFORM_KINDS) do container:AddCheckbox(TF_FIRST + i - 1, k.label) end
+            return container:GetData()
+        end
+        setting:SetValueChangedCallback(function(_, val)
+            if ignore or type(val) ~= "number" then return end
+            local changed = ChangedBits(lastMask, val, TF_MAX)
+            if #changed == 1 then
+                local v, on = changed[1], HasBit(val, changed[1])
+                if v == TF_NONE then
+                    if on then for key in pairs(db.hideTransformTypes) do db.hideTransformTypes[key] = nil end end
+                else
+                    local k = TRANSFORM_KINDS[v - TF_FIRST + 1]
+                    db.hideTransformTypes[k.id] = on or nil
+                    VUI.Print("Clean Solo", "Hide Transforms: " .. k.label .. " "
+                        .. (on and "taken off" or "left on") .. ".")
+                end
+            elseif #changed > 1 then             -- e.g. the Defaults button
+                for i, k in ipairs(TRANSFORM_KINDS) do
+                    db.hideTransformTypes[k.id] = HasBit(val, TF_FIRST + i - 1) or nil
+                end
+            end
+            db.hideTransformsMask = TransformsMask()
+            lastMask = db.hideTransformsMask
+            ignore = true
+            pcall(setting.SetValue, setting, db.hideTransformsMask)
+            ignore = false
+            if not Unavailable("hideProfessionGear") then SetHideTransforms() end
+        end)
+        local init = Settings.CreateDropdown(category, setting, GetOptions, TipWithReason(
+            "Pick the costumes and transformations to take off you as soon as they land, so your own "
+            .. "look stays: the outfit crafting, gathering and fishing put on you, holiday costumes, and "
+            .. "the transformations from some toys and consumables. Not during combat; anything that lands "
+            .. "in combat comes off when it ends. Applies at once.", "hideProfessionGear"))
+        GreyIfUnavailable(init, "hideProfessionGear")
+    end
+
     Header("Hide")
     AddCheckboxes(HIDE_OPTIONS)
 
@@ -1993,6 +2097,11 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             for _, g in ipairs(TOP_BANNER_GROUPS) do db.hideTopBannerTypes[g.id] = true end
         end
         db.hideTopBanners = nil
+        -- v1.49.0: Hide Profession Gear becomes the Profession Gear row of Hide Transforms.
+        if db.hideProfessionGear ~= nil then
+            db.hideTransformTypes.professions = (db.hideProfessionGear == true) or nil
+            db.hideProfessionGear = nil
+        end
         InitializeOptions()
         -- Before any fader runs, so the first fade of the session already uses it.
         if VUI.SetFadeDelay then VUI.SetFadeDelay(db.fadeDelay) end
@@ -2011,7 +2120,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if (db.hideTalkingHead and not Unavailable("hideTalkingHead"))
             or (db.muteTalkingHead and not Unavailable("muteTalkingHead")) then SetupTalkingHead() end
         if next(db.hideTopBannerTypes) ~= nil and not Unavailable("hideTopBanners") then HideTopBanners() end
-        if db.hideProfessionGear and not Unavailable("hideProfessionGear") then SetHideProfessionGear(true) end
+        if not Unavailable("hideProfessionGear") then SetHideTransforms() end
         if db.hideErrorText       then HideErrorText()
         else                           HideErrorTypes()      end
         if not Unavailable("fadeActionBars") then SetupActionBarFading() end
