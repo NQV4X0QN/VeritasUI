@@ -26,7 +26,8 @@
 -- (MuteSoundFile) and plays the choice on the same rule; None only mutes it. Back to Blizzard's: unmuted.
 --
 -- Remember Chat (named Remember Chat Lines until v1.56.0). Each chat window's last 100 lines are kept,
--- per character, in VeritasUI_QualityOfLifeChatDB (SavedVariablesPerCharacter), and put back, grey, when you log in or reload,
+-- per character, in VeritasUI_QualityOfLifeChatDB (SavedVariablesPerCharacter), and put back, grey, when
+-- you log in or reload,
 -- before anything new. A post-hook on each window's AddMessage (hooksecurefunc on the frame: Blizzard's own
 -- AddMessage still runs first and untouched, ChatFrame.lua:35-41) reads the line; nothing is written to the
 -- chat frames. Skipped: the combat log and voice transcription windows (ChatFrame2, ChatFrame3:
