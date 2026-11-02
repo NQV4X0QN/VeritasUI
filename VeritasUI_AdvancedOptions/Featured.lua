@@ -305,9 +305,13 @@ AO.FEATURED_CATEGORIES = {
             },
             -- HelpTip:AreHelpTipsEnabled reads hideHelptips (Blizzard_SharedXML/HelpTip.lua:162);
             -- Show Tutorials above drives only the tutorial manager. Not in Blizzard's Options.
+            -- ⚠ The game does NOT create hideHelptips (owner's All CVars search, 2026-11-01: nothing),
+            -- so `register` makes AO create it (Core.lua AO:RegisterAddOnCVars); until then the
+            -- untick was dropped and the box came back ticked.
             {
                 type    = "checkbox",
                 cvar    = "hideHelptips",
+                register = "0",
                 invert  = true,
                 label   = "Show Help Tips",
                 tooltip = "Show the yellow help boxes that point at new buttons and features.",

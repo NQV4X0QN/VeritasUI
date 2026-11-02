@@ -11,6 +11,7 @@ end
 ----------------------------------------------------------------
 --  Localize hot globals
 ----------------------------------------------------------------
+local ipairs         = ipairs
 local pairs          = pairs
 local pcall          = pcall
 local type           = type
@@ -31,7 +32,8 @@ AO.SB_INSET = 16        -- MinimalScrollBar width + gap; both scroll tabs must m
 --  Defaults & state
 --
 --  We do NOT persist CVar values — WoW's own CVar persistence
---  handles that.  We persist UI-side state: collapsed categories,
+--  handles that — EXCEPT `addonCVars` below, CVars the game does not
+--  create. We persist UI-side state: collapsed categories,
 --  favourited CVars in the browser, and the last active tab.
 ----------------------------------------------------------------
 -- Saved state, split by SCOPE. Authority: references/setting-scope-map.md in the skill
@@ -42,6 +44,12 @@ local UNIVERSAL = {
     collapsed  = {},          -- [categoryKey] = true/false
     favorites  = {},          -- [cvarName]    = true
     lastTab    = 1,           -- 1 = Featured, 2 = All CVars
+    -- [cvarName] = value, for the few Featured settings whose CVar only Blizzard's Lua reads and the
+    -- game itself does not create (cfg.register). Owner, 2026-11-01: All CVars had no hideHelptips,
+    -- so Show Help Tips never stuck. We create it each load (RegisterCVar, as Blizzard does for its
+    -- own Lua-only CVars, BossBannerToast.lua:179) and put the player's choice back from here, since
+    -- a CVar made that way is not known to survive a logout. Universal: an interface choice.
+    addonCVars = {},
 }
 
 -- ⚠ PER-CHARACTER, and a PAIRED CONSTRAINT: cvarCache and cacheVersion must ALWAYS share a
@@ -185,8 +193,37 @@ function AO:SetCVar(name, value)
             format("|cFFFF4444Failed to set %s:|r %s", name, tostring(err)))
         return false
     end
+    if db and db.addonCVars[name] ~= nil then db.addonCVars[name] = tostring(value) end
+    -- C_CVar.SetCVar returns false, without an error, when the game has no such setting: how
+    -- Show Damage Numbers (pre-_v2 names) and Show Help Tips changed nothing for months, silently
+    -- (landmine 143). Say so.
+    if err == false then
+        VUI.Print("Advanced Options", format("|cFFFF4444%s|r is not a setting this game client has.", name))
+        return false
+    end
     if cdb then cdb.cvarCache[name] = value end
     return true
+end
+
+--- Create the Featured CVars the game does not (cfg.register = default) and put back the saved
+--- choice. Run at ADDON_LOADED, before anything shows a help tip.
+function AO:RegisterAddOnCVars()
+    for _, cat in ipairs(AO.FEATURED_CATEGORIES or {}) do
+        for _, cfg in ipairs(cat.controls) do
+            local name, default = cfg.cvar, cfg.register
+            if name and default ~= nil then
+                local okGet, cur = pcall(C_CVar.GetCVar, name)
+                if not okGet or cur == nil then
+                    -- C_CVar.RegisterCVar (CVarDocumentation.lua:103); Blizzard's own Lua uses the
+                    -- global form (BossBannerToast.lua:179).
+                    local register = C_CVar.RegisterCVar or _G.RegisterCVar
+                    if register then pcall(register, name, default) end
+                end
+                if db.addonCVars[name] == nil then db.addonCVars[name] = default end
+                pcall(C_CVar.SetCVar, name, db.addonCVars[name])
+            end
+        end
+    end
 end
 
 --- Reset a CVar to its default value.
@@ -255,6 +292,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 ~= ADDON_NAME then return end
         AO:InitDB()
+        AO:RegisterAddOnCVars()
         ef:UnregisterEvent("ADDON_LOADED")
 
     elseif event == "PLAYER_LOGIN" then
