@@ -162,6 +162,7 @@ local UNIVERSAL = {
     -- A battle res (caster in combat) only with the sub-option, off by default.
     autoAcceptRes       = true,
     autoAcceptResCombat = false,
+    autoUnwrapCollections = true,   -- Automation.lua (v1.52.0): new mounts, pets and toys unwrapped
     journeysShortcuts = true,     -- Journeys.lua's card checkbox and bar clicks; same (v1.34.4)
     -- EllesmereUI-inspired plan, phase 2 (v1.28.0). OFF by default: they change how two of
     -- Blizzard's own confirmations behave.
@@ -4600,6 +4601,10 @@ local function InitializeOptions()
     if resCombatInit and resCombatInit.SetParentInitializer and resInit then
         resCombatInit:SetParentInitializer(resInit, function() return db.autoAcceptRes end)
     end
+
+    AddCheckbox("autoUnwrapCollections", "Auto Unwrap Collections",
+        "New mounts, pets and toys are unwrapped for you, so they are ready to use without clicking the "
+        .. "gift in the Collections journal first.")
 
     AddCheckbox("timestampAllMessages", "Timestamp Every Message",
         "Adds the chat timestamp to system, loot, money, achievement, experience and reputation "
