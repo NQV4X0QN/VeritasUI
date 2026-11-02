@@ -77,12 +77,12 @@ To set it up, open `/pr`, click **Create / Update Macro**, drag the `Attack` mac
 
 To switch specialization quickly, hover **VeritasUI — Priority Rotation** in the AddOns menu by the minimap and pick a spec from the list that opens.
 
-Settings: `/pr` (the rotation editor), and an on/off switch under **Options → AddOns → VeritasUI → Priority Rotation**.
+Settings: `/pr` (the rotation editor), or **Options → AddOns → VeritasUI → Priority Rotation**, which has an on/off switch and an **Open** button for the editor.
 
 ### Advanced Options — WoW's hidden settings
 WoW has many settings (CVars) that its Options panel doesn't show. The **Featured** tab gathers useful ones (camera distance, nameplates, combat text, soft targeting, graphics and more) as ordinary checkboxes, sliders and dropdowns, each with a reset button, in sections you can fold away one at a time or all at once with **Collapse All** / **Expand All**. Settings marked with an orange **!** need a reload; change one and a **Reload UI** button appears beside Collapse All. Among them: **Sharpen at Full Resolution**, **Show Help Tips**, and a dropdown beside **Enable Floating Combat Text** to choose what scrolls over your character (dodges, auras, power gains, reputation and more). The **All CVars** tab lets you search and edit every setting your client has, and star favourites.
 
-Open it with `/ao`. It has its own window rather than an Options panel.
+Open it with `/ao`, or from **Options → AddOns → VeritasUI → Advanced Options**, whose **Open** buttons go straight to the window or to either tab. Its settings live in that window rather than an Options panel.
 
 Stopped using ElvUI? ElvUI changes a number of these settings (nameplates for every NPC among them) and they stay changed after it is turned off. Type `/ao elvui`, or tick **Changed by ElvUI** on the All CVars tab, to see the ones that differ from Blizzard's defaults and reset them, one at a time or all at once. VeritasUI mentions it once, on your first login without ElvUI.
 

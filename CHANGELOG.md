@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.58.0] - 2026-11-02
+
+### Added
+
+- `VeritasUI_AdvancedOptions` — **Back in Options → AddOns → VeritasUI**, now with something on the page: an **Open** button at the top for the window, and a row each for **Featured Settings** and **All CVars** with its own Open button (`Settings.lua`, `Core.lua`)
+- `VeritasUI_PriorityRotation` `VeritasUI_AdvancedOptions` `VeritasUI_Lib` — **An Open button on their settings pages.** Priority Rotation and Advanced Options keep their settings in their own windows, so their pages show **Open** where the other pages show Reload UI and Copy From…. Open closes Options and the Game Menu, as Blizzard's own Options buttons do, then opens the window. Copy From… copies every module, so it is still on the other pages (`Lib.lua`, `Settings.lua`, `README.md`)
+
 ## [1.57.0] - 2026-11-02
 
 ### Added
