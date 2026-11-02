@@ -33,11 +33,18 @@
 -- FloatingChatFrame.lua:1712-1718), any line the game hides (a secret value), and Battle.net name tokens
 -- (|K..|k), which only mean something in the session that sent them. Turning the option off deletes what
 -- was kept. Whispers are kept too, on this computer only (README says so).
+--
+-- Remember Typed Lines (owner's request, 2026-11-01). The chat box already keeps what you type, but only for
+-- the session: the edit box's own history (ChatFrameEditBoxTemplate historyLines="32", filled by
+-- AddHistoryLine whenever a line or command is sent: Shared/ChatFrameEditBox.lua:242, :262, :270, :741).
+-- The last 5 lines are kept per character and put back into that same history at load, with the same
+-- AddHistoryLine, so they come back with the key you already use for history. A post-hook on each chat
+-- window's edit box AddHistoryLine reads them; nothing of Blizzard's is replaced. Turning it off deletes them.
 
 local VUI = _G.VeritasUI
 if not VUI then return end
 
-local pcall, ipairs, type = pcall, ipairs, type
+local pcall, ipairs, pairs, type = pcall, ipairs, pairs, type
 local sfind, ssub, slower, sbyte = string.find, string.sub, string.lower, string.byte
 
 local function DB() return _G.VeritasUI_QualityOfLifeDB end
@@ -334,8 +341,13 @@ local function HookWindows()
     end
 end
 
+local function WipeWindows()
+    local store = Store()
+    for index in pairs(store) do if type(index) == "number" then store[index] = nil end end
+end
+
 VUI.QoL_ChatRemember = function(on)
-    if not on then _G.VeritasUI_QualityOfLifeChatDB = {} end
+    if not on then WipeWindows() end
 end
 
 local remember = CreateFrame("Frame")
@@ -343,7 +355,57 @@ remember:RegisterEvent("ADDON_LOADED")
 remember:SetScript("OnEvent", function(self, _, name)
     if name ~= "VeritasUI_QualityOfLife" then return end
     self:UnregisterAllEvents()
-    if not On("chatRememberLines") then _G.VeritasUI_QualityOfLifeChatDB = {} end
+    if not On("chatRememberLines") then WipeWindows() end
     Restore()       -- before the hooks, so the lines put back are not stored a second time
     HookWindows()
+end)
+
+-- ── Remember Typed Lines ───────────────────────────────────────
+local TYPED = 5
+
+local function EditBoxes()
+    local boxes = {}
+    for index = FIRST_WINDOW, (_G.NUM_CHAT_WINDOWS or 10) do
+        local cf = _G["ChatFrame" .. index]
+        local box = (cf and cf.editBox) or _G["ChatFrame" .. index .. "EditBox"]
+        if box and box.AddHistoryLine then boxes[#boxes + 1] = box end
+    end
+    return boxes
+end
+
+local function RecordTyped(text)
+    if not On("chatRememberTyped") or type(text) ~= "string" or IsSecret(text) or text == "" then return end
+    local store = Store()
+    local typed = type(store.typed) == "table" and store.typed or {}
+    store.typed = typed
+    for i = #typed, 1, -1 do if typed[i] == text then table.remove(typed, i) end end
+    typed[#typed + 1] = text
+    while #typed > TYPED do table.remove(typed, 1) end
+end
+
+local function RestoreTyped(boxes)
+    local typed = Store().typed
+    if not On("chatRememberTyped") or type(typed) ~= "table" then return end
+    for _, box in ipairs(boxes) do
+        for _, text in ipairs(typed) do
+            if type(text) == "string" then pcall(box.AddHistoryLine, box, text) end
+        end
+    end
+end
+
+VUI.QoL_ChatRememberTyped = function(on)
+    if not on then Store().typed = nil end
+end
+
+local typedLoader = CreateFrame("Frame")
+typedLoader:RegisterEvent("ADDON_LOADED")
+typedLoader:SetScript("OnEvent", function(self, _, name)
+    if name ~= "VeritasUI_QualityOfLife" then return end
+    self:UnregisterAllEvents()
+    if not On("chatRememberTyped") then Store().typed = nil end
+    local boxes = EditBoxes()
+    RestoreTyped(boxes)   -- before the hooks, so the lines put back are not stored a second time
+    for _, box in ipairs(boxes) do
+        hooksecurefunc(box, "AddHistoryLine", function(_, text) RecordTyped(text) end)
+    end
 end)

@@ -198,6 +198,7 @@ local UNIVERSAL = {
     chatItemTooltips = true,      -- Chat.lua (v1.54.0): link tooltips on hover
     chatClassColorNames = true,   -- Chat.lua (v1.54.0): group names in class colour in message text
     chatRememberLines = true,     -- Chat.lua (v1.55.0): last 100 lines per window, per character
+    chatRememberTyped = true,     -- Chat.lua (v1.56.0, owner request): last 5 typed lines, per character
     whisperSound = "default",     -- Chat.lua (v1.54.0): "default" = Blizzard's own, untouched
     timestampAllMessages = true,
     -- The icon the next /note starts with: the last one chosen from a note's menu.
@@ -4682,6 +4683,12 @@ local function InitializeOptions()
         "Each chat window's last 100 lines come back, in grey, when you log in or reload. They are kept "
         .. "for each character on this computer, whispers included. Turning this off deletes them.",
         function(value) if VUI.QoL_ChatRemember then VUI.QoL_ChatRemember(value) end end)
+
+    AddCheckbox("chatRememberTyped", "Remember Typed Lines",
+        "The last 5 lines you typed in the chat box, commands included, stay in its history after you log "
+        .. "in or reload, so you can bring them back as you do this session's. Kept for each character on "
+        .. "this computer, whispers included. Turning this off deletes them.",
+        function(value) if VUI.QoL_ChatRememberTyped then VUI.QoL_ChatRememberTyped(value) end end)
 
     AddCheckbox("timestampAllMessages", "Timestamp Every Message",
         "Adds the chat timestamp to system, loot, money, achievement, experience and reputation "
