@@ -195,6 +195,9 @@ local UNIVERSAL = {
     charStatHighlight = true,    -- CharacterStats.lua (v1.53.0): hovered stat lights its gear
     charLabelClassColor = true,  -- sub-option: "Enchant:" / "Gem:" in class colour (owner, 2026-10-30)
     -- Phase 5 (v1.31.0): Blizzard's timestamp on system/loot/money/... lines too. On since v1.37.0.
+    chatItemTooltips = true,      -- Chat.lua (v1.54.0): link tooltips on hover
+    chatClassColorNames = true,   -- Chat.lua (v1.54.0): group names in class colour in message text
+    whisperSound = "default",     -- Chat.lua (v1.54.0): "default" = Blizzard's own, untouched
     timestampAllMessages = true,
     -- The icon the next /note starts with: the last one chosen from a note's menu.
     mapNoteIcon = "Waypoint-MapPin-Untracked",
@@ -4658,6 +4661,20 @@ local function InitializeOptions()
         "Leaves warbound containers (bound to your account) for you to open on the character you choose.")
     if warboundInit and warboundInit.SetParentInitializer and openInit then
         warboundInit:SetParentInitializer(openInit, function() return db.autoOpenContainers end)
+    end
+
+    Header("Chat")
+    -- Chat.lua reads these two at the moment they apply, so they take effect at once with no callback.
+    AddCheckbox("chatItemTooltips", "Item Tooltips in Chat",
+        "Hover a link in chat, such as an item, spell, achievement or quest, to see its tooltip without "
+        .. "clicking it.")
+
+    AddCheckbox("chatClassColorNames", "Class-Colored Names in Messages",
+        "The names of people in your group are shown in their class colour where they appear in a "
+        .. "chat message, not only as the sender.")
+
+    if VUI.QoL_WhisperSoundDropdown then
+        VUI.QoL_WhisperSoundDropdown(category, db, ADDON_NAME)
     end
 
     AddCheckbox("timestampAllMessages", "Timestamp Every Message",

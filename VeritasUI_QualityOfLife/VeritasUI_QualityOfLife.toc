@@ -13,4 +13,5 @@ Journeys.lua
 WorldQuestUntrack.lua
 Automation.lua
 CharacterStats.lua
+Chat.lua
 MapNotes.xml

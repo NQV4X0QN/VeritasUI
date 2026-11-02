@@ -1,0 +1,280 @@
+-- VeritasUI_QualityOfLife / Chat.lua
+-- Feature batch Phase 5 (v1.54.0): chat. Kept out of QualityOfLife.lua, whose main chunk is near Lua's
+-- 200-locals limit (QualityOfLife.lua :3604 comment).
+--
+-- Item Tooltips in Chat. Blizzard's chat frames announce link hovers and nothing of Blizzard's listens:
+-- ChatFrameMixin:OnHyperlinkEnter / OnHyperlinkLeave trigger EventRegistry "ChatFrame.OnHyperlinkEnter" /
+-- "ChatFrame.OnHyperlinkLeave" (Blizzard_ChatFrameBase/Shared/ChatFrame.lua:27-33). This listens there --
+-- no hook, nothing of Blizzard's replaced -- and shows the link in GameTooltip at the cursor with
+-- SetHyperlink, the way a link opened by clicking is filled. Link types SetHyperlink cannot show (a
+-- player name, a channel, a battle pet, which has its own floating tooltip) are not in KINDS; anything
+-- else that errors is caught and shows nothing.
+--
+-- Class-Colored Names in Messages. Blizzard colours only the SENDER of a chat line by class
+-- (ChatFrameUtil.ShouldColorChatByClass, ChatFrameUtil.lua:891). This colours the names of the people in
+-- your group where they appear in the text of a line, in their class colour (C_ClassColor, Blizzard's own
+-- colours). Blizzard's message filter registry is used, as Timestamp Every Message uses it
+-- (ChatFrameUtil.AddMessageEventFilter, Shared/ChatFrameFilters.lua:202): Blizzard calls each filter
+-- through securecallfunction and skips it when any argument is a hidden value, so a hidden line never
+-- reaches this code. Text inside a link, an existing colour, a texture, an atlas or a Battle.net name
+-- token is never touched. Names come from the group roster; one the game hides (a secret value) is left out.
+--
+-- Whisper Sound. Blizzard plays SOUNDKIT.TELL_MESSAGE (3081) for a whisper or Battle.net whisper, unless the
+-- last whisper was under ChatFrameConstants.WhisperSoundAlertCooldown (300 s) ago -- each whisper restarts
+-- that wait (Mainline/ChatFrameOverrides.lua:679-686). Kit 3081 is one file, 567421, which no other sound
+-- kit uses (wago.tools SoundKitEntry, 2026-11-01). Any choice but Blizzard's own mutes that file
+-- (MuteSoundFile) and plays the choice on the same rule; None only mutes it. Back to Blizzard's: unmuted.
+
+local VUI = _G.VeritasUI
+if not VUI then return end
+
+local pcall, ipairs, type = pcall, ipairs, type
+local sfind, ssub, slower, sbyte = string.find, string.sub, string.lower, string.byte
+
+local function DB() return _G.VeritasUI_QualityOfLifeDB end
+-- Default ON: only an explicit false turns one off.
+local function On(key)
+    local db = DB()
+    return not (type(db) == "table" and db[key] == false)
+end
+local function IsSecret(v) return issecretvalue and issecretvalue(v) or false end
+
+-- ── Item Tooltips in Chat ──────────────────────────────────────
+local KINDS = {
+    item = true, spell = true, enchant = true, achievement = true, quest = true, currency = true,
+    talent = true, keystone = true, instancelock = true, mawpower = true, conduit = true, azessence = true,
+    transmogappearance = true, transmogillusion = true, mount = true, perksactivity = true,
+}
+local shownFor
+
+local function OnLinkEnter(_, chatFrame, link)
+    if not On("chatItemTooltips") or type(link) ~= "string" or IsSecret(link) then return end
+    local kind = link:match("^(%a+):")
+    if not (kind and KINDS[kind]) or not GameTooltip then return end
+    GameTooltip:SetOwner(chatFrame, "ANCHOR_CURSOR")
+    local ok = pcall(GameTooltip.SetHyperlink, GameTooltip, link)
+    if ok and GameTooltip:NumLines() > 0 then
+        GameTooltip:Show()
+        shownFor = chatFrame
+    else
+        GameTooltip:Hide()
+        shownFor = nil
+    end
+end
+
+local function OnLinkLeave(_, chatFrame)
+    if shownFor and shownFor == chatFrame and GameTooltip and GameTooltip:IsOwned(chatFrame) then
+        GameTooltip:Hide()
+    end
+    shownFor = nil
+end
+
+if EventRegistry and EventRegistry.RegisterCallback then
+    local owner = {}
+    EventRegistry:RegisterCallback("ChatFrame.OnHyperlinkEnter", OnLinkEnter, owner)
+    EventRegistry:RegisterCallback("ChatFrame.OnHyperlinkLeave", OnLinkLeave, owner)
+end
+
+-- ── Class-Colored Names in Messages ────────────────────────────
+local names = {}     -- lower-case name -> class file
+local order = {}     -- lower-case names, longest first (so "Ann" never eats "Anna")
+
+local function AddUnit(unit)
+    local okN, name = pcall(UnitName, unit)
+    if not okN or type(name) ~= "string" or IsSecret(name) or #name < 2 then return end
+    local okC, _, class = pcall(UnitClass, unit)
+    if not okC or type(class) ~= "string" or IsSecret(class) then return end
+    local key = slower(name)
+    if not names[key] then
+        names[key] = class
+        order[#order + 1] = key
+    end
+end
+
+local function Roster()
+    names, order = {}, {}
+    AddUnit("player")
+    local okR, raid = pcall(IsInRaid)
+    local okN, n = pcall(GetNumGroupMembers)
+    if not okN or type(n) ~= "number" then n = 0 end
+    if okR and raid then
+        for i = 1, n do AddUnit("raid" .. i) end
+    else
+        for i = 1, 4 do AddUnit("party" .. i) end
+    end
+    table.sort(order, function(a, b) return #a > #b end)
+end
+VUI.QoL_ChatRoster = Roster
+
+local function Colored(text, class)
+    local c = C_ClassColor and C_ClassColor.GetClassColor and C_ClassColor.GetClassColor(class)
+    if c and c.WrapTextInColorCode then return c:WrapTextInColorCode(text) end
+    return text
+end
+
+-- A letter, digit or any byte of a multi-byte UTF-8 character: a name must not touch one.
+local function IsWordByte(b)
+    return b and (b >= 128 or (b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122))
+end
+
+local function ColorSpan(span)
+    if span == "" or #order == 0 then return span end
+    local low = slower(span)
+    local out, i = {}, 1
+    while i <= #span do
+        local hit
+        for _, key in ipairs(order) do
+            if ssub(low, i, i + #key - 1) == key and not IsWordByte(sbyte(span, i - 1))
+                and not IsWordByte(sbyte(span, i + #key)) then
+                hit = key
+                break
+            end
+        end
+        if hit then
+            out[#out + 1] = Colored(ssub(span, i, i + #hit - 1), names[hit])
+            i = i + #hit
+        else
+            -- Only try a match where a word starts.
+            local j = i + 1
+            while j <= #span and IsWordByte(sbyte(span, j)) and IsWordByte(sbyte(span, j - 1)) do j = j + 1 end
+            out[#out + 1] = ssub(span, i, j - 1)
+            i = j
+        end
+    end
+    return table.concat(out)
+end
+
+-- Escape sequences whose inside is never touched: |c..|r colour, |H..|h..|h link, |T..|t texture,
+-- |A..|a atlas, |K..|k Battle.net name token.
+local CLOSE = { c = "|r", T = "|t", A = "|a", K = "|k" }
+
+local function ColorNames(msg)
+    local out, i, plain = {}, 1, 1
+    while true do
+        local p = sfind(msg, "|", i, true)
+        if not p then break end
+        local code = ssub(msg, p + 1, p + 1)
+        local stop
+        if code == "H" then
+            local h1 = sfind(msg, "|h", p + 2, true)
+            local h2 = h1 and sfind(msg, "|h", h1 + 2, true)
+            stop = h2 and (h2 + 1)
+        elseif CLOSE[code] then
+            local e = sfind(msg, CLOSE[code], p + 2, true)
+            stop = e and (e + 1)
+        else
+            stop = p + 1
+        end
+        if not stop then stop = #msg end
+        if CLOSE[code] or code == "H" then
+            out[#out + 1] = ColorSpan(ssub(msg, plain, p - 1))
+            out[#out + 1] = ssub(msg, p, stop)
+            plain = stop + 1
+        end
+        i = stop + 1
+    end
+    out[#out + 1] = ColorSpan(ssub(msg, plain))
+    return table.concat(out)
+end
+VUI.QoL_ChatColorNames = ColorNames
+
+local NAME_EVENTS = {
+    "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_EMOTE",
+    "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER", "CHAT_MSG_RAID_WARNING",
+    "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER", "CHAT_MSG_GUILD", "CHAT_MSG_OFFICER",
+    "CHAT_MSG_WHISPER", "CHAT_MSG_WHISPER_INFORM", "CHAT_MSG_BN_WHISPER", "CHAT_MSG_BN_WHISPER_INFORM",
+}
+
+local function NameFilter(_, _, msg, ...)
+    if not On("chatClassColorNames") or type(msg) ~= "string" or IsSecret(msg) or #order == 0 then
+        return false
+    end
+    local ok, colored = pcall(ColorNames, msg)
+    if not ok or colored == msg then return false end
+    return false, colored, ...
+end
+
+local add = ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter
+if add then
+    for _, ev in ipairs(NAME_EVENTS) do add(ev, NameFilter) end
+end
+
+local roster = CreateFrame("Frame")
+roster:RegisterEvent("PLAYER_ENTERING_WORLD")
+roster:RegisterEvent("GROUP_ROSTER_UPDATE")
+roster:RegisterEvent("UNIT_NAME_UPDATE")
+roster:SetScript("OnEvent", Roster)
+
+-- ── Whisper Sound ──────────────────────────────────────────────
+local TELL_FILE = 567421
+local SOUNDS = {   -- value, label, SOUNDKIT name (nil: Blizzard's own / none)
+    { "default", "Blizzard's Whisper Sound" },
+    { "none", "None" },
+    { "bnet", "Battle.net Toast", "UI_BNET_TOAST" },
+    { "raidwarning", "Raid Warning", "RAID_WARNING" },
+    { "readycheck", "Ready Check", "READY_CHECK" },
+    { "rolecheck", "Role Check", "LFG_ROLE_CHECK" },
+    { "mapping", "Map Ping", "MAP_PING" },
+    { "alarm", "Alarm Clock", "ALARM_CLOCK_WARNING_3" },
+    { "bosswhisper", "Boss Whisper", "UI_RAID_BOSS_WHISPER_WARNING" },
+}
+local KIT = {}
+for _, row in ipairs(SOUNDS) do KIT[row[1]] = row[3] or false end
+
+local function Choice()
+    local db = DB()
+    local v = type(db) == "table" and db.whisperSound
+    return (type(v) == "string" and KIT[v] ~= nil) and v or "default"
+end
+
+local muted = false
+local function ApplyMute()
+    local want = Choice() ~= "default"
+    if want and not muted and MuteSoundFile then
+        MuteSoundFile(TELL_FILE); muted = true
+    elseif not want and muted and UnmuteSoundFile then
+        UnmuteSoundFile(TELL_FILE); muted = false
+    end
+end
+
+local function Play(value)
+    local name = KIT[value]
+    local id = name and SOUNDKIT and SOUNDKIT[name]
+    if id then PlaySound(id) end
+end
+VUI.QoL_WhisperSoundPlay = Play
+
+local quietUntil = 0
+local whisper = CreateFrame("Frame")
+whisper:RegisterEvent("PLAYER_LOGIN")
+whisper:RegisterEvent("CHAT_MSG_WHISPER")
+whisper:RegisterEvent("CHAT_MSG_BN_WHISPER")
+whisper:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_LOGIN" then ApplyMute(); return end
+    local choice = Choice()
+    if choice == "default" then return end
+    local now = GetTime()
+    if now > quietUntil then Play(choice) end
+    local cool = ChatFrameConstants and ChatFrameConstants.WhisperSoundAlertCooldown or 300
+    quietUntil = now + cool
+end)
+
+VUI.QoL_WhisperSoundDropdown = function(category, db, addonName)
+    if type(db.whisperSound) ~= "string" or KIT[db.whisperSound] == nil then db.whisperSound = "default" end
+    local setting = Settings.RegisterAddOnSetting(category, addonName .. "_whisperSound", "whisperSound", db,
+        "string", "Whisper Sound", "default")
+    setting:SetValueChangedCallback(function(_, value)
+        ApplyMute()
+        Play(value)   -- a preview, as you pick it
+    end)
+    local function Options()
+        local container = Settings.CreateControlTextContainer()
+        for _, row in ipairs(SOUNDS) do
+            if not row[3] or (SOUNDKIT and SOUNDKIT[row[3]]) then container:Add(row[1], row[2]) end
+        end
+        return container:GetData()
+    end
+    Settings.CreateDropdown(category, setting, Options,
+        "The sound for a whisper or Battle.net whisper. Like Blizzard's, it plays once, then not again "
+        .. "until no whisper has come for 5 minutes.")
+end
