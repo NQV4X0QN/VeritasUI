@@ -321,14 +321,13 @@ VUI.QoL_NpcOptionsDropdown = function(category, db, addonName, TipWithReason)
         c:AddCheckbox(NONE, "None")
         c:AddCheckbox(ALL, "All")
         for i, r in ipairs(rows) do
-            local row = c:AddCheckbox(FIRST + i - 1, r.label)
+            -- Each rule's text as the row's tooltip: Blizzard's dropdown tooltip shows the name in white and
+            -- the text in gold, a blank line apart (Settings.CreateOptionsInitTooltip, Blizzard_Settings.lua:415).
+            local row = c:AddCheckbox(FIRST + i - 1, r.label, r.tip)
             if all and type(row) == "table" then row.text = nil end
         end
         return c:GetData()
     end
-    local sections = {}
-    for _, r in ipairs(rows) do sections[#sections + 1] = { r.label, r.tip } end
-    local tip = VUI.SectionedTip("Rules for Pick Only Dialogue Option, Auto Accept Quests and Auto Turn In Quests.",
-        sections, "Applies at once.")
+    local tip = "Rules for Pick Only Dialogue Option, Auto Accept Quests and Auto Turn In Quests. Applies at once."
     Settings.CreateDropdown(category, setting, GetOptions, TipWithReason(tip, "npcOptions"))
 end

@@ -82,20 +82,6 @@ function VUI.PrintOnOff(tag, label, state)
     VUI.Print(tag, label .. " " .. word .. " — |cFFFFFF00/reload|r to apply.")
 end
 
--- A tooltip that explains several choices at once (owner's standard, 2026-11-01): each choice is its own
--- paragraph, a blank line apart, led by its name in Blizzard's normal (gold) tooltip colour, so the
--- option being described is easy to find. sections = { { name, text }, ... }; intro and outro optional.
-function VUI.SectionedTip(intro, sections, outro)
-    local gold = _G.NORMAL_FONT_COLOR_CODE or "|cFFFFD100"
-    local parts = {}
-    if intro and intro ~= "" then parts[#parts + 1] = intro end
-    for _, sec in ipairs(sections or {}) do
-        if sec[1] and sec[2] then parts[#parts + 1] = gold .. sec[1] .. "|r: " .. sec[2] end
-    end
-    if outro and outro ~= "" then parts[#parts + 1] = outro end
-    return table.concat(parts, "\n\n")
-end
-
 -- On/off print for settings that apply IMMEDIATELY (QoL's v1.6.28
 -- mid-session-apply pattern, AH tooltip toggles).  The "/reload to apply"
 -- suffix dates to v1.2.0 when every setting genuinely needed one; telling

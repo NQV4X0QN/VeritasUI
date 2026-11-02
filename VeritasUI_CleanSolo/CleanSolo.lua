@@ -1029,6 +1029,7 @@ end
 -- login, so a type Blizzard removes is skipped instead of hiding the wrong message.
 local ERROR_TYPE_GROUPS = {
     { id = "combat", label = "Combat: Range, Facing & Targets",
+      tip = "'You are too far away!', 'You are facing the wrong way!', no target, and similar.",
       types = {
         "BADATTACKPOS", "BADATTACKFACING", "OUT_OF_RANGE", "SPELL_OUT_OF_RANGE",
         "PET_SPELL_OUT_OF_RANGE", "NO_ATTACK_TARGET", "GENERIC_NO_TARGET",
@@ -1041,6 +1042,7 @@ local ERROR_TYPE_GROUPS = {
         "PET_SPELL_AFFECTING_COMBAT", "TARGET_STUNNED", "CANT_TARGET_UNFRIENDLY_IN_OVERWORLD",
       } },
     { id = "spells", label = "Spells & Cooldowns",
+      tip = "Not ready yet, not enough mana, energy or rage, can't do that while moving, and similar.",
       types = {
         "ABILITY_COOLDOWN", "SPELL_COOLDOWN", "ITEM_COOLDOWN", "POTION_COOLDOWN",
         "FOOD_COOLDOWN", "SPELL_FAILED_ALREADY_AT_FULL_HEALTH",
@@ -1064,7 +1066,7 @@ local ERROR_TYPE_GROUPS = {
         "NOT_IN_COMBAT", "AFFECTING_COMBAT", "GENERIC_STUNNED", "CANT_USE_DISARMED",
         "CANT_DO_THAT_RIGHT_NOW", "PASSIVE_ABILITY", "NOAMMO_S",
       } },
-    { id = "items", label = "Items & Bags",
+    { id = "items", label = "Items & Bags", tip = "Bags full, can't equip or use an item, and similar.",
       types = {
         "INV_FULL", "BAG_FULL", "CANT_USE_ITEM", "CANT_USE_ITEM_IN_ARENA",
         "CANT_USE_ITEM_IN_RATED_BATTLEGROUND", "CANT_EQUIP_EVER", "CANT_EQUIP_LEVEL_I",
@@ -1089,6 +1091,7 @@ local ERROR_TYPE_GROUPS = {
     -- matched to this type -- if "Item is not found" still shows with this group on, it is a
     -- different type.
     { id = "mail", label = "Mail, Vendors & Bank",
+      tip = "Mailbox, vendor and bank errors, such as 'Internal mail database error.'",
       types = {
         "MAIL_DATABASE_ERROR", "ITEM_NOT_FOUND", "MAIL_ATTACHMENT_EXPIRED", "MAIL_BAG",
         "MAIL_BOUND_ITEM", "MAIL_CANT_SEND_REALM", "MAIL_CONJURED_ITEM",
@@ -1103,7 +1106,7 @@ local ERROR_TYPE_GROUPS = {
         "CANT_BULK_SELL_ITEM_WITH_REFUND", "NO_BANK_HERE", "NO_ACCOUNT_BANK_HERE",
         "BANK_FULL", "BANK_NOT_ACCESSIBLE", "REAGENT_BANK_FULL", "AUCTION_DATABASE_ERROR",
       } },
-    { id = "loot", label = "Looting & Objects",
+    { id = "loot", label = "Looting & Objects", tip = "Loot and object errors, such as being too far away to loot.",
       types = {
         "LOOT_BAD_FACING", "LOOT_CANT_LOOT_THAT", "LOOT_CANT_LOOT_THAT_NOW",
         "LOOT_DIDNT_KILL", "LOOT_GONE", "LOOT_LOCKED", "LOOT_NOTSTANDING", "LOOT_NO_UI",
@@ -1115,7 +1118,7 @@ local ERROR_TYPE_GROUPS = {
         "TOO_FAR_TO_INTERACT", "OBJECT_IS_BUSY", "CHEST_IN_USE", "DOOR_LOCKED",
         "CANT_INTERACT_SHAPESHIFTED", "FISH_ESCAPED", "FISH_NOT_HOOKED",
       } },
-    { id = "travel", label = "Mounts & Flight Paths",
+    { id = "travel", label = "Mounts & Flight Paths", tip = "Mount and flight path errors.",
       types = {
         "MOUNT_ALREADYMOUNTED", "MOUNT_INVALIDMOUNTEE", "MOUNT_LOOTING",
         "MOUNT_NOTMOUNTABLE", "MOUNT_NOTYOURPET", "MOUNT_NO_FAVORITES", "MOUNT_NO_MOUNTS",
@@ -2094,9 +2097,12 @@ local function InitializeOptions()
             for _, it in ipairs(items) do if not truth[it.id] then all = false end end
             local container = Settings.CreateControlTextContainer()
             container:AddCheckbox(KD_NONE, "None")
-            container:AddCheckbox(KD_ALL, "All")
+            container:AddCheckbox(KD_ALL, "All", spec.allTip)
+            -- Each row's own tooltip (third argument): Blizzard's dropdown tooltip lists every option as
+            -- its name in white and its text in gold, a blank line apart (Settings.CreateOptionsInitTooltip,
+            -- Blizzard_Settings.lua:415-460), as Options > Controls > Camera Following Style does.
             for i, it in ipairs(items) do
-                local row = container:AddCheckbox(KD_FIRST + i - 1, it.label)
+                local row = container:AddCheckbox(KD_FIRST + i - 1, it.label, it.tip)
                 if all and type(row) == "table" then row.text = nil end
             end
             return container:GetData()
@@ -2128,14 +2134,8 @@ local function InitializeOptions()
             ignore = false
             if spec.onChanged then spec.onChanged() end
         end)
-        -- spec.intro/outro + each item's tip: one paragraph per choice (VUI.SectionedTip).
-        local tip = spec.tip
-        if spec.intro and VUI.SectionedTip then
-            local sections = {}
-            for _, it in ipairs(items) do if it.tip then sections[#sections + 1] = { it.label, it.tip } end end
-            tip = VUI.SectionedTip(spec.intro, sections, spec.outro)
-        end
-        local init = Settings.CreateDropdown(category, setting, GetOptions, TipWithReason(tip, spec.unavailableKey))
+        local init = Settings.CreateDropdown(category, setting, GetOptions,
+            TipWithReason(spec.tip, spec.unavailableKey))
         GreyIfUnavailable(init, spec.unavailableKey)
         return init
     end
@@ -2154,15 +2154,12 @@ local function InitializeOptions()
             "fadeObjectiveTrackerRaid", db, "string", "In Raids", UNIVERSAL.fadeObjectiveTrackerRaid)
         Under(Settings.CreateDropdown(category, raidSetting, function()
             local c = Settings.CreateControlTextContainer()
-            c:Add("normal", "Normal")
-            c:Add("raid", "Hide in Raids")
-            c:Add("boss", "Hide During Boss Fights")
+            c:Add("normal", "Normal", "The tracker fades as set above.")
+            c:Add("raid", "Hide in Raids", "The whole tracker is hidden inside a raid.")
+            c:Add("boss", "Hide During Boss Fights", "Hidden inside a raid only while a boss fight is on.")
             return c:GetData()
-        end, VUI.SectionedTip(nil, {
-            { "Normal", "The tracker fades as set above." },
-            { "Hide in Raids", "The whole tracker is hidden inside a raid." },
-            { "Hide During Boss Fights", "Hidden inside a raid only while a boss fight is on." },
-        }, "Hovering still shows it, and a hidden quest item button can still be clicked. Applies at once.")))
+        end, "What the tracker does in a raid. Hovering still shows it, and a hidden quest item button can "
+            .. "still be clicked. Applies at once."))
         for _, sec in ipairs(OT_SECTIONS) do
             local key = "otOpacity_" .. sec.id
             local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_" .. key, key, db,
@@ -2236,8 +2233,8 @@ local function InitializeOptions()
             setMask = function(v) db.hideTopBannersMask = v end,
             name = "Hide Top Banners", items = TOP_BANNER_GROUPS, truth = db.hideTopBannerTypes,
             unavailableKey = "hideTopBanners",
-            intro = "Pick the big messages at the top of the screen to stop. The rest still show.",
-            outro = "Requires |cFFFFFF00/reload|r to apply.",
+            tip = "Pick the big messages at the top of the screen to stop. The rest still show. "
+               .. "Requires |cFFFFFF00/reload|r to apply.",
             onItem = function(g, on)
                 VUI.Print("Clean Solo", "Hide Top Banners: " .. g.label .. " "
                     .. (on and "hidden" or "shown") .. " — |cFFFFFF00/reload|r to apply.")
@@ -2253,8 +2250,8 @@ local function InitializeOptions()
             setMask = function(v) db.hideMinimapButtonsMask = v end,
             name = "Hide Minimap Buttons", items = MINIMAP_BUTTONS, truth = db.hideMinimapButtons,
             unavailableKey = "hideMinimapButtons",
-            intro = "Pick the buttons and labels around the minimap to hide. A hidden one can't be clicked.",
-            outro = "Applies at once.",
+            tip = "Pick the buttons and labels around the minimap to hide. A hidden one can't be clicked. "
+               .. "Applies at once.",
             onChanged = function()
                 if not Unavailable("hideMinimapButtons") then ApplyMinimapButtons() end
             end,
@@ -2271,9 +2268,9 @@ local function InitializeOptions()
             name = "Hide Transforms", items = TRANSFORM_KINDS, truth = db.hideTransformTypes,
             defaultIds = { "professions" },          -- as UNIVERSAL.hideTransformTypes
             unavailableKey = "hideProfessionGear",
-            intro = "Pick the costumes and transformations to take off you as soon as they land, so your own "
-               .. "look stays.",
-            outro = "Not during combat; anything that lands in combat comes off when it ends. Applies at once.",
+            tip = "Pick the costumes and transformations to take off you as soon as they land, so your own "
+               .. "look stays. Not during combat; anything that lands in combat comes off when it ends. "
+               .. "Applies at once.",
             onItem = function(k, on)
                 VUI.Print("Clean Solo", "Hide Transforms: " .. k.label .. " "
                     .. (on and "taken off" or "left on") .. ".")
@@ -2318,9 +2315,9 @@ local function InitializeOptions()
     local function GetErrorTypeOptions()
         local container = Settings.CreateControlTextContainer()
         container:AddCheckbox(ERR_NONE, "None")
-        container:AddCheckbox(ERR_ALL, "All")
+        container:AddCheckbox(ERR_ALL, "All", "Every error message.")
         for i, g in ipairs(ERROR_TYPE_GROUPS) do
-            local row = container:AddCheckbox(ERR_FIRST_GROUP + i - 1, g.label)
+            local row = container:AddCheckbox(ERR_FIRST_GROUP + i - 1, g.label, g.tip)
             -- While All is on the group rows are ticked but must not be listed in the bar,
             -- which should read just "All". A row's `text` feeds only the bar text; the menu
             -- draws the row from `label` (CreateTextContainerData, Blizzard_Settings.lua:244-
@@ -2385,18 +2382,8 @@ local function InitializeOptions()
     end)
 
     Settings.CreateDropdown(category, errSetting, GetErrorTypeOptions,
-        VUI.SectionedTip("Pick the kinds of red error message to hide, and the spoken lines that go with "
-            .. "them; the rest still show.", {
-            { "All", "Every error message." },
-            { "Combat: Range, Facing & Targets", "'You are too far away!', 'You are facing the wrong way!', "
-                .. "no target, and similar." },
-            { "Spells & Cooldowns", "Not ready yet, not enough mana, energy or rage, can't do that while "
-                .. "moving, and similar." },
-            { "Items & Bags", "Bags full, can't equip or use an item, and similar." },
-            { "Mail, Vendors & Bank", "Mailbox, vendor and bank errors, such as 'Internal mail database error.'" },
-            { "Looting & Objects", "Loot and object errors, such as being too far away to loot." },
-            { "Mounts & Flight Paths", "Mount and flight path errors." },
-        }, "Requires |cFFFFFF00/reload|r to apply."))
+        "Pick the kinds of red error message to hide, and the spoken lines that go with them; the rest "
+        .. "still show. Requires |cFFFFFF00/reload|r to apply.")
 
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
