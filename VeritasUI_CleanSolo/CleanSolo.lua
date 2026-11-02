@@ -780,9 +780,8 @@ end
 -- Fishing is the exception: its outfit (394009) is re-applied for as long as the fishing channel
 -- (131476) runs, so it is removed when the channel stops.
 --
--- v1.49.0 (feature batch item 3): Hide Transforms, a dropdown. Profession gear is one row; the
--- holiday costumes, toys and consumables are a row each, so a player can keep a toy they use on
--- purpose. Their aura IDs are server data too, from EllesmereUI v9.7.2's transform list
+-- v1.49.0 (feature batch item 3): Hide Transforms, a dropdown of four groups. The new groups' aura IDs
+-- are server data too, from EllesmereUI v9.7.2's transform list
 -- (EllesmereUIQoL.lua:4977-5015, read 2026-11-01), as the profession list was.
 local TRANSFORM_KINDS = {
     { id = "professions", label = "Profession Gear", ids = {
@@ -800,23 +799,29 @@ local TRANSFORM_KINDS = {
         391775,   -- Cooking (Chef's Hat)
         394009,   -- Fishing (removed on channel stop, below)
     } },
-    { id = "lantern",      label = "Weighted Jack-o'-Lantern", ids = { 44212 } },
-    { id = "hallowed",     label = "Hallowed Wand", ids = {
-        172010, 218132, 191703, 24732, 191210, 172015, 24735, 24736, 191698, 191700,
+    -- Owner, 2026-11-01: groups, not one row per item, so a new costume or toy is one more ID in
+    -- its group rather than one more row.
+    { id = "holiday", label = "Holiday Costumes", ids = {
+        44212,                               -- Weighted Jack-o'-Lantern
+        172010, 218132, 191703, 24732, 191210, 172015, 24735, 24736, 191698, 191700,   -- Hallowed Wand
         172008, 24712, 24713, 191701, 191211, 24710, 24711, 191686, 191688, 24708,
         24709, 173958, 173959, 191682, 191683, 24723, 191702, 172003, 172020, 191208, 24740,
+        61734, 61716,                        -- Noblegarden Bunny
+        61781,                               -- Pilgrim's Turkey
     } },
-    { id = "noblebunny",   label = "Noblegarden Bunny",         ids = { 61734, 61716 } },
-    { id = "turkey",       label = "Pilgrim's Turkey",          ids = { 61781 } },
-    { id = "aqir",         label = "Aqir Egg Cluster",          ids = { 318452 } },
-    { id = "atomic",       label = "Atomic Recalibrator",       ids = { 399502 } },
-    { id = "atomgoblin",   label = "Atomic Regoblinator",       ids = { 1215363 } },
-    { id = "blight",       label = "Detoxified Blight Grenade", ids = { 290224 } },
-    { id = "witch",        label = "Lucille's Sewing Needle",   ids = { 279509 } },
-    { id = "spraybots",    label = "Spraybots",                 ids = { 301892, 301893, 301894 } },
-    { id = "pickaxe",      label = "Cursed Pickaxe",            ids = { 454405 } },
-    { id = "noggenfogger", label = "Noggenfogger Elixir",       ids = { 16593, 1223630, 16595, 1223629, 1223631 } },
-    { id = "prism",        label = "Reflecting Prism",          ids = { 163267 } },
+    { id = "toys", label = "Toys", ids = {
+        318452,                              -- Aqir Egg Cluster
+        399502,                              -- Atomic Recalibrator
+        1215363,                             -- Atomic Regoblinator
+        290224,                              -- Detoxified Blight Grenade
+        279509,                              -- Lucille's Sewing Needle
+        301892, 301893, 301894,              -- Spraybots
+    } },
+    { id = "consumables", label = "Consumables", ids = {
+        454405,                              -- Cursed Pickaxe
+        16593, 1223630, 16595, 1223629, 1223631,   -- Noggenfogger Elixir
+        163267,                              -- Reflecting Prism
+    } },
 }
 -- The aura IDs of every ticked kind, rebuilt by SetHideTransforms.
 local hiddenTransformAuras = {}
@@ -1500,18 +1505,6 @@ local function ErrorTypesMask()
     return mask > 0 and mask or Bit(ERR_NONE)
 end
 
--- Fade Action Bars rows: None is value 1 (bar 1 is Blizzard-protected and never listed), and
--- bar N is value N, so the bar number IS the option value.
-local BAR_NONE, BAR_MAX = 1, 8
-
-local function ActionBarsMask()
-    local mask = 0
-    for i = 2, BAR_MAX do
-        if cdb.fadeActionBars[i] then mask = mask + Bit(i) end
-    end
-    return mask > 0 and mask or Bit(BAR_NONE)
-end
-
 -- An option another addon has taken over (VUI.SetOptionUnavailable). Nothing takes a Clean Solo
 -- option today: the caller was VeritasUI_ElvUI (retired), kept for a possible revival. Its feature
 -- is skipped at login and its control is greyed out with the reason added to the tooltip; the
@@ -1724,61 +1717,107 @@ local function InitializeOptions()
         end
     end
 
+    -- ── Tick-box dropdowns: None, All, then the kinds (owner's standard, 2026-11-01: every dropdown
+    -- of choices has None and All, as Hide Error Text does). Blizzard's Settings dropdown with check
+    -- boxes (Settings.CreateControlTextContainer():AddCheckbox) over a number setting whose bits are
+    -- the rows: 1 None, 2 All, 3.. the kinds. The truth is spec.truth ([kind id] = true); the mask is
+    -- derived from it at every login and every change and only feeds the control. None and All are
+    -- not stored: None is ticked when no kind is, All when every kind is. While All is ticked the kind
+    -- rows drop their bar text, so the closed box reads "All", not every name (a nil `text` adds
+    -- nothing to the bar, MenuTemplates.lua:775-791). Hide Error Text keeps its own code: its All is
+    -- an override that also hides messages outside its groups.
+    --   spec = { setting, maskKey, owner (table holding the mask), setMask(v), name,
+    --            items = { {id, label} }, truth (table), defaultIds, tip, unavailableKey, onItem(item, on),
+    --            onChanged() }
+    -- setMask writes the mask through a literal `db.`/`cdb.` access so scope_map_test can see the key.
+    local KD_NONE, KD_ALL, KD_FIRST = 1, 2, 3
+    local function KindsDropdown(spec)
+        local items, truth = spec.items, spec.truth
+        local maxBit = KD_FIRST + #items - 1
+        local function MaskOf(isOn)
+            local mask, n = 0, 0
+            for i, it in ipairs(items) do
+                if isOn(it.id) then mask = mask + Bit(KD_FIRST + i - 1); n = n + 1 end
+            end
+            if n == 0 then return Bit(KD_NONE) end
+            if n == #items then mask = mask + Bit(KD_ALL) end
+            return mask
+        end
+        local function Mask() return MaskOf(function(id) return truth[id] end) end
+        local defaults = {}
+        for _, id in ipairs(spec.defaultIds or {}) do defaults[id] = true end
+
+        local lastMask = Mask()
+        spec.setMask(lastMask)
+        local setting = Settings.RegisterAddOnSetting(category, spec.setting, spec.maskKey, spec.owner,
+            "number", spec.name, MaskOf(function(id) return defaults[id] end))
+        local ignore = false
+        local function GetOptions()
+            local all = true
+            for _, it in ipairs(items) do if not truth[it.id] then all = false end end
+            local container = Settings.CreateControlTextContainer()
+            container:AddCheckbox(KD_NONE, "None")
+            container:AddCheckbox(KD_ALL, "All")
+            for i, it in ipairs(items) do
+                local row = container:AddCheckbox(KD_FIRST + i - 1, it.label)
+                if all and type(row) == "table" then row.text = nil end
+            end
+            return container:GetData()
+        end
+        local function SetAll(on)
+            for _, it in ipairs(items) do truth[it.id] = on or nil end
+        end
+        setting:SetValueChangedCallback(function(_, val)
+            if ignore or type(val) ~= "number" then return end
+            local changed = ChangedBits(lastMask, val, maxBit)
+            if #changed == 1 then
+                local v, on = changed[1], HasBit(val, changed[1])
+                if v == KD_NONE then
+                    if on then SetAll(false) end         -- unticking None alone changes nothing
+                elseif v == KD_ALL then
+                    SetAll(on)
+                else
+                    local it = items[v - KD_FIRST + 1]
+                    truth[it.id] = on or nil
+                    if spec.onItem then spec.onItem(it, on) end
+                end
+            elseif #changed > 1 then                     -- e.g. the Defaults button
+                for i, it in ipairs(items) do truth[it.id] = HasBit(val, KD_FIRST + i - 1) or nil end
+            end
+            lastMask = Mask()
+            spec.setMask(lastMask)
+            ignore = true
+            pcall(setting.SetValue, setting, lastMask)
+            ignore = false
+            if spec.onChanged then spec.onChanged() end
+        end)
+        local init = Settings.CreateDropdown(category, setting, GetOptions,
+            TipWithReason(spec.tip, spec.unavailableKey))
+        GreyIfUnavailable(init, spec.unavailableKey)
+        return init
+    end
+
     Header("Fade")
     AddCheckboxes(FADE_OPTIONS)
 
     -- ── Fade Action Bars — tick-box dropdown, PER-CHARACTER (mask paired with fadeActionBars).
     cdb.fadeActionBars[1] = nil  -- Bar 1 is Blizzard-protected
     cdb.fadeActionBarsLabel = nil  -- RETIRED v1.21.0: the old display string, now the mask
-    cdb.fadeActionBarsMask = ActionBarsMask()
-    local lastBarMask = cdb.fadeActionBarsMask
-
-    local fadeSetting = Settings.RegisterAddOnSetting(
-        category,
-        ADDON_NAME .. "_fadeActionBars",
-        "fadeActionBarsMask",
-        cdb,                         -- PER-CHARACTER: paired with fadeActionBars
-        "number",
-        "Fade Action Bars",
-        Bit(BAR_NONE)
-    )
-
-    local ignoreFadeCallback = false
-
-    local function GetBarOptions()
-        local container = Settings.CreateControlTextContainer()
-        container:AddCheckbox(BAR_NONE, "None")
-        for i = 2, BAR_MAX do container:AddCheckbox(i, ACTION_BAR_LABELS[i]) end
-        return container:GetData()
-    end
-
-    fadeSetting:SetValueChangedCallback(function(_, val)
-        if ignoreFadeCallback or type(val) ~= "number" then return end
-        local changed = ChangedBits(lastBarMask, val, BAR_MAX)
-        if #changed == 1 then
-            local v, on = changed[1], HasBit(val, changed[1])
-            if v == BAR_NONE then
-                if on then for i = 2, BAR_MAX do cdb.fadeActionBars[i] = nil end end
-            else
-                cdb.fadeActionBars[v] = on or nil
-                VUI.Print("Clean Solo", ACTION_BAR_LABELS[v] .. " fade "
-                    .. (on and "enabled" or "disabled") .. " — |cFFFFFF00/reload|r to apply.")
-            end
-        elseif #changed > 1 then
-            for i = 2, BAR_MAX do cdb.fadeActionBars[i] = HasBit(val, i) or nil end
-        end
-        cdb.fadeActionBarsMask = ActionBarsMask()
-        lastBarMask = cdb.fadeActionBarsMask
-        ignoreFadeCallback = true
-        pcall(fadeSetting.SetValue, fadeSetting, cdb.fadeActionBarsMask)
-        ignoreFadeCallback = false
-    end)
-
-    local fadeInit = Settings.CreateDropdown(category, fadeSetting, GetBarOptions, TipWithReason(
-        "Pick a bar to fade it out when idle; it reappears on mouseover. How faded it gets is set "
-        .. "by the slider beside Fade Main Action Bar. "
-        .. "Requires |cFFFFFF00/reload|r to apply.", "fadeActionBars"))
-    GreyIfUnavailable(fadeInit, "fadeActionBars")
+    local barItems = {}
+    for i = 2, 8 do barItems[#barItems + 1] = { id = i, label = ACTION_BAR_LABELS[i] } end
+    KindsDropdown({
+        setting = ADDON_NAME .. "_fadeActionBars", maskKey = "fadeActionBarsMask",
+        owner = cdb,                 -- PER-CHARACTER: paired with fadeActionBars
+        setMask = function(v) cdb.fadeActionBarsMask = v end,
+        name = "Fade Action Bars", items = barItems, truth = cdb.fadeActionBars,
+        unavailableKey = "fadeActionBars",
+        tip = "Pick a bar to fade it out when idle; it reappears on mouseover. How faded it gets is set "
+           .. "by the slider beside Fade Main Action Bar. Requires |cFFFFFF00/reload|r to apply.",
+        onItem = function(it, on)
+            VUI.Print("Clean Solo", it.label .. " fade " .. (on and "enabled" or "disabled")
+                .. " — |cFFFFFF00/reload|r to apply.")
+        end,
+    })
 
     -- ── Fade Delay — slider, UNIVERSAL. Applies at once (as does Hide Profession Gear): it is a
     -- number the faders read each time they are about to fade (VUI.SetFadeDelay), not a hook, so
@@ -1814,128 +1853,46 @@ local function InitializeOptions()
     -- ── Hide Top Banners — tick-box dropdown, UNIVERSAL (mask paired with hideTopBannerTypes, both on
     -- db). The Fade Action Bars pattern: a None row, then one row per TOP_BANNER_GROUPS entry; the
     -- table is the truth and the mask is derived from it on every login and every change.
-    local TB_NONE, TB_FIRST = 1, 2
-    local TB_MAX = TB_FIRST + #TOP_BANNER_GROUPS - 1
-    local function TopBannersMask()
-        local mask = 0
-        for i, g in ipairs(TOP_BANNER_GROUPS) do
-            if db.hideTopBannerTypes[g.id] then mask = mask + Bit(TB_FIRST + i - 1) end
-        end
-        return mask > 0 and mask or Bit(TB_NONE)
-    end
     function BuildTopBannersDropdown()
-        db.hideTopBannersMask = TopBannersMask()
-        local lastMask = db.hideTopBannersMask
-        local setting = Settings.RegisterAddOnSetting(
-            category,
-            ADDON_NAME .. "_hideTopBanners",
-            "hideTopBannersMask",
-            db,                          -- UNIVERSAL: paired with hideTopBannerTypes
-            "number",
-            "Hide Top Banners",
-            Bit(TB_NONE)
-        )
-        local ignore = false
-        local function GetOptions()
-            local container = Settings.CreateControlTextContainer()
-            container:AddCheckbox(TB_NONE, "None")
-            for i, g in ipairs(TOP_BANNER_GROUPS) do container:AddCheckbox(TB_FIRST + i - 1, g.label) end
-            return container:GetData()
-        end
-        setting:SetValueChangedCallback(function(_, val)
-            if ignore or type(val) ~= "number" then return end
-            local changed = ChangedBits(lastMask, val, TB_MAX)
-            if #changed == 1 then
-                local v, on = changed[1], HasBit(val, changed[1])
-                if v == TB_NONE then
-                    if on then for k in pairs(db.hideTopBannerTypes) do db.hideTopBannerTypes[k] = nil end end
-                else
-                    local g = TOP_BANNER_GROUPS[v - TB_FIRST + 1]
-                    db.hideTopBannerTypes[g.id] = on or nil
-                    VUI.Print("Clean Solo", "Hide Top Banners: " .. g.label .. " "
-                        .. (on and "hidden" or "shown") .. " — |cFFFFFF00/reload|r to apply.")
-                end
-            elseif #changed > 1 then             -- e.g. the Defaults button
-                for i, g in ipairs(TOP_BANNER_GROUPS) do
-                    db.hideTopBannerTypes[g.id] = HasBit(val, TB_FIRST + i - 1) or nil
-                end
-            end
-            db.hideTopBannersMask = TopBannersMask()
-            lastMask = db.hideTopBannersMask
-            ignore = true
-            pcall(setting.SetValue, setting, db.hideTopBannersMask)
-            ignore = false
-        end)
-        local init = Settings.CreateDropdown(category, setting, GetOptions, TipWithReason(
-            "Pick the big messages at the top of the screen to stop: the zone name when you travel, "
-            .. "boss kill and loot banners, level up, scenario and Delve stage names, Delve and event "
-            .. "messages (such as Nemesis Strongbox Upgraded), weekly rewards, renown, and everything "
-            .. "else. The rest still show. Requires |cFFFFFF00/reload|r to apply.", "hideTopBanners"))
-        GreyIfUnavailable(init, "hideTopBanners")
+        KindsDropdown({
+            setting = ADDON_NAME .. "_hideTopBanners", maskKey = "hideTopBannersMask",
+            owner = db,              -- UNIVERSAL: paired with hideTopBannerTypes
+            setMask = function(v) db.hideTopBannersMask = v end,
+            name = "Hide Top Banners", items = TOP_BANNER_GROUPS, truth = db.hideTopBannerTypes,
+            unavailableKey = "hideTopBanners",
+            tip = "Pick the big messages at the top of the screen to stop: the zone name when you travel, "
+               .. "boss kill and loot banners, level up, scenario and Delve stage names, Delve and event "
+               .. "messages (such as Nemesis Strongbox Upgraded), weekly rewards, renown, and everything "
+               .. "else. The rest still show. Requires |cFFFFFF00/reload|r to apply.",
+            onItem = function(g, on)
+                VUI.Print("Clean Solo", "Hide Top Banners: " .. g.label .. " "
+                    .. (on and "hidden" or "shown") .. " — |cFFFFFF00/reload|r to apply.")
+            end,
+        })
     end
 
-    -- ── Hide Transforms — tick-box dropdown, UNIVERSAL (mask paired with hideTransformTypes, both on
-    -- db). Same pattern as Hide Top Banners, but it applies at once: SetHideTransforms only changes
-    -- which aura IDs the UNIT_AURA handler removes and whether it is registered.
-    local TF_NONE, TF_FIRST = 1, 2
-    local TF_MAX = TF_FIRST + #TRANSFORM_KINDS - 1
-    local function TransformsMask()
-        local mask = 0
-        for i, k in ipairs(TRANSFORM_KINDS) do
-            if db.hideTransformTypes[k.id] then mask = mask + Bit(TF_FIRST + i - 1) end
-        end
-        return mask > 0 and mask or Bit(TF_NONE)
-    end
+    -- ── Hide Transforms — tick-box dropdown, UNIVERSAL (mask paired with hideTransformTypes). Applies at
+    -- once: SetHideTransforms only changes which aura IDs the UNIT_AURA handler removes.
     function BuildTransformsDropdown()
-        db.hideTransformsMask = TransformsMask()
-        local lastMask = db.hideTransformsMask
-        local setting = Settings.RegisterAddOnSetting(
-            category,
-            ADDON_NAME .. "_hideTransforms",
-            "hideTransformsMask",
-            db,                          -- UNIVERSAL: paired with hideTransformTypes
-            "number",
-            "Hide Transforms",
-            Bit(TF_FIRST)                -- default: Profession Gear, as UNIVERSAL.hideTransformTypes
-        )
-        local ignore = false
-        local function GetOptions()
-            local container = Settings.CreateControlTextContainer()
-            container:AddCheckbox(TF_NONE, "None")
-            for i, k in ipairs(TRANSFORM_KINDS) do container:AddCheckbox(TF_FIRST + i - 1, k.label) end
-            return container:GetData()
-        end
-        setting:SetValueChangedCallback(function(_, val)
-            if ignore or type(val) ~= "number" then return end
-            local changed = ChangedBits(lastMask, val, TF_MAX)
-            if #changed == 1 then
-                local v, on = changed[1], HasBit(val, changed[1])
-                if v == TF_NONE then
-                    if on then for key in pairs(db.hideTransformTypes) do db.hideTransformTypes[key] = nil end end
-                else
-                    local k = TRANSFORM_KINDS[v - TF_FIRST + 1]
-                    db.hideTransformTypes[k.id] = on or nil
-                    VUI.Print("Clean Solo", "Hide Transforms: " .. k.label .. " "
-                        .. (on and "taken off" or "left on") .. ".")
-                end
-            elseif #changed > 1 then             -- e.g. the Defaults button
-                for i, k in ipairs(TRANSFORM_KINDS) do
-                    db.hideTransformTypes[k.id] = HasBit(val, TF_FIRST + i - 1) or nil
-                end
-            end
-            db.hideTransformsMask = TransformsMask()
-            lastMask = db.hideTransformsMask
-            ignore = true
-            pcall(setting.SetValue, setting, db.hideTransformsMask)
-            ignore = false
-            if not Unavailable("hideProfessionGear") then SetHideTransforms() end
-        end)
-        local init = Settings.CreateDropdown(category, setting, GetOptions, TipWithReason(
-            "Pick the costumes and transformations to take off you as soon as they land, so your own "
-            .. "look stays: the outfit crafting, gathering and fishing put on you, holiday costumes, and "
-            .. "the transformations from some toys and consumables. Not during combat; anything that lands "
-            .. "in combat comes off when it ends. Applies at once.", "hideProfessionGear"))
-        GreyIfUnavailable(init, "hideProfessionGear")
+        KindsDropdown({
+            setting = ADDON_NAME .. "_hideTransforms", maskKey = "hideTransformsMask",
+            owner = db,              -- UNIVERSAL: paired with hideTransformTypes
+            setMask = function(v) db.hideTransformsMask = v end,
+            name = "Hide Transforms", items = TRANSFORM_KINDS, truth = db.hideTransformTypes,
+            defaultIds = { "professions" },          -- as UNIVERSAL.hideTransformTypes
+            unavailableKey = "hideProfessionGear",
+            tip = "Pick the costumes and transformations to take off you as soon as they land, so your "
+               .. "own look stays: the outfit crafting, gathering and fishing put on you, holiday costumes, "
+               .. "and the transformations from some toys and consumables. Not during combat; anything "
+               .. "that lands in combat comes off when it ends. Applies at once.",
+            onItem = function(k, on)
+                VUI.Print("Clean Solo", "Hide Transforms: " .. k.label .. " "
+                    .. (on and "taken off" or "left on") .. ".")
+            end,
+            onChanged = function()
+                if not Unavailable("hideProfessionGear") then SetHideTransforms() end
+            end,
+        })
     end
 
     Header("Hide")

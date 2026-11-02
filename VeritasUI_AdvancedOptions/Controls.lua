@@ -517,6 +517,23 @@ function AO:CreateMultiSelect(parent, cfg)
     dropdown:SetupMenu(function(_, root)
         -- WoWUIBugs #783 taint workaround, as CreateDropdown
         root:SetMinimumWidth(150)
+        -- None and All first (owner's standard for every dropdown of choices, 2026-11-01). Not
+        -- stored: None is ticked when no choice is, All when every one is.
+        local function Count()
+            local n = 0
+            for _, o in ipairs(options) do if IsOn(o) then n = n + 1 end end
+            return n
+        end
+        local function SetEvery(on)
+            for _, o in ipairs(options) do if IsOn(o) ~= on then Toggle(o) end end
+        end
+        local none = root:CreateCheckbox(_G.NONE or "None", function() return Count() == 0 end,
+            function() if Count() > 0 then SetEvery(false) end end)
+        local all = root:CreateCheckbox(_G.ALL or "All", function() return Count() == #options end,
+            function() SetEvery(Count() < #options) end)
+        for _, cb in ipairs({ none, all }) do
+            if cb and cb.SetEnabled then cb:SetEnabled(MasterOn) end
+        end
         for _, opt in ipairs(options) do
             local cb = root:CreateCheckbox(opt.text,
                 function() return IsOn(opt) end,
