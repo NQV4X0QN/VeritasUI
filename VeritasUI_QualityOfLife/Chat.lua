@@ -24,6 +24,15 @@
 -- that wait (Mainline/ChatFrameOverrides.lua:679-686). Kit 3081 is one file, 567421, which no other sound
 -- kit uses (wago.tools SoundKitEntry, 2026-11-01). Any choice but Blizzard's own mutes that file
 -- (MuteSoundFile) and plays the choice on the same rule; None only mutes it. Back to Blizzard's: unmuted.
+--
+-- Remember Chat Lines. Each chat window's last 100 lines are kept, per character, in
+-- VeritasUI_QualityOfLifeChatDB (SavedVariablesPerCharacter), and put back, grey, when you log in or reload,
+-- before anything new. A post-hook on each window's AddMessage (hooksecurefunc on the frame: Blizzard's own
+-- AddMessage still runs first and untouched, ChatFrame.lua:35-41) reads the line; nothing is written to the
+-- chat frames. Skipped: the combat log and voice transcription windows (ChatFrame2, ChatFrame3:
+-- FloatingChatFrame.lua:1712-1718), any line the game hides (a secret value), and Battle.net name tokens
+-- (|K..|k), which only mean something in the session that sent them. Turning the option off deletes what
+-- was kept. Whispers are kept too, on this computer only (README says so).
 
 local VUI = _G.VeritasUI
 if not VUI then return end
@@ -278,3 +287,63 @@ VUI.QoL_WhisperSoundDropdown = function(category, db, addonName)
         "The sound for a whisper or Battle.net whisper. Like Blizzard's, it plays once, then not again "
         .. "until no whisper has come for 5 minutes.")
 end
+
+-- ── Remember Chat Lines ────────────────────────────────────────
+local KEEP = 100
+local FIRST_WINDOW, SKIP = 1, { [2] = true, [3] = true }
+
+local function Store()
+    if type(_G.VeritasUI_QualityOfLifeChatDB) ~= "table" then _G.VeritasUI_QualityOfLifeChatDB = {} end
+    return _G.VeritasUI_QualityOfLifeChatDB
+end
+
+local function Record(index, msg, r, g, b)
+    if not On("chatRememberLines") then return end
+    if type(msg) ~= "string" or IsSecret(msg) or IsSecret(r) or IsSecret(g) or IsSecret(b) then return end
+    if msg == "" or sfind(msg, "|K", 1, true) then return end
+    local store = Store()
+    local lines = store[index]
+    if type(lines) ~= "table" then lines = {}; store[index] = lines end
+    lines[#lines + 1] = { t = msg, r = type(r) == "number" and r or nil, g = type(g) == "number" and g or nil,
+        b = type(b) == "number" and b or nil }
+    while #lines > KEEP do table.remove(lines, 1) end
+end
+VUI.QoL_ChatRecord = Record
+
+local function Restore()
+    local store = Store()
+    local grey = GRAY_FONT_COLOR
+    for index = FIRST_WINDOW, (_G.NUM_CHAT_WINDOWS or 10) do
+        local cf, lines = _G["ChatFrame" .. index], store[index]
+        if cf and not SKIP[index] and type(lines) == "table" and On("chatRememberLines") then
+            for _, line in ipairs(lines) do
+                if type(line) == "table" and type(line.t) == "string" then
+                    pcall(cf.AddMessage, cf, line.t, grey.r, grey.g, grey.b)
+                end
+            end
+        end
+    end
+end
+
+local function HookWindows()
+    for index = FIRST_WINDOW, (_G.NUM_CHAT_WINDOWS or 10) do
+        local cf = _G["ChatFrame" .. index]
+        if cf and not SKIP[index] and cf.AddMessage then
+            hooksecurefunc(cf, "AddMessage", function(_, msg, r, g, b) Record(index, msg, r, g, b) end)
+        end
+    end
+end
+
+VUI.QoL_ChatRemember = function(on)
+    if not on then _G.VeritasUI_QualityOfLifeChatDB = {} end
+end
+
+local remember = CreateFrame("Frame")
+remember:RegisterEvent("ADDON_LOADED")
+remember:SetScript("OnEvent", function(self, _, name)
+    if name ~= "VeritasUI_QualityOfLife" then return end
+    self:UnregisterAllEvents()
+    if not On("chatRememberLines") then _G.VeritasUI_QualityOfLifeChatDB = {} end
+    Restore()       -- before the hooks, so the lines put back are not stored a second time
+    HookWindows()
+end)

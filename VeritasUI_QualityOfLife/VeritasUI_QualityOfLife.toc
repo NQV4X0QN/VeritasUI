@@ -6,6 +6,7 @@
 ## RequiredDeps: VeritasUI_Lib
 ## OptionalDeps: Blizzard_WorldMap
 ## SavedVariables: VeritasUI_QualityOfLifeDB
+## SavedVariablesPerCharacter: VeritasUI_QualityOfLifeChatDB
 ## AddonCompartmentFunc: VeritasUI_QualityOfLife_OnAddonCompartmentClick
 
 QualityOfLife.lua
