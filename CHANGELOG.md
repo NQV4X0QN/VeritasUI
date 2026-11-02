@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.49.0] - 2026-11-01
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Hide Transforms.** Hide Profession Gear becomes a dropdown of four groups: Profession Gear, Holiday Costumes (Hallowed Wand, Weighted Jack-o'-Lantern, Noblegarden Bunny, Pilgrim's Turkey), Toys (such as Spraybots and Lucille's Sewing Needle) and Consumables (such as Noggenfogger Elixir and the Cursed Pickaxe). Each ticked group's costumes and transformations come off as soon as they land, outside combat. Profession Gear keeps your old setting; the other groups start unticked. Applies at once (`CleanSolo.lua`, `README.md`)
+- `VeritasUI_CleanSolo` `VeritasUI_AdvancedOptions` — **None and All on every dropdown of choices.** Fade Action Bars, Hide Top Banners, Hide Transforms and the combat text list beside Enable Floating Combat Text now start with None and All, as Hide Error Text does: All ticks every row and the box reads All; unticking a row unticks All (`CleanSolo.lua`, `Controls.lua`)
+
+
 ## [1.48.0] - 2026-11-01
 
 ### Added
