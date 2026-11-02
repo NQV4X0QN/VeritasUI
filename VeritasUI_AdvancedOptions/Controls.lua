@@ -51,6 +51,12 @@ local function ShowTooltip(owner, title, body)
     GameTooltip:Show()
 end
 
+-- A row marked `restart` was changed: Featured.lua shows its Reload UI button (owner's request,
+-- 2026-11-01). Every write path below calls this; rows without `restart` do nothing.
+local function Changed(cfg)
+    if cfg.restart and AO.ReloadNeeded then AO:ReloadNeeded() end
+end
+
 ----------------------------------------------------------------
 --  Reset-to-default button (shared across control types)
 --
@@ -143,7 +149,7 @@ end
 -- resetNames: the multi-select's list of CVars, reset together; other rows reset cfg.cvar.
 local SLIDER_RESET_RAISE = 9   -- owner, 2026-10-30: tuned in game (4, 8, 10, then 9)
 local function FinishRow(row, cfg, Refresh, resetY, resetNames)
-    local resetBtn = CreateResetButton(row, resetNames or cfg.cvar, Refresh)
+    local resetBtn = CreateResetButton(row, resetNames or cfg.cvar, function() Changed(cfg); Refresh() end)
     resetBtn:SetPoint("RIGHT", row, "RIGHT", 8, resetY or 0)
 
     if cfg.restart then
@@ -211,6 +217,7 @@ function AO:CreateCheckbox(parent, cfg)
         local checked = self:GetChecked()
         if cfg.invert then checked = not checked end
         AO:SetCVar(cfg.cvar, checked and "1" or "0")
+        Changed(cfg)
     end)
 
     return FinishRow(row, cfg, Refresh)
@@ -308,6 +315,7 @@ function AO:CreateSlider(parent, cfg)
         pendingWrite = C_Timer.NewTimer(0.15, function()
             pendingWrite = nil
             AO:SetCVar(cfg.cvar, tostring(value))
+            Changed(cfg)
         end)
     end)
 
@@ -403,7 +411,9 @@ function AO:CreateDropdown(parent, cfg)
                     -- snap the label back, throwing away both the user's selection
                     -- and the optimistic cache write AO:SetCVar just made. Show the
                     -- chosen option instead; the CVar catches up when combat ends.
-                    if AO:SetCVar(cfg.cvar, opt.value) or not InCombatLockdown() then
+                    local written = AO:SetCVar(cfg.cvar, opt.value)
+                    Changed(cfg)
+                    if written or not InCombatLockdown() then
                         Refresh()
                     else
                         SetLabel(opt.text)
@@ -499,6 +509,7 @@ function AO:CreateMultiSelect(parent, cfg)
         if not AO:SetCVar(opt.cvar, value) and InCombatLockdown() then
             pending[opt.cvar] = value
         end
+        Changed(cfg)
         Refresh()
     end
     master:SetScript("OnClick", function() Toggle(masterOpt) end)

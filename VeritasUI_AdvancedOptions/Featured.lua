@@ -549,6 +549,21 @@ function AO:BuildFeaturedContent(parent, buttonBar)
         allBtn:SetText(AnyOpen() and "Collapse All" or "Expand All")
     end
 
+    -- ── Reload UI (owner's request, 2026-11-01) ──
+    -- Hidden until a setting marked with the orange "!" is changed on this tab, then shown left of
+    -- Collapse All until the reload. Blizzard's own "Reload UI" text (RELOADUI) and button, sized
+    -- as Lib's Options-panel Reload button; one pixel apart, as MagicButton_OnLoad spaces bottom-bar
+    -- buttons (SharedUIPanelTemplates.lua:25-29).
+    local reloadBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    reloadBtn:SetText(RELOADUI or "Reload UI")
+    local okW, textW = pcall(reloadBtn.GetTextWidth, reloadBtn)
+    reloadBtn:SetSize(math.max(100, ((okW and tonumber(textW)) or 0) + 24), 22)
+    reloadBtn:SetPoint("RIGHT", allBtn, "LEFT", -1, 0)
+    reloadBtn:SetScript("OnClick", ReloadUI)
+    reloadBtn:Hide()
+    AO.reloadButton = reloadBtn
+    function AO:ReloadNeeded() reloadBtn:Show() end
+
     -- ── Refresh: rebuild DataProvider ────────────────────────
     local function Refresh()
         UpdateAllButton()
