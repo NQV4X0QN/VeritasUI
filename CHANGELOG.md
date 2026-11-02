@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.48.0] - 2026-11-01
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Hide Top Banners is now a dropdown.** Pick which kinds of big message at the top of the screen to stop: zone names, boss kills and loot, level up and new spells, scenario and Delve stages, Delve and event messages (such as Nemesis Strongbox Upgraded), weekly rewards and ratings, renown, and everything else. The rest still show. If you had Hide Top Banners on, every kind starts ticked (`CleanSolo.lua`, `README.md`)
+- `VeritasUI_AdvancedOptions` — **Reload UI button.** Change a Featured setting marked with the orange ! and a Reload UI button appears beside Collapse All, so the reload it needs is one click away (`Featured.lua`, `Controls.lua`, `README.md`)
+
+### Fixed
+
+- `VeritasUI_AdvancedOptions` — **Show Help Tips stays off.** The game has no setting of its own behind it, so unticking it was dropped and the box came back ticked. Advanced Options now creates that setting itself and remembers your choice. It takes effect after a reload, and the row now says so (`Core.lua`, `Featured.lua`)
+- `VeritasUI_AdvancedOptions` — **A setting the game refuses is reported.** If the game does not accept a change from Advanced Options, a chat line now says so instead of it failing silently (`Core.lua`)
+
+
 ## [1.47.0] - 2026-11-01
 
 ### Added

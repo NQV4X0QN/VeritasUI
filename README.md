@@ -23,7 +23,7 @@ Hides or fades the parts of the interface you don't need most of the time.
 - **Fade Delay**: keep the micro menu, action bars and player frame up for 0 to 5 seconds after the mouse leaves, before they fade (the chat window keeps Blizzard's own timing)
 - Optionally hides the social button, the chat menu and voice buttons (left shown, they fade with the chat window), the bag bar, and macro names on action buttons
 - Optionally hides the **talking head** story popup and, separately, **mutes its voice**, so you can keep either one
-- Optionally hides the **top banners**: the zone name when you travel, event banners such as level up and scenario stages, and the boss kill and loot banner
+- Optionally hides the **top banners**, picked by kind from a dropdown: zone names, boss kills and loot, level up, scenario and Delve stages, Delve and event messages (such as Nemesis Strongbox Upgraded), weekly rewards, renown, and everything else
 - **Hides profession gear**: keeps your own outfit on while you craft, gather or fish, instead of the profession outfit the game puts on you. If one still shows, `/cs gear` lists what you're wearing
 - Hides red error text — all of it, or only the kinds you pick (combat, spells and cooldowns, items and bags, mail/vendors/bank, looting, mounts and flight paths), so "Internal mail database error." can go while "You are too far away!" stays
 
@@ -75,7 +75,7 @@ To switch specialization quickly, hover **VeritasUI — Priority Rotation** in t
 Settings: `/pr` (the rotation editor), and an on/off switch under **Options → AddOns → VeritasUI → Priority Rotation**.
 
 ### Advanced Options — WoW's hidden settings
-WoW has many settings (CVars) that its Options panel doesn't show. The **Featured** tab gathers useful ones (camera distance, nameplates, combat text, soft targeting, graphics and more) as ordinary checkboxes, sliders and dropdowns, each with a reset button, in sections you can fold away one at a time or all at once with **Collapse All** / **Expand All**. Among them: **Sharpen at Full Resolution**, **Show Help Tips**, and a dropdown beside **Enable Floating Combat Text** to choose what scrolls over your character (dodges, auras, power gains, reputation and more). The **All CVars** tab lets you search and edit every setting your client has, and star favourites.
+WoW has many settings (CVars) that its Options panel doesn't show. The **Featured** tab gathers useful ones (camera distance, nameplates, combat text, soft targeting, graphics and more) as ordinary checkboxes, sliders and dropdowns, each with a reset button, in sections you can fold away one at a time or all at once with **Collapse All** / **Expand All**. Settings marked with an orange **!** need a reload; change one and a **Reload UI** button appears beside Collapse All. Among them: **Sharpen at Full Resolution**, **Show Help Tips**, and a dropdown beside **Enable Floating Combat Text** to choose what scrolls over your character (dodges, auras, power gains, reputation and more). The **All CVars** tab lets you search and edit every setting your client has, and star favourites.
 
 Open it with `/ao`. It has its own window rather than an Options panel.
 
