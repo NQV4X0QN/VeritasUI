@@ -57,7 +57,7 @@ local C_Timer          = C_Timer
 
 local VUI = _G.VeritasUI
 if not VUI then
-    print("|cFFFF4444[VeritasUI] Lib failed to load — " .. ADDON_NAME .. " disabled.|r")
+    print(RED_FONT_COLOR:WrapTextInColorCode("[VeritasUI] Lib failed to load — " .. ADDON_NAME .. " disabled."))
     return
 end
 
@@ -1864,7 +1864,7 @@ end
 local function TipWithReason(tip, key)
     local reason = Unavailable(key)
     if type(reason) ~= "string" then return tip end
-    return tip .. "\n\n|cFFFF4444" .. reason .. "|r"
+    return tip .. "\n\n" .. VUI.COL.RED .. reason .. "|r"
 end
 
 local function GreyIfUnavailable(initializer, key)
@@ -1892,16 +1892,16 @@ local function InitializeOptions()
           tip = "The chat window's background, its tabs and the chat buttons you haven't hidden "
              .. "fade out when you're not using chat, and come back when you mouse over it. The "
              .. "messages stay readable. With Chat Style set to IM, the box you type in fades too. "
-             .. "Requires |cFFFFFF00/reload|r to apply.",
+             .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.",
           opacity = "fadeChatTabsOpacity",
           opacityApply = function() if chatTabsApplyOpacity then chatTabsApplyOpacity() end end },
         { key = "fadeMicroMenu",       name = "Fade Micro Menu",
           tip = "The bottom-right menu bar fades out unless moused over. "
-             .. "Requires |cFFFFFF00/reload|r to apply.",
+             .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.",
           opacity = "fadeMicroMenuOpacity" },
         { key = "fadePlayerFrame",     name = "Fade Player Frame",
           tip = "Your player frame fades out when idle and reappears in combat, when damaged, or on mouseover. "
-             .. "Requires |cFFFFFF00/reload|r to apply.",
+             .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.",
           opacity = "fadePlayerFrameOpacity" },
         { key = "fadeAuras",           name = "Fade Buffs and Debuffs",
           tip = "Your buffs and debuffs by the minimap fade out unless you're in combat or mousing "
@@ -1950,31 +1950,31 @@ local function InitializeOptions()
         { key = "hideSocialButton",    name = "Hide Social Button",
           tip = "Hides the Quick Join / Communities toast button. Left shown, it fades with the "
              .. "chat window while Fade Chat Window is on. "
-             .. "Requires |cFFFFFF00/reload|r to apply." },
+             .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
         { key = "hideChatButtons",     name = "Hide Chat Buttons",
           tip = "Hides the chat menu button (the speech bubble beside the chat window). Left "
              .. "shown, it fades with the chat window while Fade Chat Window is on. "
-             .. "Requires |cFFFFFF00/reload|r to apply." },
+             .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
         { key = "hideVoiceChatButton", name = "Hide Voice Chat Button",
           tip = "Hides the voice and channels button beside the chat window, and the mute and "
              .. "deafen buttons shown while you are in a voice channel. Left shown, they fade with "
              .. "the chat window while Fade Chat Window is on. "
-             .. "Requires |cFFFFFF00/reload|r to apply." },
+             .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
         -- v1.50.0: a tick-box dropdown (BuildMinimapButtonsDropdown below). Applies at once.
         { key = "hideMinimapButtons", build = function() BuildMinimapButtonsDropdown() end },
         { key = "hideBagButtons",      name = "Hide Bag Buttons",
           tip = "Hides the bag bar buttons. You can still open bags with B. "
-             .. "Requires |cFFFFFF00/reload|r to apply." },
+             .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
         { key = "hideMacroNames",      name = "Hide Macro Names",
           tip = "Hides the macro name text displayed on action bar buttons. "
-             .. "Requires |cFFFFFF00/reload|r to apply." },
+             .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
         { key = "hideTalkingHead",     name = "Hide Talking Head",
           tip = "Hides the NPC portrait that pops up with story dialogue in quests and dungeons. "
              .. "The voice still plays unless Mute Talking Head Voice is on. Still shown in Edit "
-             .. "Mode so you can place it. Requires |cFFFFFF00/reload|r to apply." },
+             .. "Mode so you can place it. Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
         { key = "muteTalkingHead",     name = "Mute Talking Head Voice",
           tip = "Silences the voice line that plays with the talking head popup. The popup itself "
-             .. "still shows unless Hide Talking Head is on. Requires |cFFFFFF00/reload|r to apply." },
+             .. "still shows unless Hide Talking Head is on. Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
         -- v1.48.0: a tick-box dropdown, built where the checkbox was (BuildTopBannersDropdown below).
         { key = "hideTopBanners", build = function() BuildTopBannersDropdown() end },
         -- v1.49.0: Hide Transforms, a tick-box dropdown (BuildTransformsDropdown below).
@@ -2199,10 +2199,10 @@ local function InitializeOptions()
         name = "Fade Action Bars", items = barItems, truth = cdb.fadeActionBars,
         unavailableKey = "fadeActionBars",
         tip = "Pick a bar to fade it out when idle; it reappears on mouseover. How faded it gets is set "
-           .. "by the slider beside Fade Main Action Bar. Requires |cFFFFFF00/reload|r to apply.",
+           .. "by the slider beside Fade Main Action Bar. Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.",
         onItem = function(it, on)
             VUI.Print("Clean Solo", it.label .. " fade " .. (on and "enabled" or "disabled")
-                .. " — |cFFFFFF00/reload|r to apply.")
+                .. " — " .. VUI.COL.YELLOW .. "/reload|r to apply.")
         end,
     })
 
@@ -2248,10 +2248,10 @@ local function InitializeOptions()
             name = "Hide Top Banners", items = TOP_BANNER_GROUPS, truth = db.hideTopBannerTypes,
             unavailableKey = "hideTopBanners",
             tip = "Pick the big messages at the top of the screen to stop. The rest still show. "
-               .. "Requires |cFFFFFF00/reload|r to apply.",
+               .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.",
             onItem = function(g, on)
                 VUI.Print("Clean Solo", "Hide Top Banners: " .. g.label .. " "
-                    .. (on and "hidden" or "shown") .. " — |cFFFFFF00/reload|r to apply.")
+                    .. (on and "hidden" or "shown") .. " — " .. VUI.COL.YELLOW .. "/reload|r to apply.")
             end,
         })
     end
@@ -2386,7 +2386,7 @@ local function InitializeOptions()
         end
         if #changed > 0 then
             VUI.Print("Clean Solo", "Hide Error Text: " .. ErrorSummary()
-                .. " — |cFFFFFF00/reload|r to apply.")
+                .. " — " .. VUI.COL.YELLOW .. "/reload|r to apply.")
         end
         db.hideErrorTypesMask = ErrorTypesMask()
         lastErrMask = db.hideErrorTypesMask
@@ -2397,7 +2397,7 @@ local function InitializeOptions()
 
     Settings.CreateDropdown(category, errSetting, GetErrorTypeOptions,
         "Pick the kinds of red error message to hide, and the spoken lines that go with them; the rest "
-        .. "still show. Requires |cFFFFFF00/reload|r to apply.")
+        .. "still show. Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.")
 
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
