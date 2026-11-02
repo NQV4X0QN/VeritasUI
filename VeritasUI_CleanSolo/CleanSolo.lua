@@ -1270,15 +1270,15 @@ end
 local OT_SECTIONS = {
     { id = "scenario",     frame = "ScenarioObjectiveTracker",          label = "Scenario",          full = true },
     { id = "event",        frame = "UIWidgetObjectiveTracker",          label = "Event Objectives",  full = true },
-    { id = "campaign",     frame = "CampaignQuestObjectiveTracker",     label = "Campaign" },
-    { id = "quests",       frame = "QuestObjectiveTracker",             label = "Quests" },
+    { id = "campaign",     frame = "CampaignQuestObjectiveTracker",     label = "Campaign",          quests = true },
+    { id = "quests",       frame = "QuestObjectiveTracker",             label = "Quests",            quests = true },
     { id = "collections",  frame = "AdventureObjectiveTracker",         label = "Collections" },
     { id = "achievements", frame = "AchievementObjectiveTracker",       label = "Achievements" },
     { id = "travelerslog", frame = "MonthlyActivitiesObjectiveTracker", label = "Traveler's Log" },
     { id = "endeavors",    frame = "InitiativeTasksObjectiveTracker",   label = "Endeavors" },
     { id = "professions",  frame = "ProfessionsRecipeTracker",          label = "Professions" },
     { id = "bonus",        frame = "BonusObjectiveTracker",             label = "Bonus Objectives",  full = true },
-    { id = "worldquests",  frame = "WorldQuestObjectiveTracker",        label = "World Quests" },
+    { id = "worldquests",  frame = "WorldQuestObjectiveTracker",        label = "World Quests",      quests = true },
 }
 local OT_FADE_IN, OT_FADE_OUT, OT_POLL = 0.2, 0.5, 0.1   -- the hover fade's speeds (Lib HookHoverFade)
 local otHooked = false
@@ -1343,28 +1343,85 @@ local function SetupObjectiveTrackerFade()
     -- Re-anchor the shown modules, leaving out the collapsed ones. A collapsed module is PARKED far below
     -- the tracker: left where Blizzard put it, the invisible section would lie over the ones that moved
     -- up and take their clicks.
+    -- v1.51.0, owner's follow-up: a collapsed section holding the FOCUSED quest (C_SuperTrack, the one with
+    -- the arrow) is not parked. Its other quests are, the focused one is put where the section's first
+    -- quest goes (Module.lua:341-347, 422-439: TOP to ContentsFrame TOP at fromHeaderOffsetY, LEFT at
+    -- offsetX or blockOffsetX, RIGHT unless fixedWidth), and the module is raised by its invisible header's
+    -- height so that quest sits where the section would start. Its minimize button would then lie over the
+    -- section above, so its mouse is off until the section is laid out normally again. Blizzard's block
+    -- order (firstBlock -> nextBlock) and the same formula put every quest back.
     local PARK_Y = -4000
-    local function Relayout(collapsed)
+    local touched = {}      -- [module] = true while its quests are anchored by us
+    local minimizeMouse = {}
+    local function Park(f)
+        local p1, rel, _, _, y = f:GetPoint(1)
+        if p1 ~= "TOP" or rel ~= otf or y ~= PARK_Y then
+            f:ClearAllPoints()
+            f:SetPoint("TOP", otf, "BOTTOM", 0, PARK_Y)
+        end
+    end
+    local function AnchorBlockAt(mod, b, anchor, relPoint, y)
+        local p1, rel, _, _, cy = b:GetPoint(1)
+        if p1 == "TOP" and rel == anchor and math.abs((cy or 0) - y) <= 0.5 then return end
+        b:ClearAllPoints()
+        b:SetPoint("TOP", anchor, relPoint, 0, y)
+        b:SetPoint("LEFT", b.offsetX or mod.blockOffsetX or 0, 0)
+        if not b.fixedWidth then b:SetPoint("RIGHT") end
+    end
+    local function RestoreBlocks(mod)
+        local b, prevB, n = mod.firstBlock, nil, 0
+        while b and n < 200 do
+            if prevB then AnchorBlockAt(mod, b, prevB, "BOTTOM", mod.fromBlockOffsetY or -10)
+            elseif mod.ContentsFrame then
+                AnchorBlockAt(mod, b, mod.ContentsFrame, "TOP", mod.fromHeaderOffsetY or -10)
+            end
+            prevB, b, n = b, b.nextBlock, n + 1
+        end
+        local mb = mod.Header and mod.Header.MinimizeButton
+        if mb and minimizeMouse[mb] ~= nil then
+            pcall(mb.EnableMouse, mb, minimizeMouse[mb]); minimizeMouse[mb] = nil
+        end
+        touched[mod] = nil
+    end
+    local function FocusLayout(mod, fb)
+        touched[mod] = true
+        local b, n = mod.firstBlock, 0
+        while b and n < 200 do
+            if b ~= fb then Park(b) end
+            b, n = b.nextBlock, n + 1
+        end
+        if mod.ContentsFrame then AnchorBlockAt(mod, fb, mod.ContentsFrame, "TOP", mod.fromHeaderOffsetY or -10) end
+        local mb = mod.Header and mod.Header.MinimizeButton
+        if mb and minimizeMouse[mb] == nil and mb.EnableMouse then
+            local ok, on = pcall(mb.IsMouseEnabled, mb)
+            minimizeMouse[mb] = ok and on or false
+            pcall(mb.EnableMouse, mb, false)
+        end
+    end
+    local function Relayout(collapsed, focused)
         local prev
         for _, m in ipairs(mods) do
             local f = m.f
-            if f:IsShown() and collapsed[f] then
-                local p1, rel, _, _, y = f:GetPoint(1)
-                if p1 ~= "TOP" or rel ~= otf or y ~= PARK_Y then
-                    f:ClearAllPoints()
-                    f:SetPoint("TOP", otf, "BOTTOM", 0, PARK_Y)
-                end
+            local fb = focused[f]
+            if touched[f] and not (fb and collapsed[f]) then RestoreBlocks(f) end
+            if f:IsShown() and collapsed[f] and not fb then
+                Park(f)
             elseif f:IsShown() then
+                local raise = 0
+                if collapsed[f] and fb then
+                    FocusLayout(f, fb)
+                    raise = ((f.Header and f.Header:GetHeight()) or 0) + math.abs(f.fromHeaderOffsetY or -10)
+                end
                 local p1, rel, _, _, y = f:GetPoint(1)
                 local wantRel = prev or otf
-                local wantY = prev and -(otf.moduleSpacing or 10) or -(otf.topModulePadding or 0)
+                local wantY = (prev and -(otf.moduleSpacing or 10) or -(otf.topModulePadding or 0)) + raise
                 if p1 ~= "TOP" or rel ~= wantRel or math.abs((y or 0) - wantY) > 0.5 then
                     f:ClearAllPoints()
                     if prev then f:SetPoint("TOP", prev, "BOTTOM", 0, wantY)
                     else f:SetPoint("TOP", 0, wantY) end
                     f:SetPoint("LEFT", otf, "LEFT", f.leftMargin or 0, 0)
                 end
-                prev = f
+                prev = (collapsed[f] and fb) or f
             end
         end
         if nine and prev and nine.GetPoint then
@@ -1374,6 +1431,46 @@ local function SetupObjectiveTrackerFade()
                 if p == "BOTTOM" and (rel ~= prev or math.abs((y or 0) - wantY) > 0.5) then
                     nine:SetPoint("BOTTOM", prev, "BOTTOM", 0, wantY)
                 end
+            end
+        end
+    end
+
+    -- The focused quest's block, in a quest section, if it is laid out. Read-only walk of the module's
+    -- block table (Module.lua:254-282: usedBlocks[template][id], id = questID for quest blocks).
+    local function FocusedBlock(mod, questID)
+        for _, blocks in pairs(type(mod.usedBlocks) == "table" and mod.usedBlocks or {}) do
+            local b = type(blocks) == "table" and blocks[questID]
+            if b and b.IsShown and b:IsShown() then return b end
+        end
+    end
+    -- The focused quest's block and its right-edge frames (quest item and POI buttons, anchored RIGHT to
+    -- the block or to each other: Block.lua:341-362) show at full opacity through the section's fade.
+    -- ⚠ SetIgnoreParentAlpha also escapes UIParent's alpha (landmine 142), which Quality of Life's AFK screen
+    -- sets to 0, so it is dropped whenever UIParent is not fully shown.
+    local ignoring = {}
+    local function SetFullOpacity(mod, fb)
+        local want = {}
+        if fb and (not UIParent or (UIParent:GetAlpha() or 1) >= 0.99) then
+            want[fb] = true
+            local grew = true
+            while grew do
+                grew = false
+                for _, fr in pairs(type(mod.usedRightEdgeFrames) == "table" and mod.usedRightEdgeFrames or {}) do
+                    if not want[fr] and fr.GetPoint then
+                        local _, rel = fr:GetPoint(1)
+                        if rel and want[rel] then want[fr] = true; grew = true end
+                    end
+                end
+            end
+        end
+        for fr in pairs(ignoring) do
+            if fr.parentModule == mod or fr:GetParent() == mod.ContentsFrame then
+                if not want[fr] then pcall(fr.SetIgnoreParentAlpha, fr, false); ignoring[fr] = nil end
+            end
+        end
+        for fr in pairs(want) do
+            if not ignoring[fr] and fr.SetIgnoreParentAlpha then
+                pcall(fr.SetIgnoreParentAlpha, fr, true); ignoring[fr] = true
             end
         end
     end
@@ -1394,13 +1491,24 @@ local function SetupObjectiveTrackerFade()
         end
         local show = not db.fadeObjectiveTracker or now < hoverUntil or IsEditModeActive()
         local raidHidden = db.fadeObjectiveTracker and OTRaidHidden() and not show
-        local collapsed, top = {}, 0
+        local collapsed, focused, top = {}, {}, 0
+        local superID
+        if C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID then
+            local okST, id = pcall(C_SuperTrack.GetSuperTrackedQuestID)
+            if okST and type(id) == "number" and id > 0 then superID = id end
+        end
         for _, m in ipairs(mods) do
             local target
             if show then target = 1
             elseif raidHidden then target = 0
             else target = VUI.FadedAlpha(function() return SectionOpacity(m.sec) end) end
             FadeTo(m.f, target, instant)
+            -- Kept while the section is still fading IN too, or the focused quest would blink to the
+            -- section's alpha the moment the mouse arrives.
+            local fading = target < 1 or (m.f:GetAlpha() or 1) < 0.99
+            local fb = m.sec.quests and superID and fading and not raidHidden and FocusedBlock(m.f, superID) or nil
+            if fb then focused[m.f] = fb; top = 1 end
+            if m.sec.quests then SetFullOpacity(m.f, fb) end
             -- Collapsed only once its fade-out has FINISHED (owner, 2026-11-01): parking it as soon as
             -- the target is 0 cut the fade short, so the tracker popped out instead of fading like the rest.
             if target <= 0 and not show and (m.f:GetAlpha() or 0) <= 0.01 then collapsed[m.f] = true end
@@ -1413,7 +1521,7 @@ local function SetupObjectiveTrackerFade()
             nineOurs = top
             ApplyNine()
         end
-        if not IsEditModeActive() then Relayout(raidHidden and {} or collapsed) end
+        if not IsEditModeActive() then Relayout(raidHidden and {} or collapsed, focused) end
     end
     Evaluate(true)
     local poll = CreateFrame("Frame")
