@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.58.2] - 2026-11-02
+
+### Changed
+
+- `VeritasUI_CleanSolo` — **Clean Solo uses Blizzard's colours.** The yellow /reload in option tooltips and chat messages, and the red reason shown when an option is unavailable, now come from the game's named colours (`CleanSolo.lua`)
+
+
 ## [1.58.1] - 2026-11-02
 
 ### Changed
