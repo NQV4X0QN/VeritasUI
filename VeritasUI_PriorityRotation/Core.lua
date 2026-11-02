@@ -35,7 +35,7 @@
 local ADDON_NAME, PR = ...
 local VUI = _G.VeritasUI
 if not VUI then
-    print("|cFFFF4444[VeritasUI] Lib failed to load — " .. ADDON_NAME .. " disabled.|r")
+    print(RED_FONT_COLOR:WrapTextInColorCode("[VeritasUI] Lib failed to load — " .. ADDON_NAME .. " disabled."))
     return
 end
 
@@ -77,7 +77,7 @@ PR._missingSpellWarned = {}
 --  Toggle at runtime with /pr debug.
 ----------------------------------------------------------------
 local function DebugPrint(msg)
-    if PR.debug then VUI.Print("Priority Rotation", "|cFF888888[debug]|r " .. msg) end
+    if PR.debug then VUI.Print("Priority Rotation", VUI.COL.GRAY .. "[debug]|r " .. msg) end
 end
 
 ----------------------------------------------------------------
@@ -104,7 +104,7 @@ function PR:RestoreKeyDownSettingOnce()
         if def and cv.GetCVar("ActionButtonUseKeyDown") ~= def then
             local ok = pcall(cv.SetCVar, "ActionButtonUseKeyDown", def)
             if not ok then return end   -- try again next login
-            VUI.Print("Priority Rotation", "WoW's |cFFFFFF00cast on key down|r setting has been "
+            VUI.Print("Priority Rotation", "WoW's " .. VUI.COL.YELLOW .. "cast on key down|r setting has been "
                 .. "put back to its default. VeritasUI no longer changes it; set it in WoW's options "
                 .. "as you like.")
         end
@@ -359,7 +359,8 @@ function PR:CompileSequence()
                         -- has no signal that anything is wrong.
                         PR._missingMacroWarned[e.macroName] = true
                         VUI.Print("Priority Rotation", format(
-                            "|cFFFF8800Missing macro|r |cFFFFFF00%s|r — entry skipped this session. Recreate the macro in |cFFFFFF00/macro|r.",
+                            VUI.COL.ORANGE .. "Missing macro|r " .. VUI.COL.YELLOW
+                                .. "%s|r — entry skipped this session. Recreate the macro in " .. VUI.COL.YELLOW .. "/macro|r.",
                             e.macroName))
                     end
                 elseif e.itemID then
@@ -410,7 +411,8 @@ function PR:CompileSequence()
                     elseif not PR._missingSpellWarned[e.spellID] then
                         PR._missingSpellWarned[e.spellID] = true
                         VUI.Print("Priority Rotation", format(
-                            "|cFFFF8800Stale spell|r |cFFFFFF00%s|r (ID %d) — entry skipped this session. Drag the current version of the spell back onto the slot.",
+                            VUI.COL.ORANGE .. "Stale spell|r " .. VUI.COL.YELLOW
+                                .. "%s|r (ID %d) — entry skipped this session. Drag the current version of the spell back onto the slot.",
                             e.spellName, e.spellID))
                     end
                 end
@@ -579,9 +581,10 @@ function PR:StubState()
     return -1, idx
 end
 
-local FOREIGN_ATTACK_MSG = "|cFFFF8800A macro named |cFFFFFF00Attack|r already exists and isn't the "
-    .. "rotation's.|r It has been left alone. Rename it in |cFFFFFF00/macro|r, then click "
-    .. "|cFFFFFF00Create / Update Macro|r."
+local FOREIGN_ATTACK_MSG = VUI.COL.ORANGE .. "A macro named " .. VUI.COL.YELLOW
+    .. "Attack|r already exists and isn't the "
+    .. "rotation's.|r It has been left alone. Rename it in " .. VUI.COL.YELLOW .. "/macro|r, then click "
+    .. VUI.COL.YELLOW .. "Create / Update Macro|r."
 
 function PR:UpdateMacroStub(create)
     if InCombatLockdown() then return false end
@@ -613,7 +616,7 @@ function PR:UpdateMacroStub(create)
         local ok, err = pcall(EditMacro, idx, self.MACRO_NAME, macroIcon, macroBody)
         if not ok then
             VUI.Print("Priority Rotation",
-                "|cFFFF4444Couldn't update the Attack macro|r — "
+                VUI.COL.RED .. "Couldn't update the Attack macro|r — "
                 .. tostring(err))
             return false
         end
@@ -628,15 +631,15 @@ function PR:UpdateMacroStub(create)
             local ok, err = pcall(CreateMacro, self.MACRO_NAME, macroIcon, macroBody)
             if not ok then
                 VUI.Print("Priority Rotation",
-                    "|cFFFF4444Couldn't create the Attack macro|r — "
+                    VUI.COL.RED .. "Couldn't create the Attack macro|r — "
                     .. tostring(err))
                 return false
             end
             return true
         else
             VUI.Print("Priority Rotation",
-                "|cFFFF4444Can't create the Attack macro — your account macro list is full "
-                .. "(120/120).|r Delete an unused macro in |cFFFFFF00/macro|r, then try again.")
+                VUI.COL.RED .. "Can't create the Attack macro — your account macro list is full "
+                .. "(120/120).|r Delete an unused macro in " .. VUI.COL.YELLOW .. "/macro|r, then try again.")
             return false
         end
     end
@@ -740,9 +743,9 @@ function PR:ScanAndOverrideBarButton(macroName, verbose)
     if not foundSlot then
         if verbose and unreadableSlots > 0 then
             VUI.Print("Priority Rotation",
-                format("|cFFFF8800Scan incomplete:|r %d slot(s) unreadable "
+                format(VUI.COL.ORANGE .. "Scan incomplete:|r %d slot(s) unreadable "
                     .. "(likely Midnight Secret Values in raid / M+). "
-                    .. "Re-run |cFFFFFF00/pr scan|r after leaving the encounter, "
+                    .. "Re-run " .. VUI.COL.YELLOW .. "/pr scan|r after leaving the encounter, "
                     .. "or move the Attack macro to a different bar.",
                     unreadableSlots))
         end
@@ -846,7 +849,8 @@ function PR:ClearNonSpellAfterLinks()
     end
     if n > 0 then
         VUI.Print("Priority Rotation", format(
-            "|cFFFFFF00After|r now waits for a channelled spell, so %d link(s) to a macro or trinket were cleared.",
+            VUI.COL.YELLOW .. "After|r now waits for a channelled spell, so %d link(s)"
+                .. " to a macro or trinket were cleared.",
             n))
     end
 end
@@ -910,7 +914,7 @@ ef:SetScript("OnEvent", function(_, event, arg1, _, arg3)
         PR:SwitchToCurrentSpec()
         PR:CompileSequence()
         VUI.Print("Priority Rotation",
-            format("Switched to |cFFFFFF00%s|r.", PR:GetCurrentSpecLabel()))
+            format("Switched to " .. VUI.COL.YELLOW .. "%s|r.", PR:GetCurrentSpecLabel()))
         PR:RefreshUI()
         PR:ScheduleScan(1)
 
@@ -960,7 +964,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
 
     elseif cmd == "scan" then
         if InCombatLockdown() then
-            VUI.Print("Priority Rotation", "|cFFFF4444Can't scan in combat.|r")
+            VUI.Print("Priority Rotation", VUI.COL.RED .. "Can't scan in combat.|r")
             return
         end
         PR:ScanAndOverrideBarButton(PR.MACRO_NAME, true)
@@ -970,7 +974,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         local override = PR.overrides[PR.MACRO_NAME]
         if override and override.keys then
             VUI.Print("Priority Rotation",
-                "Keybind |cFF00FF00" .. tconcat(override.keys, ", ")
+                "Keybind " .. VUI.COL.GREEN .. tconcat(override.keys, ", ")
                 .. "|r override active — spam the key to play.")
         elseif override and not SLOT_TO_BIND[override.slot] then
             -- Slots 13-24 (main bar page 2) and 73-144 (form/stealth bonus pages), which
@@ -980,33 +984,33 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             -- code can override, so the user could follow it forever. Druid form bars
             -- and the rogue stealth bar are ordinary places to park a macro.
             VUI.Print("Priority Rotation",
-                "|cFFFF8800Found on slot " .. override.slot
+                VUI.COL.ORANGE .. "Found on slot " .. override.slot
                 .. "|r — that bar page can't be bound. Move the macro to a main bar.")
         elseif override then
             VUI.Print("Priority Rotation",
-                "|cFFFF8800Found on slot " .. override.slot
+                VUI.COL.ORANGE .. "Found on slot " .. override.slot
                 .. "|r but no keybind — assign a key to that bar slot, then /pr scan.")
         else
             VUI.Print("Priority Rotation",
-                "|cFFFF8800Not found.|r Put |cFFFFFF00"
+                VUI.COL.ORANGE .. "Not found.|r Put " .. VUI.COL.YELLOW
                 .. PR.MACRO_NAME .. "|r macro on any action bar (visible or hidden) "
                 .. "with a keybind, then /pr scan")
         end
 
     elseif cmd == "macro" then
         if InCombatLockdown() then
-            VUI.Print("Priority Rotation", "|cFFFF4444Can't create macro in combat.|r")
+            VUI.Print("Priority Rotation", VUI.COL.RED .. "Can't create macro in combat.|r")
             return
         end
         if PR:UpdateMacroStub(true) then
             VUI.Print("Priority Rotation",
-                "Macro |cFFFFFF00" .. PR.MACRO_NAME
+                "Macro " .. VUI.COL.YELLOW .. PR.MACRO_NAME
                 .. "|r is ready — drag it from /macro to an action bar.")
         end
         -- On failure, UpdateMacroStub already printed the specific reason.
 
     elseif cmd == "status" then
-        local function yn(v) return v and "|cFF00FF00yes|r" or "|cFFFF4444no|r" end
+        local function yn(v) return v and VUI.COL.GREEN .. "yes|r" or VUI.COL.RED .. "no|r" end
         local stubState  = PR:StubState()
         local macroExists = stubState == 1
         local override   = PR.overrides[PR.MACRO_NAME]
@@ -1015,26 +1019,26 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         VUI.Print("Priority Rotation", "  Macro:    " .. yn(macroExists)
             .. (macroExists and "" or (stubState == -1
                 and "  — another macro is named Attack; rename it"
-                or  "  — run |cFFFFFF00/pr macro|r")))
+                or  "  — run " .. VUI.COL.YELLOW .. "/pr macro|r")))
         VUI.Print("Priority Rotation", "  On bar:   " .. (override
-            and "|cFF00FF00slot " .. override.slot .. "|r"
-            or  "|cFFFF4444no|r  — run |cFFFFFF00/pr scan|r"))
+            and VUI.COL.GREEN .. "slot " .. override.slot .. "|r"
+            or  VUI.COL.RED .. "no|r  — run " .. VUI.COL.YELLOW .. "/pr scan|r"))
         VUI.Print("Priority Rotation", "  Keybind:  " .. ((override and override.keys)
-            and "|cFF00FF00" .. tconcat(override.keys, ", ") .. "|r"
-            or  "|cFFFF8800none|r — assign a key to the macro's bar slot"))
+            and VUI.COL.GREEN .. tconcat(override.keys, ", ") .. "|r"
+            or  VUI.COL.ORANGE .. "none|r — assign a key to the macro's bar slot"))
         VUI.Print("Priority Rotation", "  Compiled: " .. #PR.compiledSequence .. " step(s)")
 
     elseif cmd == "debug" then
         PR.debug = not PR.debug
         VUI.Print("Priority Rotation",
-            "Debug " .. (PR.debug and "|cFF00FF00ON|r" or "|cFFFF4444OFF|r"))
+            "Debug " .. (PR.debug and VUI.COL.GREEN .. "ON|r" or VUI.COL.RED .. "OFF|r"))
 
     elseif cmd == "test" then
         VUI.Print("Priority Rotation", "Diagnostic:")
         local p = PR:CurrentProfile()
-        if not p then VUI.Print("Priority Rotation", "  |cFFFF4444No profile!|r"); return end
-        VUI.Print("Priority Rotation", "  Spec: |cFFFFFF00" .. PR:GetCurrentSpecLabel() .. "|r")
-        VUI.Print("Priority Rotation", "  Compiled: |cFFFFFF00" .. #PR.compiledSequence .. " steps|r")
+        if not p then VUI.Print("Priority Rotation", "  " .. VUI.COL.RED .. "No profile!|r"); return end
+        VUI.Print("Priority Rotation", "  Spec: " .. VUI.COL.YELLOW .. PR:GetCurrentSpecLabel() .. "|r")
+        VUI.Print("Priority Rotation", "  Compiled: " .. VUI.COL.YELLOW .. #PR.compiledSequence .. " steps|r")
         for i, s in ipairs(PR.compiledSequence) do
             local label = PR.compiledNames and PR.compiledNames[i] or s
             VUI.Print("Priority Rotation", "    " .. i .. ". " .. label)
@@ -1044,27 +1048,27 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
             -- channel-protection rollout was untestable without this).
             if PR.debug then
                 for line in s:gmatch("[^\n]+") do
-                    VUI.Print("Priority Rotation", "       |cFF888888" .. line .. "|r")
+                    VUI.Print("Priority Rotation", "       " .. VUI.COL.GRAY .. line .. "|r")
                 end
             end
         end
         local override = PR.overrides[PR.MACRO_NAME]
         if override and override.keys then
-            VUI.Print("Priority Rotation", "  Keybind: |cFF00FF00" .. tconcat(override.keys, ", ") .. "|r")
+            VUI.Print("Priority Rotation", "  Keybind: " .. VUI.COL.GREEN .. tconcat(override.keys, ", ") .. "|r")
         elseif override then
-            VUI.Print("Priority Rotation", "  Macro slot: |cFFFF8800" .. override.slot .. "|r (no keybind)")
+            VUI.Print("Priority Rotation", "  Macro slot: " .. VUI.COL.ORANGE .. override.slot .. "|r (no keybind)")
         else
-            VUI.Print("Priority Rotation", "  Override: |cFFFF8800not active|r")
+            VUI.Print("Priority Rotation", "  Override: " .. VUI.COL.ORANGE .. "not active|r")
         end
 
     elseif cmd == "diag" then
         local patch = (GetBuildInfo and select(1, GetBuildInfo())) or "?"
-        VUI.Print("Priority Rotation", "|cFFFFFF00" .. patch .. " API Diagnostic|r")
+        VUI.Print("Priority Rotation", VUI.COL.YELLOW .. patch .. " API Diagnostic|r")
         VUI.Print("Priority Rotation", "─────────────────────────────────────────")
 
-        local G = "|cFF00FF00"
-        local R = "|cFFFF4444"
-        local Y = "|cFFFFFF00"
+        local G = VUI.COL.GREEN
+        local R = VUI.COL.RED
+        local Y = VUI.COL.YELLOW
         local E = "|r"
 
         local hasIssecret = type(issecretvalue) == "function"
@@ -1118,7 +1122,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
                 VUI.Print("Priority Rotation", "  GetMacroIndexByName(\"" .. PR.MACRO_NAME .. "\"): " .. Y .. "not found (idx=0)" .. E)
             end
             if hasIssecret and issecretvalue(macroResult) then
-                VUI.Print("Priority Rotation", "    ⚠ macroIndex is a |cFFFF8800SECRET VALUE|r")
+                VUI.Print("Priority Rotation", "    ⚠ macroIndex is a " .. VUI.COL.ORANGE .. "SECRET VALUE|r")
             end
         else
             VUI.Print("Priority Rotation", "  GetMacroIndexByName: " .. R .. "ERROR" .. E .. " — " .. tostring(macroResult))
@@ -1144,9 +1148,9 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
                             secretSlots = secretSlots + 1
                             if secretSlots <= 5 then
                                 VUI.Print("Priority Rotation", "    Slot " .. Y .. slot .. E .. ": type="
-                                    .. (typeSecret and "|cFFFF8800<SECRET>|r" or tostring(actionType))
+                                    .. (typeSecret and VUI.COL.ORANGE .. "<SECRET>|r" or tostring(actionType))
                                     .. "  id="
-                                    .. (idSecret and "|cFFFF8800<SECRET>|r" or tostring(id)))
+                                    .. (idSecret and VUI.COL.ORANGE .. "<SECRET>|r" or tostring(id)))
                             end
                         end
                     end
@@ -1185,7 +1189,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         if stepOk then
             local stepNum = tonumber(stepVal)
             if hasIssecret and issecretvalue(stepVal) then
-                VUI.Print("Priority Rotation", "  rotBtn:GetAttribute('step'): |cFFFF8800SECRET VALUE|r")
+                VUI.Print("Priority Rotation", "  rotBtn:GetAttribute('step'): " .. VUI.COL.ORANGE .. "SECRET VALUE|r")
             elseif stepNum then
                 VUI.Print("Priority Rotation", "  rotBtn:GetAttribute('step'): " .. G .. stepNum .. E)
             else
@@ -1216,17 +1220,17 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
 
     elseif cmd == "help" then
         VUI.Print("Priority Rotation", "Commands:")
-        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr|r           — toggle editor")
-        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr settings|r  — open settings panel")
-        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr scan|r      — bind to keybind/bar")
-        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr macro|r     — create macro stub")
-        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr status|r    — show current state at a glance")
-        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr reset|r     — reset to spec defaults")
-        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr clear|r     — clear spell list")
-        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr test|r      — show compiled sequence")
-        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr diag|r      — live-patch API diagnostic")
-        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr debug|r     — toggle debug output")
-        VUI.Print("Priority Rotation", "  |cFFFFFF00/pr help|r      — show this help")
+        VUI.Print("Priority Rotation", "  " .. VUI.COL.YELLOW .. "/pr|r           — toggle editor")
+        VUI.Print("Priority Rotation", "  " .. VUI.COL.YELLOW .. "/pr settings|r  — open settings panel")
+        VUI.Print("Priority Rotation", "  " .. VUI.COL.YELLOW .. "/pr scan|r      — bind to keybind/bar")
+        VUI.Print("Priority Rotation", "  " .. VUI.COL.YELLOW .. "/pr macro|r     — create macro stub")
+        VUI.Print("Priority Rotation", "  " .. VUI.COL.YELLOW .. "/pr status|r    — show current state at a glance")
+        VUI.Print("Priority Rotation", "  " .. VUI.COL.YELLOW .. "/pr reset|r     — reset to spec defaults")
+        VUI.Print("Priority Rotation", "  " .. VUI.COL.YELLOW .. "/pr clear|r     — clear spell list")
+        VUI.Print("Priority Rotation", "  " .. VUI.COL.YELLOW .. "/pr test|r      — show compiled sequence")
+        VUI.Print("Priority Rotation", "  " .. VUI.COL.YELLOW .. "/pr diag|r      — live-patch API diagnostic")
+        VUI.Print("Priority Rotation", "  " .. VUI.COL.YELLOW .. "/pr debug|r     — toggle debug output")
+        VUI.Print("Priority Rotation", "  " .. VUI.COL.YELLOW .. "/pr help|r      — show this help")
         -- /pr debug gates DebugPrint only. The two operations this module defers through
         -- VUI.CombatQueue, the queued recompile and ClearOverride, swallow errors unless
         -- the separate suite-wide VUI.debug flag is set, so someone diagnosing "my
@@ -1235,7 +1239,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
         -- VUI.debug: that would turn every other module's debug output on and off as a
         -- side effect, and would silently clear a flag the user set from /vui debug.
         VUI.Print("Priority Rotation",
-            "  |cFF888888combat-queue errors need suite-wide debug: /vui debug|r")
+            "  " .. VUI.COL.GRAY .. "combat-queue errors need suite-wide debug: /vui debug|r")
 
     else
         if PR.MainWindow then
@@ -1245,7 +1249,7 @@ SlashCmdList["VERITASUI_PR"] = function(msg)
                 PR.MainWindow:ShowTab("editor")
             end
         else
-            VUI.Print("Priority Rotation", "|cFFFF4444Editor failed to load. Try /reload|r")
+            VUI.Print("Priority Rotation", VUI.COL.RED .. "Editor failed to load. Try /reload|r")
         end
     end
 end
@@ -1256,7 +1260,7 @@ end
 -- requested, false when there was nothing to do or the call failed.
 function PR.SwitchSpec(i)
     if InCombatLockdown() then
-        VUI.Print("Priority Rotation", "|cFFFF4444Can't switch spec in combat.|r")
+        VUI.Print("Priority Rotation", VUI.COL.RED .. "Can't switch spec in combat.|r")
         return "combat"
     end
     if i == C_SpecializationInfo.GetSpecialization() then return false end
@@ -1273,7 +1277,7 @@ function PR.SwitchSpec(i)
         ok, err = pcall(SetSpecialization, i)
     end
     if not ok then
-        VUI.Print("Priority Rotation", "|cFFFF4444Spec switch failed:|r " .. tostring(err))
+        VUI.Print("Priority Rotation", VUI.COL.RED .. "Spec switch failed:|r " .. tostring(err))
         return false
     end
     return true

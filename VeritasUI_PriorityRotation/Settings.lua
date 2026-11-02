@@ -138,7 +138,7 @@ local function BuildMainWindow()
     local specBadge = win:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
     specBadge:SetPoint("TOP", win, "TOP", 0, -30)
     specBadge:SetJustifyH("CENTER")
-    specBadge:SetTextColor(1, 1, 1)
+    specBadge:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
 
     -- Exposed on win so PR:RefreshUI() can call it without monkey-patching.
     -- Refreshes both the spec name and the portrait icon (spec changes trigger
@@ -218,7 +218,7 @@ local function BuildMainWindow()
         local function Section(anchorFrame, relPoint, yOff, title, xOff)
             local hdr = cont:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             hdr:SetPoint("TOPLEFT", anchorFrame, relPoint, xOff or 0, yOff)
-            hdr:SetTextColor(1, 0.82, 0)
+            hdr:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
             hdr:SetText(title)
             local div = cont:CreateTexture(nil, "ARTWORK")
             div:SetHeight(1)
@@ -233,7 +233,7 @@ local function BuildMainWindow()
             fs:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, yOff)
             fs:SetWidth(CW)
             fs:SetJustifyH("LEFT")
-            fs:SetTextColor(0.75, 0.75, 0.75)
+            fs:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())   -- panel body: white (owner, 2026-11-01)
             fs:SetText(text)
             return fs
         end
@@ -261,15 +261,15 @@ local function BuildMainWindow()
         local reacqLbl = cont:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         reacqLbl:SetPoint("LEFT", reacqCheck, "RIGHT", 2, 0)
         reacqLbl:SetText("Auto-target next enemy on death")
-        reacqLbl:SetTextColor(1, 1, 1)
+        reacqLbl:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
         reacqCheck:SetChecked(PR:CurrentProfile().reacquire and true or false)
         reacqCheck:SetScript("OnClick", function(self)
             local checked = self:GetChecked() and true or false
             PR:CurrentProfile().reacquire = checked
             PR:CompileSequence()
             VUI.Print("Priority Rotation", checked
-                and "Auto-target on death |cFF00FF00enabled|r for this spec."
-                or  "Auto-target on death |cFFFF4444disabled|r for this spec.")
+                and "Auto-target on death " .. VUI.COL.GREEN .. "enabled|r for this spec."
+                or  "Auto-target on death " .. VUI.COL.RED .. "disabled|r for this spec.")
         end)
         -- Clicking the label toggles the box too — larger hit target.
         local reacqLabelBtn = CreateFrame("Button", nil, cont)
@@ -284,7 +284,7 @@ local function BuildMainWindow()
             "When your target dies, holding the rotation key switches to "
             .."the nearest enemy. Only a target's death or your own "
             .."tab/click ever changes targets — a live target you picked is "
-            .."never overridden. |cFFFFFF00Set per spec.|r")
+            .."never overridden. " .. VUI.COL.YELLOW .. "Set per spec.|r")
 
         -- (A "Rotation Columns" section here repeated the Rotation tab's explanation of Frequency /
         -- After / Combat; removed v1.35.11 at the owner's request. Those columns explain themselves
@@ -293,10 +293,10 @@ local function BuildMainWindow()
         -- ── Setup ─────────────────────────────────────────────────
         local divSetup = Section(txtTarget, "BOTTOMLEFT", -10, "Setup")
         local txtSetup = Body(divSetup, -6,
-            "1.  Click |cFFFFFF00Create / Update Macro|r below\n"
-            .."2.  Drag |cFFFFFF00Attack|r from /macro onto any action bar\n"
+            "1.  Click " .. VUI.COL.YELLOW .. "Create / Update Macro|r below\n"
+            .."2.  Drag " .. VUI.COL.YELLOW .. "Attack|r from /macro onto any action bar\n"
             .."3.  Bind a key to that bar slot\n"
-            .."4.  Click |cFFFFFF00Scan & Bind|r to activate")
+            .."4.  Click " .. VUI.COL.YELLOW .. "Scan & Bind|r to activate")
 
         -- ── Action Buttons ────────────────────────────────────────
         -- Every button on this tab uses MagicButtonTemplate for the gold-bordered
@@ -513,15 +513,15 @@ local function BuildNativeSettingsPanel()
         if value then
             PR:CompileSequence()
             PR:ScheduleScan(0.5)
-            VUI.Print("Priority Rotation", "|cFF00FF00Enabled.|r")
+            VUI.Print("Priority Rotation", VUI.COL.GREEN .. "Enabled.|r")
         else
             PR:ClearOverride()
-            VUI.Print("Priority Rotation", "|cFFFF4444Disabled.|r")
+            VUI.Print("Priority Rotation", VUI.COL.RED .. "Disabled.|r")
         end
     end)
     Settings.CreateCheckbox(category, enableSetting,
         "Cycles through your configured spell list on each key press. "
-        .."Use |cFFFFFF00/pr|r to open the rotation editor.")
+        .."Use " .. VUI.COL.YELLOW .. "/pr|r to open the rotation editor.")
 
     Settings.RegisterAddOnCategory(category)
     PR.settingsCategoryID = category:GetID()
@@ -534,12 +534,12 @@ initFrame:RegisterEvent("PLAYER_LOGIN")
 initFrame:SetScript("OnEvent", function()
     local ok1, err1 = pcall(BuildMainWindow)
     if not ok1 then
-        VUI.Print("Priority Rotation", "|cFFFF4444Editor error:|r " .. tostring(err1))
+        VUI.Print("Priority Rotation", VUI.COL.RED .. "Editor error:|r " .. tostring(err1))
     end
 
     local ok2, err2 = pcall(BuildNativeSettingsPanel)
     if not ok2 then
-        VUI.Print("Priority Rotation", "|cFFFF4444Settings error:|r " .. tostring(err2))
+        VUI.Print("Priority Rotation", VUI.COL.RED .. "Settings error:|r " .. tostring(err2))
     end
 
     initFrame:UnregisterAllEvents()

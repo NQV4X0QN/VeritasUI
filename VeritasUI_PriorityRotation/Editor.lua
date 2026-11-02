@@ -23,7 +23,7 @@ local BLOCK_X = 4 + 18 + 5 + ICON_SZ + 3
 -- combat (it is hidden then) or if the menu-bar button is missing -- and it only explains.
 local function ToggleSpellBookPanel()
     if InCombatLockdown() then
-        VUI.Print("Priority Rotation", "|cFFFF4444Can't toggle Spellbook in combat.|r")
+        VUI.Print("Priority Rotation", VUI.COL.RED .. "Can't toggle Spellbook in combat.|r")
         return
     end
     VUI.Print("Priority Rotation", "Open your spellbook from the menu bar or its key binding.")
@@ -31,7 +31,7 @@ end
 
 local function ToggleMacroPanel()
     if InCombatLockdown() then
-        VUI.Print("Priority Rotation", "|cFFFF4444Can't toggle Macros in combat.|r")
+        VUI.Print("Priority Rotation", VUI.COL.RED .. "Can't toggle Macros in combat.|r")
         return
     end
     if MacroFrame and MacroFrame:IsShown() then
@@ -205,7 +205,7 @@ local function AfterLinksText()
     end
     local out = {}
     for _, target in ipairs(order) do
-        out[#out + 1] = "|cFFFFD200After " .. target .. ":|r " .. table.concat(byTarget[target], ", ")
+        out[#out + 1] = VUI.COL.NORMAL .. "After " .. target .. ":|r " .. table.concat(byTarget[target], ", ")
     end
     return #out > 0 and ("\n\n" .. table.concat(out, "\n")) or ""
 end
@@ -359,9 +359,9 @@ function PR:BuildEditor(parent, contentWidth)
             local e = PR:CurrentProfile().spells[i]
             if not e then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine(EntryDisplayName(e), 1, 1, 1)
-            GameTooltip:AddLine("Drag to move", 0.8, 0.8, 0.8)
-            GameTooltip:AddLine("|cFFFF6644Right-click to remove|r")
+            GameTooltip:AddLine(EntryDisplayName(e), HIGHLIGHT_FONT_COLOR:GetRGB())
+            GameTooltip:AddLine("Drag to move", HIGHLIGHT_FONT_COLOR:GetRGB())
+            GameTooltip:AddLine(VUI.COL.LIGHTBLUE .. "Right-click to remove|r")
             GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -372,7 +372,7 @@ function PR:BuildEditor(parent, contentWidth)
         numLbl:SetPoint("LEFT", row, "LEFT", 4, 0)
         numLbl:SetWidth(18)
         numLbl:SetText(i)
-        numLbl:SetTextColor(0.75, 0.75, 0.20)
+        numLbl:SetTextColor(NORMAL_FONT_COLOR:GetRGB())   -- Blizzard gold (owner, 2026-11-01)
         numLbl:SetJustifyH("CENTER")
 
         -- Icon
@@ -420,36 +420,38 @@ function PR:BuildEditor(parent, contentWidth)
             if e and e.spellID then
                 GameTooltip:SetSpellByID(e.spellID)
                 GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("|cFF888888Drag to move|r")
-                GameTooltip:AddLine("|cFFFF6644Right-click to remove|r")
+                GameTooltip:AddLine("Drag to move", HIGHLIGHT_FONT_COLOR:GetRGB())
+                GameTooltip:AddLine(VUI.COL.LIGHTBLUE .. "Right-click to remove|r")
             elseif e and e.itemID then
                 -- Items use the standard Blizzard item tooltip with quality
                 -- header, ilvl, and use effect — same as hovering an item
                 -- in the character pane.
                 GameTooltip:SetItemByID(e.itemID)
                 GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("|cFF888888Drag to move|r")
-                GameTooltip:AddLine("|cFFFF6644Right-click to remove|r")
+                GameTooltip:AddLine("Drag to move", HIGHLIGHT_FONT_COLOR:GetRGB())
+                GameTooltip:AddLine(VUI.COL.LIGHTBLUE .. "Right-click to remove|r")
             elseif e and e.macroName then
                 local resolvedSpellID = ExtractSpellFromMacro(e.macroName)
                 if resolvedSpellID then
                     GameTooltip:SetSpellByID(resolvedSpellID)
                     GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine("|cFF66BBFFMacro: " .. e.macroName .. "|r")
+                    GameTooltip:AddLine(VUI.COL.LIGHTBLUE .. "Macro: " .. e.macroName .. "|r")
                 else
-                    GameTooltip:AddLine("Macro: " .. e.macroName, 1, 0.82, 0)
+                    GameTooltip:AddLine("Macro: " .. e.macroName, HIGHLIGHT_FONT_COLOR:GetRGB())
                     local body = GetMacroBody(e.macroName)
                     if body and body ~= "" then
-                        GameTooltip:AddLine(body, 0.7, 0.7, 0.7, true)
+                        GameTooltip:AddLine(body, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
                     end
                 end
                 GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("|cFF888888Drag to move|r")
-                GameTooltip:AddLine("|cFFFF6644Right-click to remove|r")
+                GameTooltip:AddLine("Drag to move", HIGHLIGHT_FONT_COLOR:GetRGB())
+                GameTooltip:AddLine(VUI.COL.LIGHTBLUE .. "Right-click to remove|r")
             else
-                GameTooltip:AddLine("Slot " .. i, 1, 1, 0)
-                GameTooltip:AddLine("Click to toggle Spellbook · Shift-click to toggle Macros", 0.8, 0.8, 0.8)
-                GameTooltip:AddLine("Drag a spell, macro, or trinket here to fill this slot.", 0.8, 0.8, 0.8)
+                GameTooltip:AddLine("Slot " .. i, HIGHLIGHT_FONT_COLOR:GetRGB())
+                GameTooltip:AddLine("Click to toggle Spellbook · Shift-click to toggle Macros",
+                    LIGHTBLUE_FONT_COLOR:GetRGB())
+                GameTooltip:AddLine("Drag a spell, macro, or trinket here to fill this slot.",
+                    NORMAL_FONT_COLOR:GetRGB())
             end
             GameTooltip:Show()
         end)
@@ -472,7 +474,7 @@ function PR:BuildEditor(parent, contentWidth)
 
         local freqLbl = freqFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         freqLbl:SetPoint("CENTER")
-        freqLbl:SetTextColor(1, 1, 1)
+        freqLbl:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
         row.freqLbl = freqLbl
 
         -- ⚠ THE STANDARD ARROW (owner, 2026-10-30): the Journeys renown track's ONE-STEP arrow
@@ -578,7 +580,7 @@ function PR:BuildEditor(parent, contentWidth)
                 end
                 if #cands == 0 and not e.follows then
                     VUI.Print("Priority Rotation",
-                        "|cFFFFFF00After|r waits for a channelled spell in this rotation, such as Eye Beam."
+                        VUI.COL.YELLOW .. "After|r waits for a channelled spell in this rotation, such as Eye Beam."
                         .. " Add one to the rotation first.")
                     return
                 end
@@ -605,26 +607,30 @@ function PR:BuildEditor(parent, contentWidth)
             local me = EntryDisplayName(e)
             if target and target.channel then
                 -- Blizzard's tooltip colours (owner, 2026-11-01): title white, description gold.
-                GameTooltip:SetText(e.followOnly and "Only After" or "Also After", 1, 1, 1)
+                GameTooltip:SetText(e.followOnly and "Only After" or "Also After", HIGHLIGHT_FONT_COLOR:GetRGB())
                 GameTooltip:AddLine(format(e.followOnly
-                    and "|cFFFFFFFF%s|r is held until |cFF00CCFF%s|r finishes channelling, then cast"
+                    and VUI.COL.HIGHLIGHT .. "%s|r is held until " .. VUI.COL.BRIGHTBLUE
+                        .. "%s|r finishes channelling, then cast"
                         .. " on the next press. It is never cast on its own."
-                    or  "|cFFFFFFFF%s|r is cast on the next press after |cFF00CCFF%s|r finishes"
+                    or  VUI.COL.HIGHLIGHT .. "%s|r is cast on the next press after " .. VUI.COL.BRIGHTBLUE
+                        .. "%s|r finishes"
                         .. " channelling, and also at its normal frequency.",
-                    me, EntryDisplayName(target)), 1, 0.82, 0, true)
+                    me, EntryDisplayName(target)), NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
             elseif target then
-                GameTooltip:SetText("After", 1, 1, 1)
-                GameTooltip:AddLine(format("Not active: |cFF00CCFF%s|r is not a channelled spell,"
+                GameTooltip:SetText("After", HIGHLIGHT_FONT_COLOR:GetRGB())
+                GameTooltip:AddLine(format("Not active: " .. VUI.COL.BRIGHTBLUE .. "%s|r is not a channelled spell,"
                     .. " and only a channel can be waited for. If it is one, cast it once and the"
-                    .. " link turns on.", EntryDisplayName(target)), 1, 0.13, 0.13, true)
+                    .. " link turns on.", EntryDisplayName(target)),
+                        RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b, true)
             else
-                GameTooltip:SetText("After", 1, 1, 1)
+                GameTooltip:SetText("After", HIGHLIGHT_FONT_COLOR:GetRGB())
                 GameTooltip:AddLine("Not linked. Pick a channelled spell (such as Eye Beam) and this"
-                    .. " ability is cast right after it finishes.", 1, 0.82, 0, true)
+                    .. " ability is cast right after it finishes.",
+                        NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
             end
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine(e.follows and "Click to change · Right-click: Also / Only After"
-                or "Click to pick", 0.5, 0.5, 0.5)
+                or "Click to pick", LIGHTBLUE_FONT_COLOR:GetRGB())
             GameTooltip:Show()
         end)
         followBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -646,12 +652,12 @@ function PR:BuildEditor(parent, contentWidth)
         end)
         combatChk:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine("Combat only", 1, 1, 1)
+            GameTooltip:AddLine("Combat only", HIGHLIGHT_FONT_COLOR:GetRGB())
             GameTooltip:AddLine(
-                "Checked: compiled with |cFFFFFFFF[combat]|r — this ability only"
+                "Checked: compiled with " .. VUI.COL.HIGHLIGHT .. "[combat]|r — this ability only"
                 .. " casts while in combat. Leave your opener unchecked so a key"
                 .. " press out of combat can start the fight.",
-                1, 0.82, 0, true)
+                    NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
             GameTooltip:Show()
         end)
         combatChk:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -682,7 +688,8 @@ function PR:BuildEditor(parent, contentWidth)
         ["#"]       = "Your rotation's slots, in order. Drag a slot up or down to move it.",
         Icon        = "Drag a spell from your spellbook, a macro from /macro or a trinket from your "
                       .."character pane onto a slot. Right-click a slot to remove it.",
-        Ability     = "What is in the slot. |cFF66BBFF[M]|r marks a macro, |cFFFFD200[T]|r a trinket.",
+        Ability     = "What is in the slot. " .. VUI.COL.LIGHTBLUE .. "[M]|r marks a macro, "
+            .. VUI.COL.NORMAL .. "[T]|r a trinket.",
         Frequency   = "How often an ability is attempted relative to the others, spread as evenly as "
                       .."the numbers allow. 5 = attempted almost constantly (short cooldowns, spenders); "
                       .."1 = attempted rarely. It sets the spacing, not a literal count: back-to-back "
@@ -706,8 +713,8 @@ function PR:BuildEditor(parent, contentWidth)
         hit:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             -- Blizzard's tooltip colours (owner, 2026-11-01): the header's name white, its text gold.
-            GameTooltip:SetText(text == "#" and "Order" or text, 1, 1, 1)
-            GameTooltip:AddLine(tip, 1, 0.82, 0, true)
+            GameTooltip:SetText(text == "#" and "Order" or text, HIGHLIGHT_FONT_COLOR:GetRGB())
+            GameTooltip:AddLine(tip, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
             GameTooltip:Show()
         end)
         hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -717,7 +724,7 @@ function PR:BuildEditor(parent, contentWidth)
     local function MakeCenteredHeader(xOff, text)
         local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         fs:SetPoint("BOTTOM", rows[1], "TOPLEFT", xOff, HEADER_Y)
-        fs:SetTextColor(0.85, 0.75, 0.20)
+        fs:SetTextColor(NORMAL_FONT_COLOR:GetRGB())   -- Blizzard gold (owner, 2026-11-01)
         fs:SetText(text)
         AddHeaderTip(fs, text)
         return fs
@@ -727,7 +734,7 @@ function PR:BuildEditor(parent, contentWidth)
     MakeCenteredHeader(41,  "Icon")
     local hAbility = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hAbility:SetPoint("BOTTOMLEFT", rows[1], "TOPLEFT", 66, HEADER_Y)
-    hAbility:SetTextColor(0.85, 0.75, 0.20)
+    hAbility:SetTextColor(NORMAL_FONT_COLOR:GetRGB())
     hAbility:SetText("Ability")
     AddHeaderTip(hAbility, "Ability")
     MakeCenteredHeader(FREQ_L + FREQ_W / 2, "Frequency")
@@ -762,7 +769,7 @@ function PR:BuildEditor(parent, contentWidth)
     -- Header at top of card with padding.
     local seqHeader = seqCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     seqHeader:SetPoint("TOPLEFT", seqCard, "TOPLEFT", 6, -6)
-    seqHeader:SetText("|cFFFFFF00Compiled Sequence:|r")
+    seqHeader:SetText("Compiled Sequence:")   -- GameFontNormalSmall: Blizzard gold
 
     -- Scrollable preview area — plain ScrollFrame with mousewheel.
     -- MinimalScrollBar is designed for lists (AO Browser/Featured),
@@ -799,7 +806,7 @@ function PR:BuildEditor(parent, contentWidth)
     seqPreview:SetPoint("TOPLEFT",  seqScrollChild, "TOPLEFT",  0, 0)
     seqPreview:SetPoint("TOPRIGHT", seqScrollChild, "TOPRIGHT", 0, 0)
     seqPreview:SetJustifyH("LEFT")
-    seqPreview:SetTextColor(0.7, 0.7, 0.7)
+    seqPreview:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())   -- panel body: white (owner, 2026-11-01)
 
     -- ── Drag to reorder ──────────────────────────────────────
     -- The slot under the cursor; above the first row counts as slot 1, below the last as the last
@@ -907,13 +914,13 @@ function PR:BuildEditor(parent, contentWidth)
                 local displayName = e.spellName or e.macroName or e.itemName
                 if e.macroName then
                     -- Cyan [M] tag matches the established macro convention.
-                    displayName = "|cFF66BBFF[M]|r " .. e.macroName
+                    displayName = VUI.COL.LIGHTBLUE .. "[M]|r " .. e.macroName
                 elseif e.itemID then
                     -- Yellow [T] tag for "Trinket" — distinct from spells
                     -- (no tag, white) and macros (cyan [M]). The trinket
                     -- name itself stays white for readability against the
                     -- dark row background.
-                    displayName = "|cFFFFD200[T]|r " .. e.itemName
+                    displayName = VUI.COL.NORMAL .. "[T]|r " .. e.itemName
                 end
                 row.nameLbl:SetText(displayName)
                 row.freqLbl:SetText("x" .. (e.freq or 1))
@@ -948,7 +955,7 @@ function PR:BuildEditor(parent, contentWidth)
             else
                 row.iconBtn.tex:Hide()
                 row.iconBtn.empty:Show()
-                row.nameLbl:SetText("|cFF3A3A3A-- empty --|r")
+                row.nameLbl:SetText(VUI.COL.DISABLED .. "-- empty --|r")
                 row.freqFrame:Hide()
                 row.followBtn:Hide()
                 row.combatChk:Hide()
@@ -979,7 +986,7 @@ function PR:BuildEditor(parent, contentWidth)
         else
             local links = AfterLinksText()
             seqPreview:SetText(links ~= "" and links:gsub("^\n\n", "")
-                or "|cFF888888(empty -- add spells above)|r")
+                or VUI.COL.GRAY .. "(empty -- add spells above)|r")
         end
         -- Resize the scroll child to fit the wrapped text so mousewheel
         -- scrolling works when the sequence overflows the card.

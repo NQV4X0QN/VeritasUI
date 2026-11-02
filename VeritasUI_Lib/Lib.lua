@@ -71,8 +71,31 @@ local function PrintStamp()
     return (ok and type(stamp) == "string") and stamp or ""
 end
 
+-- Blizzard's named colours as |c codes (owner's standard, 2026-11-01: never hand-picked colours). Read from
+-- Blizzard's own ColorMixin constants (SharedColorConstants; WrapTextInColorCode as Blizzard uses it, e.g.
+-- ChatFrameOverrides.lua:256). The fallbacks are those constants' values, used only if one is missing.
+local function ColorCode(c, fallback)
+    if type(c) == "table" and c.WrapTextInColorCode then
+        local ok, s = pcall(c.WrapTextInColorCode, c, "")
+        if ok and type(s) == "string" and #s >= 10 then return s:sub(1, 10) end
+    end
+    return fallback
+end
+VUI.COL = {
+    NORMAL    = ColorCode(_G.NORMAL_FONT_COLOR,    "|cffffd100"),   -- gold
+    HIGHLIGHT = ColorCode(_G.HIGHLIGHT_FONT_COLOR, "|cffffffff"),   -- white
+    YELLOW    = ColorCode(_G.YELLOW_FONT_COLOR,    "|cffffff00"),
+    RED       = ColorCode(_G.RED_FONT_COLOR,       "|cffff2020"),
+    GREEN     = ColorCode(_G.GREEN_FONT_COLOR,     "|cff20ff20"),
+    GRAY      = ColorCode(_G.GRAY_FONT_COLOR,      "|cff808080"),
+    DISABLED  = ColorCode(_G.DISABLED_FONT_COLOR,  "|cff7f7f7f"),
+    ORANGE    = ColorCode(_G.ORANGE_FONT_COLOR,    "|cffff7f3f"),
+    LIGHTBLUE = ColorCode(_G.LIGHTBLUE_FONT_COLOR, "|cff8080ff"),
+    BRIGHTBLUE = ColorCode(_G.BRIGHTBLUE_FONT_COLOR, "|cff3399ff"),
+}
+
 function VUI.Print(tag, msg)
-    print(PrintStamp() .. format("|cFF00CCFF[%s]|r %s", tag, msg))
+    print(PrintStamp() .. format(VUI.COL.BRIGHTBLUE .. "[%s]|r %s", tag, msg))
 end
 
 -- On/off print for settings that require a /reload to apply (CleanSolo's
