@@ -91,7 +91,10 @@ local UNIVERSAL = {
     -- these remove game content (story popups, zone names, boss loot), so nobody gets them unasked.
     hideTalkingHead     = false,
     muteTalkingHead     = false,
-    hideTopBanners      = false,
+    -- v1.48.0: Hide Top Banners is a dropdown. [groupId] = true for each kind hidden (TOP_BANNER_GROUPS).
+    -- TABLE-typed. PAIRED: hideTopBannersMask (the dropdown's tick-box value) is derived from it, like
+    -- hideErrorTypesMask. Replaces the hideTopBanners checkbox; a saved "on" becomes every row ticked.
+    hideTopBannerTypes  = {},
     hideProfessionGear  = true,    -- v1.27.0, owner's request; applies at once. ON since v1.37.0 (owner)
     -- v1.39.0 (owner's request): two more hover fades, applied at once. Universal: the damage meter
     -- and the reputation / experience / honor bars sit in the same place on every character.
@@ -644,18 +647,116 @@ end
 --   BossBanner             BOSS_KILL, ENCOUNTER_LOOT_RECEIVED (BossBannerToast.lua:182-183)
 --   EventToastManagerFrame DISPLAY_EVENT_TOASTS               (EventToastManager.lua:151)
 -- Blizzard's OnLoad registers them again on the next load, so /reload with the option off undoes it.
-local TOP_BANNER_EVENTS = {
-    { "ZoneTextFrame",          { "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA" } },
-    { "BossBanner",             { "BOSS_KILL", "ENCOUNTER_LOOT_RECEIVED" } },
-    { "EventToastManagerFrame", { "DISPLAY_EVENT_TOASTS" } },
+--
+-- v1.48.0 (owner's request): a dropdown, one row per kind of banner, so a player can keep (say) the
+-- Delve Nemesis message while hiding the rest. Owner's probe, 2026-11-01: every Delve message is an
+-- event toast; "Nemesis Strongbox Upgraded" and "Dundun Hides Within..." are eventType SpellScript,
+-- stage names ("The Darkway") eventType Scenario; no boss banner fired. The toast rows follow
+-- Blizzard's own Enum.EventToastEventType (UIEventToastConstantsDocumentation.lua:32-67).
+local TOP_BANNER_GROUPS = {
+    { id = "zone",     label = "Zone Names",
+      frame = "ZoneTextFrame", events = { "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA" } },
+    { id = "boss",     label = "Boss Kills and Loot",
+      frame = "BossBanner",    events = { "BOSS_KILL", "ENCOUNTER_LOOT_RECEIVED" } },
+    { id = "levelup",  label = "Level Up and New Spells",
+      types = { "LevelUp", "LevelUpSpell", "LevelUpDungeon", "LevelUpRaid", "LevelUpPvP", "LevelUpOther",
+                "SpellLearned" } },
+    { id = "scenario", label = "Scenario and Delve Stages", types = { "Scenario" } },
+    { id = "messages", label = "Delve and Event Messages",
+      types = { "SpellScript", "WorldStateChange", "QuestBossEmote", "CriteriaUpdated", "PlayerAuraAdded",
+                "PlayerAuraRemoved" } },
+    { id = "weekly",   label = "Weekly Rewards and Ratings",
+      types = { "WeeklyRewardUnlock", "WeeklyRewardUpgrade", "MythicPlusWeeklyRecord", "PvPTierUpdate" } },
+    { id = "renown",   label = "Renown", types = { "RenownFactionLeveledUp" } },
+    { id = "other",    label = "Everything Else", types = {} },   -- every toast type not named above
 }
 
-local function HideTopBanners()
-    for _, entry in ipairs(TOP_BANNER_EVENTS) do
-        local f = _G[entry[1]]
-        if f and f.UnregisterEvent then
-            for _, ev in ipairs(entry[2]) do pcall(f.UnregisterEvent, f, ev) end
+-- Group id of an event toast, from its eventType; a type not listed (or a new one) is "other".
+local function ToastGroup(info)
+    local et = type(info) == "table" and info.eventType
+    if et == nil or (issecretvalue and issecretvalue(et)) then return "other" end
+    local enum = Enum and Enum.EventToastEventType
+    for _, g in ipairs(TOP_BANNER_GROUPS) do
+        for _, name in ipairs(g.types or {}) do
+            if enum and enum[name] == et then return g.id end
         end
+    end
+    return "other"
+end
+
+-- ⚠ Only SOME toast kinds hidden: Blizzard's toast chain stays Blizzard's (an EXPERIMENT until the
+-- owner confirms it in game). Two ways a toast reaches the screen:
+--  1. DISPLAY_EVENT_TOASTS while nothing is toasting: Blizzard's handler peeks the queue head and shows
+--     it (EventToastManager.lua:154-160). Our handler runs FIRST (Blizzard's frame is re-registered
+--     after ours) and pops hidden heads with RemoveCurrentToast, so Blizzard only ever sees a wanted
+--     one. Nothing of Blizzard's is called or written: no taint.
+--  2. The next toast in the queue when one finishes (ToastingEnded -> DisplayToast, :327-369), which
+--     cannot be filtered first. Then the toast is made invisible (the manager frame's alpha, its black
+--     band and gold lines hidden, its sounds cleared) and closed at once the way Blizzard closes toasts
+--     itself (CloseActiveToasts, :235-244), but only once it is the PLAYING top banner: closing a
+--     queued one would finish whichever banner is playing (OnAnimatedOut -> TopBannerManager_BannerFinished,
+--     :1196). showAnim is stopped first so OnAnimatedIn cannot run AnimOut a second time.
+local function SetupToastFilter(hidden)
+    local etm = _G.EventToastManagerFrame
+    local api = _G.C_EventToastManager
+    if not (etm and api and api.GetNextToastToDisplay and api.RemoveCurrentToast) then return end
+    local function Hidden(info) return info and hidden[ToastGroup(info)] or false end
+
+    local pre = CreateFrame("Frame")
+    pre:RegisterEvent("DISPLAY_EVENT_TOASTS")
+    pre:SetScript("OnEvent", function()
+        if etm.IsCurrentlyToasting and etm:IsCurrentlyToasting() then return end
+        for _ = 1, 50 do
+            local ok, info = pcall(api.GetNextToastToDisplay)
+            if not (ok and Hidden(info)) then break end
+            pcall(api.RemoveCurrentToast)
+        end
+    end)
+    pcall(etm.UnregisterEvent, etm, "DISPLAY_EVENT_TOASTS")
+    pcall(etm.RegisterEvent, etm, "DISPLAY_EVENT_TOASTS")
+
+    local closing
+    local function Check()
+        local toast = etm.currentDisplayingToast
+        if not (toast and Hidden(toast.toastInfo)) then
+            closing = nil
+            etm:SetAlpha(1)
+            return
+        end
+        etm:SetAlpha(0)
+        for _, k in ipairs({ "BlackBG", "GLine", "GLine2" }) do
+            if etm[k] and etm[k].Hide then etm[k]:Hide() end
+        end
+        toast.toastInfo.showSoundKitID, toast.toastInfo.hideSoundKitID = nil, nil
+        local cur = _G.TopBannerMgr and _G.TopBannerMgr.currentBanner
+        if closing ~= toast and cur and cur.frame == toast and etm.CloseActiveToasts then
+            closing = toast
+            if toast.showAnim then toast.showAnim:Stop() end
+            etm:CloseActiveToasts()
+        end
+    end
+    if etm.DisplayToast then hooksecurefunc(etm, "DisplayToast", Check) end
+    if _G.TopBannerManager_Show then hooksecurefunc("TopBannerManager_Show", Check) end
+    if _G.TopBannerManager_BannerFinished then hooksecurefunc("TopBannerManager_BannerFinished", Check) end
+end
+
+local function HideTopBanners()
+    local hidden, anyToast, allToasts = db.hideTopBannerTypes or {}, false, true
+    for _, g in ipairs(TOP_BANNER_GROUPS) do
+        if g.frame then
+            local f = _G[g.frame]
+            if hidden[g.id] and f and f.UnregisterEvent then
+                for _, ev in ipairs(g.events) do pcall(f.UnregisterEvent, f, ev) end
+            end
+        elseif hidden[g.id] then anyToast = true
+        else allToasts = false end
+    end
+    if anyToast and allToasts then
+        -- Every kind of toast hidden: the original method, the event that starts them unregistered.
+        local etm = _G.EventToastManagerFrame
+        if etm and etm.UnregisterEvent then pcall(etm.UnregisterEvent, etm, "DISPLAY_EVENT_TOASTS") end
+    elseif anyToast then
+        SetupToastFilter(hidden)
     end
 end
 
@@ -1457,6 +1558,7 @@ local function InitializeOptions()
              .. "like any other time out of combat. Applies at once.",
           apply = function() end },
     }
+    local BuildTopBannersDropdown   -- defined after the Fade section, called from AddCheckboxes
     local HIDE_OPTIONS = {
         { key = "hideSocialButton",    name = "Hide Social Button",
           tip = "Hides the Quick Join / Communities toast button. Left shown, it fades with the "
@@ -1484,11 +1586,8 @@ local function InitializeOptions()
         { key = "muteTalkingHead",     name = "Mute Talking Head Voice",
           tip = "Silences the voice line that plays with the talking head popup. The popup itself "
              .. "still shows unless Hide Talking Head is on. Requires |cFFFFFF00/reload|r to apply." },
-        { key = "hideTopBanners",      name = "Hide Top Banners",
-          tip = "Stops the big messages at the top of the screen: the zone name when you travel, "
-             .. "event banners (level up, new scenario stage, weekly rewards and similar) and the "
-             .. "boss kill and loot banner. "
-             .. "Requires |cFFFFFF00/reload|r to apply." },
+        -- v1.48.0: a tick-box dropdown, built where the checkbox was (BuildTopBannersDropdown below).
+        { key = "hideTopBanners", build = function() BuildTopBannersDropdown() end },
         { key = "hideProfessionGear",  name = "Hide Profession Gear",
           tip = "Keeps your own outfit on while you craft, gather or fish, instead of the "
              .. "profession outfit the game puts on you. Not during combat. Applies at once.",
@@ -1551,6 +1650,7 @@ local function InitializeOptions()
     end
     local function AddCheckboxes(list)
         for _, opt in ipairs(list) do
+          if opt.build then opt.build() else
             local perChar  = PERCHAR[opt.key] ~= nil
             local owner    = perChar and cdb or db
             local defTable = perChar and PERCHAR or UNIVERSAL
@@ -1580,6 +1680,7 @@ local function InitializeOptions()
                 local parentOwner = PERCHAR[opt.parent] ~= nil and cdb or db
                 init:SetParentInitializer(parentInit, function() return parentOwner[opt.parent] end)
             end
+          end
         end
     end
 
@@ -1669,6 +1770,69 @@ local function InitializeOptions()
         .. "keep Blizzard's own timing. Applies at once.", "fadeDelay"))
     GreyIfUnavailable(delayInit, "fadeDelay")
 
+
+    -- ── Hide Top Banners — tick-box dropdown, UNIVERSAL (mask paired with hideTopBannerTypes, both on
+    -- db). The Fade Action Bars pattern: a None row, then one row per TOP_BANNER_GROUPS entry; the
+    -- table is the truth and the mask is derived from it on every login and every change.
+    local TB_NONE, TB_FIRST = 1, 2
+    local TB_MAX = TB_FIRST + #TOP_BANNER_GROUPS - 1
+    local function TopBannersMask()
+        local mask = 0
+        for i, g in ipairs(TOP_BANNER_GROUPS) do
+            if db.hideTopBannerTypes[g.id] then mask = mask + Bit(TB_FIRST + i - 1) end
+        end
+        return mask > 0 and mask or Bit(TB_NONE)
+    end
+    function BuildTopBannersDropdown()
+        db.hideTopBannersMask = TopBannersMask()
+        local lastMask = db.hideTopBannersMask
+        local setting = Settings.RegisterAddOnSetting(
+            category,
+            ADDON_NAME .. "_hideTopBanners",
+            "hideTopBannersMask",
+            db,                          -- UNIVERSAL: paired with hideTopBannerTypes
+            "number",
+            "Hide Top Banners",
+            Bit(TB_NONE)
+        )
+        local ignore = false
+        local function GetOptions()
+            local container = Settings.CreateControlTextContainer()
+            container:AddCheckbox(TB_NONE, "None")
+            for i, g in ipairs(TOP_BANNER_GROUPS) do container:AddCheckbox(TB_FIRST + i - 1, g.label) end
+            return container:GetData()
+        end
+        setting:SetValueChangedCallback(function(_, val)
+            if ignore or type(val) ~= "number" then return end
+            local changed = ChangedBits(lastMask, val, TB_MAX)
+            if #changed == 1 then
+                local v, on = changed[1], HasBit(val, changed[1])
+                if v == TB_NONE then
+                    if on then for k in pairs(db.hideTopBannerTypes) do db.hideTopBannerTypes[k] = nil end end
+                else
+                    local g = TOP_BANNER_GROUPS[v - TB_FIRST + 1]
+                    db.hideTopBannerTypes[g.id] = on or nil
+                    VUI.Print("Clean Solo", "Hide Top Banners: " .. g.label .. " "
+                        .. (on and "hidden" or "shown") .. " — |cFFFFFF00/reload|r to apply.")
+                end
+            elseif #changed > 1 then             -- e.g. the Defaults button
+                for i, g in ipairs(TOP_BANNER_GROUPS) do
+                    db.hideTopBannerTypes[g.id] = HasBit(val, TB_FIRST + i - 1) or nil
+                end
+            end
+            db.hideTopBannersMask = TopBannersMask()
+            lastMask = db.hideTopBannersMask
+            ignore = true
+            pcall(setting.SetValue, setting, db.hideTopBannersMask)
+            ignore = false
+        end)
+        local init = Settings.CreateDropdown(category, setting, GetOptions, TipWithReason(
+            "Pick the big messages at the top of the screen to stop: the zone name when you travel, "
+            .. "boss kill and loot banners, level up, scenario and Delve stage names, Delve and event "
+            .. "messages (such as Nemesis Strongbox Upgraded), weekly rewards, renown, and everything "
+            .. "else. The rest still show. Requires |cFFFFFF00/reload|r to apply.", "hideTopBanners"))
+        GreyIfUnavailable(init, "hideTopBanners")
+    end
 
     Header("Hide")
     AddCheckboxes(HIDE_OPTIONS)
@@ -1823,6 +1987,12 @@ frame:SetScript("OnEvent", function(self, event, arg1)
                 .. table.concat(names, ", ") .. "  (taken from this character)")
         end
 
+        -- v1.48.0: the old Hide Top Banners checkbox becomes every row of its dropdown. Before
+        -- InitializeOptions, which derives the dropdown's value from the table.
+        if db.hideTopBanners == true and next(db.hideTopBannerTypes) == nil then
+            for _, g in ipairs(TOP_BANNER_GROUPS) do db.hideTopBannerTypes[g.id] = true end
+        end
+        db.hideTopBanners = nil
         InitializeOptions()
         -- Before any fader runs, so the first fade of the session already uses it.
         if VUI.SetFadeDelay then VUI.SetFadeDelay(db.fadeDelay) end
@@ -1840,7 +2010,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.hideMacroNames and not Unavailable("hideMacroNames") then HideMacroNames() end
         if (db.hideTalkingHead and not Unavailable("hideTalkingHead"))
             or (db.muteTalkingHead and not Unavailable("muteTalkingHead")) then SetupTalkingHead() end
-        if db.hideTopBanners and not Unavailable("hideTopBanners") then HideTopBanners() end
+        if next(db.hideTopBannerTypes) ~= nil and not Unavailable("hideTopBanners") then HideTopBanners() end
         if db.hideProfessionGear and not Unavailable("hideProfessionGear") then SetHideProfessionGear(true) end
         if db.hideErrorText       then HideErrorText()
         else                           HideErrorTypes()      end
