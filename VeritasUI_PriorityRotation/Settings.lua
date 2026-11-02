@@ -525,7 +525,13 @@ local function BuildNativeSettingsPanel()
 
     Settings.RegisterAddOnCategory(category)
     PR.settingsCategoryID = category:GetID()
-    VUI.RegisterSettingsLabel(SETTINGS_LABEL)
+    -- An Open button in the page header instead of Reload UI / Copy From... (owner, v1.58.0).
+    VUI.RegisterSettingsLabel(SETTINGS_LABEL, {
+        open = function()
+            if PR.MainWindow and not PR.MainWindow:IsShown() then PR.MainWindow:ShowTab("editor") end
+        end,
+        window = function() return PR.MainWindow end,
+    })
 end
 
 -- ── Startup ───────────────────────────────────────────────────────

@@ -1,14 +1,12 @@
 -- VeritasUI_AdvancedOptions / Settings.lua
 -- Main window (ButtonFrameTemplate + tabs).
 --
--- This module deliberately has NO entry in Options -> AddOns. It used to register
--- an empty category purely so the module could be "discovered" there, but a blank
--- panel reads as broken rather than as discovery, which is worse than no panel at
--- all (owner-reported 2026-07-28). Every setting this module has lives in its own
--- window; there is nothing a Settings category could usefully show.
---
--- If an entry is ever wanted again, give it real content -- at minimum a button
--- that opens the window -- rather than reinstating an empty category.
+-- Options -> AddOns -> VeritasUI -> Advanced Options (back in v1.58.0, owner's request). Until v1.12.2
+-- this module registered an EMPTY category purely to be listed, which read as broken (owner, 2026-07-28),
+-- so it was removed. It returns with real content: the page header's Open button (Lib,
+-- VUI.RegisterSettingsLabel with an open function) and one row per tab of the window, each with an Open
+-- button (Blizzard's own button row, CreateSettingsButtonInitializer, Blizzard_SettingControls.lua:910).
+-- Every setting still lives in the window; the page is how a player finds it.
 
 local _, AO = ...
 local VUI = _G.VeritasUI
@@ -158,6 +156,36 @@ end
 ----------------------------------------------------------------
 --  Startup
 ----------------------------------------------------------------
+local SETTINGS_LABEL = "Advanced Options"
+
+local function BuildNativeSettingsPanel()
+    local category, layout = VUI.RegisterSettingsCategory(SETTINGS_LABEL)
+    local function Opener(tab)
+        return {
+            open = function()
+                if not AO.MainWindow then return end
+                if tab then AO.MainWindow:ShowTab(tab) elseif not AO.MainWindow:IsShown() then AO:ShowWindow() end
+            end,
+            window = function() return AO.MainWindow end,
+        }
+    end
+    if layout and layout.AddInitializer and CreateSettingsButtonInitializer then
+        local rows = {
+            { "Featured Settings", "featured",
+              "Useful hidden settings as checkboxes, sliders and dropdowns, each with a reset button." },
+            { "All CVars", "browser", "Search and change every setting your game has, and star your favourites." },
+        }
+        for _, row in ipairs(rows) do
+            local opener = Opener(row[2])
+            layout:AddInitializer(CreateSettingsButtonInitializer(row[1], "Open",
+                function() VUI._OpenFromSettings(opener) end, row[3], false))
+        end
+    end
+    Settings.RegisterAddOnCategory(category)
+    AO.settingsCategoryID = category:GetID()
+    VUI.RegisterSettingsLabel(SETTINGS_LABEL, Opener(nil))
+end
+
 local initFrame = CreateFrame("Frame")
 initFrame:RegisterEvent("PLAYER_LOGIN")
 initFrame:SetScript("OnEvent", function()
@@ -165,6 +193,10 @@ initFrame:SetScript("OnEvent", function()
     if not ok1 then
         VUI.Print("Advanced Options",
             "|cFFFF4444Window error:|r " .. tostring(err1))
+    end
+    local ok2, err2 = pcall(BuildNativeSettingsPanel)
+    if not ok2 then
+        VUI.Print("Advanced Options", "|cFFFF4444Settings page error:|r " .. tostring(err2))
     end
 
     initFrame:UnregisterAllEvents()

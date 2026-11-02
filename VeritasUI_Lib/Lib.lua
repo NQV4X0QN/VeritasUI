@@ -1021,10 +1021,37 @@ end
 VUI._settingsLabels = {}
 local reloadBtn
 local copyBtn
+local openBtn
 
-function VUI.RegisterSettingsLabel(label)
-    VUI._settingsLabels[label] = true
+-- opts (v1.58.0, owner's request): { open = function, window = function -> frame } for a module whose
+-- settings live in its own window (Priority Rotation, Advanced Options). Its page then shows an Open
+-- button where Reload UI and Copy From... sit on the other pages; Copy From... copies every module, so it
+-- stays reachable from those.
+function VUI.RegisterSettingsLabel(label, opts)
+    VUI._settingsLabels[label] = (type(opts) == "table" and type(opts.open) == "function") and opts or true
     if not VUI._reloadBtnHooked then VUI._InitReloadButton() end
+end
+
+-- Open a module's window from its Settings page. Blizzard's Settings window (frameStrata HIGH,
+-- Blizzard_SettingsPanel.xml:4) is NOT closed from here: its Close/OnHide commit settings, save
+-- bindings and update the micro buttons (Blizzard_SettingsPanel.lua:204-286), and running that from
+-- addon code would taint them (the Settings taint landmine). The window opens above it instead, at
+-- DIALOG, and goes back to its own strata when it closes.
+function VUI._OpenFromSettings(opts)
+    local ok = pcall(opts.open)
+    if not ok then return end
+    local win = opts.window and opts.window()
+    if type(win) ~= "table" or not win.SetFrameStrata then return end
+    if SettingsPanel and SettingsPanel:IsShown() and win:GetFrameStrata() ~= "DIALOG" then
+        win._vuiStrata = win._vuiStrata or win:GetFrameStrata()
+        win:SetFrameStrata("DIALOG")
+        if not win._vuiStrataHooked then
+            win._vuiStrataHooked = true
+            win:HookScript("OnHide", function(self)
+                if self._vuiStrata then self:SetFrameStrata(self._vuiStrata); self._vuiStrata = nil end
+            end)
+        end
+    end
 end
 
 function VUI._InitReloadButton()
@@ -1135,8 +1162,19 @@ function VUI._InitReloadButton()
             copyBtn:SetScript("OnClick", function(self) VUI.ShowCopyMenu(self) end)
         end
         copyBtn:Hide()
+
+        -- "Open" for a module whose settings are its own window, in Reload UI's place.
+        openBtn = CreateFrame("Button", nil, SettingsPanel, "UIPanelButtonTemplate")
+        openBtn:SetText("Open")
+        openBtn:SetWidth(100)
+        openBtn:SetPoint("RIGHT", reloadBtn, "RIGHT", 0, 0)
+        openBtn:SetScript("OnClick", function(self)
+            if type(self.opts) == "table" then VUI._OpenFromSettings(self.opts) end
+        end)
+        openBtn:Hide()
         VUI.AnnounceFrame("Lib.SettingsButton", reloadBtn)
         VUI.AnnounceFrame("Lib.SettingsButton", copyBtn)
+        VUI.AnnounceFrame("Lib.SettingsButton", openBtn)
     end
 
     -- Shown only while a VeritasUI category is the current one. Driven by Blizzard's own
@@ -1151,13 +1189,18 @@ function VUI._InitReloadButton()
             local ok, cur = pcall(SettingsPanel.GetCurrentCategory, SettingsPanel)
             category = ok and cur or nil
         end
-        local show = false
+        local info
         if category and category.GetName then
             local ok, name = pcall(category.GetName, category)
-            show = (ok and name and VUI._settingsLabels[name]) and true or false
+            info = ok and name and VUI._settingsLabels[name] or nil
         end
-        reloadBtn:SetShown(show)
-        if copyBtn then copyBtn:SetShown(show) end
+        local opens = type(info) == "table"
+        reloadBtn:SetShown(info ~= nil and not opens)
+        if copyBtn then copyBtn:SetShown(info ~= nil and not opens) end
+        if openBtn then
+            openBtn.opts = opens and info or nil
+            openBtn:SetShown(opens)
+        end
     end
 
     SettingsPanel:HookScript("OnShow", function()
@@ -1174,6 +1217,7 @@ function VUI._InitReloadButton()
     SettingsPanel:HookScript("OnHide", function()
         if reloadBtn then reloadBtn:Hide() end
         if copyBtn then copyBtn:Hide() end
+        if openBtn then openBtn:Hide() end
     end)
 end
 
