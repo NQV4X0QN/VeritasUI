@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.56.0] - 2026-11-01
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Remember Typed Lines.** The last 5 lines you typed in the chat box, commands included, stay in the chat box's history after you log in or reload, so a command you were testing doesn't need retyping. Typing a line again moves it to the newest place. Kept for each character on your computer, whispers included; turning it off deletes them. On by default (`Chat.lua`, `QualityOfLife.lua`, `README.md`)
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **Remember Chat Lines is now called Remember Chat.** Your setting is kept (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Turning off Remember Chat or Remember Typed Lines deletes only what that option saved** (`Chat.lua`)
+
 ## [1.55.0] - 2026-11-01
 
 ### Added

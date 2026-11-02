@@ -25,8 +25,8 @@
 -- kit uses (wago.tools SoundKitEntry, 2026-11-01). Any choice but Blizzard's own mutes that file
 -- (MuteSoundFile) and plays the choice on the same rule; None only mutes it. Back to Blizzard's: unmuted.
 --
--- Remember Chat Lines. Each chat window's last 100 lines are kept, per character, in
--- VeritasUI_QualityOfLifeChatDB (SavedVariablesPerCharacter), and put back, grey, when you log in or reload,
+-- Remember Chat (named Remember Chat Lines until v1.56.0). Each chat window's last 100 lines are kept,
+-- per character, in VeritasUI_QualityOfLifeChatDB (SavedVariablesPerCharacter), and put back, grey, when you log in or reload,
 -- before anything new. A post-hook on each window's AddMessage (hooksecurefunc on the frame: Blizzard's own
 -- AddMessage still runs first and untouched, ChatFrame.lua:35-41) reads the line; nothing is written to the
 -- chat frames. Skipped: the combat log and voice transcription windows (ChatFrame2, ChatFrame3:
@@ -295,7 +295,7 @@ VUI.QoL_WhisperSoundDropdown = function(category, db, addonName)
         .. "until no whisper has come for 5 minutes.")
 end
 
--- ── Remember Chat Lines ────────────────────────────────────────
+-- ── Remember Chat ──────────────────────────────────────────────
 local KEEP = 100
 local FIRST_WINDOW, SKIP = 1, { [2] = true, [3] = true }
 
