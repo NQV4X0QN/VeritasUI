@@ -10,4 +10,5 @@
 
 QualityOfLife.lua
 Journeys.lua
+WorldQuestUntrack.lua
 MapNotes.xml

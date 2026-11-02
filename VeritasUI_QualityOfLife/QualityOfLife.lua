@@ -157,6 +157,7 @@ local UNIVERSAL = {
     -- player can see and switch). ON by default, unlike the options above, so nobody loses it.
     wayCommand        = true,
     mapNotesEnabled   = true,     -- /note and the notes' map pins; same reason, on by default (v1.34.4)
+    untrackWorldQuestsOnUnfocus = true,   -- WorldQuestUntrack.lua (v1.51.0, owner's request)
     journeysShortcuts = true,     -- Journeys.lua's card checkbox and bar clicks; same (v1.34.4)
     -- EllesmereUI-inspired plan, phase 2 (v1.28.0). OFF by default: they change how two of
     -- Blizzard's own confirmations behave.
@@ -4482,6 +4483,11 @@ local function InitializeOptions()
         "Hands in completed quests. If you have to choose a reward, or the quest costs gold, you "
         .. "still choose. Hold Shift while talking to the NPC to do it yourself.",
         UpdateNpcEvents)
+
+    AddCheckbox("untrackWorldQuestsOnUnfocus", "Untrack World Quests When Unfocused",
+        "A world quest you clicked on the map leaves the objective tracker when you click it again, the "
+        .. "way other quests stop being highlighted. World quests you tracked yourself (Shift-click or "
+        .. "Track) stay.")
 
     Header("Progress")
     AddCheckbox("followReputationGains", "Track Latest Reputation",
