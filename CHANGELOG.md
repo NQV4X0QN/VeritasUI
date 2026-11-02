@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.47.0] - 2026-11-01
+
+### Added
+
+- `VeritasUI_AdvancedOptions` — **Sharpen at Full Resolution.** Lets Options > Graphics > Resample Sharpness sharpen the picture when Render Scale is 100%, where the slider otherwise does nothing. In the Graphics section (`Featured.lua`)
+- `VeritasUI_AdvancedOptions` — **Show Help Tips.** Turns off the yellow help boxes that point at new buttons and features, which Show Tutorials does not cover. In Tooltips & UI, under Show Tutorials (`Featured.lua`)
+- `VeritasUI_AdvancedOptions` — **Choose what Floating Combat Text shows.** A dropdown beside Enable Floating Combat Text picks the kinds of scrolling text over your character: dodges and misses, auras, power gains, combo points, entering and leaving combat, reputation, honor and more. None of these are in Blizzard's Options. The choices grey out while Floating Combat Text is off, and the row's reset button puts them all back (`Featured.lua`, `Controls.lua`, `Browser.lua`)
+
+### Fixed
+
+- `VeritasUI_AdvancedOptions` — **Show Damage Numbers and Show Healing Numbers work again.** Midnight renamed the two game settings behind them, so unticking either one did nothing and the numbers kept showing on targets. They now change the new settings (`Featured.lua`)
+
+
 ## [1.46.4] - 2026-11-01
 
 ### Fixed
