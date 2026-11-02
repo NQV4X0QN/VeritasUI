@@ -50,7 +50,7 @@ local function BuildNativeSettingsPanel()
             "Shows how many days old the price is, when it isn't from today.")
 
         AddCheckbox("craftShowReagentValue", true, "Show Reagents Value on Crafting Orders",
-            "Adds a |cFFFFFF00Reagents Value:|r line to the Place Crafting Order form: what "
+            "Adds a " .. VUI.COL.YELLOW .. "Reagents Value:|r line to the Place Crafting Order form: what "
             .. "the recipe's reagents would sell for at the Auction House.")
 
         AddCheckbox("liveSearchPrices", true, "Correct Prices from Live Searches",
@@ -74,7 +74,7 @@ initFrame:SetScript("OnEvent", function()
     local ok, err = pcall(BuildNativeSettingsPanel)
     if not ok then
         VUI.Print(AH.TAG or "Auction House",
-            "|cFFFF4444Settings error:|r " .. tostring(err))
+            VUI.COL.RED .. "Settings error:|r " .. tostring(err))
     end
     initFrame:UnregisterAllEvents()
 end)

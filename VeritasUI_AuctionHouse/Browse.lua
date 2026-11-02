@@ -405,7 +405,7 @@ local function Finish()
         -- Loud on purpose: an unkeyable result IS lost data, and this is the number that
         -- answers "is browse silently dropping items?" with evidence instead of a claim.
         VUI.Print(AH.TAG, format(
-            "  |cFFFF4444%d result(s) could not be keyed and were NOT recorded.|r %s",
+            "  " .. VUI.COL.RED .. "%d result(s) could not be keyed and were NOT recorded.|r %s",
             skipNoKey,
             noKeyExamples and ("Examples: " .. table.concat(noKeyExamples, ", ")) or ""))
     end
@@ -648,9 +648,9 @@ end
 
 function AH.Browse.ReportWatch()
     if not watchKey then return end
-    VUI.Print(AH.TAG, format("browseprobe for |cFFFFFF00%s|r:", watchKey))
+    VUI.Print(AH.TAG, format("browseprobe for " .. VUI.COL.YELLOW .. "%s|r:", watchKey))
     if not watchHits or #watchHits == 0 then
-        VUI.Print(AH.TAG, "  |cFFFF4444browse returned NO result for this item.|r "
+        VUI.Print(AH.TAG, "  " .. VUI.COL.RED .. "browse returned NO result for this item.|r "
             .. "The stored price is therefore from an OLDER scan, not from this one — "
             .. "this is a COVERAGE gap, not a pricing error.")
     else

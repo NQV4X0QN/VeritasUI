@@ -429,7 +429,7 @@ function AH.Replicate.FindInSnapshot(targetItemID)
                         VUI.Print(AH.TAG, format(
                             "  row %d: count=%s buyout=%s link=%s key=%s",
                             i, tostring(count), tostring(buyoutPrice),
-                            link and "ok" or "|cFFFF4444NIL|r",
+                            link and "ok" or VUI.COL.RED .. "NIL|r",
                             tostring(link and AH.DB.MakeKey(link)
                                 or AH.DB.MakeKeyFromItemID(targetItemID))))
                     end
@@ -440,11 +440,11 @@ function AH.Replicate.FindInSnapshot(targetItemID)
         if i >= num then
             self:SetScript("OnUpdate", nil)
             VUI.Print(AH.TAG, format(
-                "/ah find: swept %d rows — |cFFFFFF00%d|r matching rows (total qty %d) "
-                .. "for itemID %s; snapshot-wide nil links: |cFFFFFF00%d|r",
+                "/ah find: swept %d rows — " .. VUI.COL.YELLOW .. "%d|r matching rows (total qty %d) "
+                .. "for itemID %s; snapshot-wide nil links: " .. VUI.COL.YELLOW .. "%d|r",
                 num, found, totalQty, tostring(targetItemID), nilLinks))
             if found == 0 then
-                VUI.Print(AH.TAG, "  → item is |cFFFF4444ABSENT from the snapshot|r "
+                VUI.Print(AH.TAG, "  → item is " .. VUI.COL.RED .. "ABSENT from the snapshot|r "
                     .. "(server-side omission, not a row-skip in our scan).")
             end
         end
@@ -572,7 +572,7 @@ local function ProcessAllRows()
                                     if VUI.debug then
                                         VUI.Print(AH.TAG, "itemID position calibration: "
                                             .. (itemIDPos and ("return #" .. itemIDPos)
-                                                or "|cFFFF4444no consensus|r — cold rows use retry passes only"))
+                                                or VUI.COL.RED .. "no consensus|r — cold rows use retry passes only"))
                                     end
                                 end
                             end
@@ -806,14 +806,14 @@ local function ProcessAllRows()
     -- that only shows under a debug flag is an unexplained loss nobody will ever explain.
     if deferredTotal and deferredTotal > 0 and #deferred > 0 then
         VUI.Print(AH.TAG, format(
-            "  |cFFFF4444%d of %d gear rows abandoned.|r ended=%s  passes=%d  "
+            "  " .. VUI.COL.RED .. "%d of %d gear rows abandoned.|r ended=%s  passes=%d  "
             .. "no-itemID rows=%d (never re-requestable)",
             #deferred, deferredTotal,
             ((dryPasses or 0) > 0) and "quiescence (a pass resolved nothing)"
                 or "budget exhausted",
             retryPasses or 0, noIDRows or 0))
         VUI.Print(AH.TAG, "  Those rows updated neither price nor age. "
-            .. "|cFFFFFF00/ah engine browse|r has no deferred pile.")
+            .. VUI.COL.YELLOW .. "/ah engine browse|r has no deferred pile.")
     end
 
     finalizeResolved, finalizeTotal = nil, nil   -- phase over; FinalizeStatus() goes dark
@@ -859,14 +859,14 @@ local function EnsureDriver()
                     trace.totalTime = fireTime and (GetTime() - fireTime) or nil
                 end
                 if VUI.debug then
-                    VUI.Print(AH.TAG, "|cFFFF8800Finalize-phase error|r "
+                    VUI.Print(AH.TAG, VUI.COL.ORANGE .. "Finalize-phase error|r "
                         .. "(main results already committed): " .. tostring(a))
                 end
                 AH.Events.Fire("AH_SCAN_COMPLETE", mainCommit.kept, mainCommit.rows, "auctions")
             else
                 if trace then trace.outcome = "failed" end
                 if VUI.debug then
-                    VUI.Print(AH.TAG, "|cFFFF4444Scan error|r: " .. tostring(a))
+                    VUI.Print(AH.TAG, VUI.COL.RED .. "Scan error|r: " .. tostring(a))
                 end
                 AH.Events.Fire("AH_SCAN_FAILED", tostring(a))
             end
@@ -982,8 +982,8 @@ local function ArmStallDetector()
         -- NOT prescribe a recovery: reopening and /reload are both confirmed useless,
         -- and no client-side signal distinguishes this from a slow-but-coming scan.
         VUI.Print(AH.TAG, format(
-            "|cFFFF4444No response after %ds — the request was lost.|r "
-            .. "You can press |cFFFFFF00Scan|r again. Reopening the Auction House "
+            VUI.COL.RED .. "No response after %ds — the request was lost.|r "
+            .. "You can press " .. VUI.COL.YELLOW .. "Scan|r again. Reopening the Auction House "
             .. "makes no difference, and neither does /reload.", REPLICATE_STALL_TIMEOUT))
     end)
 end

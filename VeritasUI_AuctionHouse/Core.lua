@@ -10,9 +10,10 @@
 local ADDON_NAME, AH = ...
 local VUI = _G.VeritasUI
 if not VUI then
-    print("|cFFFF4444[VeritasUI] Lib failed to load — " .. ADDON_NAME .. " disabled.|r")
+    print(RED_FONT_COLOR:WrapTextInColorCode("[VeritasUI] Lib failed to load — " .. ADDON_NAME .. " disabled."))
     return
 end
+local COL = VUI.COL   -- Blizzard's named colours (Lib.lua)
 
 ----------------------------------------------------------------
 --  Localize hot globals
@@ -60,7 +61,7 @@ function AH.Events.Fire(name, ...)
     for i = 1, #list do
         local ok, err = pcall(list[i], ...)
         if not ok and VUI.debug then
-            VUI.Print(AH.TAG, format("|cFFFF4444Event handler error|r (%s): %s",
+            VUI.Print(AH.TAG, format(COL.RED .. "Event handler error|r (%s): %s",
                 tostring(name), tostring(err)))
         end
     end
@@ -155,7 +156,7 @@ end
 local function OnAuctionHouseDisabled()
     AH.disabled = true
     AH.isOpen = false
-    VUI.Print(AH.TAG, "|cFFFFFF00Auction House is disabled this session|r — "
+    VUI.Print(AH.TAG, COL.YELLOW .. "Auction House is disabled this session|r — "
         .. "cached prices still work; live queries do not.")
     AH.Events.Fire("AH_DISABLED")
 end
@@ -194,9 +195,9 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         if AH.engineSettingWasReset then
             AH.engineSettingWasReset = nil
             VUI.Print(AH.TAG, format(
-                "Scan engine reset to the default (|cFFFFFF00%s|r). The stored value was "
+                "Scan engine reset to the default (" .. COL.YELLOW .. "%s|r). The stored value was "
                 .. "written by a defaulting bug that made every default change inert. "
-                .. "Use |cFFFFFF00/ah engine|r to pin a different one.",
+                .. "Use " .. COL.YELLOW .. "/ah engine|r to pin a different one.",
                 AH.Scan.EngineName()))
         end
 
@@ -230,7 +231,7 @@ AH.Events.On("AH_SCAN_START", function()
     -- was diagnosed by a failure message that happens to be engine-specific, which
     -- is luck, not observability. An unobservable engine selection is
     -- indistinguishable from the right one (same rule as the counted browse skips).
-    VUI.Print(AH.TAG, format("Full scan started… |cFF888888(%s)|r",
+    VUI.Print(AH.TAG, format("Full scan started… " .. COL.GRAY .. "(%s)|r",
         AH.Scan.EngineName()))
 end)
 
@@ -259,11 +260,11 @@ AH.Events.On("AH_SCAN_COMPLETE", function(committed, rows, sourceUnit, dry)
     if dry then return end
     if sourceUnit and rows and rows > 0 then
         VUI.Print(AH.TAG, format(
-            "Scan complete — |cFF00FF00%d|r items priced from |cFFFFFF00%d|r %s.",
+            "Scan complete — " .. COL.GREEN .. "%d|r items priced from " .. COL.YELLOW .. "%d|r %s.",
             committed or 0, rows, sourceUnit))
     else
         VUI.Print(AH.TAG, format(
-            "Scan complete — |cFF00FF00%d|r items priced.", committed or 0))
+            "Scan complete — " .. COL.GREEN .. "%d|r items priced.", committed or 0))
     end
 end)
 
@@ -271,9 +272,9 @@ AH.Events.On("AH_SCAN_FAILED", function(err)
     -- User-facing wording is fixed and cause-neutral: it failed and prices are
     -- not fresh. Any underlying error string (e.g. a coroutine error) is only
     -- surfaced under VUI.debug — we never assert a root cause to the user.
-    VUI.Print(AH.TAG, "|cFFFF4444Scan failed —|r Prices were not updated; try again shortly.")
+    VUI.Print(AH.TAG, COL.RED .. "Scan failed —|r Prices were not updated; try again shortly.")
     if VUI.debug and err and err ~= "" then
-        VUI.Print(AH.TAG, "|cFF888888[debug] scan-fail detail: " .. tostring(err) .. "|r")
+        VUI.Print(AH.TAG, COL.GRAY .. "[debug] scan-fail detail: " .. tostring(err) .. "|r")
     end
 end)
 
@@ -397,12 +398,12 @@ local function ReportComparison()
             end
         end
     end
-    VUI.Print(AH.TAG, format("  stored but not returned by browse: |cFFFFFF00%d from the latest scan|r "
+    VUI.Print(AH.TAG, format("  stored but not returned by browse: " .. COL.YELLOW .. "%d from the latest scan|r "
         .. "(real gap) + %d older (expired listings, expected)", gapToday, staleOnly))
     if #gapExamples > 0 then
         VUI.Print(AH.TAG, "    real-gap examples: " .. table.concat(gapExamples, ", "))
     end
-    VUI.Print(AH.TAG, "  |cFFFFFF00Reading:|r commodities should be near-identical — both engines take "
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "Reading:|r commodities should be near-identical — both engines take "
         .. "the min of the same listings. Gear mismatches are EXPECTED while replicate is "
         .. "the engine, because its retry budget abandons gear rows so stored gear is old. "
         .. "A real problem would be commodities disagreeing, or a nonzero real gap.")
@@ -482,7 +483,7 @@ local function Engine()
         -- explanation. Once per session, not per scan.
         if not warnedBrowseMissing then
             warnedBrowseMissing = true
-            VUI.Print(AH.TAG, "|cFFFF4444Browse engine did not load|r — using replicate instead.")
+            VUI.Print(AH.TAG, COL.RED .. "Browse engine did not load|r — using replicate instead.")
         end
     end
     return AH.Replicate
@@ -571,46 +572,50 @@ SLASH_VERITASUI_AH2 = "/auctionhouse"
 
 local function PrintHelp()
     VUI.Print(AH.TAG, "Commands:")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah|r              — show this help")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah scan|r         — full price scan (AH open; see /ah floor for the cooldown)")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah floor|r        — show or set the scan cooldown (off | on | seconds)")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah bardemo|r      — hold the scan bar in one state to inspect it")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah bartune|r      — tune the scan bar's rounded-cap slice margin")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah baratlas|r     — show the raw bar atlas art (shape probe)")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah engine|r       — show or set the scan engine (browse | replicate)")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah compare|r      — scan with browse, diff against the stored prices")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah browseprobe|r  — check one shift-clicked item against the live listing")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah live|r         — live-search price corrections (on | off | status)")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah ttprobe|r      — what the tooltip actually priced (no args = last render)")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah stripdiag|r    — hover a sell-strip icon that won't load, then run")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah diag|r         — diagnostic / state dump")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah check|r        — show stored price for a shift-clicked item")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah find|r         — search the last scan's raw data for a shift-clicked item")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah wipe|r         — clear the price database")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah blocked|r      — manage sell-strip hidden items")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah settings|r     — open settings panel")
-    VUI.Print(AH.TAG, "  |cFFFFFF00/ah debug|r        — toggle debug prints (suite-wide)")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah|r              — show this help")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah scan|r         — "
+        .. "full price scan (AH open; see /ah floor for the cooldown)")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah floor|r        — show or set the scan cooldown (off | on | seconds)")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah bardemo|r      — hold the scan bar in one state to inspect it")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah bartune|r      — tune the scan bar's rounded-cap slice margin")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah baratlas|r     — show the raw bar atlas art (shape probe)")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah engine|r       — show or set the scan engine (browse | replicate)")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah compare|r      — scan with browse, diff against the stored prices")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah browseprobe|r  — "
+        .. "check one shift-clicked item against the live listing")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah live|r         — live-search price corrections (on | off | status)")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah ttprobe|r      — "
+        .. "what the tooltip actually priced (no args = last render)")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah stripdiag|r    — hover a sell-strip icon that won't load, then run")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah diag|r         — diagnostic / state dump")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah check|r        — show stored price for a shift-clicked item")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah find|r         — "
+        .. "search the last scan's raw data for a shift-clicked item")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah wipe|r         — clear the price database")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah blocked|r      — manage sell-strip hidden items")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah settings|r     — open settings panel")
+    VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "/ah debug|r        — toggle debug prints (suite-wide)")
 end
 
 local function PrintDiag()
     VUI.Print(AH.TAG, "Diagnostics:")
-    VUI.Print(AH.TAG, format("  version:      |cFFFFFF00%s|r", tostring(AH.VERSION)))
-    VUI.Print(AH.TAG, format("  db ready:     %s", AH.db and "|cFF00FF00yes|r" or "|cFFFF4444no|r"))
+    VUI.Print(AH.TAG, format("  version:      " .. COL.YELLOW .. "%s|r", tostring(AH.VERSION)))
+    VUI.Print(AH.TAG, format("  db ready:     %s", AH.db and COL.GREEN .. "yes|r" or COL.RED .. "no|r"))
     if AH.db then
         local n = AH.DB and AH.DB.GetItemCount() or 0
         VUI.Print(AH.TAG, format("  db schema:    v%s", tostring(AH.db.dbVersion)))
-        VUI.Print(AH.TAG, format("  priced items: |cFFFFFF00%d|r", n))
+        VUI.Print(AH.TAG, format("  priced items: " .. COL.YELLOW .. "%d|r", n))
     end
 
     -- Session state.
-    VUI.Print(AH.TAG, format("  AH open:      %s", AH.isOpen and "|cFF00FF00yes|r" or "no"))
-    VUI.Print(AH.TAG, format("  AH disabled:  %s", AH.disabled and "|cFFFF4444yes|r" or "no"))
+    VUI.Print(AH.TAG, format("  AH open:      %s", AH.isOpen and COL.GREEN .. "yes|r" or "no"))
+    VUI.Print(AH.TAG, format("  AH disabled:  %s", AH.disabled and COL.RED .. "yes|r" or "no"))
 
     -- Which of the two scan engines is live, and WHY. Added v1.12.13: the module has
     -- shipped two engines since v1.12.9 and the state dump never named either, so a
     -- scan running on the wrong one was invisible in the one place built to answer
     -- "what is this module actually doing".
-    VUI.Print(AH.TAG, format("  engine:       |cFFFFFF00%s|r (%s)",
+    VUI.Print(AH.TAG, format("  engine:       " .. COL.YELLOW .. "%s|r (%s)",
         AH.Scan.EngineName(),
         AH.Scan.EngineIsPinned() and "pinned via /ah engine" or "default"))
 
@@ -622,8 +627,8 @@ local function PrintDiag()
     if AH.LiveSearch then
         local obs, rec, corr = AH.LiveSearch.Stats()
         VUI.Print(AH.TAG, format("  live search:  %s — %d observed, %d recorded, "
-            .. "|cFFFFFF00%d corrected|r (/ah live)",
-            AH.Setting("liveSearchPrices") and "|cFF00FF00on|r" or "|cFFFF4444off|r",
+            .. COL.YELLOW .. "%d corrected|r (/ah live)",
+            AH.Setting("liveSearchPrices") and COL.GREEN .. "on|r" or COL.RED .. "off|r",
             obs, rec, corr))
     end
 
@@ -632,11 +637,11 @@ local function PrintDiag()
         local wait = AH.Scan.SecondsUntilReady()
         local readyText
         if AH.Scan.IsScanning() then
-            readyText = format("|cFFFFFF00scanning %d%%|r", floor(AH.Scan.Progress() * 100))
+            readyText = format(COL.YELLOW .. "scanning %d%%|r", floor(AH.Scan.Progress() * 100))
         elseif wait > 0 then
             readyText = format("cooldown %d:%02d", floor(wait / 60), wait % 60)
         else
-            readyText = "|cFF00FF00ready|r"
+            readyText = COL.GREEN .. "ready|r"
         end
         VUI.Print(AH.TAG, format("  scan:         %s", readyText))
     end
@@ -649,11 +654,11 @@ local function PrintDiag()
         if tr then
             local line
             if tr.outcome == "requesting" then
-                line = format("|cFFFFFF00requesting|r — attempt %d, no data for %ds",
+                line = format(COL.YELLOW .. "requesting|r — attempt %d, no data for %ds",
                     tr.attempts or 0,
                     tr.firedAt and floor(GetTime() - tr.firedAt) or 0)
             elseif tr.outcome == "complete" then
-                line = format("|cFF00FF00complete|r — %d attempt(s), %d/%d in %.0fs",
+                line = format(COL.GREEN .. "complete|r — %d attempt(s), %d/%d in %.0fs",
                     tr.attempts or 0, tr.committed or 0, tr.rows or 0, tr.totalTime or 0)
             else
                 -- processing / failed / aborted
@@ -664,7 +669,7 @@ local function PrintDiag()
                 tr.firstEventLatency
                     and format("%.1fs after fire (attempt %d)",
                         tr.firstEventLatency, tr.firstEventAttempt or 1)
-                    or "|cFFFF4444never arrived|r",
+                    or COL.RED .. "never arrived|r",
                 tr.pulses or 0))
             -- Throttled-message timeline — THE line that classifies a lost request.
             -- DROPPED present => Blizzard's throttle system ate the request, so a
@@ -684,13 +689,13 @@ local function PrintDiag()
                         and format(" (+%d more)", tr.throttleOverflow) or ""))
             else
                 VUI.Print(AH.TAG,
-                    "  throttle:     |cFFFFFF00(no throttled-message events seen)|r")
+                    "  throttle:     " .. COL.YELLOW .. "(no throttled-message events seen)|r")
             end
             if AH.Replicate.ThrottleUnregistered then
                 local bad = AH.Replicate.ThrottleUnregistered()
                 if bad then
                     VUI.Print(AH.TAG, format(
-                        "  throttle reg: |cFFFF4444FAILED for %s|r "
+                        "  throttle reg: " .. COL.RED .. "FAILED for %s|r "
                         .. "(renamed in this client — the line above is unreliable)", bad))
                 end
             end
@@ -707,8 +712,8 @@ local function PrintDiag()
     -- exactly the kind of state that is invisible until it surprises someone.
     if AH.Replicate and AH.Replicate.ScanFloorSeconds then
         local cur, def = AH.Replicate.ScanFloorSeconds()
-        VUI.Print(AH.TAG, format("  scan floor:   |cFFFFFF00%ds|r%s", cur,
-            (cur ~= def) and format(" |cFFFF4444(overridden; default %ds)|r", def) or ""))
+        VUI.Print(AH.TAG, format("  scan floor:   " .. COL.YELLOW .. "%ds|r%s", cur,
+            (cur ~= def) and format(" " .. COL.RED .. "(overridden; default %ds)|r", def) or ""))
     end
 
     -- Scan-bar art. MEASUREMENT for the rounded-cap work: whether each atlas resolved in
@@ -718,19 +723,19 @@ local function PrintDiag()
     if AH.ScanProgress and AH.ScanProgress.ArtInfo then
         local a = AH.ScanProgress.ArtInfo()
         VUI.Print(AH.TAG, format("  bar look:     %s  (built: %s)",
-            a.journeyArt and "|cFF00FF00journeys|r" or "|cFFFF4444legacy fallback|r",
+            a.journeyArt and COL.GREEN .. "journeys|r" or COL.RED .. "legacy fallback|r",
             a.built and "yes" or "no"))
         -- Reported separately from the look, because "wrong colour" and "still square" are
         -- different failures. `slice` is the horizontal margin keeping the caps at native
         -- width; track/frame report whether the slice APIs actually took.
-        VUI.Print(AH.TAG, format("  bar shape:    slice |cFFFFFF00%s|r  (track: %s, frame: %s, fill: %s)",
+        VUI.Print(AH.TAG, format("  bar shape:    slice " .. COL.YELLOW .. "%s|r  (track: %s, frame: %s, fill: %s)",
             tostring(a.slice),
-            a.sliceTrack and "|cFF00FF00ok|r" or "|cFFFF4444no|r",
-            a.sliceFrame and "|cFF00FF00ok|r" or "|cFFFF4444no|r",
-            a.sliceFill  and "|cFF00FF00ok|r" or "|cFFFF4444no|r"))
+            a.sliceTrack and COL.GREEN .. "ok|r" or COL.RED .. "no|r",
+            a.sliceFrame and COL.GREEN .. "ok|r" or COL.RED .. "no|r",
+            a.sliceFill  and COL.GREEN .. "ok|r" or COL.RED .. "no|r"))
         for _, e in ipairs(a.atlases) do
             VUI.Print(AH.TAG, format("    %s  %s  native %sx%s",
-                e.ok and "|cFF00FF00ok|r  " or "|cFFFF4444MISS|r",
+                e.ok and COL.GREEN .. "ok|r  " or COL.RED .. "MISS|r",
                 e.name, tostring(e.width), tostring(e.height)))
         end
         -- ⚠ Report the LABEL and HEIGHT pins too. Both persist, and both OVERRIDE the
@@ -739,10 +744,10 @@ local function PrintDiag()
         -- `/ah bartune label above` outlived the default flip to "off".
         local lp = AH.db and AH.db.settings and AH.db.settings.barLabelPos
         local bh = AH.db and AH.db.settings and AH.db.settings.barHeight
-        VUI.Print(AH.TAG, format("  bar label:    |cFFFFFF00%s|r%s",
-            lp or "off", (lp ~= nil) and " |cFFFF4444(pinned; default off)|r" or " (default)"))
-        VUI.Print(AH.TAG, format("  bar height:   |cFFFFFF00%s|r%s",
-            tostring(bh or 18), (bh ~= nil) and " |cFFFF4444(pinned; default 18)|r" or " (default)"))
+        VUI.Print(AH.TAG, format("  bar label:    " .. COL.YELLOW .. "%s|r%s",
+            lp or "off", (lp ~= nil) and " " .. COL.RED .. "(pinned; default off)|r" or " (default)"))
+        VUI.Print(AH.TAG, format("  bar height:   " .. COL.YELLOW .. "%s|r%s",
+            tostring(bh or 18), (bh ~= nil) and " " .. COL.RED .. "(pinned; default 18)|r" or " (default)"))
         VUI.Print(AH.TAG, format("    rect: bar %sx%s  container %dx%d",
             tostring(a.barW), tostring(a.barH), a.frameW, a.frameH))
     end
@@ -766,15 +771,15 @@ local function PrintCheck(rawArg)
     -- Pull the first hyperlink out of the raw (original-case) argument.
     local link = rawArg and rawArg:match("|H.-|h.-|h")
     if not link then
-        VUI.Print(AH.TAG, "Usage: |cFFFFFF00/ah check|r then shift-click an item link.")
+        VUI.Print(AH.TAG, "Usage: " .. COL.YELLOW .. "/ah check|r then shift-click an item link.")
         return
     end
 
     local key = AH.DB.MakeKey(link)
     VUI.Print(AH.TAG, "Check: " .. link)
-    VUI.Print(AH.TAG, format("  derived key:  |cFFFFFF00%s|r", tostring(key)))
+    VUI.Print(AH.TAG, format("  derived key:  " .. COL.YELLOW .. "%s|r", tostring(key)))
     if not key then
-        VUI.Print(AH.TAG, "  |cFFFF4444MakeKey returned nil|r — this link can't be priced.")
+        VUI.Print(AH.TAG, "  " .. COL.RED .. "MakeKey returned nil|r — this link can't be priced.")
         return
     end
 
@@ -782,9 +787,9 @@ local function PrintCheck(rawArg)
     local age   = AH.DB.GetPriceAge(key)
     local today = AH.DB.Today()
     VUI.Print(AH.TAG, format("  stored price: %s",
-        price and MoneyStr(price) or "|cFFFF4444(none — never recorded)|r"))
+        price and MoneyStr(price) or COL.RED .. "(none — never recorded)|r"))
     VUI.Print(AH.TAG, format("  age:          %s",
-        age and (age .. " day(s)") or "|cFFFF4444n/a|r"))
+        age and (age .. " day(s)") or COL.RED .. "n/a|r"))
     VUI.Print(AH.TAG, format("  today / seen: %d / %s",
         today, age and tostring(today - age) or "—"))
 
@@ -793,7 +798,7 @@ local function PrintCheck(rawArg)
         VUI.Print(AH.TAG, format("  latest day:   day %d — min %s, qty %d",
             hist[1].day, MoneyStr(hist[1].min or 0), hist[1].qty or 0))
     else
-        VUI.Print(AH.TAG, "  history:      |cFFFF4444empty|r")
+        VUI.Print(AH.TAG, "  history:      " .. COL.RED .. "empty|r")
     end
 end
 
@@ -831,12 +836,13 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
     elseif cmd == "engine" then
         local want = strtrim(rest)   -- `rest` is already lowercased above
         if want == "" then
-            VUI.Print(AH.TAG, format("Scan engine: |cFFFFFF00%s|r (%s)  (/ah engine browse | replicate)",
+            VUI.Print(AH.TAG, format("Scan engine: " .. COL.YELLOW .. "%s|r (%s)  (/ah engine browse | replicate)",
                 AH.Scan and AH.Scan.EngineName() or "?",
                 AH.Scan and AH.Scan.EngineIsPinned() and "pinned" or "default"))
-            VUI.Print(AH.TAG, "  |cFFFFFF00replicate|r — per-auction rows; fails the first scan most days.")
-            VUI.Print(AH.TAG, "  |cFFFFFF00browse|r — per-item summaries; the endpoint Auctionator defaults to.")
-            VUI.Print(AH.TAG, "  |cFF888888A pin persists and overrides future default changes; "
+            VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "replicate|r — per-auction rows; fails the first scan most days.")
+            VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "browse|r — "
+                .. "per-item summaries; the endpoint Auctionator defaults to.")
+            VUI.Print(AH.TAG, "  " .. COL.GRAY .. "A pin persists and overrides future default changes; "
                 .. "/ah engine default clears it.|r")
         elseif want == "default" then
             -- Deliberately reachable: pinning is now permanent (that is the point of
@@ -848,7 +854,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
                 return
             end
             AH.db.settings.scanEngine = nil
-            VUI.Print(AH.TAG, format("Scan engine pin cleared — now following the default (|cFFFFFF00%s|r).",
+            VUI.Print(AH.TAG, format("Scan engine pin cleared — now following the default (" .. COL.YELLOW .. "%s|r).",
                 AH.Scan.EngineName()))
         elseif want == "browse" or want == "replicate" then
             if not (AH.db and AH.db.settings) then
@@ -856,7 +862,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
                 return
             end
             AH.db.settings.scanEngine = want
-            VUI.Print(AH.TAG, format("Scan engine pinned to |cFFFFFF00%s|r.", want))
+            VUI.Print(AH.TAG, format("Scan engine pinned to " .. COL.YELLOW .. "%s|r.", want))
         else
             VUI.Print(AH.TAG, "Usage: /ah engine browse | replicate | default")
         end
@@ -868,7 +874,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
         -- can validate the browse engine against the game's own listing.
         local link = rawRest and rawRest:match("|H.-|h.-|h")
         if not link then
-            VUI.Print(AH.TAG, "Usage: |cFFFFFF00/ah browseprobe|r then shift-click an item link "
+            VUI.Print(AH.TAG, "Usage: " .. COL.YELLOW .. "/ah browseprobe|r then shift-click an item link "
                 .. "(do it at the Auction House).")
             return
         end
@@ -888,7 +894,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             AH.browseProbePending = false
             VUI.Print(AH.TAG, reasonP or "Probe could not start.")
         else
-            VUI.Print(AH.TAG, format("Watching |cFFFFFF00%s|r through a dry browse scan…", key))
+            VUI.Print(AH.TAG, format("Watching " .. COL.YELLOW .. "%s|r through a dry browse scan…", key))
         end
 
     elseif cmd == "live" then
@@ -917,9 +923,9 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
         end
         local obs, rec, corr = AH.LiveSearch.Stats()
         VUI.Print(AH.TAG, format("Live search prices: %s",
-            AH.Setting("liveSearchPrices") and "|cFF00FF00on|r" or "|cFFFF4444off|r"))
+            AH.Setting("liveSearchPrices") and COL.GREEN .. "on|r" or COL.RED .. "off|r"))
         VUI.Print(AH.TAG, format("  %d search result(s) observed, %d recorded, "
-            .. "|cFFFFFF00%d|r changed a stored price", obs, rec, corr))
+            .. COL.YELLOW .. "%d|r changed a stored price", obs, rec, corr))
         local list = AH.LiveSearch.Recent()
         if #list == 0 then
             VUI.Print(AH.TAG, "  no corrections yet — open an item on the Buy or Sell tab.")
@@ -927,7 +933,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             VUI.Print(AH.TAG, "  most recent corrections (oldest first):")
             for i = 1, #list do
                 local e = list[i]
-                VUI.Print(AH.TAG, format("    %s  %s -> |cFF00FF00%s|r",
+                VUI.Print(AH.TAG, format("    %s  %s -> " .. COL.GREEN .. "%s|r",
                     e.key,
                     e.old and AH.Money.FormatText(e.old) or "none",
                     AH.Money.FormatText(e.new)))
@@ -949,19 +955,19 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             local lr = AH.Tooltip and AH.Tooltip._LastRender and AH.Tooltip._LastRender()
             if not (lr and lr.link) then
                 VUI.Print(AH.TAG, "No tooltip price rendered yet this session. Hover a priced "
-                    .. "item, then run |cFFFFFF00/ah ttprobe|r again — or pass a shift-clicked "
+                    .. "item, then run " .. COL.YELLOW .. "/ah ttprobe|r again — or pass a shift-clicked "
                     .. "link to probe one directly.")
                 return
             end
             VUI.Print(AH.TAG, "Last tooltip price render:")
             VUI.Print(AH.TAG, format("  frame:  %s", tostring(lr.frame)))
             VUI.Print(AH.TAG, format("  link:   %s", tostring(lr.link)))
-            VUI.Print(AH.TAG, format("  itemID: |cFFFFFF00%s|r",
+            VUI.Print(AH.TAG, format("  itemID: " .. COL.YELLOW .. "%s|r",
                 tostring(lr.link:match("|Hitem:(%d+)") or lr.link:match("|Hbattlepet:(%d+)"))))
-            VUI.Print(AH.TAG, format("  key:    |cFFFFFF00%s|r", tostring(lr.key)))
-            VUI.Print(AH.TAG, format("  price:  |cFFFFFF00%s|r  (raw %s)",
+            VUI.Print(AH.TAG, format("  key:    " .. COL.YELLOW .. "%s|r", tostring(lr.key)))
+            VUI.Print(AH.TAG, format("  price:  " .. COL.YELLOW .. "%s|r  (raw %s)",
                 lr.price and AH.Money.FormatText(lr.price) or "none", tostring(lr.price)))
-            VUI.Print(AH.TAG, format("  source used: |cFFFFFF00%s|r", tostring(lr.used)))
+            VUI.Print(AH.TAG, format("  source used: " .. COL.YELLOW .. "%s|r", tostring(lr.used)))
             -- All four candidate identities, so the correct SOURCE is chosen by measurement
             -- rather than by argument. On a compound tooltip these disagree.
             VUI.Print(AH.TAG, "  candidates:")
@@ -971,7 +977,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
                 tostring(lr.primaryId), tostring(lr.primaryLink)))
             VUI.Print(AH.TAG, format("    GetDisplayedItem    id=%s  %s",
                 tostring(lr.displayedId), tostring(lr.displayedLink)))
-            VUI.Print(AH.TAG, "  |cFF888888Whichever line names the item you actually hovered "
+            VUI.Print(AH.TAG, "  " .. COL.GRAY .. "Whichever line names the item you actually hovered "
                 .. "is the source the tooltip should be reading.|r")
             return
         end
@@ -984,17 +990,17 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             return (C_Item and C_Item.GetDetailedItemLevelInfo or GetDetailedItemLevelInfo)(link)
         end)
         VUI.Print(AH.TAG, format("  equipLoc:   %s   ilvl: %s",
-            (equipLoc == nil and "|cFFFF4444nil|r") or (equipLoc == "" and "empty (not gear)") or equipLoc,
-            okIlvl and tostring(ilvl) or "|cFFFF4444error|r"))
+            (equipLoc == nil and COL.RED .. "nil|r") or (equipLoc == "" and "empty (not gear)") or equipLoc,
+            okIlvl and tostring(ilvl) or COL.RED .. "error|r"))
 
         local key = AH.DB and AH.DB.MakeKey(link)
-        VUI.Print(AH.TAG, format("  derived key: |cFFFFFF00%s|r", tostring(key)))
+        VUI.Print(AH.TAG, format("  derived key: " .. COL.YELLOW .. "%s|r", tostring(key)))
 
         -- The number the RENDER would use, straight off the tooltip module's own builder.
         if AH.Tooltip and AH.Tooltip._BuildPriceData and key then
             local p = AH.Tooltip._BuildPriceData(key)
             VUI.Print(AH.TAG, format("  tooltip would render: %s   (raw %s)",
-                p and AH.Money.FormatText(p) or "|cFFFF4444nothing|r", tostring(p)))
+                p and AH.Money.FormatText(p) or COL.RED .. "nothing|r", tostring(p)))
             if p and AH.Tooltip.CoinMarkup then
                 -- Escaped so the markup is READABLE rather than rendered as coin art.
                 local mk = AH.Tooltip.CoinMarkup(p) or ""
@@ -1012,15 +1018,15 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
                 if k == "i:" .. iid or k:match("^i:" .. iid .. ":") or k == "p:" .. iid then
                     hits = hits + 1
                     VUI.Print(AH.TAG, format("  stored %s%s|r = %s  (seen day %s)",
-                        k == key and "|cFF00FF00" or "|cFFFFFF00", k,
+                        k == key and COL.GREEN or COL.YELLOW, k,
                         rec.market and AH.Money.FormatText(rec.market) or "nil",
                         tostring(rec.seen)))
                 end
             end
             if hits == 0 then
-                VUI.Print(AH.TAG, "  |cFFFF4444no stored record for this itemID at all.|r")
+                VUI.Print(AH.TAG, "  " .. COL.RED .. "no stored record for this itemID at all.|r")
             elseif hits > 1 then
-                VUI.Print(AH.TAG, "  |cFFFF4444More than one record for this itemID.|r "
+                VUI.Print(AH.TAG, "  " .. COL.RED .. "More than one record for this itemID.|r "
                     .. "The green one is what MakeKey resolves to now; a different key holding "
                     .. "the price you see on the tooltip means the two paths disagree on the key.")
             end
@@ -1064,8 +1070,8 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
         -- incantation nobody remembers during a live repro (2026-07-11).
         VUI.debug = not VUI.debug
         VUI.Print(AH.TAG, "Debug prints " .. (VUI.debug
-            and "|cFF00FF00ON|r (suite-wide; scans now emit fire/latency traces)"
-            or  "|cFFFF4444OFF|r"))
+            and COL.GREEN .. "ON|r (suite-wide; scans now emit fire/latency traces)"
+            or  COL.RED .. "OFF|r"))
 
     elseif cmd == "check" then
         PrintCheck(rawRest)
@@ -1079,7 +1085,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
         local link = rawRest:match("|H.-|h.-|h")
         local itemID = link and tonumber(link:match("|Hitem:(%d+)"))
         if not itemID then
-            VUI.Print(AH.TAG, "Usage: |cFFFFFF00/ah find|r then shift-click an item link.")
+            VUI.Print(AH.TAG, "Usage: " .. COL.YELLOW .. "/ah find|r then shift-click an item link.")
             return
         end
         VUI.Print(AH.TAG, format("Searching last snapshot for %s (itemID %d)…", link, itemID))
@@ -1121,12 +1127,12 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             cur, def = AH.Replicate.ScanFloorSeconds()
         end
         if rest == "" then
-            VUI.Print(AH.TAG, format("Scan floor: |cFFFFFF00%ds|r%s (default %ds).",
-                cur, (cur == 0) and " |cFFFF4444(DISABLED)|r" or "", def))
+            VUI.Print(AH.TAG, format("Scan floor: " .. COL.YELLOW .. "%ds|r%s (default %ds).",
+                cur, (cur == 0) and " " .. COL.RED .. "(DISABLED)|r" or "", def))
             VUI.Print(AH.TAG, "  /ah floor off | on | <seconds>")
         elseif rest == "off" or rest == "0" then
             AH.db.settings.scanFloorSeconds = 0
-            VUI.Print(AH.TAG, "Scan floor |cFFFF4444DISABLED|r — scans may be run back to back.")
+            VUI.Print(AH.TAG, "Scan floor " .. COL.RED .. "DISABLED|r — scans may be run back to back.")
             VUI.Print(AH.TAG, "  Blizzard's own throttling still applies; on the replicate engine a")
             VUI.Print(AH.TAG, "  repeat request may be refused or return the same snapshot.")
         elseif rest == "on" or rest == "default" then
@@ -1136,7 +1142,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             local n = tonumber(rest)
             if n and n >= 0 then
                 AH.db.settings.scanFloorSeconds = n
-                VUI.Print(AH.TAG, format("Scan floor set to |cFFFFFF00%ds|r.", n))
+                VUI.Print(AH.TAG, format("Scan floor set to " .. COL.YELLOW .. "%ds|r.", n))
             else
                 VUI.Print(AH.TAG, "Usage: /ah floor [off | on | <seconds>]")
             end
@@ -1166,9 +1172,9 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
         -- more than half its height. 0 = no slicing (plain stretch, flat caps).
         if rest == "" then
             local cur = AH.db.settings.barSliceMargin
-            VUI.Print(AH.TAG, format("Bar slice margin: |cFFFFFF00%s|r (default 9, max 9, 0 = off).",
+            VUI.Print(AH.TAG, format("Bar slice margin: " .. COL.YELLOW .. "%s|r (default 9, max 9, 0 = off).",
                 (cur == nil) and "9 (default)" or tostring(cur)))
-            VUI.Print(AH.TAG, format("Bar label: |cFFFFFF00%s|r   font delta: |cFFFFFF00%+d|r",
+            VUI.Print(AH.TAG, format("Bar label: " .. COL.YELLOW .. "%s|r   font delta: " .. COL.YELLOW .. "%+d|r",
                 (AH.db.settings.barLabelPos == "above") and "above" or "in",
                 tonumber(AH.db.settings.barFontDelta) or -1))
             VUI.Print(AH.TAG, "  /ah bartune <0-9> | fill on|off | label off|in|above | height <6-24> | font <-3..0>")
@@ -1179,7 +1185,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             -- they never fit glyphs into 18px. Owner's aesthetic call.
             local mode = rest:match("^label%s+(%a+)$")
             AH.db.settings.barLabelPos = mode
-            VUI.Print(AH.TAG, format("Bar label: |cFFFFFF00%s|r — /reload to rebuild the bar.",
+            VUI.Print(AH.TAG, format("Bar label: " .. COL.YELLOW .. "%s|r — /reload to rebuild the bar.",
                 (mode == "above") and "ABOVE the bar (Blizzard's arrangement)"
                 or (mode == "in") and "INSIDE the bar" or "OFF (bar only)"))
             if mode == "off" then
@@ -1189,7 +1195,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             local hgt = tonumber(rest:match("(%d+)$"))
             if hgt and hgt >= 6 and hgt <= 24 then
                 AH.db.settings.barHeight = hgt
-                VUI.Print(AH.TAG, format("Bar height |cFFFFFF00%d|r — /reload to rebuild.", hgt))
+                VUI.Print(AH.TAG, format("Bar height " .. COL.YELLOW .. "%d|r — /reload to rebuild.", hgt))
                 VUI.Print(AH.TAG, "  ~9 is geometrically similar to Blizzard's 335x18, so caps round the same.")
             else
                 VUI.Print(AH.TAG, "Usage: /ah bartune height <6-24>")
@@ -1197,19 +1203,20 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
         elseif rest:match("^font%s*[-+]?%d+$") then
             local d = tonumber(rest:match("([-+]?%d+)$"))
             AH.db.settings.barFontDelta = d
-            VUI.Print(AH.TAG, format("Inside-label font delta |cFFFFFF00%+d|r — /reload to rebuild.", d))
+            VUI.Print(AH.TAG, format("Inside-label font delta " .. COL.YELLOW .. "%+d|r — /reload to rebuild.", d))
         elseif rest == "fill on" or rest == "fill off" then
             -- Separate switch: slicing the FILL is the part that interacts with the
             -- StatusBar's texcoord crop, so a functional fault there must be revertible
             -- without also giving up the track/frame caps.
             AH.db.settings.barSliceFill = (rest == "fill on")
-            VUI.Print(AH.TAG, format("Fill slicing |cFFFFFF00%s|r — /reload to rebuild the bar.",
+            VUI.Print(AH.TAG, format("Fill slicing " .. COL.YELLOW .. "%s|r — /reload to rebuild the bar.",
                 (rest == "fill on") and "ON" or "OFF"))
         else
             local n = tonumber(rest)
             if n and n >= 0 and n <= 9 then
                 AH.db.settings.barSliceMargin = n
-                VUI.Print(AH.TAG, format("Bar slice margin set to |cFFFFFF00%d|r — /reload to rebuild the bar.", n))
+                VUI.Print(AH.TAG, format("Bar slice margin set to " .. COL.YELLOW .. "%d|r "
+                    .. "— /reload to rebuild the bar.", n))
             else
                 VUI.Print(AH.TAG, "Usage: /ah bartune <0-9> | fill on|off | label off|in|above")
                 VUI.Print(AH.TAG, "                   | height <6-24> | font <-3..0>")
@@ -1231,7 +1238,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
                 if mode == "off" then
                     VUI.Print(AH.TAG, "Bar demo cleared.")
                 else
-                    VUI.Print(AH.TAG, format("Bar demo: |cFFFFFF00%s|r — /ah bardemo off to clear.", mode))
+                    VUI.Print(AH.TAG, format("Bar demo: " .. COL.YELLOW .. "%s|r — /ah bardemo off to clear.", mode))
                 end
             else
                 VUI.Print(AH.TAG, "Open the auction house first (the bar anchors to it).")

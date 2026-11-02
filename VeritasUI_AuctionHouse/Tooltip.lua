@@ -163,7 +163,7 @@ end
 ----------------------------------------------------------------
 --  The price line builder
 ----------------------------------------------------------------
-local AGE_COLOR = "|cFF808080"   -- grey, for the secondary "N seen · X days" line
+local AGE_COLOR = VUI.COL.GRAY   -- grey, for the secondary "N seen · X days" line
 
 -- Compute the raw price + optional extras line for a DB key. Returns
 --   price (int copper), extrasLine (string|nil)   — or nil if no price/disabled.
@@ -330,7 +330,7 @@ local function GetCoinFontString(tooltip)
     local fs = coinFS[tooltip]
     if fs then return fs end
     fs = tooltip:CreateFontString(nil, "OVERLAY", "GameTooltipText")
-    fs:SetTextColor(1, 1, 1)
+    fs:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
     coinFS[tooltip] = fs
     -- Our fontstring is parented to the tooltip and PERSISTS across hovers (there is no
     -- API to destroy a FontString, which is the whole reason a stale-coin problem exists).
@@ -694,7 +694,7 @@ local function HookBattlePetTooltips()
             pcall(AppendPetPrice, BattlePetTooltip, speciesID)
         end)
     elseif VUI.debug then
-        VUI.Print(AH.TAG, "|cFFFF4444BattlePetToolTip_Show missing|r — pet prices unavailable.")
+        VUI.Print(AH.TAG, VUI.COL.RED .. "BattlePetToolTip_Show missing|r — pet prices unavailable.")
     end
 
     -- Chat-link / floating pet tooltip → FloatingBattlePetTooltip. Its species id
@@ -712,7 +712,7 @@ local function Register()
     if not (TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall
             and Enum and Enum.TooltipDataType) then
         if VUI.debug then
-            VUI.Print(AH.TAG, "|cFFFF4444Tooltip hook unavailable|r (API missing).")
+            VUI.Print(AH.TAG, VUI.COL.RED .. "Tooltip hook unavailable|r (API missing).")
         end
         return
     end
