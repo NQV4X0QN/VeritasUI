@@ -1483,6 +1483,14 @@ local function SetupObjectiveTrackerFade()
         else VUI.SmoothFade(f, target > (f:GetAlpha() or 0) and OT_FADE_IN or OT_FADE_OUT, target) end
     end
 
+    -- Unfocusing a quest in a faded section (owner, 2026-11-01): the quest used to drop out at once and the
+    -- section's own quests were put back while still on screen, so the top quest flashed. Now the quest
+    -- that WAS focused keeps its place and fades to its section's opacity with the background; only then
+    -- does it follow the section again, laid out as Blizzard has it (and collapsed at 0%). Its own alpha
+    -- is put back to 1 afterwards
+    -- (Blizzard's value for a shown block, AnimTemplates.lua:85), unseen, since the section is at 0.
+    local lastFocus, leaving, leavingFade = {}, {}, {}
+    local lastCollapsed, lastFocused = {}, {}
     local hoverUntil, sinceCollect = 0, 0
     local function Evaluate(instant)
         local now = GetTime()
@@ -1508,7 +1516,29 @@ local function SetupObjectiveTrackerFade()
             local fading = target < 1 or (m.f:GetAlpha() or 1) < 0.99
             local fb = m.sec.quests and superID and fading and not raidHidden and FocusedBlock(m.f, superID) or nil
             if fb then focused[m.f] = fb; top = 1 end
-            if m.sec.quests then SetFullOpacity(m.f, fb) end
+            local lb = leaving[m.f]
+            if lb and (fb or show or not lb:IsShown()) then
+                lb:SetAlpha(1); leaving[m.f] = nil; leavingFade[lb] = nil; lb = nil
+            end
+            local was = lastFocus[m.f]
+            if not fb and not lb and was and not show and m.sec.quests and was:IsShown() then
+                lb = was; leaving[m.f] = lb
+            end
+            if lb then
+                -- Down to the section's own opacity (0 for a collapsed section, e.g. 0.3 otherwise), where
+                -- it can follow the section again without a jump.
+                if (lb:GetAlpha() or 0) > target + 0.01 then
+                    if not leavingFade[lb] then
+                        leavingFade[lb] = true
+                        VUI.SmoothFade(lb, OT_FADE_OUT, target)
+                    end
+                    focused[m.f] = lb
+                else
+                    lb:SetAlpha(1); leaving[m.f] = nil; leavingFade[lb] = nil; lb = nil
+                end
+            end
+            lastFocus[m.f] = fb
+            if m.sec.quests then SetFullOpacity(m.f, fb or lb) end
             -- Collapsed only once its fade-out has FINISHED (owner, 2026-11-01): parking it as soon as
             -- the target is 0 cut the fade short, so the tracker popped out instead of fading like the rest.
             if target <= 0 and not show and (m.f:GetAlpha() or 0) <= 0.01 then collapsed[m.f] = true end
@@ -1521,7 +1551,8 @@ local function SetupObjectiveTrackerFade()
             nineOurs = top
             ApplyNine()
         end
-        if not IsEditModeActive() then Relayout(raidHidden and {} or collapsed, focused) end
+        lastCollapsed, lastFocused = raidHidden and {} or collapsed, focused
+        if not IsEditModeActive() then Relayout(lastCollapsed, lastFocused) end
     end
     Evaluate(true)
     local poll = CreateFrame("Frame")
@@ -1529,6 +1560,9 @@ local function SetupObjectiveTrackerFade()
     poll:RegisterEvent("ENCOUNTER_END")
     poll:SetScript("OnEvent", function(_, event) otEncounter = (event == "ENCOUNTER_START") end)
     poll:SetScript("OnUpdate", function(self, elapsed)
+        -- Every frame, the anchors only (cheap compares; a write only when Blizzard has re-laid out), so a
+        -- Blizzard update is undone in the same or the next frame instead of showing for up to 0.1 s.
+        if not IsEditModeActive() then Relayout(lastCollapsed, lastFocused) end
         self._t = (self._t or 0) + (elapsed or 0)
         if self._t < OT_POLL then return end
         sinceCollect = sinceCollect + self._t
