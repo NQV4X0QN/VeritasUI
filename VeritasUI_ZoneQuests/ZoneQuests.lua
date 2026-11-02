@@ -8,7 +8,7 @@ local ADDON_NAME   = "VeritasUI_ZoneQuests"
 local SETTINGS_LABEL = "Zone Quests"
 local VUI = _G.VeritasUI
 if not VUI then
-    print("|cFFFF4444[VeritasUI] Lib failed to load — " .. ADDON_NAME .. " disabled.|r")
+    print(RED_FONT_COLOR:WrapTextInColorCode("[VeritasUI] Lib failed to load — " .. ADDON_NAME .. " disabled."))
     return
 end
 
@@ -375,10 +375,10 @@ local function InitializeOptions()
             FinishPendingRestore()
             RecordTrackingBeforeFilter()
             SyncTracking(false)
-            VUI.Print("Zone Quests", "|cFF00FF00On.|r Filtering to |cFFFFCC00" .. ZoneName() .. "|r")
+            VUI.Print("Zone Quests", VUI.COL.GREEN .. "On.|r Filtering to " .. VUI.COL.NORMAL .. ZoneName() .. "|r")
         else
             RestoreTracking()
-            VUI.Print("Zone Quests", "|cFFFF4444Off.|r Your own quest tracking is back.")
+            VUI.Print("Zone Quests", VUI.COL.RED .. "Off.|r Your own quest tracking is back.")
         end
     end)
     Settings.CreateCheckbox(category, enableSetting,
@@ -552,7 +552,7 @@ SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
         if not cdb.enabled then VUI.Print("Zone Quests", "Already off."); return end
         cdb.enabled = false
         RestoreTracking()
-        VUI.Print("Zone Quests", "|cFFFF4444Off.|r  /zq on to re-enable.")
+        VUI.Print("Zone Quests", VUI.COL.RED .. "Off.|r  /zq on to re-enable.")
 
     elseif msg == "on" or msg == "enable" then
         if not cdb then VUI.Print("Zone Quests", "Not ready."); return end
@@ -561,7 +561,7 @@ SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
         FinishPendingRestore()
         RecordTrackingBeforeFilter()
         SyncTracking(false)
-        VUI.Print("Zone Quests", "|cFF00FF00On.|r  " .. ZoneName())
+        VUI.Print("Zone Quests", VUI.COL.GREEN .. "On.|r  " .. ZoneName())
 
     elseif msg == "refresh" then
         if not db then VUI.Print("Zone Quests", "Not ready."); return end
@@ -573,41 +573,43 @@ SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
         VUI.Print("Zone Quests", "Refreshed — " .. ZoneName())
 
     elseif msg == "synctest" then
-        VUI.Print("Zone Quests", "|cFFFFFF00Running verbose sync...|r")
+        VUI.Print("Zone Quests", VUI.COL.YELLOW .. "Running verbose sync...|r")
         SyncTracking(true)
 
     elseif msg:sub(1, 9) == "dumpquest" then
         local search = strtrim(msg:sub(10)):lower()
         if search == "" then
-            VUI.Print("Zone Quests", "Usage: /zq dumpquest |cFFFFCC00<partial quest name>|r")
+            VUI.Print("Zone Quests", "Usage: /zq dumpquest " .. VUI.COL.NORMAL .. "<partial quest name>|r")
             return
         end
         local found = 0
-        VUI.Print("Zone Quests", "|cFFFFFF00Searching for '|r" .. search .. "|cFFFFFF00'...|r")
+        VUI.Print("Zone Quests", VUI.COL.YELLOW .. "Searching for '|r" .. search .. VUI.COL.YELLOW .. "'...|r")
         for i = 1, C_QuestLog.GetNumQuestLogEntries() do
             local ok, info = pcall(C_QuestLog.GetInfo, i)
             if ok and info and not info.isHeader and info.title then
                 if info.title:lower():find(search, 1, true) then
                     found = found + 1
-                    print("|cFFFFCC00[" .. i .. "] Quest: |r" .. tostring(info.title))
+                    print(VUI.COL.NORMAL .. "[" .. i .. "] Quest: |r" .. tostring(info.title))
                     local keys = {}
                     for k in pairs(info) do table.insert(keys, k) end
                     table.sort(keys)
                     for _, k in ipairs(keys) do
                         if info[k] ~= nil then
-                            print("  |cFFAAFFAA" .. tostring(k) .. "|r = |cFFFFFFFF" .. tostring(info[k]) .. "|r")
+                            print("  " .. VUI.COL.GREEN .. tostring(k) .. "|r = "
+                                .. VUI.COL.HIGHLIGHT .. tostring(info[k]) .. "|r")
                         end
                     end
                     if info.questID then
                         local tok, tagInfo = pcall(C_QuestLog.GetQuestTagInfo, info.questID)
                         if tok and tagInfo then
-                            print("  |cFFCCCCFF--- GetQuestTagInfo ---")
+                            print("  " .. VUI.COL.LIGHTBLUE .. "--- GetQuestTagInfo ---")
                             local tkeys = {}
                             for k in pairs(tagInfo) do table.insert(tkeys, k) end
                             table.sort(tkeys)
                             for _, k in ipairs(tkeys) do
                                 if tagInfo[k] ~= nil then
-                                    print("  |cFFAAAAFF" .. tostring(k) .. "|r = |cFFFFFFFF" .. tostring(tagInfo[k]) .. "|r")
+                                    print("  " .. VUI.COL.LIGHTBLUE .. tostring(k) .. "|r = "
+                                        .. VUI.COL.HIGHLIGHT .. tostring(tagInfo[k]) .. "|r")
                                 end
                             end
                         end
@@ -622,7 +624,7 @@ SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
         end
 
     elseif msg == "debug" then
-        VUI.Print("Zone Quests", "|cFFFFFF00Debug:|r")
+        VUI.Print("Zone Quests", VUI.COL.YELLOW .. "Debug:|r")
         print("  RealZone: " .. (GetRealZoneText() or "nil"))
         print("  Zone:     " .. (GetZoneText()     or "nil"))
         print("  SubZone:  " .. (GetSubZoneText()  or "nil"))
@@ -645,7 +647,7 @@ SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
         -- its per-quest ADD/REMOVE lines come from the code that actually decides. Do
         -- not restore the loop by adding the missing super-tracked branch - that keeps
         -- the second copy alive and guarantees the next drift.
-        print("  Per-quest dispositions: run |cFFFFFF00/zq synctest|r")
+        print("  Per-quest dispositions: run " .. VUI.COL.YELLOW .. "/zq synctest|r")
         print("  WatchType: " .. tostring(GetWatchType()))
         print("  enabled (this character): " .. tostring(cdb and cdb.enabled))
 
