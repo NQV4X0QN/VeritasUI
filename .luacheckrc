@@ -141,6 +141,7 @@ read_globals = {
     "UnitName", "UnitClass", "UnitLevel", "UnitIsAFK", "IsFalling", "UnitExists", "GetAverageItemLevel",
     "UnitAffectingCombat", "AcceptResurrect", "GetCorpseRecoveryDelay", "C_ToyBoxInfo", "C_PetJournal",
     "C_MountJournal", "C_PlayerInteractionManager", "ITEM_OPENABLE", "NUM_TOTAL_EQUIPPED_BAG_SLOTS",
+    "GetServerExpansionLevel", "C_PlayerInfo", "GetMaxLevelForPlayerExpansion", "UnitGUID",
     "GetRealmName",
     "MoveViewRightStart", "MoveViewRightStop", "MinimapCluster",
     "NumberFontNormal", "NumberFontNormalRight",

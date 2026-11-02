@@ -202,3 +202,128 @@ openFrame:SetScript("OnEvent", function(_, event)
     if event == "LOOT_CLOSED" then lootOpen = false end
     if On("autoOpenContainers") then Schedule(event == "PLAYER_LOGIN" and 3 or 0.5) end
 end)
+
+-- Quest Options (v1.52.0, feature batch item 11): rules for the three NPC shortcuts in QualityOfLife.lua
+-- (Pick Only Dialogue Option, Auto Accept Quests, Auto Turn In Quests). QualityOfLife.lua asks these through
+-- VUI.QoL_Npc* (its main chunk has no room for more locals). Stored in universal db.npcOptions [id] = true.
+--   older     Skip Older-Expansion Quests: auto accept leaves a quest from an earlier expansion for you, at max
+--             level and outside Chromie Time only (levelling runs through older content). GetQuestExpansion is
+--             not in Blizzard's UI source; EllesmereUI uses it -- if this client lacks it the row is not offered.
+--   several   Not When an NPC Offers Several: an NPC offering more than one quest gets no auto accept at all,
+--             for the rest of that conversation, so you choose (the quest you open is not accepted for you).
+--   shift     Hold Shift to Use: the shortcuts run only while Shift is held, instead of pausing with it.
+--   instances Off in Dungeons and Raids: none of the shortcuts run inside a dungeon or raid.
+local function NpcOpt(id)
+    local db = DB()
+    return type(db) == "table" and type(db.npcOptions) == "table" and db.npcOptions[id] == true
+end
+
+VUI.QoL_NpcOptionRows = function()
+    local rows = {}
+    if _G.GetQuestExpansion and GetServerExpansionLevel then
+        rows[#rows + 1] = { id = "older", label = "Skip Older-Expansion Quests" }
+    end
+    rows[#rows + 1] = { id = "several",   label = "Not When an NPC Offers Several" }
+    rows[#rows + 1] = { id = "shift",     label = "Hold Shift to Use" }
+    rows[#rows + 1] = { id = "instances", label = "Off in Dungeons and Raids" }
+    return rows
+end
+
+VUI.QoL_NpcPaused = function()
+    if NpcOpt("instances") then
+        local ok, inInstance, kind = pcall(IsInInstance)
+        if ok and inInstance and (kind == "party" or kind == "raid") then return true end
+    end
+    local shift = IsShiftKeyDown and IsShiftKeyDown() and true or false
+    if NpcOpt("shift") then return not shift end
+    return shift
+end
+
+VUI.QoL_NpcSkipOffer = function(questID)
+    if not NpcOpt("older") or type(questID) ~= "number" or questID <= 0 then return false end
+    if not (_G.GetQuestExpansion and GetServerExpansionLevel) then return false end
+    local pi = C_PlayerInfo
+    if pi and pi.IsPlayerInChromieTime and pi.IsPlayerInChromieTime() then return false end
+    if GetMaxLevelForPlayerExpansion and UnitLevel("player") < GetMaxLevelForPlayerExpansion() then return false end
+    local ok, exp = pcall(_G.GetQuestExpansion, questID)
+    return ok and type(exp) == "number" and exp >= 0 and exp < GetServerExpansionLevel() or false
+end
+
+-- `count` = quests the NPC is offering now (or nil from the quest detail page). Once an NPC has offered
+-- several, it is remembered by GUID until the conversation ends.
+local severalNpc
+VUI.QoL_NpcSeveralBlocked = function(count)
+    if not NpcOpt("several") then return false end
+    local guid = UnitGUID and UnitGUID("npc")
+    if guid == nil or IsSecret(guid) then return false end
+    if count and count > 1 then severalNpc = guid end
+    return severalNpc == guid
+end
+local npcEnd = CreateFrame("Frame")
+npcEnd:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+npcEnd:SetScript("OnEvent", function()
+    C_Timer.After(0.2, function()
+        local g, q = _G.GossipFrame, _G.QuestFrame
+        if not ((g and g:IsShown()) or (q and q:IsShown())) then severalNpc = nil end
+    end)
+end)
+
+-- The Quest Options dropdown, registered from QualityOfLife.lua's options page under the NPC checkboxes.
+-- Blizzard's Settings dropdown with check boxes over a number setting whose bits are the rows: 1 None, 2 All,
+-- 3.. the rules (the suite's standard: every dropdown of choices has None and All). db.npcOptions is the truth;
+-- db.npcOptionsMask is derived from it and only feeds the control. Applies at once.
+local function Bit(v) return 2 ^ (v - 1) end
+local function HasBit(mask, v) return math.floor((mask or 0) / Bit(v)) % 2 == 1 end
+VUI.QoL_NpcOptionsDropdown = function(category, db, addonName, TipWithReason)
+    if type(db.npcOptions) ~= "table" then db.npcOptions = {} end
+    local rows, truth = VUI.QoL_NpcOptionRows(), db.npcOptions
+    local NONE, ALL, FIRST = 1, 2, 3
+    local function Mask()
+        local m, n = 0, 0
+        for i, r in ipairs(rows) do if truth[r.id] then m = m + Bit(FIRST + i - 1); n = n + 1 end end
+        if n == 0 then return Bit(NONE) end
+        if n == #rows then m = m + Bit(ALL) end
+        return m
+    end
+    db.npcOptionsMask = Mask()
+    local last = db.npcOptionsMask
+    local setting = Settings.RegisterAddOnSetting(category, addonName .. "_npcOptions", "npcOptionsMask", db,
+        "number", "Quest Options", Bit(NONE))
+    local ignore = false
+    setting:SetValueChangedCallback(function(_, val)
+        if ignore or type(val) ~= "number" then return end
+        local changed = {}
+        for v = 1, FIRST + #rows - 1 do if HasBit(last, v) ~= HasBit(val, v) then changed[#changed + 1] = v end end
+        local function SetAll(on) for _, r in ipairs(rows) do truth[r.id] = on or nil end end
+        if #changed == 1 then
+            local v, on = changed[1], HasBit(val, changed[1])
+            if v == NONE then if on then SetAll(false) end
+            elseif v == ALL then SetAll(on)
+            else truth[rows[v - FIRST + 1].id] = on or nil end
+        elseif #changed > 1 then
+            for i, r in ipairs(rows) do truth[r.id] = HasBit(val, FIRST + i - 1) or nil end
+        end
+        db.npcOptionsMask = Mask()
+        last = db.npcOptionsMask
+        ignore = true
+        pcall(setting.SetValue, setting, db.npcOptionsMask)
+        ignore = false
+    end)
+    local function GetOptions()
+        local all = true
+        for _, r in ipairs(rows) do if not truth[r.id] then all = false end end
+        local c = Settings.CreateControlTextContainer()
+        c:AddCheckbox(NONE, "None")
+        c:AddCheckbox(ALL, "All")
+        for i, r in ipairs(rows) do
+            local row = c:AddCheckbox(FIRST + i - 1, r.label)
+            if all and type(row) == "table" then row.text = nil end
+        end
+        return c:GetData()
+    end
+    local tip = "Rules for the three options above. Skip Older-Expansion Quests: at max level, quests from an "
+        .. "earlier expansion are left for you to accept. Not When an NPC Offers Several: an NPC with more than "
+        .. "one quest is left to you. Hold Shift to Use: the shortcuts work only while you hold Shift, instead "
+        .. "of pausing while you hold it. Off in Dungeons and Raids. Applies at once."
+    Settings.CreateDropdown(category, setting, GetOptions, TipWithReason(tip, "npcOptions"))
+end

@@ -177,6 +177,9 @@ local UNIVERSAL = {
     pickOnlyGossip    = true,    -- pick an NPC's only dialogue option
     autoAcceptQuest   = false,   -- take offered quests (separate from turn-in, owner's request)
     autoTurnInQuest   = false,   -- hand in completed quests
+    -- v1.52.0: Quest Options dropdown (Automation.lua), [id] = true. TABLE-typed, PAIRED with npcOptionsMask
+    -- (derived). Default none: the shortcuts behave as before.
+    npcOptions        = {},
     trainAllButton    = true,    -- Train All button on the trainer window
     -- Phase 4 (v1.30.0): extra unit tooltip lines, independent; on since v1.37.0.
     tooltipTarget     = true,    -- "Target: <name>", green "You" when it is you
@@ -3620,7 +3623,9 @@ npcFrame.Note = function(fmt, ...)
     if #log > 12 then table.remove(log, 1) end
 end
 
+-- v1.52.0: Quest Options (Automation.lua) can invert Shift and turn the shortcuts off in instances.
 local function NpcPaused()
+    if VUI.QoL_NpcPaused then return VUI.QoL_NpcPaused() end
     return IsShiftKeyDown and IsShiftKeyDown()
 end
 
@@ -3637,11 +3642,19 @@ local function OnGossipShow()
             npcFrame.Note("gossip offer %q id=%s isTrivial=%s", tostring(q.title), tostring(q.questID),
                 tostring(q.isTrivial))
         end
+        -- Quest Options: older-expansion quests left for you; an NPC offering several left to you.
+        local offers = {}
         for _, q in ipairs(G.GetAvailableQuests() or {}) do
-            if not q.isTrivial and q.questID then
-                npcFrame.Note("gossip -> select %q id=%s", tostring(q.title), tostring(q.questID))
-                G.SelectAvailableQuest(q.questID); return
+            if not q.isTrivial and q.questID and not (VUI.QoL_NpcSkipOffer and VUI.QoL_NpcSkipOffer(q.questID)) then
+                offers[#offers + 1] = q
             end
+        end
+        if VUI.QoL_NpcSeveralBlocked and VUI.QoL_NpcSeveralBlocked(#offers) then
+            npcFrame.Note("gossip -> %d offers, left for you (Not When an NPC Offers Several)", #offers)
+        elseif offers[1] then
+            local q = offers[1]
+            npcFrame.Note("gossip -> select %q id=%s", tostring(q.title), tostring(q.questID))
+            G.SelectAvailableQuest(q.questID); return
         end
     end
     if db.pickOnlyGossip and G.GetOptions then
@@ -3664,6 +3677,10 @@ local function OnQuestGreeting()
         end
     end
     if db.autoAcceptQuest and GetNumAvailableQuests then
+        if VUI.QoL_NpcSeveralBlocked and VUI.QoL_NpcSeveralBlocked(GetNumAvailableQuests()) then
+            npcFrame.Note("greeting -> several offers, left for you")
+            return
+        end
         for i = 1, GetNumAvailableQuests() do
             local isTrivial = GetAvailableQuestInfo(i)
             npcFrame.Note("greeting offer %d %q isTrivial=%s", i,
@@ -3695,6 +3712,12 @@ npcFrame:SetScript("OnEvent", function(_, event)
             tostring(GetTitleText and GetTitleText()), tostring(qid), tostring(trivial),
             okT and "ok" or "err", tostring(auto))
         if okT and trivial == true then npcFrame.Note("detail -> left for you (grey)"); return end
+        if VUI.QoL_NpcSkipOffer and VUI.QoL_NpcSkipOffer(qid) then
+            npcFrame.Note("detail -> left for you (older expansion)"); return
+        end
+        if VUI.QoL_NpcSeveralBlocked and VUI.QoL_NpcSeveralBlocked(nil) then
+            npcFrame.Note("detail -> left for you (NPC offered several)"); return
+        end
         npcFrame.Note("detail -> accepted")
         if auto then
             if AcknowledgeAutoAcceptQuest then AcknowledgeAutoAcceptQuest() end
@@ -4492,6 +4515,10 @@ local function InitializeOptions()
         "Hands in completed quests. If you have to choose a reward, or the quest costs gold, you "
         .. "still choose. Hold Shift while talking to the NPC to do it yourself.",
         UpdateNpcEvents)
+
+    if VUI.QoL_NpcOptionsDropdown then
+        VUI.QoL_NpcOptionsDropdown(category, db, ADDON_NAME, TipWithReason)
+    end
 
     AddCheckbox("untrackWorldQuestsOnUnfocus", "Untrack World Quests When Unfocused",
         "A world quest you clicked on the map leaves the objective tracker when you click it again, the "
