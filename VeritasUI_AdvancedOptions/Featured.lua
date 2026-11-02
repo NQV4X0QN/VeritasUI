@@ -171,15 +171,18 @@ AO.FEATURED_CATEGORIES = {
                     { cvar = "floatingCombatTextFriendlyHealers_v2",     text = "Names of Friendly Healers" },
                 },
             },
+            -- _v2 names: owner's All CVars search, 2026-11-01, found only floatingCombatTextCombatDamage_v2
+            -- and ..._CombatHealing_v2. The old names (used until v1.46.4) do not exist in Midnight, so
+            -- these two checkboxes did nothing: unticked, the numbers still showed.
             {
                 type    = "checkbox",
-                cvar    = "floatingCombatTextCombatDamage",
+                cvar    = "floatingCombatTextCombatDamage_v2",
                 label   = "Show Damage Numbers",
                 tooltip = "Display outgoing damage as floating text on targets.",
             },
             {
                 type    = "checkbox",
-                cvar    = "floatingCombatTextCombatHealing",
+                cvar    = "floatingCombatTextCombatHealing_v2",
                 label   = "Show Healing Numbers",
                 tooltip = "Display outgoing healing as floating text on targets.",
             },
