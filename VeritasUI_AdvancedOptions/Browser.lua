@@ -24,6 +24,56 @@ local InCombatLockdown = InCombatLockdown
 ----------------------------------------------------------------
 --  CVar cache — populated once, reused across sessions
 ----------------------------------------------------------------
+-- A CVar's help text is the game's own and often lists its values ("0: Disable all logging", "1: ...")
+-- run together in one block (owner, 2026-11-01, taintLog). Split it the way Blizzard's Options tooltips
+-- show choices (Settings.CreateOptionsInitTooltip, Blizzard_Settings.lua:415-460): the explanation first,
+-- then each value on its own, a blank line apart, its name in white and its text in gold. Lines that are
+-- not a value continue the one before. With fewer than two values the text is shown as it is.
+-- Returns intro (string or nil) and items ({ key, text }...), or nil when there is nothing to split.
+local function SplitHelp(help)
+    if type(help) ~= "string" or help == "" then return nil end
+    local lines = {}
+    for line in (help .. "\n"):gmatch("(.-)\r?\n") do
+        line = line:gsub("^%s+", ""):gsub("%s+$", "")
+        if line ~= "" then lines[#lines + 1] = line end
+    end
+    -- One line holding several "N: text" / "N = text" values: split it before each value.
+    if #lines == 1 then
+        local one, starts = lines[1], {}
+        local pos = 1
+        while true do
+            local st, en = one:find("%f[%w%-]%-?%d+%s*[:=]%s", pos)
+            if not st then break end
+            starts[#starts + 1] = st
+            pos = en + 1
+        end
+        if #starts >= 2 then
+            local parts = {}
+            local head = one:sub(1, starts[1] - 1):gsub("[%s,;%(]+$", "")
+            if head ~= "" then parts[1] = head end
+            for i, st in ipairs(starts) do
+                local seg = one:sub(st, (starts[i + 1] or (#one + 1)) - 1):gsub("[%s,;%)]+$", "")
+                parts[#parts + 1] = seg
+            end
+            lines = parts
+        end
+    end
+    local intro, items = {}, {}
+    for _, line in ipairs(lines) do
+        local key, text = line:match("^([%w%-%.]+)%s*[:=]%s+(.+)$")
+        if key and #key <= 12 then
+            items[#items + 1] = { key, text }
+        elseif #items > 0 then
+            items[#items][2] = items[#items][2] .. " " .. line
+        else
+            intro[#intro + 1] = line
+        end
+    end
+    if #items < 2 then return nil end
+    return #intro > 0 and table.concat(intro, " ") or nil, items
+end
+AO.SplitCVarHelp = SplitHelp
+
 local cvarList       = nil   -- sorted array of { name=, value=, default=, locked= }
 -- ⚠ Keyed by the LOWER-CASED name (audit O1): CVar names are not case-sensitive, and the lists
 -- that feed this index spell some differently (KNOWN_CVARS "StatusTextDisplay", ElvUI's
@@ -890,7 +940,16 @@ function AO:BuildBrowserContent(parent, buttonBar)
                 if e and e.help and e.help ~= "" then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     GameTooltip:SetText(e.name, 1, 1, 1)
-                    GameTooltip:AddLine(e.help, 1, 0.82, 0, true)   -- Blizzard's description gold
+                    local intro, items = SplitHelp(e.help)
+                    if items then
+                        if intro then GameTooltip:AddLine(intro, 1, 0.82, 0, true) end
+                        for _, it in ipairs(items) do
+                            GameTooltip:AddLine(" ")
+                            GameTooltip:AddLine("|cFFFFFFFF" .. it[1] .. ":|r " .. it[2], 1, 0.82, 0, true)
+                        end
+                    else
+                        GameTooltip:AddLine(e.help, 1, 0.82, 0, true)   -- Blizzard's description gold
+                    end
                     if e.locked then
                         GameTooltip:AddLine("Locked by graphics engine", 1, 0.6, 0)
                     end
