@@ -199,6 +199,7 @@ local UNIVERSAL = {
     chatClassColorNames = true,   -- Chat.lua (v1.54.0): group names in class colour in message text
     chatRememberLines = true,     -- Chat.lua (v1.55.0): last 100 lines per window, per character
     chatRememberTyped = true,     -- Chat.lua (v1.56.0, owner request): last 5 typed lines, per character
+    chatCopyButton = true,        -- CopyChat.lua (v1.57.0, owner request): copy button by the chat window
     whisperSound = "default",     -- Chat.lua (v1.54.0): "default" = Blizzard's own, untouched
     timestampAllMessages = true,
     -- The icon the next /note starts with: the last one chosen from a note's menu.
@@ -4689,6 +4690,11 @@ local function InitializeOptions()
         .. "in or reload, so you can bring them back as you do this session's. Kept for each character on "
         .. "this computer, whispers included. Turning this off deletes them.",
         function(value) if VUI.QoL_ChatRememberTyped then VUI.QoL_ChatRememberTyped(value) end end)
+
+    AddCheckbox("chatCopyButton", "Copy Chat Button",
+        "Adds a button beside the chat window, above the chat menu button, that shows the chat tab's text, "
+        .. "ready to copy.",
+        function(value) if VUI.QoL_CopyChatButtonShown then VUI.QoL_CopyChatButtonShown(value) end end)
 
     AddCheckbox("timestampAllMessages", "Timestamp Every Message",
         "Adds the chat timestamp to system, loot, money, achievement, experience and reputation "

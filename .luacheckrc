@@ -142,6 +142,7 @@ read_globals = {
     "UnitAffectingCombat", "AcceptResurrect", "GetCorpseRecoveryDelay", "C_ToyBoxInfo", "C_PetJournal",
     "C_MountJournal", "C_PlayerInteractionManager", "ITEM_OPENABLE", "NUM_TOTAL_EQUIPPED_BAG_SLOTS",
     "GetServerExpansionLevel", "C_PlayerInfo", "GetMaxLevelForPlayerExpansion", "UnitGUID",
+    "ButtonFrameTemplate_HidePortrait", "IsMacClient", "GameTooltip_AddNormalLine", "GameTooltip_Hide",
     "IsInRaid", "GetNumGroupMembers", "MuteSoundFile", "UnmuteSoundFile", "ChatFrameConstants",
     "GetSpellCritChance", "GetRangedCritChance", "GetCritChance", "BreakUpLargeNumbers", "GetCombatRating",
     "NORMAL_FONT_COLOR", "HIGHLIGHT_FONT_COLOR", "YELLOW_FONT_COLOR", "RED_FONT_COLOR", "GREEN_FONT_COLOR",

@@ -15,4 +15,5 @@ WorldQuestUntrack.lua
 Automation.lua
 CharacterStats.lua
 Chat.lua
+CopyChat.lua
 MapNotes.xml
