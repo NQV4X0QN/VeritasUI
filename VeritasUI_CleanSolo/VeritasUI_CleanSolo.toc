@@ -8,3 +8,4 @@
 ## AddonCompartmentFunc: VeritasUI_CleanSolo_OnAddonCompartmentClick
 
 CleanSolo.lua
+BannerProbe.lua
