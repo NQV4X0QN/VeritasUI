@@ -426,6 +426,18 @@ local function SetupChatTabFading()
     AddButton(_G.ChatFrameToggleVoiceDeafenButton, "hideVoiceChatButton")
     AddButton(_G.ChatFrameToggleVoiceMuteButton, "hideVoiceChatButton")
     local buttonsOwner = _G.ChatFrame1
+    -- Quality of Life's Copy Chat button (v1.57.0) sits in the same column and fades with them. It is
+    -- built at QoL's PLAYER_LOGIN, which can come after this, so it is taken now if it exists and
+    -- otherwise handed over by QoL through VUI.CS_AddChatButton, at the window's current look.
+    -- Hovering it brings the window in: it is in ChatFrame1's button frame, which Blizzard's hover test
+    -- counts (FCF_OnUpdate, FloatingChatFrame.lua:1139-1143).
+    local addedButtons = {}
+    local function AddLateButton(btn)
+        if type(btn) ~= "table" or not btn.SetAlpha or addedButtons[btn] then return end
+        addedButtons[btn] = true
+        chatButtons[#chatButtons + 1] = btn
+        btn:SetAlpha(((winShown and winShown[buttonsOwner]) or 0) >= 1 and 1 or TabAlpha())
+    end
 
     local tweens = {}
     local tweenDriver = CreateFrame("Frame")
@@ -467,6 +479,8 @@ local function SetupChatTabFading()
         FadeWindow(cf, cf.hasBeenFaded and true or false, 0)
         ApplyWindow(cf)
     end
+    AddLateButton(_G.VeritasUI_CopyChatButton)
+    VUI.CS_AddChatButton = AddLateButton
     -- Colour and opacity changes from the Background picker write the textures directly.
     if _G.FCF_SetWindowColor then
         hooksecurefunc("FCF_SetWindowColor", function(cf) if winTex[cf] then ApplyWindow(cf) end end)

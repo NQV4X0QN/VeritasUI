@@ -8,7 +8,8 @@
 -- common-icon-copy (two overlapping pages; atlas 1563, wago.tools UiTextureAtlasMember), and copies the voice
 -- button's size and its icon's size at runtime, so it matches whatever Blizzard draws. It sits directly above
 -- the chat menu button (ChatFrameMenuButton, the speech bubble: FloatingChatFrame.xml:712-725), in the same
--- ChatFrame1ButtonFrame column, so it shows and fades with Blizzard's buttons.
+-- ChatFrame1ButtonFrame column, so it shows with Blizzard's buttons; Clean Solo's chat fade fades it with
+-- them (VUI.CS_AddChatButton).
 --
 -- Copying. CopyToClipboard is restricted (OsDocumentation.lua:10-13, HasRestrictions) and Blizzard's
 -- drag-to-copy in chat is off for chat windows (ScrollingMessageFrameMixin:SetTextCopyable is never called
@@ -164,6 +165,8 @@ local function Build_Button()
     button:SetScript("OnLeave", GameTooltip_Hide)
     Match()
     button:SetShown(On())
+    -- Clean Solo's Fade Chat fades the buttons in this column with the chat window; hand it this one.
+    if VUI.CS_AddChatButton then VUI.CS_AddChatButton(button) end
 end
 
 VUI.QoL_CopyChatButtonShown = function(on)
