@@ -158,6 +158,10 @@ local UNIVERSAL = {
     wayCommand        = true,
     mapNotesEnabled   = true,     -- /note and the notes' map pins; same reason, on by default (v1.34.4)
     untrackWorldQuestsOnUnfocus = true,   -- WorldQuestUntrack.lua (v1.51.0, owner's request)
+    -- Automation.lua (v1.52.0, feature batch Phase 3): accepting a resurrection someone cast on you.
+    -- A battle res (caster in combat) only with the sub-option, off by default.
+    autoAcceptRes       = true,
+    autoAcceptResCombat = false,
     journeysShortcuts = true,     -- Journeys.lua's card checkbox and bar clicks; same (v1.34.4)
     -- EllesmereUI-inspired plan, phase 2 (v1.28.0). OFF by default: they change how two of
     -- Blizzard's own confirmations behave.
@@ -4586,6 +4590,16 @@ local function InitializeOptions()
         "When you delete a valuable item, types DELETE into the confirmation for you, so you only "
         .. "have to press Enter or click Yes.",
         function(value) if value then SetupDeleteFill() end end)
+
+    local resInit = AddCheckbox("autoAcceptRes", "Auto Accept Resurrection",
+        "Accepts a resurrection another player casts on you, as soon as the game allows it. A "
+        .. "resurrection cast in combat is left to you unless Also in Combat is on.")
+    local resCombatInit = AddCheckbox("autoAcceptResCombat", "Also in Combat",
+        "Also accepts a resurrection cast during combat, such as a battle resurrection in a raid or "
+        .. "Mythic+ dungeon.")
+    if resCombatInit and resCombatInit.SetParentInitializer and resInit then
+        resCombatInit:SetParentInitializer(resInit, function() return db.autoAcceptRes end)
+    end
 
     AddCheckbox("timestampAllMessages", "Timestamp Every Message",
         "Adds the chat timestamp to system, loot, money, achievement, experience and reputation "

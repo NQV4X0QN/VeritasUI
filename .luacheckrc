@@ -139,6 +139,7 @@ read_globals = {
     "SetItemButtonQuality",
     -- Player / unit / AFK
     "UnitName", "UnitClass", "UnitLevel", "UnitIsAFK", "IsFalling", "UnitExists", "GetAverageItemLevel",
+    "UnitAffectingCombat", "AcceptResurrect", "GetCorpseRecoveryDelay",
     "GetRealmName",
     "MoveViewRightStart", "MoveViewRightStop", "MinimapCluster",
     "NumberFontNormal", "NumberFontNormalRight",
