@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.58.4] - 2026-11-02
+
+### Changed
+
+- `VeritasUI_AdvancedOptions` — **Advanced Options uses Blizzard's colours.** Column headers gold, changed values bright blue, default values grey, tooltip names white and help gold, chat messages and the `/ao` command list in the game's named colours. **Locked by graphics engine** is now red, as Blizzard shows warnings (`Browser.lua`, `Controls.lua`, `Core.lua`, `ElvUIChanges.lua`, `Settings.lua`)
+
+
 ## [1.58.3] - 2026-11-02
 
 ### Changed
