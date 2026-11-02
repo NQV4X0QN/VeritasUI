@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.58.3] - 2026-11-02
+
+### Changed
+
+- `VeritasUI_ZoneQuests` — **Zone Quests uses Blizzard's colours.** On, Off, the zone name and the `/zq` debug and quest-dump output now take their colours from the game's named colours (`ZoneQuests.lua`)
+
+
 ## [1.58.2] - 2026-11-02
 
 ### Changed
