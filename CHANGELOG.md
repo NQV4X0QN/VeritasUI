@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.57.0] - 2026-11-02
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Copy Chat Button.** A button beside the chat window, above the chat menu button, built from Blizzard's own chat-button frame and copy icon. Click it to see the chat tab's text, already selected: Ctrl+C (Cmd+C on a Mac) copies it. Links read as their names. Escape closes the window. On by default (`CopyChat.lua`, new; `QualityOfLife.lua`, `README.md`)
+
+### Changed
+
+- `VeritasUI_CleanSolo` — **Fade Chat fades the Copy Chat button** with the chat window, like the chat menu and voice buttons (`CleanSolo.lua`)
+
 ## [1.56.1] - 2026-11-02
 
 ### Changed
