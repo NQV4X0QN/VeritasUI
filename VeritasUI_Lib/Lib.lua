@@ -101,8 +101,8 @@ end
 -- On/off print for settings that require a /reload to apply (CleanSolo's
 -- hooksecurefunc-based features — see the POLICY block in CleanSolo.lua).
 function VUI.PrintOnOff(tag, label, state)
-    local word = state and "|cFF00FF00turned on|r" or "|cFFFF4444turned off|r"
-    VUI.Print(tag, label .. " " .. word .. " — |cFFFFFF00/reload|r to apply.")
+    local word = state and VUI.COL.GREEN .. "turned on|r" or VUI.COL.RED .. "turned off|r"
+    VUI.Print(tag, label .. " " .. word .. " — " .. VUI.COL.YELLOW .. "/reload|r to apply.")
 end
 
 -- On/off print for settings that apply IMMEDIATELY (QoL's v1.6.28
@@ -111,7 +111,7 @@ end
 -- users to /reload for a live-apply toggle was wrong for nine settings
 -- across two modules.
 function VUI.PrintOnOffLive(tag, label, state)
-    local word = state and "|cFF00FF00turned on|r" or "|cFFFF4444turned off|r"
+    local word = state and VUI.COL.GREEN .. "turned on|r" or VUI.COL.RED .. "turned off|r"
     VUI.Print(tag, label .. " " .. word .. ".")
 end
 
@@ -597,7 +597,7 @@ cqFrame:SetScript("OnEvent", function()
         -- bugs by flipping the flag and triggering the path again.
         local ok, err = pcall(fn)
         if not ok and VUI.debug then
-            print("|cFFFF4444[VeritasUI]|r CombatQueue error: "
+            print(VUI.COL.RED .. "[VeritasUI]|r CombatQueue error: "
                 .. tostring(err))
         end
     end
@@ -845,14 +845,14 @@ end
 ----------------------------------------------------------------
 
 StaticPopupDialogs["VERITASUI_COPY_SETTINGS"] = {
-    text = "Copy all VeritasUI settings from |cFFFFFF00%s|r onto |cFFFFFF00%s|r?"
+    text = "Copy all VeritasUI settings from " .. VUI.COL.YELLOW .. "%s|r onto " .. VUI.COL.YELLOW .. "%s|r?"
         .. "\n\nThis character's current settings will be overwritten. You can undo it afterwards.",
     button1 = ACCEPT or "Accept",
     button2 = CANCEL or "Cancel",
     timeout = 0, whileDead = 1, hideOnEscape = 1, showAlert = 1,
     OnAccept = function(_, data)
         local ok, msg = VUI.CopyCharSettings(data)
-        VUI.Print("VeritasUI", (ok and "" or "|cFFFF4444") .. msg .. (ok and "" or "|r"))
+        VUI.Print("VeritasUI", (ok and "" or VUI.COL.RED) .. msg .. (ok and "" or "|r"))
         if ok then StaticPopup_Show("VERITASUI_COPY_RELOAD") end
     end,
 }
@@ -866,13 +866,13 @@ StaticPopupDialogs["VERITASUI_COPY_RELOAD"] = {
 }
 
 StaticPopupDialogs["VERITASUI_UNDO_COPY"] = {
-    text = "Undo the settings copy from |cFFFFFF00%s|r and restore this character's previous settings?",
+    text = "Undo the settings copy from " .. VUI.COL.YELLOW .. "%s|r and restore this character's previous settings?",
     button1 = ACCEPT or "Accept",
     button2 = CANCEL or "Cancel",
     timeout = 0, whileDead = 1, hideOnEscape = 1, showAlert = 1,
     OnAccept = function()
         local ok, msg = VUI.UndoCharSettingsCopy()
-        VUI.Print("VeritasUI", (ok and "" or "|cFFFF4444") .. msg .. (ok and "" or "|r"))
+        VUI.Print("VeritasUI", (ok and "" or VUI.COL.RED) .. msg .. (ok and "" or "|r"))
         if ok then StaticPopup_Show("VERITASUI_COPY_RELOAD") end
     end,
 }
@@ -922,7 +922,8 @@ VUI._BuildCopyMenu = BuildCopyMenu
 -- measured fact, so it is deliberately not what the shipped path relies on.
 function VUI.ShowCopyMenu(owner)
     if not (MenuUtil and MenuUtil.CreateContextMenu) then
-        VUI.Print("VeritasUI", "|cFFFF4444Menu API unavailable|r — use |cFFFFFF00/vui copy|r instead.")
+        VUI.Print("VeritasUI", VUI.COL.RED .. "Menu API unavailable|r — use "
+            .. VUI.COL.YELLOW .. "/vui copy|r instead.")
         return
     end
     MenuUtil.CreateContextMenu(owner, BuildCopyMenu)
@@ -1397,7 +1398,7 @@ local function DumpTaintLog()
         print(format("   (%d further distinct signature(s) dropped — log caps at %d)",
             db.taintLogDropped, TAINT_LOG_MAX))
     end
-    VUI.Print("VeritasUI", "|cFF888888/vui taint clear|r to reset the log.")
+    VUI.Print("VeritasUI", VUI.COL.GRAY .. "/vui taint clear|r to reset the log.")
 end
 
 ----------------------------------------------------------------
@@ -1439,7 +1440,8 @@ taintFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
         local n = CountTaintEntries(db)
         if n > 0 then
             VUI.Print("VeritasUI", format(
-                "|cFFFF8800%d blocked-action event%s recorded|r — |cFFFFFF00/vui taint|r to view.",
+                VUI.COL.ORANGE .. "%d blocked-action event%s recorded|r — "
+                    .. VUI.COL.YELLOW .. "/vui taint|r to view.",
                 n, n == 1 and "" or "s"))
         end
     end
@@ -1794,7 +1796,7 @@ function VUI.CopyCharSettings(sourceKey)
         when   = time(),
         snapshot = snapshot,
     }
-    return true, ("Copied settings from |cFFFFFF00%s|r (%d module%s)."):format(
+    return true, ("Copied settings from " .. VUI.COL.YELLOW .. "%s|r (%d module%s)."):format(
         sourceKey, copied, copied == 1 and "" or "s")
 end
 
@@ -1932,8 +1934,8 @@ SlashCmdList["VERITASUI"] = function(msg)
         -- Suite-wide debug switch (audit S3): lived only as /ah debug, so it vanished with the
         -- Auction House module. /ah debug still works.
         VUI.debug = not VUI.debug
-        VUI.Print("VeritasUI", "Debug prints " .. (VUI.debug and "|cFF00FF00ON|r (suite-wide)"
-            or "|cFFFF4444OFF|r"))
+        VUI.Print("VeritasUI", "Debug prints " .. (VUI.debug and VUI.COL.GREEN .. "ON|r (suite-wide)"
+            or VUI.COL.RED .. "OFF|r"))
     elseif cmd == "undocopy" then
         local last = VUI.GetUndoableCopy()
         if not last then
@@ -1943,17 +1945,17 @@ SlashCmdList["VERITASUI"] = function(msg)
         end
     else
         VUI.Print("VeritasUI", "Version " .. VUI.VERSION .. " loaded.")
-        VUI.Print("VeritasUI", "|cFFFFFF00/vui taint|r — show recorded blocked-action events.")
-        VUI.Print("VeritasUI", "|cFFFFFF00/vui taint clear|r — reset that log.")
-        VUI.Print("VeritasUI", "|cFFFFFF00/vui hover|r — dump the parent chain under the cursor (5s delay).")
-        VUI.Print("VeritasUI", "|cFFFFFF00/vui copy|r — copy another character's settings onto this one.")
-        VUI.Print("VeritasUI", "|cFFFFFF00/vui undocopy|r — undo the last copy on this character.")
-        VUI.Print("VeritasUI", "|cFFFFFF00/vui debug|r — toggle debug output for every module.")
+        VUI.Print("VeritasUI", VUI.COL.YELLOW .. "/vui taint|r — show recorded blocked-action events.")
+        VUI.Print("VeritasUI", VUI.COL.YELLOW .. "/vui taint clear|r — reset that log.")
+        VUI.Print("VeritasUI", VUI.COL.YELLOW .. "/vui hover|r — dump the parent chain under the cursor (5s delay).")
+        VUI.Print("VeritasUI", VUI.COL.YELLOW .. "/vui copy|r — copy another character's settings onto this one.")
+        VUI.Print("VeritasUI", VUI.COL.YELLOW .. "/vui undocopy|r — undo the last copy on this character.")
+        VUI.Print("VeritasUI", VUI.COL.YELLOW .. "/vui debug|r — toggle debug output for every module.")
         local isLoaded = C_AddOns and C_AddOns.IsAddOnLoaded
         local lines = {}
         for _, m in ipairs(MODULE_COMMANDS) do
             if isLoaded and isLoaded(m[1]) then
-                lines[#lines + 1] = "|cFFFFFF00" .. m[2] .. "|r " .. m[3]
+                lines[#lines + 1] = VUI.COL.YELLOW .. m[2] .. "|r " .. m[3]
             end
         end
         if #lines > 0 then
@@ -1969,5 +1971,5 @@ local loginFrame = CreateFrame("Frame")
 loginFrame:RegisterEvent("PLAYER_LOGIN")
 loginFrame:SetScript("OnEvent", function(self)
     self:UnregisterEvent("PLAYER_LOGIN")
-    VUI.Print("VeritasUI", format("VeritasUI v%s loaded — |cFFFFFF00/vui|r for commands", VUI.VERSION))
+    VUI.Print("VeritasUI", format("VeritasUI v%s loaded — " .. VUI.COL.YELLOW .. "/vui|r for commands", VUI.VERSION))
 end)
