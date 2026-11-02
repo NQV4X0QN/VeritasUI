@@ -4679,12 +4679,12 @@ local function InitializeOptions()
         VUI.QoL_WhisperSoundDropdown(category, db, ADDON_NAME)
     end
 
-    AddCheckbox("chatRememberLines", "Remember Chat",
+    AddCheckbox("chatRememberLines", "Remember Chat History",
         "Each chat window's last 100 lines come back, in grey, when you log in or reload. They are kept "
         .. "for each character on this computer, whispers included. Turning this off deletes them.",
         function(value) if VUI.QoL_ChatRemember then VUI.QoL_ChatRemember(value) end end)
 
-    AddCheckbox("chatRememberTyped", "Remember Typed Lines",
+    AddCheckbox("chatRememberTyped", "Remember Typed History",
         "The last 5 lines you typed in the chat box, commands included, stay in its history after you log "
         .. "in or reload, so you can bring them back as you do this session's. Kept for each character on "
         .. "this computer, whispers included. Turning this off deletes them.",

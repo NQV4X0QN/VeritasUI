@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.56.1] - 2026-11-02
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **Clearer names for the two Remember options:** Remember Chat is now **Remember Chat History**, and Remember Typed Lines is now **Remember Typed History**. Your settings are kept (`QualityOfLife.lua`, `README.md`)
+
 ## [1.56.0] - 2026-11-01
 
 ### Added

@@ -25,7 +25,8 @@
 -- kit uses (wago.tools SoundKitEntry, 2026-11-01). Any choice but Blizzard's own mutes that file
 -- (MuteSoundFile) and plays the choice on the same rule; None only mutes it. Back to Blizzard's: unmuted.
 --
--- Remember Chat (named Remember Chat Lines until v1.56.0). Each chat window's last 100 lines are kept,
+-- Remember Chat History (v1.55.0 Remember Chat Lines, v1.56.0 Remember Chat).
+-- Each chat window's last 100 lines are kept,
 -- per character, in VeritasUI_QualityOfLifeChatDB (SavedVariablesPerCharacter), and put back, grey, when
 -- you log in or reload,
 -- before anything new. A post-hook on each window's AddMessage (hooksecurefunc on the frame: Blizzard's own
@@ -35,7 +36,8 @@
 -- (|K..|k), which only mean something in the session that sent them. Turning the option off deletes what
 -- was kept. Whispers are kept too, on this computer only (README says so).
 --
--- Remember Typed Lines (owner's request, 2026-11-01). The chat box already keeps what you type, but only for
+-- Remember Typed History (owner's request, 2026-11-01; Remember Typed Lines in v1.56.0).
+-- The chat box already keeps what you type, but only for
 -- the session: the edit box's own history (ChatFrameEditBoxTemplate historyLines="32", filled by
 -- AddHistoryLine whenever a line or command is sent: Shared/ChatFrameEditBox.lua:242, :262, :270, :741).
 -- The last 5 lines are kept per character and put back into that same history at load, with the same
@@ -296,7 +298,7 @@ VUI.QoL_WhisperSoundDropdown = function(category, db, addonName)
         .. "until no whisper has come for 5 minutes.")
 end
 
--- ── Remember Chat ──────────────────────────────────────────────
+-- ── Remember Chat History ──────────────────────────────────────
 local KEEP = 100
 local FIRST_WINDOW, SKIP = 1, { [2] = true, [3] = true }
 
@@ -361,7 +363,7 @@ remember:SetScript("OnEvent", function(self, _, name)
     HookWindows()
 end)
 
--- ── Remember Typed Lines ───────────────────────────────────────
+-- ── Remember Typed History ─────────────────────────────────────
 local TYPED = 5
 
 local function EditBoxes()
