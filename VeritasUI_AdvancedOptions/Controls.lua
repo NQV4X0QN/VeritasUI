@@ -422,12 +422,14 @@ end
 --  4. MULTISELECT — several on/off CVars in one dropdown
 --
 --  cfg = {
+--      cvar     = "masterCVar",   -- the row's own checkbox; the list's rows grey out while it is off
 --      label    = "Display Label",
 --      tooltip  = "Optional tooltip body text",
---      requires = nil,            -- optional master CVar; rows grey out while it is off
 --      options  = { { cvar = "cvarName", text = "Row label" }, ... },
 --  }
 --
+--  The master checkbox and label sit where a checkbox row's do, and the dropdown lines up with the
+--  other dropdowns (owner, 2026-11-01: one row, not a separate "Shows" row under the master).
 --  Blizzard's dropdown with checkbox rows (MenuTemplates.CreateCheckbox, MenuTemplates.lua:330-342:
 --  a tick keeps the menu open, MenuResponse.Refresh). Each row reads and writes its own CVar; there
 --  is no saved state of ours. A CVar this client does not have is left out of the list.
@@ -435,13 +437,19 @@ end
 function AO:CreateMultiSelect(parent, cfg)
     local row = CreateRow(parent, ROW_HEIGHT + 4)
 
+    local master = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+    master:SetSize(22, 22)
+    master:SetPoint("LEFT", row, "LEFT", 0, 0)
+
+    -- 26 narrower than a checkbox row's label, so the dropdown starts where every other one does.
     local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    label:SetPoint("LEFT", row, "LEFT", 0, 0)
-    label:SetWidth(LABEL_WIDTH)
+    label:SetPoint("LEFT", master, "RIGHT", 4, 0)
+    label:SetWidth(LABEL_WIDTH - 26)
     label:SetJustifyH("LEFT")
     label:SetText(cfg.label)
 
-    local options, names = {}, {}
+    local masterOpt = { cvar = cfg.cvar }
+    local options, names = {}, { cfg.cvar }
     for _, opt in ipairs(cfg.options) do
         if AO:GetCVarInfo(opt.cvar) ~= nil then
             options[#options + 1] = opt
@@ -480,12 +488,20 @@ function AO:CreateMultiSelect(parent, cfg)
 
     local function Refresh()
         if not InCombatLockdown() then wipe(pending) end
+        master:SetChecked(IsOn(masterOpt))
         if dropdown.OverrideText then dropdown:OverrideText(CurrentText()) end
     end
 
-    local function MasterOn()
-        return not cfg.requires or AO:GetCVar(cfg.requires) == "1"
+    local function MasterOn() return IsOn(masterOpt) end
+
+    local function Toggle(opt)
+        local value = IsOn(opt) and "0" or "1"
+        if not AO:SetCVar(opt.cvar, value) and InCombatLockdown() then
+            pending[opt.cvar] = value
+        end
+        Refresh()
     end
+    master:SetScript("OnClick", function() Toggle(masterOpt) end)
 
     dropdown:SetupMenu(function(_, root)
         -- WoWUIBugs #783 taint workaround, as CreateDropdown
@@ -493,13 +509,7 @@ function AO:CreateMultiSelect(parent, cfg)
         for _, opt in ipairs(options) do
             local cb = root:CreateCheckbox(opt.text,
                 function() return IsOn(opt) end,
-                function()
-                    local value = IsOn(opt) and "0" or "1"
-                    if not AO:SetCVar(opt.cvar, value) and InCombatLockdown() then
-                        pending[opt.cvar] = value
-                    end
-                    Refresh()
-                end)
+                function() Toggle(opt) end)
             if cb and cb.SetEnabled then cb:SetEnabled(MasterOn) end
         end
     end)

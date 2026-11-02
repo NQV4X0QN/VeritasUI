@@ -144,22 +144,18 @@ AO.FEATURED_CATEGORIES = {
         key   = "combattext",
         title = "Combat Text",
         controls = {
-            {
-                type    = "checkbox",
-                cvar    = "enableFloatingCombatText",
-                label   = "Enable Floating Combat Text",
-                tooltip = "Master toggle for all floating combat numbers above your character.",
-            },
-            -- The per-type CVars Blizzard_CombatText reads for its own scrolling text (Shared/
-            -- CombatTextConstants.lua:29-66 and the CombatTextCachableCVars list, :109-124). None
-            -- of them is in Blizzard's Options. Rows grey out while the master above is off; a
-            -- CVar this client does not have is left out.
+            -- One row: the master checkbox, with the dropdown of the per-type CVars Blizzard_CombatText
+            -- reads for its own scrolling text beside it (Shared/CombatTextConstants.lua:29-66 and the
+            -- CombatTextCachableCVars list, :109-124). None of them is in Blizzard's Options. Rows grey
+            -- out while the master is off; a CVar this client does not have is left out. Owner,
+            -- 2026-11-01: no separate "Combat Text Shows" row, the dropdown sits next to the master.
+            -- ⚠ The two number checkboxes below are NOT part of this: Blizzard_CombatText never reads
+            -- them (no reference anywhere in Blizzard's Lua); they are engine CVars of their own.
             {
                 type     = "multiselect",
-                label    = "Combat Text Shows",
-                tooltip  = "Pick what Floating Combat Text shows over your character. "
-                        .. "Needs Enable Floating Combat Text.",
-                requires = "enableFloatingCombatText",
+                cvar     = "enableFloatingCombatText",
+                label    = "Enable Floating Combat Text",
+                tooltip  = "Scrolling text over your character. The list beside it picks what it shows.",
                 options  = {
                     { cvar = "floatingCombatTextDodgeParryMiss_v2",      text = "Dodge, Parry & Miss" },
                     { cvar = "floatingCombatTextDamageReduction_v2",     text = "Resist, Block & Absorb" },
