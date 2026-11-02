@@ -163,6 +163,10 @@ local UNIVERSAL = {
     autoAcceptRes       = true,
     autoAcceptResCombat = false,
     autoUnwrapCollections = true,   -- Automation.lua (v1.52.0): new mounts, pets and toys unwrapped
+    -- Automation.lua (v1.52.0): OFF by default -- it uses up items in your bags. Warbound containers are
+    -- kept for you unless the sub-option is turned off.
+    autoOpenContainers = false,
+    autoOpenContainersExcludeWarbound = true,
     journeysShortcuts = true,     -- Journeys.lua's card checkbox and bar clicks; same (v1.34.4)
     -- EllesmereUI-inspired plan, phase 2 (v1.28.0). OFF by default: they change how two of
     -- Blizzard's own confirmations behave.
@@ -4605,6 +4609,17 @@ local function InitializeOptions()
     AddCheckbox("autoUnwrapCollections", "Auto Unwrap Collections",
         "New mounts, pets and toys are unwrapped for you, so they are ready to use without clicking the "
         .. "gift in the Collections journal first.")
+
+    local openInit = AddCheckbox("autoOpenContainers", "Auto Open Containers",
+        "Opens bags, satchels and other items marked Right Click to Open as they reach your bags, one "
+        .. "at a time. Never in combat, and never while a vendor, bank, mailbox, guild bank, auction "
+        .. "house or trade window is open. Locked lockboxes are left alone.",
+        function(value) if value and VUI.QoL_OpenContainers then VUI.QoL_OpenContainers() end end)
+    local warboundInit = AddCheckbox("autoOpenContainersExcludeWarbound", "Not Warbound Containers",
+        "Leaves warbound containers (bound to your account) for you to open on the character you choose.")
+    if warboundInit and warboundInit.SetParentInitializer and openInit then
+        warboundInit:SetParentInitializer(openInit, function() return db.autoOpenContainers end)
+    end
 
     AddCheckbox("timestampAllMessages", "Timestamp Every Message",
         "Adds the chat timestamp to system, loot, money, achievement, experience and reputation "

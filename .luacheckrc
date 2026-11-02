@@ -140,7 +140,7 @@ read_globals = {
     -- Player / unit / AFK
     "UnitName", "UnitClass", "UnitLevel", "UnitIsAFK", "IsFalling", "UnitExists", "GetAverageItemLevel",
     "UnitAffectingCombat", "AcceptResurrect", "GetCorpseRecoveryDelay", "C_ToyBoxInfo", "C_PetJournal",
-    "C_MountJournal",
+    "C_MountJournal", "C_PlayerInteractionManager", "ITEM_OPENABLE", "NUM_TOTAL_EQUIPPED_BAG_SLOTS",
     "GetRealmName",
     "MoveViewRightStart", "MoveViewRightStop", "MinimapCluster",
     "NumberFontNormal", "NumberFontNormalRight",
