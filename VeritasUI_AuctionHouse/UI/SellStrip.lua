@@ -77,6 +77,9 @@ local state = {
     items         = {},     -- current sellable list
     offset        = 0,      -- index of first visible item (0-based)
     posted        = nil,    -- { bag, slot } currently loaded in the native sell slot, or nil
+    justPosted    = nil,    -- { bag, slot, link, count } just sent to auction, until the bag drops it
+    lastCleared   = nil,    -- what the sell slot held when it last emptied, and when (GetTime)
+    lastClearedAt = nil,
     hooked        = false,
     pending       = {},     -- itemIDs whose GetItemInfo returned nil (cache miss); cleared each CollectItems
     refreshTimer  = nil,    -- debounce handle for GET_ITEM_INFO_RECEIVED bursts
@@ -100,7 +103,10 @@ local function ShowButtonTooltip(button)
     -- being checked at that moment. The same item's tooltip is one hover away on Blizzard's own
     -- sell-slot icon. Every other strip icon keeps its tooltip, anchored as before. IsOwned, so
     -- the hide only ever removes OUR tooltip (the Render path re-calls this after a load).
-    if button.isPosted then
+    -- Likewise the stack JUST sent to auction (v1.60.1, owner's request): the sell slot empties the
+    -- moment Create Auction is pressed, but the stack stays in the bag until the server takes it
+    -- (BAG_UPDATE_DELAYED, about a second), and its tooltip used to come back for that second.
+    if button.isPosted or button.justPosted then
         if GameTooltip:IsOwned(button) then GameTooltip:Hide() end
         return
     end
@@ -469,6 +475,8 @@ local function SetButton(button, data)
         and state.posted.bag == data.bag and state.posted.slot == data.slot
     button.icon:SetDesaturated(isPosted and true or false)
     button.isPosted = isPosted and true or false   -- read by ShowButtonTooltip
+    local jp = state.justPosted
+    button.justPosted = (jp and jp.bag == data.bag and jp.slot == data.slot) and true or false
     WireSecureClicks(button, data, isPosted)
     if data.count and data.count > 1 then
         button.count:SetText(data.count)
@@ -744,9 +752,32 @@ local function Build()
             if sellFrame and sellFrame.SetItem then
                 hooksecurefunc(sellFrame, "SetItem", function(_, itemLocation)
                     if itemLocation == nil and state.posted then
+                        state.lastCleared, state.lastClearedAt = state.posted, GetTime()
                         state.posted = nil
                         Render()
                     end
+                end)
+            end
+            -- v1.60.1: a POST empties the slot through the sell frame's ClearPost, which calls the
+            -- SetItem(nil) above and returns (Blizzard_AuctionHouseItemSellFrame.lua:489-524,
+            -- Blizzard_AuctionHouseCommoditiesSellFrame.lua:118-151; Create Auction and the
+            -- confirm popup both end in ClearPost). Removing the item by hand never goes through
+            -- ClearPost. So a ClearPost in the same frame as that SetItem(nil) marks the stack
+            -- just posted: no tooltip on it until the bag drops it (BAG_UPDATE_DELAYED below), or
+            -- for 3 s at most (a post the server refused leaves the stack where it was).
+            if sellFrame and sellFrame.ClearPost then
+                hooksecurefunc(sellFrame, "ClearPost", function()
+                    local c = state.lastCleared
+                    if not (c and state.lastClearedAt == GetTime()) then return end
+                    state.lastCleared = nil
+                    local info = C_Container.GetContainerItemInfo(c.bag, c.slot)
+                    local jp = { bag = c.bag, slot = c.slot,
+                                 link = info and info.hyperlink, count = info and info.stackCount }
+                    state.justPosted = jp
+                    C_Timer.After(3, function()
+                        if state.justPosted == jp then state.justPosted = nil; Render() end
+                    end)
+                    Render()
                 end)
             end
         end
@@ -930,6 +961,16 @@ loader:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 == "Blizzard_AuctionHouseUI" then Build() end
     elseif event == "BAG_UPDATE_DELAYED" then
+        -- The just-posted stack stays marked only while its slot still holds exactly what was
+        -- posted (an unrelated bag change in that second must not bring its tooltip back); gone,
+        -- or fewer left after part of a stack was posted, and it is an ordinary strip item again.
+        local jp = state.justPosted
+        if jp then
+            local info = C_Container.GetContainerItemInfo(jp.bag, jp.slot)
+            if not info or info.hyperlink ~= jp.link or info.stackCount ~= jp.count then
+                state.justPosted = nil
+            end
+        end
         Refresh()
     elseif event == "GET_ITEM_INFO_RECEIVED" then
         -- arg1 is the itemID whose data just landed. Only act if it was one of
