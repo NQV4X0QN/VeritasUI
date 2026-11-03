@@ -446,7 +446,7 @@ end
 -- Diagnosis only: /reload afterwards. Walks categories the way search does (:604-610).
 local PROBE_KEYS = { "searchTags", "searchIgnoredLayouts", "parentInitializer", "shownPredicates", "data" }
 function VUI.ProbeSearchTaint()
-    local panel = _G.SettingsPanel
+    local panel, issecurevariable = _G.SettingsPanel, _G.issecurevariable
     if not (panel and panel.GetAllCategories and issecurevariable) then
         print("VeritasUI probe: SettingsPanel or issecurevariable missing"); return
     end
