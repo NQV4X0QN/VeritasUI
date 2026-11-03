@@ -298,8 +298,8 @@ VUI.QoL_WhisperSoundDropdown = function(category, db, addonName, coverLayout)
     -- coverLayout (TRIAL, 2026-11-03): Lib's cover dropdown, no Blizzard dropdown row (taint note in
     -- VeritasUI_Lib/SettingsCoverDropdown.lua).
     if coverLayout and VUI.AddCoverDropdown then
-        VUI.AddCoverDropdown(coverLayout, { setting = setting, name = "Whisper Sound", getOptions = Options,
-            tooltip = tip })
+        VUI.AddCoverDropdown(coverLayout, { category = category, setting = setting, name = "Whisper Sound",
+            getOptions = Options, tooltip = tip })
         return
     end
     Settings.CreateDropdown(category, setting, Options, tip)

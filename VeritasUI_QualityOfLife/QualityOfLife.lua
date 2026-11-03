@@ -4441,13 +4441,14 @@ local function InitializeOptions()
         .. "when they are all there, a red X when one is missing. Hover it to see which.",
         CharSheetChanged)
 
-    -- Sub-option, indented under its parent and greyed while the parent is off -- Blizzard's own
-    -- nesting (SettingsElementHierarchyMixin:SetParentInitializer, Blizzard_SettingControls.lua:120).
+    -- Sub-option, indented under its parent and greyed while the parent is off: VUI.SettingsSubOption (Blizzard's
+    -- Indent + AddEvaluateStateCVar), NOT SetParentInitializer -- Options search reads a matched row's
+    -- parentInitializer, and written from our code that taints the search (VeritasUI_Lib/SettingsCoverDropdown.lua).
     local labelInit = AddCheckbox("charLabelClassColor", "Class-Colored Labels",
         "In that icon's tooltip, shows the words \"Enchant:\" and \"Gem:\" in your class colour.",
         CharSheetChanged)
-    if labelInit and labelInit.SetParentInitializer and enchantsInit then
-        labelInit:SetParentInitializer(enchantsInit, function() return db.charEnchants end)
+    if labelInit and enchantsInit and VUI.SettingsSubOption then
+        VUI.SettingsSubOption(labelInit, ADDON_NAME .. "_charEnchants", function() return db.charEnchants end)
     end
 
     AddCheckbox("charDurability", "Show Durability on Character Sheet",
@@ -4518,7 +4519,7 @@ local function InitializeOptions()
     local repairTip = TipWithReason("Guild + Personal uses guild funds first when your guild allows it, then "
         .. "your own gold. Personal Only always uses your own gold.", "autoRepair")
     if TRIAL_COVER_ONLY and VUI.AddCoverDropdown then
-        VUI.AddCoverDropdown(layout, { setting = repairSetting, name = "Repair Funding",
+        VUI.AddCoverDropdown(layout, { category = category, setting = repairSetting, name = "Repair Funding",
             getOptions = GetRepairFundingOptions, tooltip = repairTip,
             isEnabled = function() return not OptionUnavailable("autoRepair") end })
     else
@@ -4661,8 +4662,8 @@ local function InitializeOptions()
     local resCombatInit = AddCheckbox("autoAcceptResCombat", "Also in Combat",
         "Also accepts a resurrection cast during combat, such as a battle resurrection in a raid or "
         .. "Mythic+ dungeon.")
-    if resCombatInit and resCombatInit.SetParentInitializer and resInit then
-        resCombatInit:SetParentInitializer(resInit, function() return db.autoAcceptRes end)
+    if resCombatInit and resInit and VUI.SettingsSubOption then
+        VUI.SettingsSubOption(resCombatInit, ADDON_NAME .. "_autoAcceptRes", function() return db.autoAcceptRes end)
     end
 
     AddCheckbox("autoUnwrapCollections", "Auto Unwrap Collections",
@@ -4676,8 +4677,9 @@ local function InitializeOptions()
         function(value) if value and VUI.QoL_OpenContainers then VUI.QoL_OpenContainers() end end)
     local warboundInit = AddCheckbox("autoOpenContainersExcludeWarbound", "Not Warbound Containers",
         "Leaves warbound containers (bound to your account) for you to open on the character you choose.")
-    if warboundInit and warboundInit.SetParentInitializer and openInit then
-        warboundInit:SetParentInitializer(openInit, function() return db.autoOpenContainers end)
+    if warboundInit and openInit and VUI.SettingsSubOption then
+        VUI.SettingsSubOption(warboundInit, ADDON_NAME .. "_autoOpenContainers",
+            function() return db.autoOpenContainers end)
     end
 
     Header("Chat")

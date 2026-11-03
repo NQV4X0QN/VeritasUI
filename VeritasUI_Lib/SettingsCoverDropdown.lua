@@ -18,13 +18,18 @@
 -- a menu. A frame of ours parented to SettingsPanel (not to the list) draws the label and the dropdown where
 -- Blizzard's sit and opens our own pop-out. Nothing is written on Blizzard's frames and Blizzard's menu is never
 -- opened.
--- ⚠ NOT SEARCHABLE, on purpose (owner's repro, 2026-11-03: Options search "repair" -> Nameplates > Style -> Social
--- popup, "VeritasUI_Lib"). Every search reads the search tags of EVERY initializer on every list page
+-- ⚠ SEARCH TAGS (owner's repro, 2026-11-03: Options search "repair" -> Nameplates > Style -> Social popup,
+-- "VeritasUI_Lib"). Every search reads the search tags of EVERY initializer on every list page
 -- (SettingsPanelMixin:FindInitializersMatchingSearchText -> MatchesSearchTags, Blizzard_SettingsPanel.lua:575-610,
 -- Blizzard_Settings.lua:65-77). Tags added from addon code (initializer:AddSearchTags) are written tainted, so the
--- search runs tainted from the first one it reads and draws its results tainted. Blizzard adds tags safely only
--- inside its own secure handler, from the setting's name (Blizzard_SettingsInbound.lua:229-238), and these rows have
--- no setting (a setting would make the header show its name as a large title, :95-97). Never call AddSearchTags.
+-- search runs tainted from the first one it reads and draws its results tainted. Never call AddSearchTags.
+-- Blizzard adds tags safely only inside its own secure handler, from data.setting's name, read through
+-- securecallfunction (Blizzard_SettingsInbound.lua:229-238). So each row gets its own TAG SETTING: a proxy setting
+-- whose name is a function (allowed for proxy settings, wrapped by Blizzard, :117-123; GetOrCallName,
+-- Blizzard_Setting.lua:12-17) returning the label while the initializer is made and "" afterwards, so Blizzard's
+-- handler tags the row with the label and the header row, which shows its setting's name, shows nothing
+-- (SettingsListSectionHeaderMixin:Init, Blizzard_SettingControls.lua:95-97). The tag setting holds no value.
+-- UNMEASURED (2026-11-03): that a tag made this way is untainted -- the owner's search test decides it.
 -- ⚠ NOT the bare SettingsListElementTemplate (owner's Lua error, 2026-11-03): that template has no OnLoad in its
 -- XML (:50-77; only the templates inheriting it run SettingsListElementMixin:OnLoad), so `cbrHandles` is never
 -- made and its Init fails at Blizzard_SettingControls.lua:306. That is why no Blizzard page uses it bare.
@@ -351,9 +356,9 @@ local function NewCover(init)
     c.Text:SetJustifyH("CENTER")
     -- The row label, drawn by us because the header row under it has an empty title: GameFontNormal, left
     -- 37 in, ending 85 left of the row's centre (SettingsListElementMixin:Init, Blizzard_SettingControls.lua:331-335).
-    -- A sub-option (spec.sub) is indented 15 and uses GameFontNormalSmall, as a Blizzard row whose parent is on
-    -- the page (:331, GetIndent :230-232, indentSize :1).
-    c.Label = c:CreateFontString(nil, "OVERLAY", c.entry.sub and "GameFontNormalSmall" or "GameFontNormal")
+    -- A sub-option (spec.sub) is indented 15 in the same font, as a Blizzard row indented with Indent() and no
+    -- parent link (GetIndent :230-232, indentSize :1; font :331) -- see VUI.SettingsSubOption below.
+    c.Label = c:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     c.Label:SetJustifyH("LEFT")
     c.Label:SetWordWrap(false)
     c.Label:SetText(c.entry.name or "")
@@ -417,12 +422,31 @@ local function StartTracking()
 end
 
 -- Adds the row to `layout` and returns its initializer.
--- spec = { setting = <Settings.RegisterAddOnSetting result>, name = "Label", getOptions = function()
---          return Settings.CreateControlTextContainer() data end, tooltip = "text", isEnabled = function?,
---          sub = true for a sub-option (indented, smaller label; greying comes from isEnabled) }
+-- spec = { category = <the page's category>, setting = <Settings.RegisterAddOnSetting result>, name = "Label",
+--          getOptions = function() return Settings.CreateControlTextContainer() data end, tooltip = "text",
+--          isEnabled = function?, sub = true for a sub-option (indented; greying comes from isEnabled) }
+local tagging, tagCount = false, 0
+local function TagSetting(category, label)
+    if not (category and Settings.RegisterProxySetting) then return nil end
+    tagCount = tagCount + 1
+    local function Name() return tagging and label or "" end
+    local ok, s = pcall(Settings.RegisterProxySetting, category, "VeritasUI_SearchTag" .. tagCount, "boolean", Name,
+        false, function() return false end, function() end)
+    return ok and s or nil
+end
+
 function VUI.AddCoverDropdown(layout, spec)
     if not (layout and layout.AddInitializer and Settings and Settings.CreateElementInitializer) then return nil end
-    local init = Settings.CreateElementInitializer("SettingsListSectionHeaderTemplate",
+    local tag = Settings.CreateSettingInitializer and TagSetting(spec.category, spec.name)
+    local init
+    if tag then
+        tagging = true
+        local ok, made = pcall(Settings.CreateSettingInitializer, "SettingsListSectionHeaderTemplate",
+            { setting = tag, tooltip = spec.tooltip })
+        tagging = false
+        init = ok and made or nil
+    end
+    init = init or Settings.CreateElementInitializer("SettingsListSectionHeaderTemplate",
         { name = "", tooltip = spec.tooltip })
     entries[init] = {
         setting = spec.setting, name = spec.name, tooltip = spec.tooltip,
@@ -431,4 +455,19 @@ function VUI.AddCoverDropdown(layout, spec)
     layout:AddInitializer(init)
     StartTracking()
     return init
+end
+
+-- A sub-option the way Blizzard's own pages indent one without a parent link (Nameplates.lua:435-465 Indent();
+-- AdvancedOptions.lua:172-182 AddEvaluateStateCVar): indented 15, greyed by `isOn`, and re-checked the moment
+-- the parent setting `parentVariable` changes (SettingsListElementMixin:Init, Blizzard_SettingControls.lua:324-
+-- 329: the "cvar" is any setting variable in Settings' callback registry).
+-- ⚠ NOT SetParentInitializer: Options search reads `initializer.parentInitializer` of every match
+-- (Blizzard_SettingsPanel.lua:674-675). Written from our code it is tainted, and the search runs tainted
+-- (owner's taint 2.log, 2026-11-03: L233371 reading parentInitializer, then SettingsPanel.lua:695 DisplayLayout
+-- wrote the list's updateLock tainted, L357077).
+function VUI.SettingsSubOption(init, parentVariable, isOn)
+    if type(init) ~= "table" then return end
+    if init.Indent then init:Indent() end
+    if isOn and init.AddModifyPredicate then init:AddModifyPredicate(isOn) end
+    if parentVariable and init.AddEvaluateStateCVar then init:AddEvaluateStateCVar(parentVariable) end
 end

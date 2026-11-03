@@ -1884,8 +1884,8 @@ local function InitializeOptions()
         opts = opts or {}
         if TRIAL_COVER_ONLY and VUI.AddCoverDropdown then
             local key, parentOn = opts.unavailableKey, opts.isEnabled
-            return VUI.AddCoverDropdown(layout, { setting = setting, name = name, getOptions = getOptions,
-                tooltip = TipWithReason(tip, key), sub = opts.sub,
+            return VUI.AddCoverDropdown(layout, { category = category, setting = setting, name = name,
+                getOptions = getOptions, tooltip = TipWithReason(tip, key), sub = opts.sub,
                 isEnabled = function()
                     if key and Unavailable(key) then return false end
                     return not parentOn or parentOn()
@@ -2093,11 +2093,13 @@ local function InitializeOptions()
             GreyIfUnavailable(init, opt.key)
             inits[opt.key] = init
             -- A refinement is a sub-option: indented under its parent and greyed while the parent is
-            -- off (Blizzard_SettingControls.lua:120), as Quality of Life does.
+            -- off. VUI.SettingsSubOption, NOT SetParentInitializer: Options search reads a matched row's
+            -- parentInitializer, and written from our code that taints the search (SettingsCoverDropdown.lua).
             local parentInit = opt.parent and inits[opt.parent]
-            if parentInit and init.SetParentInitializer then
+            if parentInit and VUI.SettingsSubOption then
                 local parentOwner = PERCHAR[opt.parent] ~= nil and cdb or db
-                init:SetParentInitializer(parentInit, function() return parentOwner[opt.parent] end)
+                VUI.SettingsSubOption(init, ADDON_NAME .. "_" .. opt.parent,
+                    function() return parentOwner[opt.parent] end)
             end
           end
         end
@@ -2184,13 +2186,14 @@ local function InitializeOptions()
     end
 
     -- ── Fade Objective Tracker's sub-options (v1.51.0): In Raids, then a faded-opacity slider for each
-    -- section, all indented under Fade Objective Tracker and greyed while it is off (SetParentInitializer,
-    -- Blizzard_SettingControls.lua:120). Every value is read by the tracker's poll, so all apply at once.
+    -- section, all indented under Fade Objective Tracker and greyed while it is off (VUI.SettingsSubOption, not
+    -- SetParentInitializer: see AddCheckboxes). Every value is read by the tracker's poll, so all apply at once.
     function BuildTrackerSectionOptions()
         local parentInit = inits.fadeObjectiveTracker
         local function Under(init)
-            if parentInit and init and init.SetParentInitializer then
-                init:SetParentInitializer(parentInit, function() return db.fadeObjectiveTracker end)
+            if parentInit and init and VUI.SettingsSubOption then
+                VUI.SettingsSubOption(init, ADDON_NAME .. "_fadeObjectiveTracker",
+                    function() return db.fadeObjectiveTracker end)
             end
         end
         local raidSetting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_fadeObjectiveTrackerRaid",

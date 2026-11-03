@@ -332,8 +332,8 @@ VUI.QoL_NpcOptionsDropdown = function(category, db, addonName, TipWithReason, co
     -- coverLayout (TRIAL, 2026-11-03): Lib's cover dropdown, no Blizzard dropdown row (taint note in
     -- VeritasUI_Lib/SettingsCoverDropdown.lua).
     if coverLayout and VUI.AddCoverDropdown then
-        VUI.AddCoverDropdown(coverLayout, { setting = setting, name = "Quest Options", getOptions = GetOptions,
-            tooltip = TipWithReason(tip, "npcOptions") })
+        VUI.AddCoverDropdown(coverLayout, { category = category, setting = setting, name = "Quest Options",
+            getOptions = GetOptions, tooltip = TipWithReason(tip, "npcOptions") })
         return
     end
     Settings.CreateDropdown(category, setting, GetOptions, TipWithReason(tip, "npcOptions"))
