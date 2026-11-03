@@ -325,21 +325,34 @@ local function HandlesGlobalMouseEvent(_, buttonName, event)
     return event == "GLOBAL_MOUSE_DOWN" and buttonName == "LeftButton"
 end
 
--- The dropdown's tooltip: the name in white and the text in gold, as Blizzard's Settings tooltips
--- (Settings.InitTooltip, Blizzard_Settings.lua). Shown on GameTooltip; Blizzard's SettingsTooltip is not used.
+-- The row's tooltips, as Blizzard's Settings tooltips (Settings.InitTooltip, Blizzard_Settings.lua:288-296: the
+-- name as a highlight line, the text as a normal line; DefaultTooltipMixin:OnEnter, Blizzard_SettingControls.lua:
+-- 26-38: ANCHOR_RIGHT, -10, 0 on the hovered frame). On a tooltip of our own built from the same template as
+-- Blizzard's SettingsTooltip (SharedTooltipTemplate, Blizzard_SettingsPanel.xml:115) at its scale, so
+-- Blizzard's SettingsTooltip is never written to.
+local tip
+local function ShowTip(owner, name, text)
+    if not tip then tip = CreateFrame("GameTooltip", "VeritasUI_SettingsTooltip", UIParent, "SharedTooltipTemplate") end
+    local st = _G.SettingsTooltip
+    if st and st.GetEffectiveScale and UIParent.GetEffectiveScale then
+        tip:SetScale(st:GetEffectiveScale() / UIParent:GetEffectiveScale())
+    end
+    tip:SetOwner(owner, "ANCHOR_RIGHT", -10, 0)
+    _G.GameTooltip_AddHighlightLine(tip, name or "")
+    if text then GameTooltip_AddNormalLine(tip, text) end
+    tip:Show()
+end
+local function HideTip() if tip then tip:Hide() end end
+
 local function CoverEnter(c)
     c.over = c.enabled or nil
     Refresh(c)
-    local e = c.entry
-    GameTooltip:SetOwner(c, "ANCHOR_RIGHT", -10, 0)         -- DefaultTooltipMixin:SetDefaultTooltipAnchors
-    GameTooltip_SetTitle(GameTooltip, e.name)
-    if e.tooltip then GameTooltip_AddNormalLine(GameTooltip, e.tooltip) end
-    GameTooltip:Show()
+    ShowTip(c, c.entry.name, c.entry.tooltip)
 end
 local function CoverLeave(c)
     c.over, c.down = nil, nil
     Refresh(c)
-    GameTooltip:Hide()
+    HideTip()
 end
 local function CoverDown(c, button)
     if button == "LeftButton" and c.enabled then c.down = true; Refresh(c) end
@@ -372,6 +385,26 @@ local function NewCover(init, parent)
     c.Label:SetJustifyH("LEFT")
     c.Label:SetWordWrap(false)
     c.Label:SetText(c.entry.name or "")
+    -- The rest of the row is ours too, so the mouse never reaches the header row underneath (its own tooltip
+    -- is anchored to its pushed-out title: far off the panel and titled "..."). `Hover` is where a Blizzard row's
+    -- Tooltip frame sits (row TOPLEFT to 80 left of BOTTOM, Blizzard_SettingControls.xml:57-67): it shows the
+    -- row's tooltip and Blizzard's hover bar (HoverBackgroundTemplate, :5-11: row TOPLEFT -10 to BOTTOMRIGHT -5,
+    -- white at 0.1). `Block` catches the rest of the row and does nothing. Both sit below the dropdown.
+    c.Block = CreateFrame("Frame", nil, parent or _G.SettingsPanel)
+    c.Block:EnableMouse(true)
+    c.Block:Hide()
+    c.Hover = CreateFrame("Frame", nil, parent or _G.SettingsPanel)
+    c.Hover:EnableMouse(true)
+    c.Hover:Hide()
+    c.Hover.Bar = c.Hover:CreateTexture(nil, "BACKGROUND")
+    c.Hover.Bar:SetColorTexture(1, 1, 1, 0.1)
+    c.Hover.Bar:Hide()
+    c.Hover:SetScript("OnEnter", function(h)
+        h.Bar:Show()
+        ShowTip(h, c.entry.name, c.entry.tooltip)
+    end)
+    c.Hover:SetScript("OnLeave", function(h) h.Bar:Hide(); HideTip() end)
+    c:SetScript("OnShow", function(self) self.Block:Show(); self.Hover:Show() end)
     c.HandlesGlobalMouseEvent = HandlesGlobalMouseEvent
     c:SetScript("OnClick", OpenPopout)
     c:SetScript("OnEnter", CoverEnter)
@@ -380,6 +413,7 @@ local function NewCover(init, parent)
     c:SetScript("OnMouseUp", CoverUp)
     c:SetScript("OnHide", function(self)
         self.over, self.down = nil, nil
+        self.Block:Hide(); self.Hover:Hide(); self.Hover.Bar:Hide()
         if self.menu then local m = self.menu; self.menu = nil; pcall(m.Close, m) end
     end)
     c:Hide()
@@ -429,7 +463,20 @@ local function Track()
                     c.Label:SetPoint("LEFT", row, "LEFT", LABEL_X + (c.entry.sub and SUB_INDENT or 0), 0)
                     c.Label:SetPoint("RIGHT", row, "CENTER", LABEL_RIGHT, 0)
                     c:SetFrameStrata(panel:GetFrameStrata())
-                    c:SetFrameLevel(math.max(row:GetFrameLevel() + 10, clip:GetFrameLevel() + 1))
+                    c:SetFrameLevel(math.max(row:GetFrameLevel() + 10, clip:GetFrameLevel() + 3))
+                    local level = c:GetFrameLevel()
+                    c.Block:ClearAllPoints()
+                    c.Block:SetAllPoints(row)
+                    c.Block:SetFrameStrata(panel:GetFrameStrata())
+                    c.Block:SetFrameLevel(level - 2)
+                    c.Hover:ClearAllPoints()
+                    c.Hover:SetPoint("TOPLEFT", row, "TOPLEFT")
+                    c.Hover:SetPoint("BOTTOMRIGHT", row, "BOTTOM", -80, 0)
+                    c.Hover:SetFrameStrata(panel:GetFrameStrata())
+                    c.Hover:SetFrameLevel(level - 1)
+                    c.Hover.Bar:ClearAllPoints()
+                    c.Hover.Bar:SetPoint("TOPLEFT", row, "TOPLEFT", -10, 0)
+                    c.Hover.Bar:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -5, 0)
                     c.lastText = nil
                     Refresh(c)
                 end
