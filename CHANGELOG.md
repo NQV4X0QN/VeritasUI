@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.60.1] - 2026-11-03
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **No tooltip on a stack you've just posted from the sell strip.** After Create Auction the stack stays in the strip for about a second, until it leaves your bag, and its tooltip used to come back for that second. It now stays hidden until the stack goes; what's left of a partly posted stack gets its tooltip back as soon as the count drops, and an item you take out of the sell slot yourself gets its tooltip back at once, as before (`UI/SellStrip.lua`)
+
+
 ## [1.60.0] - 2026-11-03
 
 ### Changed
