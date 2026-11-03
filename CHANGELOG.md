@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.60.0] - 2026-11-03
+
+### Changed
+
+- `VeritasUI_CleanSolo` — **Fade Minimap Buttons replaces Hide Minimap Buttons.** The pieces you pick around the minimap (zone name, clock, calendar, tracking, zoom buttons, addon compartment, expansion summary button, instance difficulty) now fade out instead of disappearing: mouse over the minimap or any of them and they all come back, and a faded one can still be clicked. It sits in the Fade section with its own Faded Opacity slider. Your Hide Minimap Buttons choices carry over at 0%, so nothing looks different until you hover. Applies at once (`CleanSolo.lua`)
+
+
 ## [1.59.0] - 2026-11-03
 
 ### Fixed

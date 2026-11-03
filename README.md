@@ -16,6 +16,7 @@ Hides or fades the parts of the interface you don't need most of the time.
 - **Action Bar 1** fades out unless you're in combat or mousing over it, and is shown in full while it holds vehicle or quest controls; tick **Show While Flying** (on by default) to keep it up in flight
 - Your **buffs and debuffs** by the minimap fade out unless you're in combat or mousing over them
 - The **minimap alerts** (mail and crafting order icons, and Quality of Life's Great Vault button) fade out until you mouse over them
+- **Fade Minimap Buttons**: pick which pieces around the minimap fade out: zone name, clock, calendar, tracking, zoom buttons, addon compartment, expansion summary button and instance difficulty. Mouse over the minimap or any of them and they all come back; a faded one can still be clicked. Its own slider sets how much still shows. Applies at once
 - The **damage meter** fades out unless you're in combat or mousing over it
 - The **objective tracker** (All Objectives) fades out until you mouse over it, each section (quests, world quests, campaign, scenario and the rest) to its own opacity. A section at 0% folds away so the ones below move up; your focused quest stays at full opacity at the top of its section, under its header. Optionally hidden in raids, or only during raid boss fights
 - The **reputation, experience and honor bars** fade out until you mouse over them; tick **Show on Gains** to have them appear for 3 seconds whenever you gain reputation, experience or honor
@@ -24,11 +25,10 @@ Hides or fades the parts of the interface you don't need most of the time.
 - Optionally hides the social button, the chat menu and voice buttons (left shown, they fade with the chat window), the bag bar, and macro names on action buttons
 - Optionally hides the **talking head** story popup and, separately, **mutes its voice**, so you can keep either one
 - Optionally hides the **top banners**, picked by kind from a dropdown: zone names, boss kills and loot, level up, scenario and Delve stages, Delve and event messages (such as Nemesis Strongbox Upgraded), weekly rewards, renown, and everything else
-- **Hide Minimap Buttons**: pick which pieces around the minimap to hide: zone name, clock, calendar, tracking, zoom buttons, addon compartment, expansion summary button and instance difficulty. Applies at once
 - **Hide Transforms**: takes costumes and transformations off you as soon as they land, picked by group: profession gear (on by default, so your own outfit stays while you craft, gather or fish), holiday costumes, toys and consumables. Not in combat; they come off when it ends. If one still shows, `/cs gear` lists what you're wearing
 - Hides red error text — all of it, or only the kinds you pick (combat, spells and cooldowns, items and bags, mail/vendors/bank, looting, mounts and flight paths), so "Internal mail database error." can go while "You are too far away!" stays
 
-Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped under **Fade** and **Hide**. Every dropdown of choices has **None** and **All** at the top. Changes apply after a `/reload`, except Fade Delay, the opacity sliders, Hide Transforms, Hide Minimap Buttons and the Action Bar 1, buffs and debuffs, minimap alerts, damage meter, objective tracker and reputation bar fades, which apply at once.
+Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped under **Fade** and **Hide**. Every dropdown of choices has **None** and **All** at the top. Changes apply after a `/reload`, except Fade Delay, the opacity sliders, Hide Transforms, Fade Minimap Buttons and the Action Bar 1, buffs and debuffs, minimap alerts, damage meter, objective tracker and reputation bar fades, which apply at once.
 
 ### Quality of Life — small conveniences
 - **Item levels** on gear in your bags, bank, warband bank, character panel and at merchants
