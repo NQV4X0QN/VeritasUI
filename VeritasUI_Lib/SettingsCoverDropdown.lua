@@ -175,9 +175,12 @@ local function NewRow(parent)
     b.highlight:SetBlendMode("ADD")
     b.highlight:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
     b.highlight:Hide()
+    -- Fills the whole row, as Blizzard's does: in DarkMenuElementTemplate the texture has no <Anchors>, so XML
+    -- stretches it over its setAllPoints parent and useAtlasSize does not apply (SharedUIPanelTemplates.xml:
+    -- 1457-1466). Anchored at CENTER at the atlas's own size it was a small grey box mid-row (owner, 2026-11-03).
     b.radioBG = b:CreateTexture(nil, "BACKGROUND")
-    b.radioBG:SetAtlas("common-dropdown-customize-mouseover", true)
-    b.radioBG:SetPoint("CENTER")
+    b.radioBG:SetAtlas("common-dropdown-customize-mouseover")
+    b.radioBG:SetAllPoints()
     b.radioBG:SetAlpha(0)
     b.box = b:CreateTexture(nil, "ARTWORK")
     b.box:SetAtlas("common-dropdown-ticksquare", true)
