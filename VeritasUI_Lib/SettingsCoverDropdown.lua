@@ -26,16 +26,20 @@
 -- Blizzard adds tags safely only inside its own secure handler, from data.setting's name, read through
 -- securecallfunction (Blizzard_SettingsInbound.lua:229-238) -- the path every Settings.CreateCheckbox row takes.
 -- So each row gets its own TAG SETTING: an add-on setting on a throwaway table whose name is a plain string (the
--- same SecureUnpackArgs path as every other add-on setting, :208-212) holding the label only inside a hyperlink's
--- link data, "|Hvui:<label>|h|h". The search matches the label inside the tag ("|HVUI:FADE ACTION BARS|H|H"
--- contains "FADE"); the header row, which shows its setting's name (SettingsListSectionHeaderMixin:Init,
--- Blizzard_SettingControls.lua:95-97), draws a link whose shown text is empty. The tag setting holds no value.
+-- same SecureUnpackArgs path as every other add-on setting, :208-212): 400 spaces, then the label. The search
+-- matches the label inside the tag (Blizzard_Settings.lua:65-77, plain find). The header row shows its setting's
+-- name as its title (SettingsListSectionHeaderMixin:Init, Blizzard_SettingControls.lua:95-97, TOPLEFT 7,-16,
+-- SetTextToFit), so the spaces push the label past the list's right edge, where the list's scroll box clips it
+-- (ScrollBoxBaseTemplate clipChildren="true", Blizzard_SharedXML/Shared/Scroll/ScrollBox.xml:20).
+-- ⚠ NOT a hidden hyperlink, "|Hvui:<label>|h|h" (step 7): the header title drew it as raw text
+-- ("|Hvui:Fade Action Bars", owner's screenshots 2026-11-03) on the pages and in search results.
+-- The tag setting holds no value.
 -- ⛔ NEVER a proxy setting with a FUNCTION name (step 5, 2026-11-03): Blizzard calls that function inside its
 -- secure handlers (GetNameType at setting Init, GetName for the tag), so they ran as ours and left Settings' shared
 -- tables tainted; Blizzard's own pages, registered after login, then wrote their rows' search fields as
 -- VeritasUI_Lib -- the owner's `/vui probe search`: 27 Blizzard rows (Combat, General, Graphics) with searchTags /
--- searchIgnoredLayouts / parentInitializer tainted by VeritasUI_Lib, none of ours. Step 4 had none.
--- UNMEASURED (2026-11-03): that the link's shown text is empty in a header title -- the owner's look decides it.
+-- searchIgnoredLayouts / parentInitializer tainted by VeritasUI_Lib, none of ours. Step 7 (plain string): 0.
+-- UNMEASURED (2026-11-03): that leading spaces are drawn as width and the label lands outside the list.
 -- ⚠ NOT the bare SettingsListElementTemplate (owner's Lua error, 2026-11-03): that template has no OnLoad in its
 -- XML (:50-77; only the templates inheriting it run SettingsListElementMixin:OnLoad), so `cbrHandles` is never
 -- made and its Init fails at Blizzard_SettingControls.lua:306. That is why no Blizzard page uses it bare.
@@ -493,13 +497,14 @@ end
 --          getOptions = function() return Settings.CreateControlTextContainer() data end, tooltip = "text",
 --          isEnabled = function?, sub = true for a sub-option (indented; greying comes from isEnabled) }
 local tagCount, tagStore = 0, {}
+local TAG_PAD = string.rep(" ", 400)
 local function TagSetting(category, label)
     if not (category and Settings.RegisterAddOnSetting and type(label) == "string") then return nil end
     tagCount = tagCount + 1
     local key = "tag" .. tagCount
     tagStore[key] = false
     local ok, s = pcall(Settings.RegisterAddOnSetting, category, "VeritasUI_SearchTag" .. tagCount, key, tagStore,
-        "boolean", "|Hvui:" .. label .. "|h|h", false)
+        "boolean", TAG_PAD .. label, false)
     return ok and s or nil
 end
 
