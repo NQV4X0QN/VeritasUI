@@ -99,9 +99,10 @@ local UNIVERSAL = {
     -- hideTransformsMask (derived), like hideTopBannersMask. Replaces hideProfessionGear (v1.27.0, ON
     -- since v1.37.0): Profession Gear stays ticked for new installs; the rest start off.
     hideTransformTypes  = { professions = true },
-    -- v1.50.0: Hide Minimap Buttons dropdown, [buttonId] = true (MINIMAP_BUTTONS). TABLE-typed, PAIRED
-    -- with hideMinimapButtonsMask (derived). Default none.
-    hideMinimapButtons  = {},
+    -- v1.59.0: Fade Minimap Buttons dropdown, [buttonId] = true (MINIMAP_BUTTONS). TABLE-typed, PAIRED
+    -- with fadeMinimapButtonsMask (derived). Default none. Replaces hideMinimapButtons (v1.50.0), whose
+    -- choices it takes on upgrade at 0% opacity.
+    fadeMinimapButtons  = {},
     -- v1.39.0 (owner's request): two more hover fades, applied at once. Universal: the damage meter
     -- and the reputation / experience / honor bars sit in the same place on every character.
     fadeDamageMeter     = true,    -- shown in combat or on hover
@@ -148,6 +149,7 @@ local UNIVERSAL = {
     fadeObjectiveTrackerRaid = "normal",
     fadeAurasOpacity = 0,
     fadeMinimapAlertsOpacity = 0,
+    fadeMinimapButtonsOpacity = 0,
     fadeStatusBarsOpacity  = 0,
     fadeActionBarsOpacity  = 0,
 }
@@ -932,19 +934,23 @@ local function SetHideTransforms()
     end
 end
 
--- ── Feature: Hide Minimap Buttons (v1.50.0, feature batch item 4) ───────
+-- ── Feature: Fade Minimap Buttons (v1.59.0, owner's request; was Hide Minimap Buttons, v1.50.0) ──
 -- Blizzard has no option for these (Edit Mode's Minimap system offers only header position, size and
--- rotation). Each is HIDDEN BY ALPHA 0 + mouse off, never Hide(): Blizzard Shows several of them on its
--- own (zoom buttons on hover, Minimap.lua:276-290; Tracking per game rule, :390/:746/:797; the clock
--- for an alarm, Blizzard_TimeManager.lua:465; the compartment and expansion button from their own
--- refresh, AddonCompartment.lua:141-147, Minimap.lua:866-891), and the expansion button's OnHide drops
--- its EventRegistry callbacks (:901-906). Alpha and mouse are not Lua state and Blizzard writes neither
--- on these frames, so no hook is needed, nothing of Blizzard's runs from our code, and it applies and
--- undoes at once. Mail and crafting orders stay with Fade Minimap Alerts.
+-- rotation). The pieces picked fade out, and hovering the minimap or any of them brings them ALL back
+-- (owner: a button at 0% has to be findable). Each fades by ALPHA only, never Hide(): Blizzard Shows
+-- several of them on its own (zoom buttons on hover, Minimap.lua:276-290; Tracking per game rule,
+-- :390/:746/:797; the clock for an alarm, Blizzard_TimeManager.lua:465; the compartment and expansion
+-- button from their own refresh, AddonCompartment.lua:141-147, Minimap.lua:866-891), and the expansion
+-- button's OnHide drops its EventRegistry callbacks (:901-906). Blizzard never sets these frames' alpha
+-- (no SetAlpha on them in Blizzard_Minimap or Blizzard_TimeManager), and the mouse is left on so a faded
+-- piece can still be clicked. Mail and crafting orders stay with Fade Minimap Alerts. The fade itself
+-- (SetupMinimapButtonsFade) sits below SetupLiveFade.
+-- One frame per piece where a piece is a parent and its child (Tracking holds Tracking.Button,
+-- Minimap.xml:51-81): fading both would multiply their alphas.
 local MINIMAP_BUTTONS = {
     { id = "zone",       label = "Zone Name", tip = "The zone name above the minimap.",
       frames = function() local c = _G.MinimapCluster; return c and { c.BorderTop, c.ZoneTextButton } end },
-    { id = "clock",      label = "Clock", tip = "The clock. A hidden clock's alarm still plays its sound.",
+    { id = "clock",      label = "Clock", tip = "The clock. A faded clock's alarm still plays its sound.",
       -- Blizzard_TimeManager is load-on-demand
       frames = function() return { _G.TimeManagerClockButton } end },
     { id = "calendar",   label = "Calendar", tip = "The calendar button.",
@@ -952,7 +958,7 @@ local MINIMAP_BUTTONS = {
     { id = "tracking",   label = "Tracking", tip = "The tracking button.",
       frames = function()
           local t = _G.MinimapCluster and _G.MinimapCluster.Tracking
-          return t and { t, t.Button }
+          return t and { t }
       end },
     { id = "zoom",       label = "Zoom Buttons", tip = "The + and - buttons shown when you hover the minimap.",
       frames = function() local m = _G.Minimap; return m and { m.ZoomIn, m.ZoomOut } end },
@@ -964,37 +970,6 @@ local MINIMAP_BUTTONS = {
     { id = "difficulty", label = "Instance Difficulty", tip = "The difficulty shown in a dungeon, raid or Delve.",
       frames = function() local c = _G.MinimapCluster; return c and { c.InstanceDifficulty } end },
 }
-
-local minimapMouse = setmetatable({}, { __mode = "k" })   -- [frame] = its mouse state before we hid it
-
-local function ApplyMinimapButtons()
-    for _, b in ipairs(MINIMAP_BUTTONS) do
-        local hide = db.hideMinimapButtons[b.id] and true or false
-        for _, f in ipairs(b.frames() or {}) do
-            if f and f.SetAlpha then
-                if hide then
-                    if minimapMouse[f] == nil and f.IsMouseEnabled then
-                        local ok, on = pcall(f.IsMouseEnabled, f)
-                        minimapMouse[f] = ok and on or false
-                    end
-                    f:SetAlpha(0)
-                    if f.EnableMouse then pcall(f.EnableMouse, f, false) end
-                elseif minimapMouse[f] ~= nil then
-                    f:SetAlpha(1)
-                    if f.EnableMouse then pcall(f.EnableMouse, f, minimapMouse[f]) end
-                    minimapMouse[f] = nil
-                end
-            end
-        end
-    end
-end
-
--- The clock exists only once Blizzard_TimeManager loads.
-local minimapLoader = CreateFrame("Frame")
-minimapLoader:RegisterEvent("ADDON_LOADED")
-minimapLoader:SetScript("OnEvent", function(_, _, name)
-    if name == "Blizzard_TimeManager" and db and db.hideMinimapButtons then ApplyMinimapButtons() end
-end)
 
 -- /cs gear: what is on you now, so a profession whose outfit still shows can be identified.
 -- Lists the listed outfit auras found, then every buff's name and spell ID (scan pcall'd: aura
@@ -1650,6 +1625,44 @@ local function SetupMinimapAlertsFade()
         true, Opacity("fadeMinimapAlertsOpacity"))
 end
 
+-- Fade Minimap Buttons (MINIMAP_BUTTONS above). Each picked piece gets its own live fade the first time
+-- it is picked; unpicked later, its shouldShow holds it at full opacity. Shown while the mouse is on the
+-- minimap or on any picked piece, so hovering one brings back all. Poll only (noEnterHook), as for the
+-- alerts: every piece is a child of MinimapCluster, an Edit Mode system frame (landmine 114).
+local function MinimapButtonsHovered()
+    local m = _G.Minimap
+    if m and m.IsMouseOver and m:IsMouseOver() then return true end
+    for _, b in ipairs(MINIMAP_BUTTONS) do
+        if db.fadeMinimapButtons[b.id] then
+            for _, f in ipairs(b.frames() or {}) do
+                if f and f.IsVisible and f:IsVisible() and f:IsMouseOver() then return true end
+            end
+        end
+    end
+    return false
+end
+
+local function SetupMinimapButtonsFade()
+    for _, b in ipairs(MINIMAP_BUTTONS) do
+        if db.fadeMinimapButtons[b.id] then
+            local id = b.id
+            SetupLiveFade("fadeMinimapButtons_" .. id, b.frames() or {},
+                function() return not db.fadeMinimapButtons[id] or MinimapButtonsHovered() end,
+                true, Opacity("fadeMinimapButtonsOpacity"))
+        end
+    end
+end
+
+-- The clock exists only once Blizzard_TimeManager loads. (Unavailable is declared further down, so
+-- the check is spelled out here.)
+local minimapLoader = CreateFrame("Frame")
+minimapLoader:RegisterEvent("ADDON_LOADED")
+minimapLoader:SetScript("OnEvent", function(_, _, name)
+    if name ~= "Blizzard_TimeManager" or not (db and db.fadeMinimapButtons) then return end
+    if VUI.OptionUnavailable and VUI.OptionUnavailable(ADDON_NAME, "fadeMinimapButtons") then return end
+    SetupMinimapButtonsFade()
+end)
+
 -- Shown in full while the game puts vehicle or quest controls on it (v1.45.0, owner's request).
 -- Blizzard swaps Action Bar 1's page to the vehicle, override or temporary-shapeshift bar when there
 -- is one without its own art (ActionBarController_UpdateAll, Blizzard_ActionBarController
@@ -1907,6 +1920,7 @@ local function InitializeOptions()
     end
 
     local BuildTrackerSectionOptions   -- defined below, called from AddCheckboxes
+    local BuildMinimapButtonsDropdown  -- likewise
     local FADE_OPTIONS = {
         { key = "fadeChatTabs",        name = "Fade Chat Window",
           tip = "The chat window's background, its tabs and the chat buttons you haven't hidden "
@@ -1933,6 +1947,9 @@ local function InitializeOptions()
              .. "out unless you're mousing over them. Applies at once.",
           apply = function(value) if value then SetupMinimapAlertsFade() end end,
           opacity = "fadeMinimapAlertsOpacity" },
+        -- v1.59.0: a tick-box dropdown + its own opacity slider (BuildMinimapButtonsDropdown below).
+        -- Replaces Hide Minimap Buttons. Applies at once.
+        { key = "fadeMinimapButtons", build = function() BuildMinimapButtonsDropdown() end },
         { key = "fadeDamageMeter",     name = "Fade Damage Meter",
           tip = "The damage meter fades out unless you're in combat or mousing over it. Applies at once.",
           apply = function(value) if value then SetupDamageMeterFade() end end,
@@ -1965,7 +1982,6 @@ local function InitializeOptions()
     }
     local BuildTopBannersDropdown   -- defined after the Fade section, called from AddCheckboxes
     local BuildTransformsDropdown   -- likewise
-    local BuildMinimapButtonsDropdown
     local HIDE_OPTIONS = {
         { key = "hideSocialButton",    name = "Hide Social Button",
           tip = "Hides the Quick Join / Communities toast button. Left shown, it fades with the "
@@ -1980,8 +1996,6 @@ local function InitializeOptions()
              .. "deafen buttons shown while you are in a voice channel. Left shown, they fade with "
              .. "the chat window while Fade Chat Window is on. "
              .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
-        -- v1.50.0: a tick-box dropdown (BuildMinimapButtonsDropdown below). Applies at once.
-        { key = "hideMinimapButtons", build = function() BuildMinimapButtonsDropdown() end },
         { key = "hideBagButtons",      name = "Hide Bag Buttons",
           tip = "Hides the bag bar buttons. You can still open bags with B. "
              .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
@@ -2223,6 +2237,32 @@ local function InitializeOptions()
         end
     end
 
+    -- ── Fade Minimap Buttons — tick-box dropdown, UNIVERSAL (mask paired with fadeMinimapButtons), then
+    -- its faded-opacity slider, indented under it and greyed while nothing is picked.
+    function BuildMinimapButtonsDropdown()
+        local init = KindsDropdown({
+            setting = ADDON_NAME .. "_fadeMinimapButtons", maskKey = "fadeMinimapButtonsMask",
+            owner = db,              -- UNIVERSAL: paired with fadeMinimapButtons
+            setMask = function(v) db.fadeMinimapButtonsMask = v end,
+            name = "Fade Minimap Buttons", items = MINIMAP_BUTTONS, truth = db.fadeMinimapButtons,
+            unavailableKey = "fadeMinimapButtons",
+            tip = "Pick the buttons and labels around the minimap to fade out. Mouse over the minimap and "
+               .. "they all come back; a faded one can still be clicked. Applies at once.",
+            onChanged = function()
+                if not Unavailable("fadeMinimapButtons") then SetupMinimapButtonsFade() end
+            end,
+        })
+        local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_fadeMinimapButtonsOpacity",
+            "fadeMinimapButtonsOpacity", db, "number", "Faded Opacity", UNIVERSAL.fadeMinimapButtonsOpacity)
+        local slider = Settings.CreateSlider(category, setting, OpacitySliderOptions(),
+            "How much of the picked minimap buttons still shows while faded. At 0% they are hidden "
+            .. "until you mouse over the minimap. Applies at once.")
+        GreyIfUnavailable(slider, "fadeMinimapButtons")
+        if init and slider and slider.SetParentInitializer then
+            slider:SetParentInitializer(init, function() return next(db.fadeMinimapButtons) ~= nil end)
+        end
+    end
+
     Header("Fade")
     AddCheckboxes(FADE_OPTIONS)
 
@@ -2295,21 +2335,6 @@ local function InitializeOptions()
         })
     end
 
-    -- ── Hide Minimap Buttons — tick-box dropdown, UNIVERSAL (mask paired with hideMinimapButtons).
-    function BuildMinimapButtonsDropdown()
-        KindsDropdown({
-            setting = ADDON_NAME .. "_hideMinimapButtons", maskKey = "hideMinimapButtonsMask",
-            owner = db,              -- UNIVERSAL: paired with hideMinimapButtons
-            setMask = function(v) db.hideMinimapButtonsMask = v end,
-            name = "Hide Minimap Buttons", items = MINIMAP_BUTTONS, truth = db.hideMinimapButtons,
-            unavailableKey = "hideMinimapButtons",
-            tip = "Pick the buttons and labels around the minimap to hide. A hidden one can't be clicked. "
-               .. "Applies at once.",
-            onChanged = function()
-                if not Unavailable("hideMinimapButtons") then ApplyMinimapButtons() end
-            end,
-        })
-    end
 
     -- ── Hide Transforms — tick-box dropdown, UNIVERSAL (mask paired with hideTransformTypes). Applies at
     -- once: SetHideTransforms only changes which aura IDs the UNIT_AURA handler removes.
@@ -2503,6 +2528,15 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             db.hideTransformTypes.professions = (db.hideProfessionGear == true) or nil
             db.hideProfessionGear = nil
         end
+        -- v1.59.0: Hide Minimap Buttons becomes Fade Minimap Buttons at 0%, so each piece looks as it did
+        -- and now comes back on hover. Only into an empty choice, so it runs once.
+        if type(db.hideMinimapButtons) == "table" then
+            if next(db.fadeMinimapButtons) == nil and next(db.hideMinimapButtons) ~= nil then
+                for id, on in pairs(db.hideMinimapButtons) do db.fadeMinimapButtons[id] = on or nil end
+                db.fadeMinimapButtonsOpacity = 0
+            end
+        end
+        db.hideMinimapButtons, db.hideMinimapButtonsMask = nil, nil
         InitializeOptions()
         -- Before any fader runs, so the first fade of the session already uses it.
         if VUI.SetFadeDelay then VUI.SetFadeDelay(db.fadeDelay) end
@@ -2522,9 +2556,6 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             or (db.muteTalkingHead and not Unavailable("muteTalkingHead")) then SetupTalkingHead() end
         if next(db.hideTopBannerTypes) ~= nil and not Unavailable("hideTopBanners") then HideTopBanners() end
         if not Unavailable("hideProfessionGear") then SetHideTransforms() end
-        if next(db.hideMinimapButtons) ~= nil and not Unavailable("hideMinimapButtons") then
-            ApplyMinimapButtons()
-        end
         if db.hideErrorText       then HideErrorText()
         else                           HideErrorTypes()      end
         if not Unavailable("fadeActionBars") then SetupActionBarFading() end
@@ -2532,6 +2563,9 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.fadeDamageMeter and not Unavailable("fadeDamageMeter") then SetupDamageMeterFade() end
         if db.fadeAuras and not Unavailable("fadeAuras") then SetupAuraFade() end
         if db.fadeMinimapAlerts and not Unavailable("fadeMinimapAlerts") then SetupMinimapAlertsFade() end
+        if next(db.fadeMinimapButtons) ~= nil and not Unavailable("fadeMinimapButtons") then
+            SetupMinimapButtonsFade()
+        end
         if db.fadeObjectiveTracker and not Unavailable("fadeObjectiveTracker") then SetupObjectiveTrackerFade() end
         if db.fadeStatusBars and not Unavailable("fadeStatusBars") then SetupStatusBarFade() end
 
