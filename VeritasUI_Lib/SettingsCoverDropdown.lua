@@ -338,8 +338,8 @@ local function CoverUp(c)
     if c.down then c.down = nil; Refresh(c) end
 end
 
-local function NewCover(init)
-    local c = CreateFrame("Button", nil, _G.SettingsPanel)
+local function NewCover(init, parent)
+    local c = CreateFrame("Button", nil, parent or _G.SettingsPanel)
     c.init, c.entry = init, entries[init]
     c:SetSize(DD_W, DD_H)
     c:EnableMouse(true)
@@ -378,19 +378,38 @@ end
 
 -- Each frame while Options is open: put a cover where Blizzard's dropdown would be on every row of ours that
 -- is on screen, hide the rest. Reads the list's rows only; writes nothing on them.
+-- The covers live in a frame of ours laid over the list's scroll box that clips its children, so a row half
+-- scrolled out is cut at the list's edge as Blizzard's rows are (owner's screenshot, 2026-11-03: Hide Transforms
+-- drawn below the bottom edge). Anchoring to the scroll box writes nothing on it.
 local seen = {}
+local clipper
+local function Clipper(panel, scrollBox)
+    if not clipper then
+        clipper = CreateFrame("Frame", nil, panel)
+        clipper:SetClipsChildren(true)
+    end
+    if scrollBox and clipper.box ~= scrollBox then
+        clipper.box = scrollBox
+        clipper:ClearAllPoints()
+        clipper:SetAllPoints(scrollBox)
+        clipper:SetFrameStrata(panel:GetFrameStrata())
+        clipper:SetFrameLevel(scrollBox:GetFrameLevel() + 5)
+    end
+    return clipper
+end
 local function Track()
     local panel = _G.SettingsPanel
     local ok, list = pcall(panel.GetSettingsList, panel)
     local target = ok and list and list.ScrollBox and list.ScrollBox.ScrollTarget
     wipe(seen)
     if target then
+        local clip = Clipper(panel, list.ScrollBox)
         for _, row in ipairs({ target:GetChildren() }) do
             local get = row.GetElementData
             local init = get and row:IsVisible() and get(row)
             if init and entries[init] then
                 seen[init] = true
-                local c = covers[init] or NewCover(init)
+                local c = covers[init] or NewCover(init, clip)
                 covers[init] = c
                 if c.row ~= row then
                     c.row = row
@@ -400,7 +419,7 @@ local function Track()
                     c.Label:SetPoint("LEFT", row, "LEFT", LABEL_X + (c.entry.sub and SUB_INDENT or 0), 0)
                     c.Label:SetPoint("RIGHT", row, "CENTER", LABEL_RIGHT, 0)
                     c:SetFrameStrata(panel:GetFrameStrata())
-                    c:SetFrameLevel(row:GetFrameLevel() + 10)
+                    c:SetFrameLevel(math.max(row:GetFrameLevel() + 10, clip:GetFrameLevel() + 1))
                     c.lastText = nil
                     Refresh(c)
                 end
@@ -419,6 +438,48 @@ local function StartTracking()
     if driver or not _G.SettingsPanel then return end
     driver = CreateFrame("Frame", nil, _G.SettingsPanel)    -- runs only while Options is shown
     driver:SetScript("OnUpdate", Track)
+end
+
+-- ── PROBE (trial, 2026-11-03): /vui probe search ────────────────────────────
+-- Lists every Options list row whose fields Options search reads (FindInitializersMatchingSearchText and its
+-- caller, Blizzard_SettingsPanel.lua:575-695) and are not secure, by issecurevariable, with who tainted them.
+-- Diagnosis only: /reload afterwards. Walks categories the way search does (:604-610).
+local PROBE_KEYS = { "searchTags", "searchIgnoredLayouts", "parentInitializer", "shownPredicates", "data" }
+function VUI.ProbeSearchTaint()
+    local panel = _G.SettingsPanel
+    if not (panel and panel.GetAllCategories and issecurevariable) then
+        print("VeritasUI probe: SettingsPanel or issecurevariable missing"); return
+    end
+    local lines, perCat, total = {}, {}, 0
+    local function Walk(cat)
+        local ok, layout = pcall(panel.GetLayout, panel, cat)
+        if not (ok and layout and layout.IsVerticalLayout and layout:IsVerticalLayout()) then return end
+        local catName = (cat.GetName and cat:GetName()) or "?"
+        for _, init in layout:EnumerateInitializers() do
+            local bad = {}
+            for _, key in ipairs(PROBE_KEYS) do
+                local secure, by = issecurevariable(init, key)
+                if not secure then bad[#bad + 1] = key .. "(" .. tostring(by) .. ")" end
+            end
+            if #bad > 0 then
+                total = total + 1
+                perCat[catName] = (perCat[catName] or 0) + 1
+                local okN, nm = pcall(init.GetName, init)
+                local okT, tpl = pcall(init.GetTemplate, init)
+                lines[#lines + 1] = ("%s | %s | %s | %s"):format(catName, tostring(okN and nm or "?"),
+                    tostring(okT and tpl or "?"), table.concat(bad, " "))
+            end
+        end
+    end
+    for _, cat in ipairs(panel:GetAllCategories()) do
+        Walk(cat)
+        local subs = cat.GetSubcategories and cat:GetSubcategories()
+        if type(subs) == "table" then for _, sub in pairs(subs) do Walk(sub) end end
+    end
+    print(("VeritasUI probe: %d rows with insecure search fields"):format(total))
+    for cat, n in pairs(perCat) do print(("  %s: %d"):format(cat, n)) end
+    for i = 1, math.min(#lines, 60) do print("  " .. lines[i]) end
+    if #lines > 60 then print(("  ... %d more"):format(#lines - 60)) end
 end
 
 -- Adds the row to `layout` and returns its initializer.

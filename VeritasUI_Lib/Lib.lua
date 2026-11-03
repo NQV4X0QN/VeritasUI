@@ -1911,6 +1911,8 @@ SlashCmdList["VERITASUI"] = function(msg)
         VUI.Print("VeritasUI", "Blocked-action log cleared.")
     elseif cmd == "hover" then
         VUI.ProbeHoverChain()
+    elseif cmd == "probe search" and VUI.ProbeSearchTaint then
+        VUI.ProbeSearchTaint()
     elseif cmd == "copy" or cmd:match("^copy%s") then
         -- Text fallback for the Settings-panel button. The button is anchored by
         -- searching for Blizzard's "Defaults" button, which has a fallback anchor but
