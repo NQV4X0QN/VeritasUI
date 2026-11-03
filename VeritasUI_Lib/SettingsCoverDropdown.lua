@@ -24,12 +24,18 @@
 -- Blizzard_Settings.lua:65-77). Tags added from addon code (initializer:AddSearchTags) are written tainted, so the
 -- search runs tainted from the first one it reads and draws its results tainted. Never call AddSearchTags.
 -- Blizzard adds tags safely only inside its own secure handler, from data.setting's name, read through
--- securecallfunction (Blizzard_SettingsInbound.lua:229-238). So each row gets its own TAG SETTING: a proxy setting
--- whose name is a function (allowed for proxy settings, wrapped by Blizzard, :117-123; GetOrCallName,
--- Blizzard_Setting.lua:12-17) returning the label while the initializer is made and "" afterwards, so Blizzard's
--- handler tags the row with the label and the header row, which shows its setting's name, shows nothing
--- (SettingsListSectionHeaderMixin:Init, Blizzard_SettingControls.lua:95-97). The tag setting holds no value.
--- UNMEASURED (2026-11-03): that a tag made this way is untainted -- the owner's search test decides it.
+-- securecallfunction (Blizzard_SettingsInbound.lua:229-238) -- the path every Settings.CreateCheckbox row takes.
+-- So each row gets its own TAG SETTING: an add-on setting on a throwaway table whose name is a plain string (the
+-- same SecureUnpackArgs path as every other add-on setting, :208-212) holding the label only inside a hyperlink's
+-- link data, "|Hvui:<label>|h|h". The search matches the label inside the tag ("|HVUI:FADE ACTION BARS|H|H"
+-- contains "FADE"); the header row, which shows its setting's name (SettingsListSectionHeaderMixin:Init,
+-- Blizzard_SettingControls.lua:95-97), draws a link whose shown text is empty. The tag setting holds no value.
+-- ⛔ NEVER a proxy setting with a FUNCTION name (step 5, 2026-11-03): Blizzard calls that function inside its
+-- secure handlers (GetNameType at setting Init, GetName for the tag), so they ran as ours and left Settings' shared
+-- tables tainted; Blizzard's own pages, registered after login, then wrote their rows' search fields as
+-- VeritasUI_Lib -- the owner's `/vui probe search`: 27 Blizzard rows (Combat, General, Graphics) with searchTags /
+-- searchIgnoredLayouts / parentInitializer tainted by VeritasUI_Lib, none of ours. Step 4 had none.
+-- UNMEASURED (2026-11-03): that the link's shown text is empty in a header title -- the owner's look decides it.
 -- ⚠ NOT the bare SettingsListElementTemplate (owner's Lua error, 2026-11-03): that template has no OnLoad in its
 -- XML (:50-77; only the templates inheriting it run SettingsListElementMixin:OnLoad), so `cbrHandles` is never
 -- made and its Init fails at Blizzard_SettingControls.lua:306. That is why no Blizzard page uses it bare.
@@ -486,13 +492,14 @@ end
 -- spec = { category = <the page's category>, setting = <Settings.RegisterAddOnSetting result>, name = "Label",
 --          getOptions = function() return Settings.CreateControlTextContainer() data end, tooltip = "text",
 --          isEnabled = function?, sub = true for a sub-option (indented; greying comes from isEnabled) }
-local tagging, tagCount = false, 0
+local tagCount, tagStore = 0, {}
 local function TagSetting(category, label)
-    if not (category and Settings.RegisterProxySetting) then return nil end
+    if not (category and Settings.RegisterAddOnSetting and type(label) == "string") then return nil end
     tagCount = tagCount + 1
-    local function Name() return tagging and label or "" end
-    local ok, s = pcall(Settings.RegisterProxySetting, category, "VeritasUI_SearchTag" .. tagCount, "boolean", Name,
-        false, function() return false end, function() end)
+    local key = "tag" .. tagCount
+    tagStore[key] = false
+    local ok, s = pcall(Settings.RegisterAddOnSetting, category, "VeritasUI_SearchTag" .. tagCount, key, tagStore,
+        "boolean", "|Hvui:" .. label .. "|h|h", false)
     return ok and s or nil
 end
 
@@ -501,10 +508,8 @@ function VUI.AddCoverDropdown(layout, spec)
     local tag = Settings.CreateSettingInitializer and TagSetting(spec.category, spec.name)
     local init
     if tag then
-        tagging = true
         local ok, made = pcall(Settings.CreateSettingInitializer, "SettingsListSectionHeaderTemplate",
             { setting = tag, tooltip = spec.tooltip })
-        tagging = false
         init = ok and made or nil
     end
     init = init or Settings.CreateElementInitializer("SettingsListSectionHeaderTemplate",
