@@ -56,6 +56,7 @@ local covers = {}                                            -- [initializer] = 
 local DD_W, DD_H = 220, 25
 local DD_X, DD_Y = -48 + 223 / 2, 3
 local LABEL_X, LABEL_RIGHT, SUB_INDENT = 37, -85, 15
+local ROW_HALF = 26 / 2             -- half a Blizzard settings row (SettingsDropdownControlTemplate, 280 x 26)
 
 -- ── The cover's face ──────────────────────────────────────────────────────
 -- Blizzard's dropdown face from the same template values (WowStyle2DropdownTemplate, MenuTemplates.xml:4-41)
@@ -390,6 +391,10 @@ local function NewCover(init, parent)
     -- Tooltip frame sits (row TOPLEFT to 80 left of BOTTOM, Blizzard_SettingControls.xml:57-67): it shows the
     -- row's tooltip and Blizzard's hover bar (HoverBackgroundTemplate, :5-11: row TOPLEFT -10 to BOTTOMRIGHT -5,
     -- white at 0.1). `Block` catches the rest of the row and does nothing. Both sit below the dropdown.
+    -- Hover area and bar are the height of a Blizzard row (26, SettingsDropdownControlTemplate's Size,
+    -- Blizzard_SettingControls.xml:121-126), centred on our row's centre as that row would be -- so, like
+    -- Blizzard's, the bar sits 3 lower than the dropdown, which is drawn at centre +3 (owner, 2026-11-03: our bar
+    -- was the header row's full 45 and too tall).
     c.Block = CreateFrame("Frame", nil, parent or _G.SettingsPanel)
     c.Block:EnableMouse(true)
     c.Block:Hide()
@@ -470,13 +475,13 @@ local function Track()
                     c.Block:SetFrameStrata(panel:GetFrameStrata())
                     c.Block:SetFrameLevel(level - 2)
                     c.Hover:ClearAllPoints()
-                    c.Hover:SetPoint("TOPLEFT", row, "TOPLEFT")
-                    c.Hover:SetPoint("BOTTOMRIGHT", row, "BOTTOM", -80, 0)
+                    c.Hover:SetPoint("TOPLEFT", row, "LEFT", 0, ROW_HALF)
+                    c.Hover:SetPoint("BOTTOMRIGHT", row, "CENTER", -80, -ROW_HALF)
                     c.Hover:SetFrameStrata(panel:GetFrameStrata())
                     c.Hover:SetFrameLevel(level - 1)
                     c.Hover.Bar:ClearAllPoints()
-                    c.Hover.Bar:SetPoint("TOPLEFT", row, "TOPLEFT", -10, 0)
-                    c.Hover.Bar:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -5, 0)
+                    c.Hover.Bar:SetPoint("TOPLEFT", row, "LEFT", -10, ROW_HALF)
+                    c.Hover.Bar:SetPoint("BOTTOMRIGHT", row, "RIGHT", -5, -ROW_HALF)
                     c.lastText = nil
                     Refresh(c)
                 end
