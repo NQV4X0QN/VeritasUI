@@ -4399,9 +4399,9 @@ local function InitializeOptions()
         end
     end
 
-    -- ⛔ TRIAL BUILD ONLY (owner, 2026-11-03): Repair Funding and Whisper Sound are left off the page and
-    -- Quest Options is drawn by Lib's cover dropdown (VeritasUI_Lib/SettingsCoverDropdown.lua), so the taint
-    -- test sees one dropdown of ours and no Blizzard dropdown row. Never merge with this set to true.
+    -- ⛔ TRIAL BUILD ONLY (owner, 2026-11-03): Quest Options, Repair Funding and Whisper Sound are drawn by Lib's
+    -- cover dropdown (VeritasUI_Lib/SettingsCoverDropdown.lua), so no Blizzard dropdown row is on the page.
+    -- Never merge with this set to true.
     local TRIAL_COVER_ONLY = true
 
     local function AddCheckbox(key, name, tip, onChange)
@@ -4515,10 +4515,15 @@ local function InitializeOptions()
         container:Add("personal", "Personal Only")
         return container:GetData()
     end
-    if not TRIAL_COVER_ONLY then
-    GreyIfUnavailable(Settings.CreateDropdown(category, repairSetting, GetRepairFundingOptions,
-        TipWithReason("Guild + Personal uses guild funds first when your guild allows it, then your "
-            .. "own gold. Personal Only always uses your own gold.", "autoRepair")), "autoRepair")
+    local repairTip = TipWithReason("Guild + Personal uses guild funds first when your guild allows it, then "
+        .. "your own gold. Personal Only always uses your own gold.", "autoRepair")
+    if TRIAL_COVER_ONLY and VUI.AddCoverDropdown then
+        VUI.AddCoverDropdown(layout, { setting = repairSetting, name = "Repair Funding",
+            getOptions = GetRepairFundingOptions, tooltip = repairTip,
+            isEnabled = function() return not OptionUnavailable("autoRepair") end })
+    else
+    GreyIfUnavailable(Settings.CreateDropdown(category, repairSetting, GetRepairFundingOptions, repairTip),
+        "autoRepair")
     end
 
     AddCheckbox("trainAllButton", "Train All Button",
@@ -4685,8 +4690,8 @@ local function InitializeOptions()
         "The names of people in your group are shown in their class colour where they appear in a "
         .. "chat message, not only as the sender.")
 
-    if VUI.QoL_WhisperSoundDropdown and not TRIAL_COVER_ONLY then
-        VUI.QoL_WhisperSoundDropdown(category, db, ADDON_NAME)
+    if VUI.QoL_WhisperSoundDropdown then
+        VUI.QoL_WhisperSoundDropdown(category, db, ADDON_NAME, TRIAL_COVER_ONLY and layout or nil)
     end
 
     AddCheckbox("chatRememberLines", "Remember Chat History",

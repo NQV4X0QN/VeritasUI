@@ -278,7 +278,7 @@ whisper:SetScript("OnEvent", function(_, event)
     quietUntil = now + cool
 end)
 
-VUI.QoL_WhisperSoundDropdown = function(category, db, addonName)
+VUI.QoL_WhisperSoundDropdown = function(category, db, addonName, coverLayout)
     if type(db.whisperSound) ~= "string" or KIT[db.whisperSound] == nil then db.whisperSound = "default" end
     local setting = Settings.RegisterAddOnSetting(category, addonName .. "_whisperSound", "whisperSound", db,
         "string", "Whisper Sound", "default")
@@ -293,9 +293,16 @@ VUI.QoL_WhisperSoundDropdown = function(category, db, addonName)
         end
         return container:GetData()
     end
-    Settings.CreateDropdown(category, setting, Options,
-        "The sound for a whisper or Battle.net whisper. Like Blizzard's, it plays once, then not again "
-        .. "until no whisper has come for 5 minutes.")
+    local tip = "The sound for a whisper or Battle.net whisper. Like Blizzard's, it plays once, then not again "
+        .. "until no whisper has come for 5 minutes."
+    -- coverLayout (TRIAL, 2026-11-03): Lib's cover dropdown, no Blizzard dropdown row (taint note in
+    -- VeritasUI_Lib/SettingsCoverDropdown.lua).
+    if coverLayout and VUI.AddCoverDropdown then
+        VUI.AddCoverDropdown(coverLayout, { setting = setting, name = "Whisper Sound", getOptions = Options,
+            tooltip = tip })
+        return
+    end
+    Settings.CreateDropdown(category, setting, Options, tip)
 end
 
 -- ── Remember Chat History ──────────────────────────────────────
