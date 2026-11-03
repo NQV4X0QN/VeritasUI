@@ -4399,6 +4399,11 @@ local function InitializeOptions()
         end
     end
 
+    -- ⛔ TRIAL BUILD ONLY (owner, 2026-11-03): Repair Funding and Whisper Sound are left off the page and
+    -- Quest Options is drawn by Lib's cover dropdown (VeritasUI_Lib/SettingsCoverDropdown.lua), so the taint
+    -- test sees one dropdown of ours and no Blizzard dropdown row. Never merge with this set to true.
+    local TRIAL_COVER_ONLY = true
+
     local function AddCheckbox(key, name, tip, onChange)
         local setting = Settings.RegisterAddOnSetting(
             category, ADDON_NAME .. "_" .. key, key,
@@ -4510,9 +4515,11 @@ local function InitializeOptions()
         container:Add("personal", "Personal Only")
         return container:GetData()
     end
+    if not TRIAL_COVER_ONLY then
     GreyIfUnavailable(Settings.CreateDropdown(category, repairSetting, GetRepairFundingOptions,
         TipWithReason("Guild + Personal uses guild funds first when your guild allows it, then your "
             .. "own gold. Personal Only always uses your own gold.", "autoRepair")), "autoRepair")
+    end
 
     AddCheckbox("trainAllButton", "Train All Button",
         "Adds a Train All button beside Train at trainers, learning everything available that you "
@@ -4536,7 +4543,8 @@ local function InitializeOptions()
         UpdateNpcEvents)
 
     if VUI.QoL_NpcOptionsDropdown then
-        VUI.QoL_NpcOptionsDropdown(category, db, ADDON_NAME, TipWithReason)
+        VUI.QoL_NpcOptionsDropdown(category, db, ADDON_NAME, TipWithReason,
+            TRIAL_COVER_ONLY and layout or nil)
     end
 
     AddCheckbox("untrackWorldQuestsOnUnfocus", "Untrack World Quests When Unfocused",
@@ -4677,7 +4685,7 @@ local function InitializeOptions()
         "The names of people in your group are shown in their class colour where they appear in a "
         .. "chat message, not only as the sender.")
 
-    if VUI.QoL_WhisperSoundDropdown then
+    if VUI.QoL_WhisperSoundDropdown and not TRIAL_COVER_ONLY then
         VUI.QoL_WhisperSoundDropdown(category, db, ADDON_NAME)
     end
 

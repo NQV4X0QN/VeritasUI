@@ -6,3 +6,4 @@
 ## SavedVariables: VeritasUI_LibDB
 
 Lib.lua
+SettingsCoverDropdown.lua

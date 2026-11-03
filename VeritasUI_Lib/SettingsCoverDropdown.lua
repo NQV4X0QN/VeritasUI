@@ -1,0 +1,404 @@
+-- VeritasUI_Lib / SettingsCoverDropdown.lua -- a dropdown in the Options list with NO Blizzard dropdown in it
+-- (TRIAL, owner 2026-11-03: Quality of Life's Quest Options only).
+--
+-- ⚠ WHY, measured in the owner's taintLog 11 run (~/Downloads/taint.log, 2026-11-02 23:21):
+--   * Blizzard's Options list reuses its row frames between pages. Our Settings.CreateDropdown row wrote its
+--     dropdown button's menu builder as ours (menuGenerator, DropdownButton.lua:239, log L47449, frame
+--     ...d558e0). Nameplates' Style dropdown was later drawn on that same frame, its click read our leftover
+--     builder (L164615, written only once in the whole log), the menu opened tainted and wrote the list's
+--     `updateLock` (ScrollBox.lua:147, L183748, its first tainted write) -> Options > Social has
+--     C_Discord.IsUserOAuthed() refused.
+--   * Covering that Blizzard dropdown with a frame of ours did not help: the row underneath was still a
+--     Blizzard dropdown filled in with our data.
+--   * A row template of our own in the list taints the list on scroll (frame creation reads our mixin).
+--   * Blizzard's menu opened from our code leaves its shared menu stock tainted for Blizzard's next dropdown.
+-- So the row is Blizzard's BARE row template (SettingsListElementTemplate: label + tooltip, no control,
+-- Blizzard_SettingControls.xml:50) through Settings.CreateElementInitializer. No Blizzard page uses that bare
+-- template, so those frames are never handed to a Blizzard dropdown. A frame of ours parented to SettingsPanel
+-- (not to the list) draws the dropdown where Blizzard's would sit and opens our own pop-out. Nothing is written
+-- on Blizzard's frames and Blizzard's menu is never opened. The setting stays searchable (AddSearchTags).
+local VUI = _G.VeritasUI
+if not VUI then return end
+
+local entries = {}                                           -- [initializer] = entry
+local covers = {}                                            -- [initializer] = our cover button
+
+-- Where Blizzard's Settings dropdown sits in its row: the control frame (223 x 38, DropdownWithSteppersTemplate,
+-- SharedUIPanelTemplates.xml:1472) at LEFT = row CENTER -48, +3 (SettingsDropdownControlMixin:OnLoad,
+-- Blizzard_SettingControls.lua:730), the 220-wide dropdown centred in it (:741, Blizzard_SettingControls.xml:172).
+local DD_W, DD_H = 220, 25
+local DD_X, DD_Y = -48 + 223 / 2, 3
+
+-- ── The cover's face ──────────────────────────────────────────────────────
+-- Blizzard's dropdown face from the same template values (WowStyle2DropdownTemplate, MenuTemplates.xml:4-41)
+-- and state rules (WowStyle2DropdownMixin:GetBackgroundAtlas / :OnButtonStateChanged, MenuTemplates.lua:
+-- 1024-1054; mouse-down text displacement 2, -1, :1015-1016 and ButtonStateBehavior.lua:59-92).
+local TEXT_X, DOWN_X, DOWN_Y = 13, 2, -1
+local bit = _G.bit
+local CHECKBOX = Settings and Settings.ControlType and Settings.ControlType.Checkbox or 2
+
+local function FaceAtlas(c, enabled)
+    if not enabled then return "common-dropdown-c-button-disabled" end
+    if c.down and c.over then return "common-dropdown-c-button-pressedhover-1"
+    elseif c.over then return "common-dropdown-c-button-hover-1"
+    elseif c.down then return "common-dropdown-c-button-pressed-1"
+    elseif c.menu then return "common-dropdown-c-button-open" end
+    return "common-dropdown-c-button"
+end
+
+local function IsEnabled(e)
+    if not e.isEnabled then return true end
+    local ok, on = pcall(e.isEnabled)
+    return ok and on and true or false
+end
+
+local function Refresh(c)
+    local enabled = IsEnabled(c.entry)
+    c.Background:SetAtlas(FaceAtlas(c, enabled), true)
+    c.Arrow:SetShown(enabled and c.over or false)
+    c.Arrow:SetDesaturated(not enabled)
+    local col = enabled and NORMAL_FONT_COLOR or DISABLED_FONT_COLOR
+    c.Text:SetTextColor(col:GetRGB())
+    local dx, dy = 0, 0
+    if c.down and enabled then dx, dy = DOWN_X, DOWN_Y end
+    c.Text:ClearAllPoints()
+    c.Text:SetPoint("LEFT", TEXT_X + dx, dy)
+    c.Text:SetPoint("RIGHT", -TEXT_X + dx, dy)
+    c.enabled = enabled
+end
+
+local function OptionBit(opt) return bit.lshift(1, opt.value - (opt.enumValueOffset or 1)) end
+local function IsPicked(setting, opt)
+    local v = setting:GetValue()
+    if opt.controlType == CHECKBOX then return type(v) == "number" and bit.band(v, OptionBit(opt)) ~= 0 end
+    return v == opt.value
+end
+local function Options(e)
+    local ok, list = pcall(e.getOptions)
+    return ok and type(list) == "table" and list or {}
+end
+
+-- The text Blizzard's dropdown shows: the picked rows' text joined by LIST_DELIMITER, else CUSTOM
+-- (DropdownSelectionTextMixin:UpdateToMenuSelections, MenuTemplates.lua:760-795; default text CUSTOM,
+-- Blizzard_Settings.lua:555). A row with no `text` is not listed (MenuUtil.GetElementText).
+local function SelectionText(e)
+    local texts = {}
+    for _, opt in ipairs(Options(e)) do
+        if opt.text and IsPicked(e.setting, opt) then texts[#texts + 1] = opt.text end
+    end
+    if #texts > 0 then return table.concat(texts, _G.LIST_DELIMITER or ", ") end
+    return _G.CUSTOM or "Custom"
+end
+
+local function SyncText(c)
+    local t = SelectionText(c.entry)
+    if t ~= c.lastText then c.lastText = t; c.Text:SetText(t) end
+    if IsEnabled(c.entry) ~= c.enabled then Refresh(c) end
+end
+
+-- ── The pop-out ────────────────────────────────────────────────────────────
+-- Blizzard's Settings dropdown menu, measured from its code:
+--   * MenuStyle2 (the WowStyle2 dropdown's menu, MenuTemplates.xml:4-6): background "common-dropdown-c-bg"
+--     at -17, 12 / 17, -22 and insets 3 / 6 / 3 / 7 (MenuTemplates.lua:1135-1153); rows stacked with no gap
+--     (AnchorUtil.VerticalLayout from the inset corner, Menu.lua:1476-1495); every row the same width
+--     (:1398-1446); at least as wide as the dropdown (DropdownButton.lua:190-192).
+--   * Checkbox rows (Settings.CreateDropdownCheckbox, Blizzard_Settings.lua:494-505): the tick box 4 in from the
+--     row's left edge, text 7 right of the box and 1 up, GameFontHighlight, 20 high (Mainline/MenuVariants.lua:
+--     9-24, Compositor.lua:69); tick "common-dropdown-ticksquare" + "common-dropdown-icon-checkmark-yellow"
+--     at +2, +1; hover highlight "UI-QuestTitleHighlight" ADD (MenuVariants.lua:41-50); a pick keeps it open
+--     (MenuResponse.Refresh, MenuTemplates.lua:341).
+--   * Single-choice rows (Settings.CreateDropdownButton -> CreateHighlightRadio, Blizzard_Settings.lua:488-491,
+--     MenuTemplates.lua:360-368 / 444-517): no tick, GameFontNormal text 14 in, gold when picked, very light
+--     grey otherwise, white on hover; hover background "common-dropdown-customize-mouseover" at 0.15
+--     (DarkMenuElementTemplate, SharedUIPanelTemplates.xml:1451-1468); a pick closes it.
+-- Picks work as Blizzard's Settings inserter does (Blizzard_Settings.lua:507-544).
+local ROW_H = 20
+local INSET_L, INSET_T, INSET_R, INSET_B = 3, 6, 3, 7
+local BOX_X, TEXT_GAP, RADIO_TEXT_X, RADIO_PAD = 4, 7, 14, 45
+local popout
+
+local function RadioColour(b)
+    local col
+    if b.picked then col = NORMAL_FONT_COLOR
+    elseif b.hover then col = HIGHLIGHT_FONT_COLOR
+    else col = _G.VERY_LIGHT_GRAY_COLOR end
+    b.radioText:SetTextColor(col:GetRGB())
+end
+
+local function RowEnter(b)
+    b.hover = true
+    if b.isRadio then b.radioBG:SetAlpha(0.15); RadioColour(b) else b.highlight:Show() end
+    if b.opt and b.opt.tooltip then
+        GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
+        GameTooltip_SetTitle(GameTooltip, b.opt.label)
+        GameTooltip_AddNormalLine(GameTooltip, b.opt.tooltip)
+        GameTooltip:Show()
+    end
+end
+local function RowLeave(b)
+    b.hover = nil
+    if b.isRadio then b.radioBG:SetAlpha(0); RadioColour(b) else b.highlight:Hide() end
+    GameTooltip:Hide()
+end
+
+local function Pick(b)
+    local e, opt = popout.entry, b.opt
+    if not (e and opt) then return end
+    local setting = e.setting
+    if opt.controlType == CHECKBOX then
+        local v = setting:GetValue()
+        setting:SetValue(bit.bxor(type(v) == "number" and v or 0, OptionBit(opt)))
+        PlaySound(IsPicked(setting, opt) and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
+            or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+        popout:Fill()
+    else
+        setting:SetValue(opt.value)
+        PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+        popout:Close()
+    end
+end
+
+local function NewRow(parent)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetHeight(ROW_H)
+    b.highlight = b:CreateTexture(nil, "BACKGROUND")
+    b.highlight:SetAllPoints()
+    b.highlight:SetBlendMode("ADD")
+    b.highlight:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+    b.highlight:Hide()
+    b.radioBG = b:CreateTexture(nil, "BACKGROUND")
+    b.radioBG:SetAtlas("common-dropdown-customize-mouseover", true)
+    b.radioBG:SetPoint("CENTER")
+    b.radioBG:SetAlpha(0)
+    b.box = b:CreateTexture(nil, "ARTWORK")
+    b.box:SetAtlas("common-dropdown-ticksquare", true)
+    b.box:SetPoint("LEFT", BOX_X, 0)
+    b.mark = b:CreateTexture(nil, "OVERLAY")
+    b.mark:SetAtlas("common-dropdown-icon-checkmark-yellow", true)
+    b.mark:SetPoint("CENTER", b.box, "CENTER", 2, 1)
+    b.text = b:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    b.text:SetHeight(ROW_H)
+    b.text:SetPoint("LEFT", b.box, "RIGHT", TEXT_GAP, 1)
+    b.radioText = b:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    b.radioText:SetHeight(ROW_H)
+    b.radioText:SetJustifyH("LEFT")
+    b.radioText:SetPoint("TOPLEFT", RADIO_TEXT_X, 0)
+    b:SetScript("OnClick", Pick)
+    b:SetScript("OnEnter", RowEnter)
+    b:SetScript("OnLeave", RowLeave)
+    return b
+end
+
+-- Returns the width the row's contents need, as the menu measures it.
+local function SetupRow(b, opt, picked)
+    b.opt, b.picked = opt, picked
+    b.isRadio = opt.controlType ~= CHECKBOX
+    b.highlight:Hide(); b.radioBG:SetAlpha(0)
+    b.box:SetShown(not b.isRadio); b.text:SetShown(not b.isRadio); b.radioText:SetShown(b.isRadio)
+    b.mark:SetShown(not b.isRadio and picked)
+    b:Show()
+    if b.isRadio then
+        b.radioText:SetText(opt.label or "")
+        RadioColour(b)
+        return RADIO_TEXT_X + (b.radioText:GetStringWidth() or 0) + RADIO_PAD
+    end
+    b.text:SetText(opt.label or "")
+    return BOX_X + (b.box:GetWidth() or 0) + TEXT_GAP + (b.text:GetStringWidth() or 0)
+end
+
+local function BuildPopout()
+    local f = CreateFrame("Frame", nil, UIParent)
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
+    f:SetToplevel(true)
+    f:EnableMouse(true)
+    f:SetClampedToScreen(true)
+    f:Hide()
+    local bg = f:CreateTexture(nil, "BACKGROUND")
+    bg:SetAtlas("common-dropdown-c-bg")
+    bg:SetPoint("TOPLEFT", -17, 12)
+    bg:SetPoint("BOTTOMRIGHT", 17, -22)
+    f.rows = {}
+
+    function f:Fill()
+        local c, e = self.cover, self.entry
+        if not (c and e) then return end
+        local need, n = 0, 0
+        for _, opt in ipairs(Options(e)) do
+            n = n + 1
+            local b = self.rows[n] or NewRow(self)
+            self.rows[n] = b
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT", INSET_L, -INSET_T - (n - 1) * ROW_H)
+            need = math.max(need, SetupRow(b, opt, IsPicked(e.setting, opt)))
+        end
+        for i = n + 1, #self.rows do self.rows[i]:Hide(); self.rows[i].opt = nil end
+        local interior = math.max(math.ceil(need), (c:GetWidth() or 0) - INSET_L - INSET_R)
+        for i = 1, n do self.rows[i]:SetWidth(interior) end
+        self:SetSize(interior + INSET_L + INSET_R, n * ROW_H + INSET_T + INSET_B)
+        SyncText(c)
+    end
+
+    function f:Close()
+        local c = self.cover
+        self:Hide()
+        self.entry, self.cover = nil, nil
+        GameTooltip:Hide()
+        if c then
+            c.menu = nil
+            PlaySound(_G.MenuVariants.GetDropdownCloseSoundKit())   -- as DropdownButtonMixin:OnMenuClosed
+            Refresh(c)
+        end
+    end
+
+    -- Closes on a click anywhere else, as Blizzard's menus do (Menu.lua:56-71); a click on the cover toggles.
+    f:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    f:SetScript("OnEvent", function(self)
+        if not self:IsShown() then return end
+        if self:IsMouseOver() or (self.cover and self.cover:IsMouseOver()) then return end
+        self:Close()
+    end)
+    f:SetScript("OnKeyDown", function(self, key)
+        local stop = key == "ESCAPE"
+        if not InCombatLockdown() then pcall(self.SetPropagateKeyboardInput, self, not stop) end
+        if stop then self:Close() end
+    end)
+    f:SetScript("OnUpdate", function(self)
+        local c = self.cover
+        if not (c and c:IsShown() and c.entry == self.entry) then self:Close() end
+    end)
+    return f
+end
+
+local function OpenPopout(c)
+    if not IsEnabled(c.entry) then return end
+    popout = popout or BuildPopout()
+    if popout:IsShown() and popout.cover == c then popout:Close(); return end
+    if popout:IsShown() then popout:Close() end
+    popout.entry, popout.cover = c.entry, c
+    popout:ClearAllPoints()
+    popout:SetPoint("TOPLEFT", c, "BOTTOMLEFT", 0, 0)        -- Blizzard's menu anchor (DropdownButton.xml:6-9)
+    popout:Fill()
+    popout:EnableKeyboard(not InCombatLockdown())
+    popout:Show()
+    c.menu = popout
+    PlaySound(_G.MenuVariants.GetDropdownOpenSoundKit())        -- as DropdownButtonMixin:OnMenuOpened
+    Refresh(c)
+end
+
+-- A left mouse-down on the cover is ours to handle, as Blizzard's dropdowns answer (DropdownButton.lua:
+-- 174-176), so a menu that happens to be open does not treat the click as "elsewhere".
+local function HandlesGlobalMouseEvent(_, buttonName, event)
+    return event == "GLOBAL_MOUSE_DOWN" and buttonName == "LeftButton"
+end
+
+-- The dropdown's tooltip: the name in white and the text in gold, as Blizzard's Settings tooltips
+-- (Settings.InitTooltip, Blizzard_Settings.lua). Shown on GameTooltip; Blizzard's SettingsTooltip is not used.
+local function CoverEnter(c)
+    c.over = c.enabled or nil
+    Refresh(c)
+    local e = c.entry
+    GameTooltip:SetOwner(c, "ANCHOR_RIGHT", -10, 0)         -- DefaultTooltipMixin:SetDefaultTooltipAnchors
+    GameTooltip_SetTitle(GameTooltip, e.name)
+    if e.tooltip then GameTooltip_AddNormalLine(GameTooltip, e.tooltip) end
+    GameTooltip:Show()
+end
+local function CoverLeave(c)
+    c.over, c.down = nil, nil
+    Refresh(c)
+    GameTooltip:Hide()
+end
+local function CoverDown(c, button)
+    if button == "LeftButton" and c.enabled then c.down = true; Refresh(c) end
+end
+local function CoverUp(c)
+    if c.down then c.down = nil; Refresh(c) end
+end
+
+local function NewCover(init)
+    local c = CreateFrame("Button", nil, _G.SettingsPanel)
+    c.init, c.entry = init, entries[init]
+    c:SetSize(DD_W, DD_H)
+    c:EnableMouse(true)
+    c:RegisterForClicks("LeftButtonDown")
+    c.Background = c:CreateTexture(nil, "BACKGROUND")
+    c.Background:SetPoint("TOPLEFT", -7, 7)
+    c.Background:SetPoint("BOTTOMRIGHT", 7, -7)
+    c.Arrow = c:CreateTexture(nil, "OVERLAY")
+    c.Arrow:SetAtlas("common-dropdown-c-button-hover-arrow", true)
+    c.Arrow:SetPoint("BOTTOM", 0, -5)
+    c.Text = c:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    c.Text:SetHeight(20)
+    c.Text:SetWordWrap(false)
+    c.Text:SetJustifyH("CENTER")
+    c.HandlesGlobalMouseEvent = HandlesGlobalMouseEvent
+    c:SetScript("OnClick", OpenPopout)
+    c:SetScript("OnEnter", CoverEnter)
+    c:SetScript("OnLeave", CoverLeave)
+    c:SetScript("OnMouseDown", CoverDown)
+    c:SetScript("OnMouseUp", CoverUp)
+    c:SetScript("OnHide", function(self)
+        self.over, self.down = nil, nil
+        if self.menu then local m = self.menu; self.menu = nil; pcall(m.Close, m) end
+    end)
+    c:Hide()
+    return c
+end
+
+-- Each frame while Options is open: put a cover where Blizzard's dropdown would be on every row of ours that
+-- is on screen, hide the rest. Reads the list's rows only; writes nothing on them.
+local seen = {}
+local function Track()
+    local panel = _G.SettingsPanel
+    local ok, list = pcall(panel.GetSettingsList, panel)
+    local target = ok and list and list.ScrollBox and list.ScrollBox.ScrollTarget
+    wipe(seen)
+    if target then
+        for _, row in ipairs({ target:GetChildren() }) do
+            local get = row.GetElementData
+            local init = get and row:IsVisible() and get(row)
+            if init and entries[init] then
+                seen[init] = true
+                local c = covers[init] or NewCover(init)
+                covers[init] = c
+                if c.row ~= row then
+                    c.row = row
+                    c:ClearAllPoints()
+                    c:SetPoint("CENTER", row, "CENTER", DD_X, DD_Y)
+                    c:SetFrameStrata(panel:GetFrameStrata())
+                    c:SetFrameLevel(row:GetFrameLevel() + 10)
+                    c.lastText = nil
+                    Refresh(c)
+                end
+                SyncText(c)
+                if not c:IsShown() then c:Show() end
+            end
+        end
+    end
+    for init, c in pairs(covers) do
+        if not seen[init] and c:IsShown() then c:Hide(); c.row = nil end
+    end
+end
+
+local driver
+local function StartTracking()
+    if driver or not _G.SettingsPanel then return end
+    driver = CreateFrame("Frame", nil, _G.SettingsPanel)    -- runs only while Options is shown
+    driver:SetScript("OnUpdate", Track)
+end
+
+-- Adds the row to `layout` and returns its initializer.
+-- spec = { setting = <Settings.RegisterAddOnSetting result>, name = "Label", getOptions = function()
+--          return Settings.CreateControlTextContainer() data end, tooltip = "text", isEnabled = function? }
+function VUI.AddCoverDropdown(layout, spec)
+    if not (layout and layout.AddInitializer and Settings and Settings.CreateElementInitializer) then return nil end
+    local init = Settings.CreateElementInitializer("SettingsListElementTemplate",
+        { name = spec.name, tooltip = spec.tooltip })
+    if init.AddSearchTags then init:AddSearchTags(spec.name) end
+    entries[init] = {
+        setting = spec.setting, name = spec.name, tooltip = spec.tooltip,
+        getOptions = spec.getOptions, isEnabled = spec.isEnabled,
+    }
+    layout:AddInitializer(init)
+    StartTracking()
+    return init
+end

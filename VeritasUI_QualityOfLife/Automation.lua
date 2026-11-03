@@ -279,7 +279,7 @@ end)
 -- db.npcOptionsMask is derived from it and only feeds the control. Applies at once.
 local function Bit(v) return 2 ^ (v - 1) end
 local function HasBit(mask, v) return math.floor((mask or 0) / Bit(v)) % 2 == 1 end
-VUI.QoL_NpcOptionsDropdown = function(category, db, addonName, TipWithReason)
+VUI.QoL_NpcOptionsDropdown = function(category, db, addonName, TipWithReason, coverLayout)
     if type(db.npcOptions) ~= "table" then db.npcOptions = {} end
     local rows, truth = VUI.QoL_NpcOptionRows(), db.npcOptions
     local NONE, ALL, FIRST = 1, 2, 3
@@ -329,5 +329,12 @@ VUI.QoL_NpcOptionsDropdown = function(category, db, addonName, TipWithReason)
         return c:GetData()
     end
     local tip = "Rules for Pick Only Dialogue Option, Auto Accept Quests and Auto Turn In Quests. Applies at once."
+    -- coverLayout (TRIAL, 2026-11-03): Lib's cover dropdown, no Blizzard dropdown row (taint note in
+    -- VeritasUI_Lib/SettingsCoverDropdown.lua).
+    if coverLayout and VUI.AddCoverDropdown then
+        VUI.AddCoverDropdown(coverLayout, { setting = setting, name = "Quest Options", getOptions = GetOptions,
+            tooltip = TipWithReason(tip, "npcOptions") })
+        return
+    end
     Settings.CreateDropdown(category, setting, GetOptions, TipWithReason(tip, "npcOptions"))
 end
