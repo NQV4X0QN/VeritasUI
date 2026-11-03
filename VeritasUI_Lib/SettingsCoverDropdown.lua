@@ -12,11 +12,16 @@
 --     Blizzard dropdown filled in with our data.
 --   * A row template of our own in the list taints the list on scroll (frame creation reads our mixin).
 --   * Blizzard's menu opened from our code leaves its shared menu stock tainted for Blizzard's next dropdown.
--- So the row is Blizzard's BARE row template (SettingsListElementTemplate: label + tooltip, no control,
--- Blizzard_SettingControls.xml:50) through Settings.CreateElementInitializer. No Blizzard page uses that bare
--- template, so those frames are never handed to a Blizzard dropdown. A frame of ours parented to SettingsPanel
--- (not to the list) draws the dropdown where Blizzard's would sit and opens our own pop-out. Nothing is written
--- on Blizzard's frames and Blizzard's menu is never opened. The setting stays searchable (AddSearchTags).
+-- So the row is Blizzard's SECTION HEADER row (SettingsListSectionHeaderTemplate, Blizzard_SettingControls.xml:13,
+-- the same initializer CreateSettingsListSectionHeaderInitializer makes, :112-115) with an empty title. A header
+-- has no control and nothing to click, so a Blizzard header later drawn on that frame has nothing that can open
+-- a menu. A frame of ours parented to SettingsPanel (not to the list) draws the label and the dropdown where
+-- Blizzard's sit and opens our own pop-out. Nothing is written on Blizzard's frames and Blizzard's menu is never
+-- opened. The setting stays searchable (AddSearchTags).
+-- ⚠ NOT the bare SettingsListElementTemplate (owner's Lua error, 2026-11-03): that template has no OnLoad in its
+-- XML (:50-77; only the templates inheriting it run SettingsListElementMixin:OnLoad), so `cbrHandles` is never
+-- made and its Init fails at Blizzard_SettingControls.lua:306. That is why no Blizzard page uses it bare.
+-- Cost: a header row is 45 high (:14), not 26, so this row is taller than the rows around it.
 local VUI = _G.VeritasUI
 if not VUI then return end
 
@@ -28,6 +33,7 @@ local covers = {}                                            -- [initializer] = 
 -- Blizzard_SettingControls.lua:730), the 220-wide dropdown centred in it (:741, Blizzard_SettingControls.xml:172).
 local DD_W, DD_H = 220, 25
 local DD_X, DD_Y = -48 + 223 / 2, 3
+local LABEL_X, LABEL_RIGHT = 37, -85
 
 -- ── The cover's face ──────────────────────────────────────────────────────
 -- Blizzard's dropdown face from the same template values (WowStyle2DropdownTemplate, MenuTemplates.xml:4-41)
@@ -59,6 +65,9 @@ local function Refresh(c)
     c.Arrow:SetDesaturated(not enabled)
     local col = enabled and NORMAL_FONT_COLOR or DISABLED_FONT_COLOR
     c.Text:SetTextColor(col:GetRGB())
+    -- The row label greys as Blizzard's does (SettingsListElementMixin:DisplayEnabled,
+    -- Blizzard_SettingControls.lua:290).
+    c.Label:SetTextColor((enabled and NORMAL_FONT_COLOR or GRAY_FONT_COLOR):GetRGB())
     local dx, dy = 0, 0
     if c.down and enabled then dx, dy = DOWN_X, DOWN_Y end
     c.Text:ClearAllPoints()
@@ -330,6 +339,12 @@ local function NewCover(init)
     c.Text:SetHeight(20)
     c.Text:SetWordWrap(false)
     c.Text:SetJustifyH("CENTER")
+    -- The row label, drawn by us because the header row under it has an empty title: GameFontNormal, left
+    -- 37 in, ending 85 left of the row's centre (SettingsListElementMixin:Init, Blizzard_SettingControls.lua:331-335).
+    c.Label = c:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    c.Label:SetJustifyH("LEFT")
+    c.Label:SetWordWrap(false)
+    c.Label:SetText(c.entry.name or "")
     c.HandlesGlobalMouseEvent = HandlesGlobalMouseEvent
     c:SetScript("OnClick", OpenPopout)
     c:SetScript("OnEnter", CoverEnter)
@@ -364,6 +379,9 @@ local function Track()
                     c.row = row
                     c:ClearAllPoints()
                     c:SetPoint("CENTER", row, "CENTER", DD_X, DD_Y)
+                    c.Label:ClearAllPoints()
+                    c.Label:SetPoint("LEFT", row, "LEFT", LABEL_X, 0)
+                    c.Label:SetPoint("RIGHT", row, "CENTER", LABEL_RIGHT, 0)
                     c:SetFrameStrata(panel:GetFrameStrata())
                     c:SetFrameLevel(row:GetFrameLevel() + 10)
                     c.lastText = nil
@@ -391,8 +409,8 @@ end
 --          return Settings.CreateControlTextContainer() data end, tooltip = "text", isEnabled = function? }
 function VUI.AddCoverDropdown(layout, spec)
     if not (layout and layout.AddInitializer and Settings and Settings.CreateElementInitializer) then return nil end
-    local init = Settings.CreateElementInitializer("SettingsListElementTemplate",
-        { name = spec.name, tooltip = spec.tooltip })
+    local init = Settings.CreateElementInitializer("SettingsListSectionHeaderTemplate",
+        { name = "", tooltip = spec.tooltip })
     if init.AddSearchTags then init:AddSearchTags(spec.name) end
     entries[init] = {
         setting = spec.setting, name = spec.name, tooltip = spec.tooltip,
