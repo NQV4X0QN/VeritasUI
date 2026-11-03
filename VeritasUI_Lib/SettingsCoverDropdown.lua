@@ -33,7 +33,7 @@ local covers = {}                                            -- [initializer] = 
 -- Blizzard_SettingControls.lua:730), the 220-wide dropdown centred in it (:741, Blizzard_SettingControls.xml:172).
 local DD_W, DD_H = 220, 25
 local DD_X, DD_Y = -48 + 223 / 2, 3
-local LABEL_X, LABEL_RIGHT = 37, -85
+local LABEL_X, LABEL_RIGHT, SUB_INDENT = 37, -85, 15
 
 -- ── The cover's face ──────────────────────────────────────────────────────
 -- Blizzard's dropdown face from the same template values (WowStyle2DropdownTemplate, MenuTemplates.xml:4-41)
@@ -344,7 +344,9 @@ local function NewCover(init)
     c.Text:SetJustifyH("CENTER")
     -- The row label, drawn by us because the header row under it has an empty title: GameFontNormal, left
     -- 37 in, ending 85 left of the row's centre (SettingsListElementMixin:Init, Blizzard_SettingControls.lua:331-335).
-    c.Label = c:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    -- A sub-option (spec.sub) is indented 15 and uses GameFontNormalSmall, as a Blizzard row whose parent is on
+    -- the page (:331, GetIndent :230-232, indentSize :1).
+    c.Label = c:CreateFontString(nil, "OVERLAY", c.entry.sub and "GameFontNormalSmall" or "GameFontNormal")
     c.Label:SetJustifyH("LEFT")
     c.Label:SetWordWrap(false)
     c.Label:SetText(c.entry.name or "")
@@ -383,7 +385,7 @@ local function Track()
                     c:ClearAllPoints()
                     c:SetPoint("CENTER", row, "CENTER", DD_X, DD_Y)
                     c.Label:ClearAllPoints()
-                    c.Label:SetPoint("LEFT", row, "LEFT", LABEL_X, 0)
+                    c.Label:SetPoint("LEFT", row, "LEFT", LABEL_X + (c.entry.sub and SUB_INDENT or 0), 0)
                     c.Label:SetPoint("RIGHT", row, "CENTER", LABEL_RIGHT, 0)
                     c:SetFrameStrata(panel:GetFrameStrata())
                     c:SetFrameLevel(row:GetFrameLevel() + 10)
@@ -409,7 +411,8 @@ end
 
 -- Adds the row to `layout` and returns its initializer.
 -- spec = { setting = <Settings.RegisterAddOnSetting result>, name = "Label", getOptions = function()
---          return Settings.CreateControlTextContainer() data end, tooltip = "text", isEnabled = function? }
+--          return Settings.CreateControlTextContainer() data end, tooltip = "text", isEnabled = function?,
+--          sub = true for a sub-option (indented, smaller label; greying comes from isEnabled) }
 function VUI.AddCoverDropdown(layout, spec)
     if not (layout and layout.AddInitializer and Settings and Settings.CreateElementInitializer) then return nil end
     local init = Settings.CreateElementInitializer("SettingsListSectionHeaderTemplate",
@@ -417,7 +420,7 @@ function VUI.AddCoverDropdown(layout, spec)
     if init.AddSearchTags then init:AddSearchTags(spec.name) end
     entries[init] = {
         setting = spec.setting, name = spec.name, tooltip = spec.tooltip,
-        getOptions = spec.getOptions, isEnabled = spec.isEnabled,
+        getOptions = spec.getOptions, isEnabled = spec.isEnabled, sub = spec.sub,
     }
     layout:AddInitializer(init)
     StartTracking()

@@ -1876,6 +1876,26 @@ end
 local function InitializeOptions()
     local category, layout = VUI.RegisterSettingsCategory(SETTINGS_LABEL)
 
+    -- ⛔ TRIAL BUILD ONLY (owner, 2026-11-03): every Clean Solo dropdown is drawn by Lib's cover dropdown
+    -- (VeritasUI_Lib/SettingsCoverDropdown.lua), so no Blizzard dropdown row is on the page. Never merge with
+    -- this set to true. `opts` = { unavailableKey, sub, isEnabled }.
+    local TRIAL_COVER_ONLY = true
+    local function Dropdown(setting, name, getOptions, tip, opts)
+        opts = opts or {}
+        if TRIAL_COVER_ONLY and VUI.AddCoverDropdown then
+            local key, parentOn = opts.unavailableKey, opts.isEnabled
+            return VUI.AddCoverDropdown(layout, { setting = setting, name = name, getOptions = getOptions,
+                tooltip = TipWithReason(tip, key), sub = opts.sub,
+                isEnabled = function()
+                    if key and Unavailable(key) then return false end
+                    return not parentOn or parentOn()
+                end })
+        end
+        local init = Settings.CreateDropdown(category, setting, getOptions, TipWithReason(tip, opts.unavailableKey))
+        GreyIfUnavailable(init, opts.unavailableKey)
+        return init
+    end
+
     -- Two groups under section headers, the way Blizzard's own Options pages are laid out
     -- (layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(...)),
     -- Blizzard_SettingsDefinitions_Frame/Interface.lua:18). Owner's request, 2026-10-29: fades
@@ -2148,10 +2168,7 @@ local function InitializeOptions()
             ignore = false
             if spec.onChanged then spec.onChanged() end
         end)
-        local init = Settings.CreateDropdown(category, setting, GetOptions,
-            TipWithReason(spec.tip, spec.unavailableKey))
-        GreyIfUnavailable(init, spec.unavailableKey)
-        return init
+        return Dropdown(setting, spec.name, GetOptions, spec.tip, { unavailableKey = spec.unavailableKey })
     end
 
     -- ── Fade Objective Tracker's sub-options (v1.51.0): In Raids, then a faded-opacity slider for each
@@ -2166,14 +2183,21 @@ local function InitializeOptions()
         end
         local raidSetting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_fadeObjectiveTrackerRaid",
             "fadeObjectiveTrackerRaid", db, "string", "In Raids", UNIVERSAL.fadeObjectiveTrackerRaid)
-        Under(Settings.CreateDropdown(category, raidSetting, function()
+        local function RaidOptions()
             local c = Settings.CreateControlTextContainer()
             c:Add("normal", "Normal", "The tracker fades as set above.")
             c:Add("raid", "Hide in Raids", "The whole tracker is hidden inside a raid.")
             c:Add("boss", "Hide During Boss Fights", "Hidden inside a raid only while a boss fight is on.")
             return c:GetData()
-        end, "What the tracker does in a raid. Hovering still shows it, and a hidden quest item button can "
-            .. "still be clicked. Applies at once."))
+        end
+        local raidTip = "What the tracker does in a raid. Hovering still shows it, and a hidden quest item button "
+            .. "can still be clicked. Applies at once."
+        if TRIAL_COVER_ONLY and VUI.AddCoverDropdown then
+            Dropdown(raidSetting, "In Raids", RaidOptions, raidTip,
+                { sub = true, isEnabled = function() return db.fadeObjectiveTracker end })
+        else
+            Under(Settings.CreateDropdown(category, raidSetting, RaidOptions, raidTip))
+        end
         for _, sec in ipairs(OT_SECTIONS) do
             local key = "otOpacity_" .. sec.id
             local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_" .. key, key, db,
@@ -2395,7 +2419,7 @@ local function InitializeOptions()
         ignoreErrCallback = false
     end)
 
-    Settings.CreateDropdown(category, errSetting, GetErrorTypeOptions,
+    Dropdown(errSetting, "Hide Error Text", GetErrorTypeOptions,
         "Pick the kinds of red error message to hide, and the spoken lines that go with them; the rest "
         .. "still show. Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.")
 
