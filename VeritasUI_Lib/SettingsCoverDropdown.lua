@@ -17,7 +17,14 @@
 -- has no control and nothing to click, so a Blizzard header later drawn on that frame has nothing that can open
 -- a menu. A frame of ours parented to SettingsPanel (not to the list) draws the label and the dropdown where
 -- Blizzard's sit and opens our own pop-out. Nothing is written on Blizzard's frames and Blizzard's menu is never
--- opened. The setting stays searchable (AddSearchTags).
+-- opened.
+-- ⚠ NOT SEARCHABLE, on purpose (owner's repro, 2026-11-03: Options search "repair" -> Nameplates > Style -> Social
+-- popup, "VeritasUI_Lib"). Every search reads the search tags of EVERY initializer on every list page
+-- (SettingsPanelMixin:FindInitializersMatchingSearchText -> MatchesSearchTags, Blizzard_SettingsPanel.lua:575-610,
+-- Blizzard_Settings.lua:65-77). Tags added from addon code (initializer:AddSearchTags) are written tainted, so the
+-- search runs tainted from the first one it reads and draws its results tainted. Blizzard adds tags safely only
+-- inside its own secure handler, from the setting's name (Blizzard_SettingsInbound.lua:229-238), and these rows have
+-- no setting (a setting would make the header show its name as a large title, :95-97). Never call AddSearchTags.
 -- ⚠ NOT the bare SettingsListElementTemplate (owner's Lua error, 2026-11-03): that template has no OnLoad in its
 -- XML (:50-77; only the templates inheriting it run SettingsListElementMixin:OnLoad), so `cbrHandles` is never
 -- made and its Init fails at Blizzard_SettingControls.lua:306. That is why no Blizzard page uses it bare.
@@ -417,7 +424,6 @@ function VUI.AddCoverDropdown(layout, spec)
     if not (layout and layout.AddInitializer and Settings and Settings.CreateElementInitializer) then return nil end
     local init = Settings.CreateElementInitializer("SettingsListSectionHeaderTemplate",
         { name = "", tooltip = spec.tooltip })
-    if init.AddSearchTags then init:AddSearchTags(spec.name) end
     entries[init] = {
         setting = spec.setting, name = spec.name, tooltip = spec.tooltip,
         getOptions = spec.getOptions, isEnabled = spec.isEnabled, sub = spec.sub,

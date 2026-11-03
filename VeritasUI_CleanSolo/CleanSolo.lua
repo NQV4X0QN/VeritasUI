@@ -2031,8 +2031,16 @@ local function InitializeOptions()
         end
         return o
     end
+    -- ⚠ Built with Settings.CreateSettingInitializer, NOT CreateSettingsCheckboxSliderInitializer (owner's repro,
+    -- 2026-11-03: Options search "fade" -> Nameplates > Style -> Social popup, "VeritasUI_CleanSolo"). That helper
+    -- is the same data + template, then initializer:AddSearchTags(cbLabel, sliderLabel) in the CALLER's execution
+    -- (Blizzard_SettingControls.lua:1305-1323), so from addon code the tags are written tainted, and every search
+    -- reads every initializer's tags (Blizzard_SettingsPanel.lua:575-610). Putting the checkbox setting in
+    -- data.setting lets Blizzard's secure handler add its name as the tag instead (Blizzard_SettingsInbound.lua:
+    -- 229-238). Cost: the row is found by its name, not by "Faded Opacity". data.setting also lets sub-options grey
+    -- at once when it is ticked (SettingsListElementMixin:Init, Blizzard_SettingControls.lua:309-315).
     local function CreateCheckboxRow(opt, setting)
-        local canPair = opt.opacity and _G.CreateSettingsCheckboxSliderInitializer
+        local canPair = opt.opacity and Settings.CreateSettingInitializer
             and layout and layout.AddInitializer
         if not canPair then
             return Settings.CreateCheckbox(category, setting, TipWithReason(opt.tip, opt.key))
@@ -2049,9 +2057,13 @@ local function InitializeOptions()
         if opt.opacityApply then
             slider:SetValueChangedCallback(function(_, value) opt.opacityApply(value) end)
         end
-        local init = _G.CreateSettingsCheckboxSliderInitializer(
-            setting, opt.name, TipWithReason(opt.tip, opt.key),
-            slider, OpacitySliderOptions(), "Faded Opacity", OPACITY_TIP .. (opt.opacityTip or ""))
+        local tip = TipWithReason(opt.tip, opt.key)
+        local init = Settings.CreateSettingInitializer("SettingsCheckboxSliderControlTemplate", {
+            name = opt.name, tooltip = tip, setting = setting,
+            cbSetting = setting, cbLabel = opt.name, cbTooltip = tip,
+            sliderSetting = slider, sliderOptions = OpacitySliderOptions(), sliderLabel = "Faded Opacity",
+            sliderTooltip = OPACITY_TIP .. (opt.opacityTip or ""),
+        })
         layout:AddInitializer(init)
         return init
     end
