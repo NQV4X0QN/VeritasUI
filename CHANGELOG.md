@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.59.0] - 2026-11-03
+
+### Fixed
+
+- `VeritasUI_Lib` — **"VeritasUI_Lib has been blocked" on Options > Social is gone.** VeritasUI's dropdowns were Blizzard dropdown rows filled in with our settings; Blizzard reuses those rows on its own pages (Nameplates, Social), and opening one there set off the block. Every Clean Solo and Quality of Life dropdown is now drawn by VeritasUI, with its own pop-out, and looks and behaves like Blizzard's: same button, menu, tick boxes, hover bar and tooltip (`SettingsCoverDropdown.lua`, new)
+- `VeritasUI_Lib` — **Searching Options no longer sets off the block.** Search tags, sub-option links and the Fade + slider rows were written in a way Blizzard's search counted as VeritasUI's. Every VeritasUI setting, dropdowns included, is still found by Options search (`SettingsCoverDropdown.lua`)
+- `VeritasUI_CleanSolo` — **Fade options with an opacity slider, and sub-options such as Show on Gains, built the search-safe way.** Sub-options are indented and greyed as Blizzard's Nameplates page does, and grey the moment their parent is unticked (`CleanSolo.lua`)
+- `VeritasUI_QualityOfLife` — **Quest Options, Repair Funding and Whisper Sound use the new dropdowns; sub-options built the search-safe way** (`QualityOfLife.lua`, `Automation.lua`, `Chat.lua`)
+
+### Added
+
+- `VeritasUI_Lib` — **`/vui probe search`.** Lists any Options row whose search fields another addon has tainted; it should report 0 (`SettingsCoverDropdown.lua`, `Lib.lua`)
+
+
 ## [1.58.6] - 2026-11-02
 
 ### Changed

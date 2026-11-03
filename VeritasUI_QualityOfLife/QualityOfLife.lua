@@ -4399,10 +4399,10 @@ local function InitializeOptions()
         end
     end
 
-    -- ⛔ TRIAL BUILD ONLY (owner, 2026-11-03): Quest Options, Repair Funding and Whisper Sound are drawn by Lib's
-    -- cover dropdown (VeritasUI_Lib/SettingsCoverDropdown.lua), so no Blizzard dropdown row is on the page.
-    -- Never merge with this set to true.
-    local TRIAL_COVER_ONLY = true
+    -- Quest Options, Repair Funding and Whisper Sound are drawn by Lib's cover dropdown (v1.59.0,
+    -- VeritasUI_Lib/SettingsCoverDropdown.lua): no Blizzard dropdown row on the page, because a Blizzard dropdown
+    -- row filled in with our data is reused by Blizzard's own pages and taints them (Options > Social's
+    -- IsUserOAuthed blocked). Blizzard's own dropdown only if Lib is older than this module.
 
     local function AddCheckbox(key, name, tip, onChange)
         local setting = Settings.RegisterAddOnSetting(
@@ -4518,13 +4518,13 @@ local function InitializeOptions()
     end
     local repairTip = TipWithReason("Guild + Personal uses guild funds first when your guild allows it, then "
         .. "your own gold. Personal Only always uses your own gold.", "autoRepair")
-    if TRIAL_COVER_ONLY and VUI.AddCoverDropdown then
+    if VUI.AddCoverDropdown then
         VUI.AddCoverDropdown(layout, { category = category, setting = repairSetting, name = "Repair Funding",
             getOptions = GetRepairFundingOptions, tooltip = repairTip,
             isEnabled = function() return not OptionUnavailable("autoRepair") end })
     else
-    GreyIfUnavailable(Settings.CreateDropdown(category, repairSetting, GetRepairFundingOptions, repairTip),
-        "autoRepair")
+        GreyIfUnavailable(Settings.CreateDropdown(category, repairSetting, GetRepairFundingOptions, repairTip),
+            "autoRepair")
     end
 
     AddCheckbox("trainAllButton", "Train All Button",
@@ -4549,8 +4549,7 @@ local function InitializeOptions()
         UpdateNpcEvents)
 
     if VUI.QoL_NpcOptionsDropdown then
-        VUI.QoL_NpcOptionsDropdown(category, db, ADDON_NAME, TipWithReason,
-            TRIAL_COVER_ONLY and layout or nil)
+        VUI.QoL_NpcOptionsDropdown(category, db, ADDON_NAME, TipWithReason, layout)
     end
 
     AddCheckbox("untrackWorldQuestsOnUnfocus", "Untrack World Quests When Unfocused",
@@ -4693,7 +4692,7 @@ local function InitializeOptions()
         .. "chat message, not only as the sender.")
 
     if VUI.QoL_WhisperSoundDropdown then
-        VUI.QoL_WhisperSoundDropdown(category, db, ADDON_NAME, TRIAL_COVER_ONLY and layout or nil)
+        VUI.QoL_WhisperSoundDropdown(category, db, ADDON_NAME, layout)
     end
 
     AddCheckbox("chatRememberLines", "Remember Chat History",

@@ -1,5 +1,5 @@
 -- VeritasUI_Lib / SettingsCoverDropdown.lua -- a dropdown in the Options list with NO Blizzard dropdown in it
--- (TRIAL, owner 2026-11-03: Quality of Life's Quest Options only).
+-- (v1.59.0: every Clean Solo and Quality of Life dropdown; owner-confirmed in game 2026-11-03).
 --
 -- ⚠ WHY, measured in the owner's taintLog 11 run (~/Downloads/taint.log, 2026-11-02 23:21):
 --   * Blizzard's Options list reuses its row frames between pages. Our Settings.CreateDropdown row wrote its
@@ -39,7 +39,7 @@
 -- tables tainted; Blizzard's own pages, registered after login, then wrote their rows' search fields as
 -- VeritasUI_Lib -- the owner's `/vui probe search`: 27 Blizzard rows (Combat, General, Graphics) with searchTags /
 -- searchIgnoredLayouts / parentInitializer tainted by VeritasUI_Lib, none of ours. Step 7 (plain string): 0.
--- UNMEASURED (2026-11-03): that leading spaces are drawn as width and the label lands outside the list.
+-- MEASURED (owner, 2026-11-03): no title text shows on the pages or in search results, and the probe reads 0.
 -- ⚠ NOT the bare SettingsListElementTemplate (owner's Lua error, 2026-11-03): that template has no OnLoad in its
 -- XML (:50-77; only the templates inheriting it run SettingsListElementMixin:OnLoad), so `cbrHandles` is never
 -- made and its Init fails at Blizzard_SettingControls.lua:306. That is why no Blizzard page uses it bare.
@@ -502,7 +502,7 @@ local function StartTracking()
     driver:SetScript("OnUpdate", Track)
 end
 
--- ── PROBE (trial, 2026-11-03): /vui probe search ────────────────────────────
+-- ── PROBE: /vui probe search ────────────────────────────────────────────────
 -- Lists every Options list row whose fields Options search reads (FindInitializersMatchingSearchText and its
 -- caller, Blizzard_SettingsPanel.lua:575-695) and are not secure, by issecurevariable, with who tainted them.
 -- Diagnosis only: /reload afterwards. Walks categories the way search does (:604-610).

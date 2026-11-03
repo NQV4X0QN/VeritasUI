@@ -1876,13 +1876,13 @@ end
 local function InitializeOptions()
     local category, layout = VUI.RegisterSettingsCategory(SETTINGS_LABEL)
 
-    -- ⛔ TRIAL BUILD ONLY (owner, 2026-11-03): every Clean Solo dropdown is drawn by Lib's cover dropdown
-    -- (VeritasUI_Lib/SettingsCoverDropdown.lua), so no Blizzard dropdown row is on the page. Never merge with
-    -- this set to true. `opts` = { unavailableKey, sub, isEnabled }.
-    local TRIAL_COVER_ONLY = true
+    -- Every Clean Solo dropdown is drawn by Lib's cover dropdown (v1.59.0, VeritasUI_Lib/SettingsCoverDropdown.lua):
+    -- no Blizzard dropdown row on the page, because a Blizzard dropdown row filled in with our data is reused by
+    -- Blizzard's own pages and taints them (Options > Social's IsUserOAuthed blocked). Blizzard's own dropdown
+    -- only if Lib is older than this module. `opts` = { unavailableKey, sub, isEnabled }.
     local function Dropdown(setting, name, getOptions, tip, opts)
         opts = opts or {}
-        if TRIAL_COVER_ONLY and VUI.AddCoverDropdown then
+        if VUI.AddCoverDropdown then
             local key, parentOn = opts.unavailableKey, opts.isEnabled
             return VUI.AddCoverDropdown(layout, { category = category, setting = setting, name = name,
                 getOptions = getOptions, tooltip = TipWithReason(tip, key), sub = opts.sub,
@@ -2207,7 +2207,7 @@ local function InitializeOptions()
         end
         local raidTip = "What the tracker does in a raid. Hovering still shows it, and a hidden quest item button "
             .. "can still be clicked. Applies at once."
-        if TRIAL_COVER_ONLY and VUI.AddCoverDropdown then
+        if VUI.AddCoverDropdown then
             Dropdown(raidSetting, "In Raids", RaidOptions, raidTip,
                 { sub = true, isEnabled = function() return db.fadeObjectiveTracker end })
         else

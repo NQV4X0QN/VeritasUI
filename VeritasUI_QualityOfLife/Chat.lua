@@ -295,7 +295,7 @@ VUI.QoL_WhisperSoundDropdown = function(category, db, addonName, coverLayout)
     end
     local tip = "The sound for a whisper or Battle.net whisper. Like Blizzard's, it plays once, then not again "
         .. "until no whisper has come for 5 minutes."
-    -- coverLayout (TRIAL, 2026-11-03): Lib's cover dropdown, no Blizzard dropdown row (taint note in
+    -- coverLayout (v1.59.0): Lib's cover dropdown, no Blizzard dropdown row (taint note in
     -- VeritasUI_Lib/SettingsCoverDropdown.lua).
     if coverLayout and VUI.AddCoverDropdown then
         VUI.AddCoverDropdown(coverLayout, { category = category, setting = setting, name = "Whisper Sound",

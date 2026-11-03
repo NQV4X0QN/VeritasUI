@@ -329,7 +329,7 @@ VUI.QoL_NpcOptionsDropdown = function(category, db, addonName, TipWithReason, co
         return c:GetData()
     end
     local tip = "Rules for Pick Only Dialogue Option, Auto Accept Quests and Auto Turn In Quests. Applies at once."
-    -- coverLayout (TRIAL, 2026-11-03): Lib's cover dropdown, no Blizzard dropdown row (taint note in
+    -- coverLayout (v1.59.0): Lib's cover dropdown, no Blizzard dropdown row (taint note in
     -- VeritasUI_Lib/SettingsCoverDropdown.lua).
     if coverLayout and VUI.AddCoverDropdown then
         VUI.AddCoverDropdown(coverLayout, { category = category, setting = setting, name = "Quest Options",
