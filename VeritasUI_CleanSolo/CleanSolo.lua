@@ -99,7 +99,7 @@ local UNIVERSAL = {
     -- hideTransformsMask (derived), like hideTopBannersMask. Replaces hideProfessionGear (v1.27.0, ON
     -- since v1.37.0): Profession Gear stays ticked for new installs; the rest start off.
     hideTransformTypes  = { professions = true },
-    -- v1.59.0: Fade Minimap Buttons dropdown, [buttonId] = true (MINIMAP_BUTTONS). TABLE-typed, PAIRED
+    -- v1.60.0: Fade Minimap Buttons dropdown, [buttonId] = true (MINIMAP_BUTTONS). TABLE-typed, PAIRED
     -- with fadeMinimapButtonsMask (derived). Default none. Replaces hideMinimapButtons (v1.50.0), whose
     -- choices it takes on upgrade at 0% opacity.
     fadeMinimapButtons  = {},
@@ -934,7 +934,7 @@ local function SetHideTransforms()
     end
 end
 
--- ── Feature: Fade Minimap Buttons (v1.59.0, owner's request; was Hide Minimap Buttons, v1.50.0) ──
+-- ── Feature: Fade Minimap Buttons (v1.60.0, owner's request; was Hide Minimap Buttons, v1.50.0) ──
 -- Blizzard has no option for these (Edit Mode's Minimap system offers only header position, size and
 -- rotation). The pieces picked fade out, and hovering the minimap or any of them brings them ALL back
 -- (owner: a button at 0% has to be findable). Each fades by ALPHA only, never Hide(): Blizzard Shows
@@ -1947,7 +1947,7 @@ local function InitializeOptions()
              .. "out unless you're mousing over them. Applies at once.",
           apply = function(value) if value then SetupMinimapAlertsFade() end end,
           opacity = "fadeMinimapAlertsOpacity" },
-        -- v1.59.0: a tick-box dropdown + its own opacity slider (BuildMinimapButtonsDropdown below).
+        -- v1.60.0: a tick-box dropdown + its own opacity slider (BuildMinimapButtonsDropdown below).
         -- Replaces Hide Minimap Buttons. Applies at once.
         { key = "fadeMinimapButtons", build = function() BuildMinimapButtonsDropdown() end },
         { key = "fadeDamageMeter",     name = "Fade Damage Meter",
@@ -2238,7 +2238,10 @@ local function InitializeOptions()
     end
 
     -- ── Fade Minimap Buttons — tick-box dropdown, UNIVERSAL (mask paired with fadeMinimapButtons), then
-    -- its faded-opacity slider, indented under it and greyed while nothing is picked.
+    -- its faded-opacity slider, indented under it and greyed while nothing is picked. The dropdown goes
+    -- through KindsDropdown -> Dropdown() -> Lib's cover dropdown (v1.59.0); the slider is linked with
+    -- VUI.SettingsSubOption, re-checked whenever the dropdown's mask setting changes -- never
+    -- SetParentInitializer (Options search reads it: the Social taint, landmine 149).
     function BuildMinimapButtonsDropdown()
         local init = KindsDropdown({
             setting = ADDON_NAME .. "_fadeMinimapButtons", maskKey = "fadeMinimapButtonsMask",
@@ -2258,8 +2261,9 @@ local function InitializeOptions()
             "How much of the picked minimap buttons still shows while faded. At 0% they are hidden "
             .. "until you mouse over the minimap. Applies at once.")
         GreyIfUnavailable(slider, "fadeMinimapButtons")
-        if init and slider and slider.SetParentInitializer then
-            slider:SetParentInitializer(init, function() return next(db.fadeMinimapButtons) ~= nil end)
+        if init and slider and VUI.SettingsSubOption then
+            VUI.SettingsSubOption(slider, ADDON_NAME .. "_fadeMinimapButtons",
+                function() return next(db.fadeMinimapButtons) ~= nil end)
         end
     end
 
@@ -2528,7 +2532,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             db.hideTransformTypes.professions = (db.hideProfessionGear == true) or nil
             db.hideProfessionGear = nil
         end
-        -- v1.59.0: Hide Minimap Buttons becomes Fade Minimap Buttons at 0%, so each piece looks as it did
+        -- v1.60.0: Hide Minimap Buttons becomes Fade Minimap Buttons at 0%, so each piece looks as it did
         -- and now comes back on hover. Only into an empty choice, so it runs once.
         if type(db.hideMinimapButtons) == "table" then
             if next(db.fadeMinimapButtons) == nil and next(db.hideMinimapButtons) ~= nil then
