@@ -726,8 +726,8 @@ local function ToastGroup(info)
     return "other"
 end
 
--- ⚠ Only SOME toast kinds hidden: Blizzard's toast chain stays Blizzard's (an EXPERIMENT until the
--- owner confirms it in game). Two ways a toast reaches the screen:
+-- ⚠ Only SOME toast kinds hidden: Blizzard's toast chain stays Blizzard's (owner-confirmed in Delves and
+-- the open world, v1.48.0, 2026-11-01). Two ways a toast reaches the screen:
 --  1. DISPLAY_EVENT_TOASTS while nothing is toasting: Blizzard's handler peeks the queue head and shows
 --     it (EventToastManager.lua:154-160). Our handler runs FIRST (Blizzard's frame is re-registered
 --     after ours) and pops hidden heads with RemoveCurrentToast, so Blizzard only ever sees a wanted
