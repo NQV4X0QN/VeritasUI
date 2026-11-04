@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.60.3] - 2026-11-03
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **`/qol delveoutline` lists its choices on one line again.** Its help text read "thick|normal|none", and in WoW a bar followed by "n" starts a new line, so the choices came out broken across three lines mid-word. It now reads "thick, normal or none" (`QualityOfLife.lua`)
+
+### Internal
+
+- `VeritasUI_PriorityRotation`, `VeritasUI_CleanSolo` — **Two notes in the code brought up to date after the 2026-11-03 audit.** No change in game (`Editor.lua`, `CleanSolo.lua`)
+
+
 ## [1.60.2] - 2026-11-03
 
 ### Fixed
