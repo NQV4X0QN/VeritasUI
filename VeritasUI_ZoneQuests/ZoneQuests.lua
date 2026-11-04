@@ -96,7 +96,7 @@ end
 -- map, not its objective zone; the per-POI mapID here is the objective's.)
 -- Walks up to the closest non-empty map level, then filters that level.
 -- Returns a set keyed by questID.
-local function BuildZoneQuestSet()
+local function BuildMapQuestSet()
     local set = {}
     local validMaps, bestMap = BuildValidMapSet()
     if not bestMap or bestMap == 0 then return set end
@@ -138,6 +138,48 @@ local function BuildZoneQuestSet()
         if not par or par <= 0 then break end
         mapID = par
     end
+    return set
+end
+
+-- ── Instance quests by quest-log header (owner's request, 2026-11-03) ──
+-- Inside a dungeon, raid or other instance, a quest also counts as "here" when the quest log files it
+-- under that instance's name. Owner's case: a Vault of the Incarnates "collect three of an item, one a
+-- week" quest whose turn-in is outside the raid, so it has no marker on the raid's map and the map
+-- scan above never sees it. C_QuestLog.GetInfo lists each header (isHeader, title) followed by the
+-- quests filed under it (QuestLogDocumentation.lua QuestInfo). The names compared are the instance's
+-- (GetInstanceInfo) and the real zone text, which inside an instance is the instance's name.
+-- Instances only: outdoors the map scan is the rule (header names there were the pre-v1.7.14 design).
+-- ⚠ UNMEASURED until the owner confirms in game: that the quest log header for such a quest reads
+-- exactly the instance's name.
+local function IsSecret(v) return issecretvalue and issecretvalue(v) or false end
+local function BuildInstanceHeaderSet(set)
+    local okI, inInstance = pcall(IsInInstance)
+    if not (okI and inInstance) then return end
+    local names = {}
+    local okN, instName = pcall(GetInstanceInfo)
+    if okN and type(instName) == "string" and instName ~= "" and not IsSecret(instName) then names[instName] = true end
+    local okZ, zone = pcall(GetRealZoneText)
+    if okZ and type(zone) == "string" and zone ~= "" and not IsSecret(zone) then names[zone] = true end
+    if not next(names) then return end
+    local under = false
+    for i = 1, C_QuestLog.GetNumQuestLogEntries() do
+        local ok, info = pcall(C_QuestLog.GetInfo, i)
+        if ok and info then
+            if info.isHeader then
+                local t = info.title
+                under = type(t) == "string" and not IsSecret(t) and names[t] == true
+            elseif under and info.questID and not set[info.questID] then
+                set[info.questID] = "instance"
+            end
+        end
+    end
+end
+
+-- The quests that count as "here": the map scan, plus (in an instance) the quests filed under its name.
+-- Values: true from the map scan, "instance" from the header match (shown by /zq synctest).
+local function BuildZoneQuestSet()
+    local set = BuildMapQuestSet()
+    BuildInstanceHeaderSet(set)
     return set
 end
 
@@ -251,6 +293,7 @@ local function SyncTracking(verbose)
                 local ok2 = pcall(C_QuestLog.AddQuestWatch, info.questID, watchType)
                 if verbose then
                     local lbl = tag and (" (" .. tag .. ")")
+                        or (inZone == "instance" and " (instance)")
                         or (inZone and " (zone)")
                         or (superTracked and " (super-tracked)") or ""
                     print("[ZQ sync] ADD" .. lbl .. " '" .. tostring(info.title) .. "' ok=" .. tostring(ok2))
@@ -382,7 +425,8 @@ local function InitializeOptions()
         end
     end)
     Settings.CreateCheckbox(category, enableSetting,
-        "Shows only quests for your current zone in the Objective Tracker. Turning it off "
+        "Shows only quests for your current zone in the Objective Tracker. In a dungeon or raid, quests "
+        .. "your quest log lists under its name count too. Turning it off "
         .. "puts back the tracking you had before. Set for each character.")
 
     local pins = {
