@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.60.2] - 2026-11-03
+
+### Fixed
+
+- `VeritasUI_CleanSolo` — **The faded player frame no longer flashes when you log in.** On some logins the game reports your health as the loading screen lifts, and the portrait used to treat that like damage or regen and show for a few seconds. Those first reports are now ignored until 2 seconds after the loading screen lifts, after a fresh login or /reload. Combat, mousing over the frame and regen afterwards still bring it back, and zoning is unchanged (`CleanSolo.lua`)
+
+
 ## [1.60.1] - 2026-11-03
 
 ### Fixed

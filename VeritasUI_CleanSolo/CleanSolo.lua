@@ -2480,47 +2480,11 @@ end
 -- rose at +2.5 s and faded from +6.1 s. Another login got none, so the flash was intermittent. So health events
 -- are ignored from load until LOGIN_HEALTH_QUIET after the session's first loading screen lifts
 -- (LOADING_SCREEN_DISABLED), with PEW + LOGIN_HEALTH_FALLBACK as a backstop. Combat and hover still show it,
--- and regen ticks after the window still count. Zone changes open no window.
--- ⛔ TEST BUILD PROBE: `loginProbe` + `/cs login` record what happened. Delete before release.
+-- and regen ticks after the window still count. Zone changes open no window. CONFIRMED in game (v1.60.2 test):
+-- three fresh logins, no portrait; one logged UNIT_MAXHEALTH x2 at +0.8 s, the loading screen lifting and
+-- UNIT_HEALTH at +1.5 s, all ignored, frame alpha held at 0.
 local LOGIN_HEALTH_QUIET, LOGIN_HEALTH_FALLBACK = 2, 8
-local healthQuietUntil, loadingDone = math.huge, false
-local pewAt
-local loginProbe = { rows = {} }
-local function ProbeRow(what)
-    local rows = loginProbe.rows
-    if #rows < 60 then rows[#rows + 1] = { pewAt and (GetTime() - pewAt) or nil, what } end
-end
-local probeDriver
-local last = {}
-local function ProbeSample()
-    local pf = _G.PlayerFrame
-    if type(pf) ~= "table" then return end
-    local c = pf.PlayerFrameContainer
-    local portrait = type(c) == "table" and c.PlayerPortrait or nil
-    if type(portrait) ~= "table" then portrait = nil end
-    local now = {
-        frame = string.format("%.2f", pf:GetAlpha()),
-        shown = tostring(pf:IsShown()),
-        portrait = portrait and string.format("%.2f", portrait:GetAlpha()) or "-",
-        ignoresParent = portrait and portrait.IsIgnoringParentAlpha
-            and tostring(portrait:IsIgnoringParentAlpha()) or "-",
-        combat = tostring(InCombatLockdown() and true or false),
-        mouse = tostring(pf:IsMouseOver() and true or false),
-    }
-    for _, k in ipairs({ "frame", "shown", "portrait", "ignoresParent", "combat", "mouse" }) do
-        if now[k] ~= last[k] then ProbeRow(k .. " = " .. now[k]); last[k] = now[k] end
-    end
-end
--- Started at the end of PLAYER_LOGIN (after every fade is set up), so it is the last OnUpdate frame made.
-local function StartLoginProbe()
-    if probeDriver then return end
-    probeDriver = CreateFrame("Frame")
-    probeDriver.vuiLoginProbe = true
-    probeDriver:SetScript("OnUpdate", function(self)
-        if pewAt and GetTime() - pewAt > 15 then self:SetScript("OnUpdate", nil); return end
-        pcall(ProbeSample)
-    end)
-end
+local healthQuietUntil, loadingDone, pewSeen = math.huge, false, false
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -2622,7 +2586,6 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         end
         if db.fadeObjectiveTracker and not Unavailable("fadeObjectiveTracker") then SetupObjectiveTrackerFade() end
         if db.fadeStatusBars and not Unavailable("fadeStatusBars") then SetupStatusBarFade() end
-        StartLoginProbe()   -- ⛔ TEST BUILD PROBE
 
         self:UnregisterEvent("PLAYER_LOGIN")
         -- Login line removed (suite-wide audit S2): Lib prints the one "VeritasUI vX loaded" line.
@@ -2644,24 +2607,19 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
     elseif event == "PLAYER_ENTERING_WORLD" then
         -- arg1 = isInitialLogin, then the reload flag.
         local isReload = ...
-        if (arg1 or isReload) and not pewAt then
-            pewAt = GetTime()
-            healthQuietUntil = math.min(healthQuietUntil, pewAt + LOGIN_HEALTH_FALLBACK)
-            loginProbe.kind = arg1 and "login" or "reload"
-            ProbeRow("PLAYER_ENTERING_WORLD")
+        if (arg1 or isReload) and not pewSeen then
+            pewSeen = true
+            healthQuietUntil = math.min(healthQuietUntil, GetTime() + LOGIN_HEALTH_FALLBACK)
         end
 
     elseif event == "LOADING_SCREEN_DISABLED" then
         if not loadingDone then
             loadingDone = true
             healthQuietUntil = GetTime() + LOGIN_HEALTH_QUIET
-            ProbeRow("LOADING_SCREEN_DISABLED")
         end
 
     elseif event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
-        local ignored = GetTime() < healthQuietUntil
-        ProbeRow(event .. (ignored and "  ignored" or "  used"))
-        if ignored then return end
+        if GetTime() < healthQuietUntil then return end
         if self._playerHealthPing then self._playerHealthPing() end
     end
 end)
@@ -2671,15 +2629,6 @@ SLASH_VERITASUI_CLEANSOLO1 = "/cleansolo"
 SLASH_VERITASUI_CLEANSOLO2 = "/cs"
 SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
     if strtrim(msg or ""):lower() == "gear" then PrintGearDiag(); return end
-    if strtrim(msg or ""):lower() == "login" then
-        -- TEST BUILD PROBE: what the player frame did from login until 15 s after entering the world.
-        VUI.Print("Clean Solo", string.format("player frame after %s: %d changes", tostring(loginProbe.kind),
-            #loginProbe.rows))
-        for _, r in ipairs(loginProbe.rows) do
-            print(string.format("  %s  %s", r[1] and string.format("%+.1f s", r[1]) or "before world", r[2]))
-        end
-        return
-    end
     if strtrim(msg or ""):lower() == "tracker" then
         -- Which tracker sections are shown, and their alpha: if an event's objective still fades,
         -- this names the section it is in, so it can be added to OT_EVENT_MODULES.
