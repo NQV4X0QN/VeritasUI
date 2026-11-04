@@ -913,11 +913,11 @@ function PR:BuildEditor(parent, contentWidth)
                 row.iconBtn.empty:Hide()
                 local displayName = e.spellName or e.macroName or e.itemName
                 if e.macroName then
-                    -- Cyan [M] tag matches the established macro convention.
+                    -- Light-blue [M] tag (LIGHTBLUE_FONT_COLOR since the v1.58 colour sweep; it was cyan).
                     displayName = VUI.COL.LIGHTBLUE .. "[M]|r " .. e.macroName
                 elseif e.itemID then
-                    -- Yellow [T] tag for "Trinket" — distinct from spells
-                    -- (no tag, white) and macros (cyan [M]). The trinket
+                    -- Gold [T] tag (NORMAL_FONT_COLOR) for "Trinket" — distinct from spells
+                    -- (no tag, white) and macros (light-blue [M]). The trinket
                     -- name itself stays white for readability against the
                     -- dark row background.
                     displayName = VUI.COL.NORMAL .. "[T]|r " .. e.itemName
