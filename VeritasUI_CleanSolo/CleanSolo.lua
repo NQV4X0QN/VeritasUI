@@ -2473,10 +2473,22 @@ local function InitializeOptions()
 end
 
 -- ── Events ──────────────────────────────────────────────────
+-- Login quiet window for the player frame's health trigger (v1.60.2, owner 2026-11-03: on a fresh login the
+-- portrait showed for 2-3 s before fading; on /reload it did not). The frame shows for HEALTH_IDLE_TIME (3 s,
+-- Lib.lua) after any UNIT_HEALTH / UNIT_MAXHEALTH, because health is a Secret Value and a recent event is the
+-- only sign of damage or regen. HYPOTHESIS, not yet measured: the game sends those events while the character
+-- finishes loading on a fresh login. Ignored from PLAYER_LOGIN until LOGIN_HEALTH_QUIET after
+-- PLAYER_ENTERING_WORLD; combat and hover still show it, and regen ticks after the window still do.
+-- TEST BUILD: `loginHealthProbe` records each health event's time from PLAYER_ENTERING_WORLD for /cs login.
+local LOGIN_HEALTH_QUIET = 3
+local healthQuietUntil = math.huge
+local pewAt
+local loginHealthProbe = {}
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 
-frame:SetScript("OnEvent", function(self, event, arg1)
+frame:SetScript("OnEvent", function(self, event, arg1, ...)
     if event == "ADDON_LOADED" then
         if arg1 ~= ADDON_NAME then return end
         -- Account table only: no identity yet, so cdb comes back nil. VUI.BindScopedDB replaces
@@ -2590,7 +2602,21 @@ frame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "PLAYER_REGEN_ENABLED" then
         if self._playerEvaluate then self._playerEvaluate() end
 
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        -- arg1 = isInitialLogin; the reload flag is the next argument. Either one opens the window once.
+        local isReload = ...
+        if arg1 or isReload then
+            pewAt = GetTime()
+            healthQuietUntil = pewAt + LOGIN_HEALTH_QUIET
+            loginHealthProbe.kind = arg1 and "login" or "reload"
+        end
+
     elseif event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
+        local now = GetTime()
+        if #loginHealthProbe < 40 and (not pewAt or now - pewAt < 15) then
+            loginHealthProbe[#loginHealthProbe + 1] = { event, pewAt and (now - pewAt) or nil, now < healthQuietUntil }
+        end
+        if now < healthQuietUntil then return end
         if self._playerHealthPing then self._playerHealthPing() end
     end
 end)
@@ -2600,6 +2626,16 @@ SLASH_VERITASUI_CLEANSOLO1 = "/cleansolo"
 SLASH_VERITASUI_CLEANSOLO2 = "/cs"
 SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
     if strtrim(msg or ""):lower() == "gear" then PrintGearDiag(); return end
+    if strtrim(msg or ""):lower() == "login" then
+        -- TEST BUILD: the player-health events seen in the first 15 s after entering the world.
+        VUI.Print("Clean Solo", string.format("health events after %s: %d", tostring(loginHealthProbe.kind),
+            #loginHealthProbe))
+        for _, e in ipairs(loginHealthProbe) do
+            print(string.format("  %s  %s  %s", e[1], e[2] and string.format("%+.1f s", e[2]) or "before world",
+                e[3] and "ignored" or "used"))
+        end
+        return
+    end
     if strtrim(msg or ""):lower() == "tracker" then
         -- Which tracker sections are shown, and their alpha: if an event's objective still fades,
         -- this names the section it is in, so it can be added to OT_EVENT_MODULES.
