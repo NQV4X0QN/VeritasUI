@@ -5225,7 +5225,7 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
         elseif doutline == "" then
             VUI.Print("Quality of Life", format(
                 "Delve count outline is " .. VUI.COL.YELLOW .. "%s|r. " .. VUI.COL.YELLOW .. "/qol delveoutline "
-                .. "thick|normal|none|r — " .. VUI.COL.YELLOW .. "normal|r is what Blizzard's own count "
+                .. "thick, normal or none|r — " .. VUI.COL.YELLOW .. "normal|r is what Blizzard's own count "
                 .. "uses (NumberFont_Outline_Med declares outline=\"NORMAL\").",
                 tostring(OUTLINE_REV[db.delveCountOutline] or db.delveCountOutline)))
         elseif not OUTLINE_MAP[doutline] then
