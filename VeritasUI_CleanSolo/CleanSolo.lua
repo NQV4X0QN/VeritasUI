@@ -2473,11 +2473,17 @@ local function InitializeOptions()
 end
 
 -- ── Events ──────────────────────────────────────────────────
--- ⛔ TEST BUILD PROBE (2026-11-03): the player frame shows for 2-3 s on SOME fresh logins (owner). The first
--- hypothesis -- login health events -- was FALSIFIED: a login recorded 0 UNIT_HEALTH / UNIT_MAXHEALTH. This probe
--- only measures: from PLAYER_LOGIN until 15 s after PLAYER_ENTERING_WORLD it records every change of the
--- player frame's alpha, the portrait's alpha, combat and mouse-over, plus health events, for `/cs login`.
--- It changes nothing. Delete before release.
+-- Player frame: no flash on login (owner, 2026-11-03). The frame shows for 3 s after any player UNIT_HEALTH /
+-- UNIT_MAXHEALTH (Lib HookPlayerFrameFade, HEALTH_IDLE_TIME: health is a Secret Value, so a recent event is
+-- the only sign of damage or regen). MEASURED (`/cs login`, a fresh login that flashed): UNIT_MAXHEALTH x2 at
+-- +0.6 s and UNIT_HEALTH at +2.1 s after PLAYER_ENTERING_WORLD, the moment the loading screen lifted; the frame
+-- rose at +2.5 s and faded from +6.1 s. Another login got none, so the flash was intermittent. So health events
+-- are ignored from load until LOGIN_HEALTH_QUIET after the session's first loading screen lifts
+-- (LOADING_SCREEN_DISABLED), with PEW + LOGIN_HEALTH_FALLBACK as a backstop. Combat and hover still show it,
+-- and regen ticks after the window still count. Zone changes open no window.
+-- ⛔ TEST BUILD PROBE: `loginProbe` + `/cs login` record what happened. Delete before release.
+local LOGIN_HEALTH_QUIET, LOGIN_HEALTH_FALLBACK = 2, 8
+local healthQuietUntil, loadingDone = math.huge, false
 local pewAt
 local loginProbe = { rows = {} }
 local function ProbeRow(what)
@@ -2518,6 +2524,7 @@ end
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:RegisterEvent("LOADING_SCREEN_DISABLED")
 
 frame:SetScript("OnEvent", function(self, event, arg1, ...)
     if event == "ADDON_LOADED" then
@@ -2635,16 +2642,26 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         if self._playerEvaluate then self._playerEvaluate() end
 
     elseif event == "PLAYER_ENTERING_WORLD" then
-        -- TEST BUILD PROBE: arg1 = isInitialLogin, then the reload flag.
+        -- arg1 = isInitialLogin, then the reload flag.
         local isReload = ...
         if (arg1 or isReload) and not pewAt then
             pewAt = GetTime()
+            healthQuietUntil = math.min(healthQuietUntil, pewAt + LOGIN_HEALTH_FALLBACK)
             loginProbe.kind = arg1 and "login" or "reload"
             ProbeRow("PLAYER_ENTERING_WORLD")
         end
 
+    elseif event == "LOADING_SCREEN_DISABLED" then
+        if not loadingDone then
+            loadingDone = true
+            healthQuietUntil = GetTime() + LOGIN_HEALTH_QUIET
+            ProbeRow("LOADING_SCREEN_DISABLED")
+        end
+
     elseif event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
-        ProbeRow(event)
+        local ignored = GetTime() < healthQuietUntil
+        ProbeRow(event .. (ignored and "  ignored" or "  used"))
+        if ignored then return end
         if self._playerHealthPing then self._playerHealthPing() end
     end
 end)
