@@ -2473,17 +2473,48 @@ local function InitializeOptions()
 end
 
 -- ── Events ──────────────────────────────────────────────────
--- Login quiet window for the player frame's health trigger (v1.60.2, owner 2026-11-03: on a fresh login the
--- portrait showed for 2-3 s before fading; on /reload it did not). The frame shows for HEALTH_IDLE_TIME (3 s,
--- Lib.lua) after any UNIT_HEALTH / UNIT_MAXHEALTH, because health is a Secret Value and a recent event is the
--- only sign of damage or regen. HYPOTHESIS, not yet measured: the game sends those events while the character
--- finishes loading on a fresh login. Ignored from PLAYER_LOGIN until LOGIN_HEALTH_QUIET after
--- PLAYER_ENTERING_WORLD; combat and hover still show it, and regen ticks after the window still do.
--- TEST BUILD: `loginHealthProbe` records each health event's time from PLAYER_ENTERING_WORLD for /cs login.
-local LOGIN_HEALTH_QUIET = 3
-local healthQuietUntil = math.huge
+-- ⛔ TEST BUILD PROBE (2026-11-03): the player frame shows for 2-3 s on SOME fresh logins (owner). The first
+-- hypothesis -- login health events -- was FALSIFIED: a login recorded 0 UNIT_HEALTH / UNIT_MAXHEALTH. This probe
+-- only measures: from PLAYER_LOGIN until 15 s after PLAYER_ENTERING_WORLD it records every change of the
+-- player frame's alpha, the portrait's alpha, combat and mouse-over, plus health events, for `/cs login`.
+-- It changes nothing. Delete before release.
 local pewAt
-local loginHealthProbe = {}
+local loginProbe = { rows = {} }
+local function ProbeRow(what)
+    local rows = loginProbe.rows
+    if #rows < 60 then rows[#rows + 1] = { pewAt and (GetTime() - pewAt) or nil, what } end
+end
+local probeDriver
+local last = {}
+local function ProbeSample()
+    local pf = _G.PlayerFrame
+    if type(pf) ~= "table" then return end
+    local c = pf.PlayerFrameContainer
+    local portrait = type(c) == "table" and c.PlayerPortrait or nil
+    if type(portrait) ~= "table" then portrait = nil end
+    local now = {
+        frame = string.format("%.2f", pf:GetAlpha()),
+        shown = tostring(pf:IsShown()),
+        portrait = portrait and string.format("%.2f", portrait:GetAlpha()) or "-",
+        ignoresParent = portrait and portrait.IsIgnoringParentAlpha
+            and tostring(portrait:IsIgnoringParentAlpha()) or "-",
+        combat = tostring(InCombatLockdown() and true or false),
+        mouse = tostring(pf:IsMouseOver() and true or false),
+    }
+    for _, k in ipairs({ "frame", "shown", "portrait", "ignoresParent", "combat", "mouse" }) do
+        if now[k] ~= last[k] then ProbeRow(k .. " = " .. now[k]); last[k] = now[k] end
+    end
+end
+-- Started at the end of PLAYER_LOGIN (after every fade is set up), so it is the last OnUpdate frame made.
+local function StartLoginProbe()
+    if probeDriver then return end
+    probeDriver = CreateFrame("Frame")
+    probeDriver.vuiLoginProbe = true
+    probeDriver:SetScript("OnUpdate", function(self)
+        if pewAt and GetTime() - pewAt > 15 then self:SetScript("OnUpdate", nil); return end
+        pcall(ProbeSample)
+    end)
+end
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -2584,6 +2615,7 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         end
         if db.fadeObjectiveTracker and not Unavailable("fadeObjectiveTracker") then SetupObjectiveTrackerFade() end
         if db.fadeStatusBars and not Unavailable("fadeStatusBars") then SetupStatusBarFade() end
+        StartLoginProbe()   -- ⛔ TEST BUILD PROBE
 
         self:UnregisterEvent("PLAYER_LOGIN")
         -- Login line removed (suite-wide audit S2): Lib prints the one "VeritasUI vX loaded" line.
@@ -2603,20 +2635,16 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         if self._playerEvaluate then self._playerEvaluate() end
 
     elseif event == "PLAYER_ENTERING_WORLD" then
-        -- arg1 = isInitialLogin; the reload flag is the next argument. Either one opens the window once.
+        -- TEST BUILD PROBE: arg1 = isInitialLogin, then the reload flag.
         local isReload = ...
-        if arg1 or isReload then
+        if (arg1 or isReload) and not pewAt then
             pewAt = GetTime()
-            healthQuietUntil = pewAt + LOGIN_HEALTH_QUIET
-            loginHealthProbe.kind = arg1 and "login" or "reload"
+            loginProbe.kind = arg1 and "login" or "reload"
+            ProbeRow("PLAYER_ENTERING_WORLD")
         end
 
     elseif event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
-        local now = GetTime()
-        if #loginHealthProbe < 40 and (not pewAt or now - pewAt < 15) then
-            loginHealthProbe[#loginHealthProbe + 1] = { event, pewAt and (now - pewAt) or nil, now < healthQuietUntil }
-        end
-        if now < healthQuietUntil then return end
+        ProbeRow(event)
         if self._playerHealthPing then self._playerHealthPing() end
     end
 end)
@@ -2627,12 +2655,11 @@ SLASH_VERITASUI_CLEANSOLO2 = "/cs"
 SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
     if strtrim(msg or ""):lower() == "gear" then PrintGearDiag(); return end
     if strtrim(msg or ""):lower() == "login" then
-        -- TEST BUILD: the player-health events seen in the first 15 s after entering the world.
-        VUI.Print("Clean Solo", string.format("health events after %s: %d", tostring(loginHealthProbe.kind),
-            #loginHealthProbe))
-        for _, e in ipairs(loginHealthProbe) do
-            print(string.format("  %s  %s  %s", e[1], e[2] and string.format("%+.1f s", e[2]) or "before world",
-                e[3] and "ignored" or "used"))
+        -- TEST BUILD PROBE: what the player frame did from login until 15 s after entering the world.
+        VUI.Print("Clean Solo", string.format("player frame after %s: %d changes", tostring(loginProbe.kind),
+            #loginProbe.rows))
+        for _, r in ipairs(loginProbe.rows) do
+            print(string.format("  %s  %s", r[1] and string.format("%+.1f s", r[1]) or "before world", r[2]))
         end
         return
     end
