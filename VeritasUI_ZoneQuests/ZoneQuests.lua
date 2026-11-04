@@ -149,8 +149,8 @@ end
 -- quests filed under it (QuestLogDocumentation.lua QuestInfo). The names compared are the instance's
 -- (GetInstanceInfo) and the real zone text, which inside an instance is the instance's name.
 -- Instances only: outdoors the map scan is the rule (header names there were the pre-v1.7.14 design).
--- ⚠ UNMEASURED until the owner confirms in game: that the quest log header for such a quest reads
--- exactly the instance's name.
+-- MEASURED (owner, 2026-11-03, v1.61.0 test build): the quest log header reads exactly "Vault of the
+-- Incarnates", and inside the raid "Break a Few Eggs" was tracked by this rule.
 local function IsSecret(v) return issecretvalue and issecretvalue(v) or false end
 local function BuildInstanceHeaderSet(set)
     local okI, inInstance = pcall(IsInInstance)

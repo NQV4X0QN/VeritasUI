@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.61.0] - 2026-11-03
+
+### Changed
+
+- `VeritasUI_ZoneQuests` — **Dungeon and raid quests show while you're inside, even with no marker on the map.** In a dungeon, raid or other instance, a quest now also counts as "here" when your quest log lists it under that instance's name, such as Vault of the Incarnates: Break a Few Eggs, whose quest giver is outside the raid. Outdoors nothing changes: a quest still needs a marker on the map you're on. `/zq synctest` shows "(instance)" for quests kept this way (`ZoneQuests.lua`)
+
+
 ## [1.60.3] - 2026-11-03
 
 ### Fixed
