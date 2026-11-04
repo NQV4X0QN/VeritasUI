@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 120105, 16001
 ## Title: VeritasUI — Quality of Life
 ## Notes: Item levels, auto-repair and junk selling, /way waypoints, AFK screen and Delve helpers. |cFF888888by NQV4X0QN|r
 ## Version: 1.61.0
