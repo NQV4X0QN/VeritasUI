@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.64.0] - 2026-11-04
+
+### Changed
+
+- `VeritasUI_Interface` — **Clean Solo is now Interface.** The module, its folder, its options page, its chat messages and its saved settings are all called Interface, and its slash command is `/interface` (`/cleansolo` and `/cs` are gone). Its settings start from the defaults. Delete the old `VeritasUI_CleanSolo` folder from your AddOns folder (all `VeritasUI_Interface` files, `Lib.lua`, `QualityOfLife.lua`, `CopyChat.lua`)
+- `VeritasUI_Interface` — **The options page is grouped by where things sit on screen.** Instead of one long Fade list and a Hide list, the page has sections: All Fades (Fade Delay), Action Bars, Micro Menu and Bags, Player, Chat, Minimap, Trackers and Meters, and Messages and Popups. Each option keeps its name and works as before; sub-options stay right under their parent (`Interface.lua`)
+
+
 ## [1.63.0] - 2026-11-04
 
 ### Added
