@@ -11,7 +11,7 @@
 -- The decision, per bag item, all read-only:
 --   * equippable (C_Item.IsEquippableItem) and its quality ticked;
 --   * not a slot we leave alone: trinkets (their worth is their effect, not item level), shirt, tabard, bags,
---     ammo, profession gear;
+--     ammo, profession gear; and never a profession tool (Skinning Knife, Mining Pick, Fishing Pole -- IsTool);
 --   * usable: no red line on its tooltip (C_TooltipInfo.GetBagItem). Blizzard writes an unmet requirement --
 --     armor or weapon type your class can't use, a level above yours -- in red. An unreadable tooltip waits for
 --     the next bag update;
@@ -118,6 +118,15 @@ local function WornLink(slot)
     return ok and link or nil
 end
 
+-- Profession tools are never put on, and any real weapon of the same kind replaces one you wear (owner, 2026-11-04:
+-- a Skinning Knife replaced his sword, and Raptor Strike needs a real weapon). In WoW Forever every tool is a weapon
+-- of subclass Miscellaneous (14) -- Skinning Knife 7005, Mining Pick 2901, Blacksmith Hammer 5956, Arclight Spanner
+-- 6219 -- and the Fishing Pole 6256 is subclass Fishing Poles (20): wago.tools Item table, build 1.60.1.70790.
+-- Retail's profession gear has its own slots, which this never touches.
+local function IsTool(classID, subclassID)
+    return classID == 2 and (subclassID == 14 or subclassID == 20)
+end
+
 -- Armor subclass of a link (1 cloth .. 4 plate), or nil for anything else (cloaks count as nil: every class
 -- wears a cloth cloak).
 local function ArmorType(link, equipLoc)
@@ -134,7 +143,8 @@ local function Decide(bag, slot, info, specStat)
     local okE, equippable = pcall(C_Item.IsEquippableItem, link)
     if not (okE and equippable) then return nil, nil end   -- not gear: not listed at all
     if not QualityAllowed(info.quality) then return nil, "quality " .. tostring(info.quality) .. " not chosen" end
-    local equipLoc = Info(link)
+    local equipLoc, classID, subclassID = Info(link)
+    if IsTool(classID, subclassID) then return nil, "profession tool" end
     local red, readable = RedLines(bag, slot)
     if not readable then return nil, "tooltip not readable yet" end
     if red and #red > 0 then return nil, "can't use: " .. table.concat(red, "; ") end
@@ -147,6 +157,8 @@ local function Decide(bag, slot, info, specStat)
         for _, s in ipairs(WEAPON_SLOTS) do
             local worn = WornLink(s)
             if worn and Info(worn) == equipLoc then
+                local _, wClass, wSub = Info(worn)
+                if IsTool(wClass, wSub) then return s, "weapon: replaces a profession tool" end
                 local wl = ItemLevel(worn)
                 if ilvl > wl then return s, format("weapon: item level %d over %d", ilvl, wl) end
                 return nil, format("weapon: item level %d is not over %d", ilvl, wl)
