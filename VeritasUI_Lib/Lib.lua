@@ -448,7 +448,9 @@ local HEALTH_IDLE_TIME = 3.0
 local PLAYER_FRAME_HOVER_POLL_RATE  = 0.10
 
 -- fadedAlpha (v1.40.0): optional getter for the faded opacity, as in HookHoverFade.
-function VUI.HookPlayerFrameFade(frame, inCombatRef, fadedAlpha)
+-- holdRef (v1.63.0): optional; while it returns true the frame stays shown (Clean Solo: a resource still filling
+-- or draining after combat, read from its value when the game lets us).
+function VUI.HookPlayerFrameFade(frame, inCombatRef, fadedAlpha, holdRef)
     if not frame then return end
     local faded = FadedAlpha(fadedAlpha)
     frame:SetAlpha(faded)
@@ -493,7 +495,7 @@ function VUI.HookPlayerFrameFade(frame, inCombatRef, fadedAlpha)
     end
 
     local function ShouldShow()
-        return inCombatRef() or healthActive or IsHovered()
+        return inCombatRef() or healthActive or IsHovered() or (holdRef ~= nil and holdRef() == true)
     end
 
 

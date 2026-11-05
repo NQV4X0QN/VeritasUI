@@ -583,11 +583,40 @@ local function SetupMicroMenuFade()
 end
 
 -- ── Feature: Player Frame Fade ──────────────────────────────
+-- No fade-and-back at the end of combat (owner, test build 3, 2026-11-04): regen and decay pause for a moment
+-- when combat ends, so the frame faded and came back. Two holds close that gap:
+--   * PLAYER_REGEN_ENABLED counts as a change (the 3 s window), so health or a resource that starts moving
+--     again shortly after keeps it up without a dip.
+--   * While a resource's VALUE can be read (not secret), the frame stays up until it is settled, however long
+--     the pause: the ones that fill (mana, energy, focus) until full, the ones that drain (rage, runic power,
+--     fury, insanity) until empty. Resources not listed here, or a secret value, fall back to event timing.
+local POWER_FILLS  = { MANA = true, ENERGY = true, FOCUS = true }
+local POWER_DRAINS = { RAGE = true, RUNIC_POWER = true, FURY = true, INSANITY = true }
+local function PowerUnsettled()
+    -- Inline, not IsSecret: that local is declared further down the file, so a call here would read a nil global.
+    local function Secret(v) return issecretvalue and issecretvalue(v) end
+    if not (db and db.fadePlayerFramePower) then return false end
+    -- Dead or a ghost, mana sits at 0 and does not refill: nothing to watch.
+    local okD, dead = pcall(_G.UnitIsDeadOrGhost, "player")
+    if okD and dead == true then return false end
+    local ok, idx, token = pcall(_G.UnitPowerType, "player")
+    if not ok or type(token) ~= "string" or Secret(token) then return false end
+    local fills, drains = POWER_FILLS[token], POWER_DRAINS[token]
+    if not (fills or drains) then return false end
+    local okP, cur = pcall(_G.UnitPower, "player", idx)
+    if not okP or type(cur) ~= "number" or Secret(cur) then return false end
+    if drains then return cur > 0 end
+    local okM, max = pcall(_G.UnitPowerMax, "player", idx)
+    if not okM or type(max) ~= "number" or Secret(max) or max <= 0 then return false end
+    return cur < max
+end
+
 local function SetupPlayerFrameFade()
     local evaluate, healthPing = VUI.HookPlayerFrameFade(
         PlayerFrame,
         InCombatLockdown,
-        Opacity("fadePlayerFrameOpacity")
+        Opacity("fadePlayerFrameOpacity"),
+        PowerUnsettled
     )
     frame._playerEvaluate   = evaluate
     frame._playerHealthPing = healthPing
@@ -2786,6 +2815,8 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         end
 
     elseif event == "PLAYER_REGEN_ENABLED" then
+        -- Combat end opens the 3 s window (see the Player Frame Fade header) before the evaluate.
+        if self._playerHealthPing then self._playerHealthPing() end
         if self._playerEvaluate then self._playerEvaluate() end
 
     elseif event == "PLAYER_ENTERING_WORLD" then
