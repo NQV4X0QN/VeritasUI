@@ -513,13 +513,23 @@ function AO:BuildFeaturedContent(parent, buttonBar)
         for catIdx, cat in ipairs(self.FEATURED_CATEGORIES) do
             list[#list + 1] = { type = "header", catIdx = catIdx }
             if not self:IsCollapsed(cat.key) then
+                -- A setting this client does not have is left out (WoW Forever has no alwaysShowActionBars,
+                -- reducedMotion or removeChatDelay: owner's /vui forever probe, 2026-11-04). A dropdown
+                -- with no master CVar of its own keeps the check per option (Controls.lua).
+                local shown = {}
                 for ctrlIdx, cfg in ipairs(cat.controls) do
-                    local nextCfg = cat.controls[ctrlIdx + 1]
+                    if not cfg.cvar or self:GetCVarInfo(cfg.cvar) ~= nil then
+                        shown[#shown + 1] = { idx = ctrlIdx, cfg = cfg }
+                    end
+                end
+                for i, s in ipairs(shown) do
+                    local cfg, ctrlIdx = s.cfg, s.idx
+                    local nextCfg = shown[i + 1] and shown[i + 1].cfg
                     list[#list + 1] = {
                         type     = "control",
                         catIdx   = catIdx,
                         ctrlIdx  = ctrlIdx,
-                        dropBelowHeader = (ctrlIdx == 1 and cfg.type == "slider") and FIRST_SLIDER_DROP or 0,
+                        dropBelowHeader = (i == 1 and cfg.type == "slider") and FIRST_SLIDER_DROP or 0,
                         tighten  = (cfg.type == "slider" and nextCfg and nextCfg.type ~= "slider")
                                    and SLIDER_THEN_OTHER_TIGHTEN or 0,
                         cfg      = cfg,

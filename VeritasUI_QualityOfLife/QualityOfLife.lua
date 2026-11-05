@@ -4456,10 +4456,14 @@ local function InitializeOptions()
         .. "and red when it is broken, the same colours as the armour figure.",
         CharSheetChanged)
 
-    AddCheckbox("charMythicRating", "Show Mythic+ Rating on Character Sheet",
-        "Shows your Mythic+ rating just below your item level, in its rating colour. Hidden while "
-        .. "you have no rating.",
-        CharSheetChanged)
+    -- Not in WoW Forever: no Mythic+ there (Blizzard_ChallengesUI loads in standard and mists only, Gethe
+    -- forever 1.60.1.70790; the owner's probe found no Mythic+ dungeons).
+    if not VUI.IS_FOREVER then
+        AddCheckbox("charMythicRating", "Show Mythic+ Rating on Character Sheet",
+            "Shows your Mythic+ rating just below your item level, in its rating colour. Hidden while "
+            .. "you have no rating.",
+            CharSheetChanged)
+    end
 
     -- CharacterStats.lua reads both at hover time, so they apply at once with no callback.
     AddCheckbox("charDiminishingReturns", "Show Diminishing Returns",
@@ -4575,22 +4579,27 @@ local function InitializeOptions()
         .. "something, including last week's rewards. Click it to open the vault.",
         GreatVault.Set)
 
-    -- Key stays `delveNemesisCount` (saved on every account); only the label widened when
-    -- Labyrinth chambers joined it in v1.20.0.
-    AddCheckbox("delveNemesisCount", "Show Delve Counts",
-        -- The /qol delve* tuning commands are deliberately not listed here: they are the
-        -- owner's placement knobs, and the shipped defaults are already tuned.
-        "Shows the count on the objective icon without hovering it: Nemesis groups left in "
-        .. "a Delve, or chambers completed in a Labyrinth. A checkmark replaces the number "
-        .. "when you're done.",
-        function(value)
-            if value then DelveStartCount() else DelveStopCount() end
-        end)
+    -- Not in WoW Forever: no Delves (Blizzard_DelvesDifficultyPicker and Blizzard_DelvesToast load in standard
+    -- only) and no Journeys window (Blizzard_EncounterJournal loads in standard and classic only; Gethe forever
+    -- 1.60.1.70790).
+    if not VUI.IS_FOREVER then
+        -- Key stays `delveNemesisCount` (saved on every account); only the label widened when
+        -- Labyrinth chambers joined it in v1.20.0.
+        AddCheckbox("delveNemesisCount", "Show Delve Counts",
+            -- The /qol delve* tuning commands are deliberately not listed here: they are the
+            -- owner's placement knobs, and the shipped defaults are already tuned.
+            "Shows the count on the objective icon without hovering it: Nemesis groups left in "
+            .. "a Delve, or chambers completed in a Labyrinth. A checkmark replaces the number "
+            .. "when you're done.",
+            function(value)
+                if value then DelveStartCount() else DelveStopCount() end
+            end)
 
-    AddCheckbox("journeysShortcuts", "Journeys Shortcuts",
-        "Adds the Show as Experience Bar checkbox to the Delve and Prey cards in the Journeys window, "
-        .. "and lets you click the reputation bar to open that faction's page, or the honor bar to "
-        .. "open the PvP window.")
+        AddCheckbox("journeysShortcuts", "Journeys Shortcuts",
+            "Adds the Show as Experience Bar checkbox to the Delve and Prey cards in the Journeys window, "
+            .. "and lets you click the reputation bar to open that faction's page, or the honor bar to "
+            .. "open the PvP window.")
+    end
 
     Header("Maps")
     AddCheckbox("wayCommand", "/way Waypoints",

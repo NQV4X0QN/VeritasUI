@@ -241,7 +241,8 @@ end
 
 VUI.QoL_NpcOptionRows = function()
     local rows = {}
-    if _G.GetQuestExpansion and GetServerExpansionLevel then
+    -- Not in WoW Forever: it reports expansion 0 (owner's probe, 2026-11-04), so no quest is from an earlier one.
+    if _G.GetQuestExpansion and GetServerExpansionLevel and not VUI.IS_FOREVER then
         rows[#rows + 1] = { id = "older", label = "Skip Older-Expansion Quests",
             tip = "At max level, quests from an earlier expansion are left for you to accept. While levelling "
                .. "or in Chromie Time they are accepted as before." }

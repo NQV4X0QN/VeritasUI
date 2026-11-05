@@ -1017,7 +1017,10 @@ local MINIMAP_BUTTONS = {
       frames = function() return { _G.AddonCompartmentFrame } end },
     { id = "expansion",  label = "Expansion Summary Button", tip = "The button that opens the expansion summary.",
       frames = function() return { _G.ExpansionLandingPageMinimapButton } end },
+    -- retailOnly: WoW Forever's minimap "intentionally omits InstanceDifficulty" (Blizzard_Minimap
+    -- Camelot/MinimapInstanceDifficulty.lua:1-2, Gethe forever 1.60.1.70790), so it is not offered there.
     { id = "difficulty", label = "Instance Difficulty", tip = "The difficulty shown in a dungeon, raid or Delve.",
+      retailOnly = true,
       frames = function() local c = _G.MinimapCluster; return c and { c.InstanceDifficulty } end },
 }
 
@@ -1330,6 +1333,10 @@ end
 -- Neither the modules nor the background are protected frames, so this works in combat too. Blizzard
 -- re-anchors on its next update; the poll puts our chain back within a tenth of a second.
 -- "In Raids" (fadeObjectiveTrackerRaid): hide every section in a raid, or only during a raid boss fight.
+-- retailOnly: no slider in WoW Forever, which has neither feature: Traveler's Log lives in the Encounter Journal
+-- and the Trading Post (Blizzard_EncounterJournal loads in standard and classic only, Blizzard_PerksProgram
+-- excludes camelot), Endeavors in Housing (every Blizzard_Housing* addon is standard only). Gethe forever
+-- 1.60.1.70790. Blizzard still builds both modules there; empty, they never show.
 local OT_SECTIONS = {
     { id = "scenario",     frame = "ScenarioObjectiveTracker",          label = "Scenario",          full = true },
     { id = "event",        frame = "UIWidgetObjectiveTracker",          label = "Event Objectives",  full = true },
@@ -1337,8 +1344,8 @@ local OT_SECTIONS = {
     { id = "quests",       frame = "QuestObjectiveTracker",             label = "Quests",            quests = true },
     { id = "collections",  frame = "AdventureObjectiveTracker",         label = "Collections" },
     { id = "achievements", frame = "AchievementObjectiveTracker",       label = "Achievements" },
-    { id = "travelerslog", frame = "MonthlyActivitiesObjectiveTracker", label = "Traveler's Log" },
-    { id = "endeavors",    frame = "InitiativeTasksObjectiveTracker",   label = "Endeavors" },
+    { id = "travelerslog", frame = "MonthlyActivitiesObjectiveTracker", label = "Traveler's Log",   retailOnly = true },
+    { id = "endeavors",    frame = "InitiativeTasksObjectiveTracker",   label = "Endeavors",        retailOnly = true },
     { id = "professions",  frame = "ProfessionsRecipeTracker",          label = "Professions" },
     { id = "bonus",        frame = "BonusObjectiveTracker",             label = "Bonus Objectives",  full = true },
     { id = "worldquests",  frame = "WorldQuestObjectiveTracker",        label = "World Quests",      quests = true },
@@ -2461,12 +2468,14 @@ local function InitializeOptions()
             Under(Settings.CreateDropdown(category, raidSetting, RaidOptions, raidTip))
         end
         for _, sec in ipairs(OT_SECTIONS) do
+          if not (sec.retailOnly and VUI.IS_FOREVER) then
             local key = "otOpacity_" .. sec.id
             local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_" .. key, key, db,
                 "number", sec.label, UNIVERSAL[key])
             Under(Settings.CreateSlider(category, setting, OpacitySliderOptions(),
                 "How much of the " .. sec.label .. " section still shows while the tracker is faded. At 0% it "
                 .. "is hidden and the sections below move up into its place. Applies at once."))
+          end
         end
     end
 
@@ -2476,11 +2485,15 @@ local function InitializeOptions()
     -- VUI.SettingsSubOption, re-checked whenever the dropdown's mask setting changes -- never
     -- SetParentInitializer (Options search reads it: the Social taint, landmine 149).
     function BuildMinimapButtonsDropdown()
+        local buttons = {}
+        for _, b in ipairs(MINIMAP_BUTTONS) do
+            if not (b.retailOnly and VUI.IS_FOREVER) then buttons[#buttons + 1] = b end
+        end
         local init = KindsDropdown({
             setting = ADDON_NAME .. "_fadeMinimapButtons", maskKey = "fadeMinimapButtonsMask",
             owner = db,              -- UNIVERSAL: paired with fadeMinimapButtons
             setMask = function(v) db.fadeMinimapButtonsMask = v end,
-            name = "Fade Minimap Buttons", items = MINIMAP_BUTTONS, truth = db.fadeMinimapButtons,
+            name = "Fade Minimap Buttons", items = buttons, truth = db.fadeMinimapButtons,
             unavailableKey = "fadeMinimapButtons",
             tip = "Pick the buttons and labels around the minimap to fade out. Mouse over the minimap and "
                .. "they all come back; a faded one can still be clicked. Applies at once.",
