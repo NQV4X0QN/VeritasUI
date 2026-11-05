@@ -1613,15 +1613,25 @@ end
 -- BuffFrame.lua:868-877), so we stay off their scripts. External Defensives, at the top of the screen,
 -- is not by the minimap and is left alone.
 -- Show Expiring Buffs (v1.63.0, owner's request 2026-11-04: Walk on Air, 10 s, was invisible while faded):
--- both frames come back while any of your buffs has 30 s or less left, so it is seen running out. Blizzard's
--- own icons start flashing just below this (BUFF_WARNING_TIME = 31, BuffFrame.lua:1, in Retail and Forever).
--- Read with C_UnitAuras.GetAuraDataByIndex (both games' UnitAuraDocumentation.lua), collected on UNIT_AURA
--- only, so the 10 Hz poll compares cached numbers. A secret time (SecretWhenUnitAuraRestricted) is skipped:
--- that happens under combat restrictions, when the frames are shown anyway.
+-- while one of your buffs has 30 s or less left, THAT buff comes back and the rest stay faded (owner, test
+-- build 1: showing the whole group put a 37-minute Mark of the Wild up beside it). Blizzard's own icons start
+-- flashing just below this (BUFF_WARNING_TIME = 31, BuffFrame.lua:1, in Retail and Forever).
+--   * Whether any buff is expiring: C_UnitAuras.GetAuraDataByIndex (both games' UnitAuraDocumentation.lua),
+--     collected on UNIT_AURA only. A secret time (SecretWhenUnitAuraRestricted) is skipped: that happens under
+--     combat restrictions, when the frames are shown anyway.
+--   * Which icon: BuffFrame is raised to full and every OTHER icon's textures and text are put at the faded
+--     opacity. Never the icon button's own alpha: Blizzard sets that every frame for its expiry flash
+--     (AuraButtonMixin:OnUpdate, BuffFrame.lua:955-956 Retail, :1267-1268 Forever). An icon's time is read from
+--     its buttonInfo.expirationTime (the field Blizzard's own CalculateTimeLeft reads). The expand/collapse
+--     arrow fades with the long icons. Each region's own alpha is restored afterwards, once BuffFrame has faded
+--     back down (so the long icons do not flash up while it fades) or at once if it is shown for another reason.
+--   * Debuffs no longer follow this (only buffs expire here); hovering either frame still shows both.
 local function SetupAuraFade()
     if liveFadeHooked.fadeAuras then return end   -- turned off and on again: already installed
     local SHORT_BUFF_SECONDS = 30
-    local frames = { _G.BuffFrame, _G.DebuffFrame }
+    local buffs, debuffs = _G.BuffFrame, _G.DebuffFrame
+    local frames = { buffs, debuffs }
+    local opacity = Opacity("fadeAurasOpacity")
     local function Hovered()
         for _, f in ipairs(frames) do
             if f and f:IsVisible() and f:IsMouseOver() then return true end
@@ -1643,23 +1653,73 @@ local function SetupAuraFade()
             end
         end
     end
+    local function Short(e, now)
+        if IsSecret(e) or type(e) ~= "number" or e <= 0 then return false end
+        local left = e - now
+        return left > 0 and left <= SHORT_BUFF_SECONDS
+    end
     local function Expiring()
         if not db.fadeAurasShowExpiring then return false end
         local now = GetTime()
         for _, e in ipairs(expiries) do
-            local left = e - now
-            if left > 0 and left <= SHORT_BUFF_SECONDS then return true end
+            if Short(e, now) then return true end
         end
         return false
     end
+    local function ShownAnyway()
+        return not db.fadeAuras or InCombatLockdown() or Hovered() or IsEditModeActive()
+    end
+
+    -- Per-icon: [region] = its own alpha before we touched it.
+    local saved = {}
+    local touched = false
+    local function SetPieces(f, a)
+        if not f then return end
+        for _, r in ipairs({ f:GetRegions() }) do
+            if r.SetAlpha then
+                if saved[r] == nil then saved[r] = r:GetAlpha() end
+                r:SetAlpha(a * saved[r])
+            end
+        end
+    end
+    local function Restore()
+        for r, a in pairs(saved) do r:SetAlpha(a) end
+        for r in pairs(saved) do saved[r] = nil end
+        touched = false
+    end
+    local function ApplyIcons()
+        if not buffs then return end
+        if not ShownAnyway() and Expiring() then
+            local now, faded = GetTime(), VUI.FadedAlpha(opacity)
+            for _, b in ipairs(buffs.auraFrames or {}) do
+                if type(b) == "table" and b.IsShown and b:IsShown() then
+                    local info = b.buttonInfo
+                    SetPieces(b, Short(type(info) == "table" and info.expirationTime, now) and 1 or faded)
+                end
+            end
+            SetPieces(buffs.CollapseAndExpandButton, faded)
+            touched = true
+        elseif touched and (ShownAnyway() or (buffs:GetAlpha() or 0) <= VUI.FadedAlpha(opacity) + 0.01) then
+            Restore()
+        end
+    end
+
     local watch = CreateFrame("Frame")
+    watch._vuiAuraWatch = true   -- found by cs_opacity_test
     watch:RegisterUnitEvent("UNIT_AURA", "player")
     watch:RegisterEvent("PLAYER_ENTERING_WORLD")
     watch:SetScript("OnEvent", Collect)
+    watch:SetScript("OnUpdate", function(self, elapsed)
+        self._t = (self._t or 0) + (elapsed or 0)
+        if self._t < 0.1 then return end
+        self._t = 0
+        ApplyIcons()
+    end)
     Collect()
-    SetupLiveFade("fadeAuras", frames,
-        function() return not db.fadeAuras or InCombatLockdown() or Hovered() or Expiring() end,
-        true, Opacity("fadeAurasOpacity"))
+    SetupLiveFade("fadeAuras", { buffs },
+        function() return ShownAnyway() or Expiring() end,
+        true, opacity)
+    SetupLiveFade("fadeAurasDebuffs", { debuffs }, ShownAnyway, true, opacity)
 end
 
 -- The alert icons by the minimap (v1.44.0, owner's request): MinimapCluster.IndicatorFrame, the row
