@@ -1759,13 +1759,20 @@ local function SetupAuraFade()
     end
 
     -- Per-icon: [region] = its own alpha before we touched it.
+    -- ⚠ A region's alpha can read back as a SECRET number (owner's Lua error, 2026-11-04: the Duration text,
+    -- BuffFrameTemplates.xml:14, while its aura was restricted), and arithmetic on it is refused. Blizzard never
+    -- sets the alpha of an aura icon's text or textures (BuffFrame.lua: no SetAlpha on them, Retail and Forever),
+    -- so an unreadable one is its template value, 1.
     local saved = {}
     local touched = false
     local function SetPieces(f, a)
         if not f then return end
         for _, r in ipairs({ f:GetRegions() }) do
             if r.SetAlpha then
-                if saved[r] == nil then saved[r] = r:GetAlpha() end
+                if saved[r] == nil then
+                    local own = r.GetAlpha and r:GetAlpha()
+                    saved[r] = (type(own) == "number" and not IsSecret(own)) and own or 1
+                end
                 r:SetAlpha(a * saved[r])
             end
         end
