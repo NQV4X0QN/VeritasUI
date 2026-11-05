@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.67.0] - 2026-11-04
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Auto Equip Upgrades.** A new option in Character and Gear, off until you turn it on: gear from your bags that beats what you're wearing in that slot, or fills an empty one, goes on by itself, one piece at a time, and each swap is named in chat. Better means a higher item level, or heavier armor your class can wear at the same item level, never a lighter armor type. Only gear you can use, never gear that would bind when equipped or has the wrong main stat for you; trinkets are left alone and weapons only replace one of the same kind. Not in combat: it waits until combat ends. One checkbox per quality decides what counts: Poor (Grey) and Common (White) on, Uncommon, Rare, Epic and Legendary if you tick them. `/qol equipcheck` lists what it would do with each piece in your bags, without equipping anything (`AutoEquip.lua`, new; `QualityOfLife.lua`)
+
+
 ## [1.66.0] - 2026-11-04
 
 ### Changed
