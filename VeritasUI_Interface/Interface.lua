@@ -112,6 +112,8 @@ local UNIVERSAL = {
     -- v1.42.0 (owner's request): the All Objectives tracker, shown on hover. Universal, like the
     -- other interface fades.
     fadeObjectiveTracker = true,
+    -- v1.65.0 (owner's request): sub-option, ON -- quests ready to turn in stay shown through the fade.
+    fadeObjectiveTrackerTurnIn = true,
     -- v1.43.0 (owner's request): your buffs and debuffs by the minimap, shown in combat or on hover.
     fadeAuras           = true,
     -- v1.63.0 (owner's request): sub-option, ON -- the buffs come back while one has 30 s or less left.
@@ -1429,17 +1431,21 @@ local function SetupObjectiveTrackerFade()
         b:SetPoint("LEFT", b.offsetX or mod.blockOffsetX or 0, 0)
         if not b.fixedWidth then b:SetPoint("RIGHT") end
     end
-    -- Lays the module's quests out: `first` (if any) at the top, the rest in Blizzard's order after it, or
-    -- parked when `parkOthers`.
-    local function ChainBlocks(mod, first, parkOthers)
-        local prevB
-        if first and mod.ContentsFrame then
-            AnchorBlockAt(mod, first, mod.ContentsFrame, "TOP", mod.fromHeaderOffsetY or -10)
-            prevB = first
+    -- Lays the module's quests out: the pinned blocks `firsts` (if any) at the top in that order, the rest in
+    -- Blizzard's order after them, or parked when `parkOthers`.
+    local function ChainBlocks(mod, firsts, parkOthers)
+        local prevB, isFirst = nil, {}
+        for _, fb in ipairs(firsts or {}) do
+            isFirst[fb] = true
+            if prevB then AnchorBlockAt(mod, fb, prevB, "BOTTOM", mod.fromBlockOffsetY or -10)
+            elseif mod.ContentsFrame then
+                AnchorBlockAt(mod, fb, mod.ContentsFrame, "TOP", mod.fromHeaderOffsetY or -10)
+            end
+            prevB = fb
         end
         local b, n = mod.firstBlock, 0
         while b and n < 200 do
-            if b ~= first then
+            if not isFirst[b] then
                 if parkOthers then Park(b)
                 elseif prevB then AnchorBlockAt(mod, b, prevB, "BOTTOM", mod.fromBlockOffsetY or -10); prevB = b
                 elseif mod.ContentsFrame then
@@ -1449,14 +1455,15 @@ local function SetupObjectiveTrackerFade()
             b, n = b.nextBlock, n + 1
         end
     end
-    local function Relayout(collapsed, focused, order)
+    -- `pinned[module]` = its pinned blocks (the focused quest first, then quests ready to turn in).
+    local function Relayout(collapsed, pinned, order)
         local prev
         for _, m in ipairs(order or mods) do
             local f = m.f
-            local fb = focused[f]
-            if fb then touched[f] = true; ChainBlocks(f, fb, collapsed[f])
+            local pins = pinned[f]
+            if pins then touched[f] = true; ChainBlocks(f, pins, collapsed[f])
             elseif touched[f] then ChainBlocks(f, nil, false); touched[f] = nil end
-            if f:IsShown() and collapsed[f] and not fb then
+            if f:IsShown() and collapsed[f] and not pins then
                 Park(f)
             elseif f:IsShown() then
                 local p1, rel, _, _, y = f:GetPoint(1)
@@ -1468,7 +1475,7 @@ local function SetupObjectiveTrackerFade()
                     else f:SetPoint("TOP", 0, wantY) end
                     f:SetPoint("LEFT", otf, "LEFT", f.leftMargin or 0, 0)
                 end
-                prev = (collapsed[f] and fb) or f
+                prev = (collapsed[f] and pins and pins[#pins]) or f
             end
         end
         if nine and prev and nine.GetPoint then
@@ -1481,20 +1488,25 @@ local function SetupObjectiveTrackerFade()
             end
         end
     end
-    -- The section order while a quest is focused: sections above its section that still show while faded
-    -- stay above it; the ones hidden while faded go after it, so hovering cannot push it down.
-    local function FocusOrder(focusMod)
-        local before, hiddenBefore, after, seen = {}, {}, {}, false
-        for _, m in ipairs(mods) do
-            if m.f == focusMod then seen = true
-            elseif seen then after[#after + 1] = m
-            elseif SectionOpacity(m.sec) > 0 then before[#before + 1] = m
-            else hiddenBefore[#hiddenBefore + 1] = m end
+    -- The section order while quests are pinned: sections above the LAST pinned section that still show
+    -- while faded (or have pins) stay above it; the ones hidden while faded go after it, so hovering cannot
+    -- push a pinned quest down. With one pinned section this is the order the focused quest has always had.
+    local function PinOrder(pinned)
+        local lastPin = 0
+        for i, m in ipairs(mods) do if pinned[m.f] then lastPin = i end end
+        if lastPin == 0 then return nil end
+        local order, hiddenBefore = {}, {}
+        for i, m in ipairs(mods) do
+            if i <= lastPin then
+                if pinned[m.f] or SectionOpacity(m.sec) > 0 then order[#order + 1] = m
+                else hiddenBefore[#hiddenBefore + 1] = m end
+                if i == lastPin then
+                    for _, h in ipairs(hiddenBefore) do order[#order + 1] = h end
+                end
+            else
+                order[#order + 1] = m
+            end
         end
-        local order = before
-        for _, m in ipairs(mods) do if m.f == focusMod then order[#order + 1] = m end end
-        for _, m in ipairs(hiddenBefore) do order[#order + 1] = m end
-        for _, m in ipairs(after) do order[#order + 1] = m end
         return order
     end
 
@@ -1506,16 +1518,34 @@ local function SetupObjectiveTrackerFade()
             if b and b.IsShown and b:IsShown() then return b end
         end
     end
-    -- The focused quest's block, its right-edge frames (quest item and POI buttons, anchored RIGHT to the
-    -- block or to each other: Block.lua:341-362) and its section's header show at full opacity through the
-    -- section's fade.
+    -- Show Quests Ready to Turn In (v1.65.0, owner's request 2026-11-04: see at a glance, without hovering, that
+    -- a quest can be handed in). The shown blocks of the section, in Blizzard's order (firstBlock -> nextBlock),
+    -- whose quest is complete -- C_QuestLog.IsComplete, the same test Blizzard's tracker uses to write "Ready for
+    -- turn-in" (QuestObjectiveTracker.lua:265, quest:IsComplete(); in both games' QuestLogDocumentation.lua).
+    -- block.id is the quest ID (Module.lua:272). `skip` is the focused block, already pinned first.
+    local function ReadyBlocks(mod, skip)
+        local out, b, n = {}, mod.firstBlock, 0
+        local ql = _G.C_QuestLog
+        if not (ql and ql.IsComplete) then return out end
+        while b and n < 200 do
+            if b ~= skip and type(b.id) == "number" and b.IsShown and b:IsShown() then
+                local ok, done = pcall(ql.IsComplete, b.id)
+                if ok and done == true then out[#out + 1] = b end
+            end
+            b, n = b.nextBlock, n + 1
+        end
+        return out
+    end
+    -- The pinned blocks shown through the fade (the focused quest, quests ready to turn in), their right-edge
+    -- frames (quest item and POI buttons, anchored RIGHT to the block or to each other: Block.lua:341-362) and
+    -- their section's header show at full opacity through the section's fade.
     -- ⚠ SetIgnoreParentAlpha also escapes UIParent's alpha (landmine 142), which Quality of Life's AFK screen
     -- sets to 0, so it is dropped whenever UIParent is not fully shown.
     local ignoring = {}
-    local function SetFullOpacity(mod, fb)
+    local function SetFullOpacity(mod, blocks)
         local want = {}
-        if fb and (not UIParent or (UIParent:GetAlpha() or 1) >= 0.99) then
-            want[fb] = true
+        if blocks and blocks[1] and (not UIParent or (UIParent:GetAlpha() or 1) >= 0.99) then
+            for _, fb in ipairs(blocks) do want[fb] = true end
             if mod.Header then want[mod.Header] = true end   -- owner: keep the "Quests" header with it
             local grew = true
             while grew do
@@ -1571,7 +1601,7 @@ local function SetupObjectiveTrackerFade()
         end
         local show = not db.fadeObjectiveTracker or now < hoverUntil or IsEditModeActive()
         local raidHidden = db.fadeObjectiveTracker and OTRaidHidden() and not show
-        local collapsed, focused, top, focusMod = {}, {}, 0, nil
+        local collapsed, pinned, top = {}, {}, 0
         local superID
         if C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID then
             local okST, id = pcall(C_SuperTrack.GetSuperTrackedQuestID)
@@ -1585,33 +1615,43 @@ local function SetupObjectiveTrackerFade()
             FadeTo(m.f, target, instant)
             -- The focused quest leads its section's order whenever the fade is on (even while hovered);
             -- it shows through the fade while the section is faded or still fading IN (else it would blink
-            -- to the section's alpha the moment the mouse arrives).
+            -- to the section's alpha the moment the mouse arrives). Quests ready to turn in follow it, the same way.
             local fading = target < 1 or (m.f:GetAlpha() or 1) < 0.99
             local fb = m.sec.quests and superID and db.fadeObjectiveTracker and not raidHidden
                 and FocusedBlock(m.f, superID) or nil
-            if fb then focused[m.f] = fb; focusMod = m.f; if fading then top = 1 end end
             local lb = leaving[m.f]
             if lb and (fb or show or not lb:IsShown()) then EndLeaving(m.f); lb = nil end
             local was = lastFocus[m.f]
             if not fb and not lb and was and not show and m.sec.quests and was:IsShown() then
                 lb = was; leaving[m.f] = lb
             end
+            local ready = (m.sec.quests and db.fadeObjectiveTracker and db.fadeObjectiveTrackerTurnIn
+                and not raidHidden) and ReadyBlocks(m.f, fb or lb) or {}
             if lb then
                 -- Down to the section's own opacity (0 for a collapsed section, e.g. 0.3 otherwise), where
-                -- it can follow the section again without a jump; its header with it.
+                -- it can follow the section again without a jump; its header with it, unless quests ready to
+                -- turn in still hold the header up.
                 if (lb:GetAlpha() or 0) > target + 0.01 then
                     if not leavingFade[lb] then
                         leavingFade[lb] = true
                         VUI.SmoothFade(lb, OT_FADE_OUT, target)
-                        if m.f.Header then VUI.SmoothFade(m.f.Header, OT_FADE_OUT, target) end
+                        if m.f.Header and not ready[1] then VUI.SmoothFade(m.f.Header, OT_FADE_OUT, target) end
                     end
-                    focused[m.f] = lb; focusMod = focusMod or m.f
                 else
                     EndLeaving(m.f); lb = nil
                 end
             end
             lastFocus[m.f] = fb
-            if m.sec.quests then SetFullOpacity(m.f, (fb and fading and fb) or lb) end
+            local pins, through = {}, {}
+            if fb then pins[1] = fb; if fading then through[1] = fb end
+            elseif lb then pins[1] = lb; through[1] = lb end
+            for _, b in ipairs(ready) do
+                pins[#pins + 1] = b
+                if fading then through[#through + 1] = b end
+            end
+            if pins[1] then pinned[m.f] = pins end
+            if through[1] and (fb or ready[1]) and fading then top = 1 end
+            if m.sec.quests then SetFullOpacity(m.f, through) end
             -- Collapsed only once its fade-out has FINISHED (owner, 2026-11-01): parking it as soon as
             -- the target is 0 cut the fade short, so the tracker popped out instead of fading like the rest.
             if target <= 0 and not show and (m.f:GetAlpha() or 0) <= 0.01 then collapsed[m.f] = true end
@@ -1624,8 +1664,8 @@ local function SetupObjectiveTrackerFade()
             nineOurs = top
             ApplyNine()
         end
-        lastCollapsed, lastFocused = raidHidden and {} or collapsed, focused
-        lastOrder = focusMod and FocusOrder(focusMod) or nil
+        lastCollapsed, lastFocused = raidHidden and {} or collapsed, pinned
+        lastOrder = PinOrder(pinned)
         if not IsEditModeActive() then Relayout(lastCollapsed, lastFocused, lastOrder) end
     end
     Evaluate(true)
@@ -2145,6 +2185,10 @@ local function InitializeOptions()
           tip = "The All Objectives tracker fades out unless you're mousing over it; each section fades to "
              .. "its own opacity, set below. Applies at once.",
           apply = function(value) if value then SetupObjectiveTrackerFade() end end },
+        { key = "fadeObjectiveTrackerTurnIn", name = "Show Quests Ready to Turn In", parent = "fadeObjectiveTracker",
+          tip = "Quests you can hand in stay shown, at the top of their section with its header, while the rest "
+             .. "of the tracker is faded, so you can see them without mousing over. Applies at once.",
+          apply = function() end },
         -- v1.51.0: In Raids + one opacity slider per section, indented under it (built below).
         { key = "fadeObjectiveTrackerRaid", build = function() BuildTrackerSectionOptions() end },
         { key = "fadeStatusBars",      name = "Fade Reputation and Experience Bars",
@@ -2689,8 +2733,8 @@ local function InitializeOptions()
                                    "hideProfessionGear" } },
         { "Chat",                { "fadeChatTabs", "hideSocialButton", "hideChatButtons", "hideVoiceChatButton" } },
         { "Minimap",             { "fadeMinimapAlerts", "fadeMinimapButtons" } },
-        { "Trackers and Meters", { "fadeObjectiveTracker", "fadeObjectiveTrackerRaid", "fadeStatusBars",
-                                   "fadeStatusBarsOnGain", "fadeDamageMeter" } },
+        { "Trackers and Meters", { "fadeObjectiveTracker", "fadeObjectiveTrackerTurnIn", "fadeObjectiveTrackerRaid",
+                                   "fadeStatusBars", "fadeStatusBarsOnGain", "fadeDamageMeter" } },
         { "Messages and Popups", { "hideErrorText", "hideTopBanners", "hideTalkingHead", "muteTalkingHead" } },
     }
     for _, section in ipairs(SECTIONS) do
