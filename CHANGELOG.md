@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.62.0] - 2026-11-04
+
+### Added
+
+- `VeritasUI_Lib`, all modules — **VeritasUI loads in WoW Forever.** Every module now lists Forever as supported, so the game loads it there. Support is early: what has been tried in Forever works, and anything Forever doesn't have is left out there. Everything below applies to Retail too unless it says Forever (all `.toc` files, `Lib.lua`)
+- `VeritasUI_CleanSolo` — **Fade Action Bars has its own Faded Opacity slider.** It sits under the Fade Action Bars dropdown, so Action Bar 1 can stay fully shown while bars 2–8 fade, or the other way round. The slider beside Fade Main Action Bar now covers Action Bar 1 only. Your current setting carries over to both, so nothing looks different until you change one (`CleanSolo.lua`)
+
+### Changed
+
+- `VeritasUI_CleanSolo` — **Fade Bag Buttons replaces Hide Bag Buttons.** The bag bar fades out instead of disappearing and comes back when you mouse over it, so you can still drag things onto a bag; B still opens your bags. It sits in the Fade section with its own Faded Opacity slider, at 0% by default, so it looks as before until you hover. If you had turned Hide Bag Buttons off, Fade Bag Buttons starts off. Requires `/reload` (`CleanSolo.lua`)
+- `VeritasUI_CleanSolo` — **Fade Action Bars applies at once.** Ticking a bar fades it straight away and unticking it brings it back, with no `/reload`, like Fade Main Action Bar. A faded bar now comes back within a tenth of a second of the mouse reaching it, as Action Bar 1 does (`CleanSolo.lua`)
+- `VeritasUI_CleanSolo` — **No Show While Flying in WoW Forever.** Forever has no flying, so the option under Fade Main Action Bar is not shown there. Retail keeps it (`CleanSolo.lua`)
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **Auto Unwrap Collections unwrapped pets you already had.** Pets that arrived before the option was on, or before VeritasUI was installed, stayed wrapped until you clicked them; any still wrapped are now unwrapped when you log in, as mounts already were. Toys still unwrap only as they arrive (`Automation.lua`)
+- `VeritasUI_CleanSolo` — **WoW Forever: the experience bar's tick marks fade with the bar.** Forever divides the bar into 20 segments, and the marks between them stayed on screen while the rest of the bar faded (`CleanSolo.lua`)
+- `VeritasUI_QualityOfLife` — **WoW Forever: the Copy Chat button shows its icon.** Forever doesn't have Retail's copy icon, so the button was blank; it now uses a copy of that icon (`CopyChat.lua`, `Media/CopyIcon.tga`, new)
+
+
 ## [1.61.0] - 2026-11-03
 
 ### Changed

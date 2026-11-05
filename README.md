@@ -1,6 +1,6 @@
 # VeritasUI
 
-A World of Warcraft addon suite for **Midnight** (patch 12.1.5) that makes the default interface cleaner and more convenient, especially for solo play.
+A World of Warcraft addon suite for **Midnight** (patch 12.1.5) that makes the default interface cleaner and more convenient, especially for solo play. It also loads in **WoW Forever**; support there is early, and anything Forever doesn't have is left out there.
 
 VeritasUI doesn't replace Blizzard's interface. It works inside it: its settings live in the normal **Options → AddOns** panel, all under one **VeritasUI** entry, its windows look and behave like Blizzard's own, and anything WoW already does well is left to WoW. If you didn't know VeritasUI was installed, most of it should just feel like the game.
 
@@ -12,23 +12,23 @@ The suite is split into modules. Each one does one job and has its own settings,
 Hides or fades the parts of the interface you don't need most of the time.
 
 - The **chat window** fades when you're not using chat and comes back on mouseover: its background, its tabs and the chat buttons you haven't hidden (with Chat Style set to IM, the box you type in too). The messages stay readable
-- The micro menu, chosen action bars (2–8) and your player frame fade out when idle and reappear on mouseover, in combat, or when you take damage
-- **Action Bar 1** fades out unless you're in combat or mousing over it, and is shown in full while it holds vehicle or quest controls; tick **Show While Flying** (on by default) to keep it up in flight
+- The micro menu, the bag bar, chosen action bars (2–8) and your player frame fade out when idle and reappear on mouseover, in combat, or when you take damage
+- **Action Bar 1** fades out unless you're in combat or mousing over it, and is shown in full while it holds vehicle or quest controls; tick **Show While Flying** (on by default; not in WoW Forever, which has no flying) to keep it up in flight
 - Your **buffs and debuffs** by the minimap fade out unless you're in combat or mousing over them
 - The **minimap alerts** (mail and crafting order icons, and Quality of Life's Great Vault button) fade out until you mouse over them
 - **Fade Minimap Buttons**: pick which pieces around the minimap fade out: zone name, clock, calendar, tracking, zoom buttons, addon compartment, expansion summary button and instance difficulty. Mouse over the minimap or any of them and they all come back; a faded one can still be clicked. Its own slider sets how much still shows. Applies at once
 - The **damage meter** fades out unless you're in combat or mousing over it
 - The **objective tracker** (All Objectives) fades out until you mouse over it, each section (quests, world quests, campaign, scenario and the rest) to its own opacity. A section at 0% folds away so the ones below move up; your focused quest stays at full opacity at the top of its section, under its header. Optionally hidden in raids, or only during raid boss fights
 - The **reputation, experience and honor bars** fade out until you mouse over them; tick **Show on Gains** to have them appear for 3 seconds whenever you gain reputation, experience or honor
-- **Faded opacity**: a slider beside each Fade option sets how much still shows while faded, from 0% (hidden) to 100%; the one beside Fade Main Action Bar covers every faded action bar
+- **Faded opacity**: a slider beside each Fade option sets how much still shows while faded, from 0% (hidden) to 100%; Action Bar 1 and the bars picked in Fade Action Bars each have their own
 - **Fade Delay**: keep the micro menu, action bars and player frame up for 0 to 5 seconds after the mouse leaves, before they fade (the chat window keeps Blizzard's own timing)
-- Optionally hides the social button, the chat menu and voice buttons (left shown, they fade with the chat window), the bag bar, and macro names on action buttons
+- Optionally hides the social button, the chat menu and voice buttons (left shown, they fade with the chat window), and macro names on action buttons
 - Optionally hides the **talking head** story popup and, separately, **mutes its voice**, so you can keep either one
 - Optionally hides the **top banners**, picked by kind from a dropdown: zone names, boss kills and loot, level up, scenario and Delve stages, Delve and event messages (such as Nemesis Strongbox Upgraded), weekly rewards, renown, and everything else
 - **Hide Transforms**: takes costumes and transformations off you as soon as they land, picked by group: profession gear (on by default, so your own outfit stays while you craft, gather or fish), holiday costumes, toys and consumables. Not in combat; they come off when it ends. If one still shows, `/cs gear` lists what you're wearing
 - Hides red error text — all of it, or only the kinds you pick (combat, spells and cooldowns, items and bags, mail/vendors/bank, looting, mounts and flight paths), so "Internal mail database error." can go while "You are too far away!" stays
 
-Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped under **Fade** and **Hide**. Every dropdown of choices has **None** and **All** at the top. Changes apply after a `/reload`, except Fade Delay, the opacity sliders, Hide Transforms, Fade Minimap Buttons and the Action Bar 1, buffs and debuffs, minimap alerts, damage meter, objective tracker and reputation bar fades, which apply at once.
+Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped under **Fade** and **Hide**. Every dropdown of choices has **None** and **All** at the top. Changes apply after a `/reload`, except Fade Delay, the opacity sliders, Hide Transforms, Fade Minimap Buttons, Fade Action Bars and the Action Bar 1, buffs and debuffs, minimap alerts, damage meter, objective tracker and reputation bar fades, which apply at once.
 
 ### Quality of Life — small conveniences
 - **Item levels** on gear in your bags, bank, warband bank, character panel and at merchants
@@ -45,7 +45,7 @@ Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped
 - **NPC shortcuts**: picks an NPC's only dialogue option, and, if you turn them on, **auto accept** quests and **auto turn in** completed quests — separate options, and holding Shift while you talk to the NPC pauses them. Reward choices and quests that cost gold are always left to you
 - **Untrack World Quests When Unfocused**: a world quest you clicked on the map leaves the tracker when you click it again; ones you tracked yourself stay
 - **Quest Options**: rules for the NPC shortcuts — skip older-expansion quests at max level, no auto accept when an NPC offers several, use them only while holding Shift, or turn them off in dungeons and raids
-- **Auto accept resurrection** (on unless you turn it off; in combat too if you choose), **auto unwrap** new mounts, pets and toys (on unless you turn it off), and **auto open containers** (off until you turn it on), which leaves warbound containers and locked lockboxes for you and never opens anything in combat or at a vendor, bank or mailbox
+- **Auto accept resurrection** (on unless you turn it off; in combat too if you choose), **auto unwrap** new mounts, pets and toys, and any mount or pet still wrapped when you log in (on unless you turn it off), and **auto open containers** (off until you turn it on), which leaves warbound containers and locked lockboxes for you and never opens anything in combat or at a vendor, bank or mailbox
 - **Train All** button at trainers: learns everything available that you can afford in one click
 - **Tooltips**: who a player or NPC is targeting, green when it's you; the mount a player is riding, with a check or red X for whether you own it; players' names in their class color; and their faction, Horde or Alliance, in the game's own faction red or blue. It also fixes Blizzard's max-renown reputation tooltip, whose long line ran off the edge. Each is its own option, and each is left out where the game hides it from addons
 - **Chat**: hover a link in chat to see its tooltip; your group's names in their class colour wherever they appear in a message; and a choice of **whisper sound** (Blizzard's, None, or one of the game's other alert sounds); a **copy chat** button beside the chat window that shows the tab's text ready to copy; **remember chat history**, so each window's last 100 lines come back after a reload or relog; and **remember typed history**, so the last 5 lines you typed in the chat box, commands included, stay in its history (both saved for each character on your computer, whispers included — turn one off and what it saved is deleted)
