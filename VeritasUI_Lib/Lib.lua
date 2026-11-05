@@ -42,6 +42,12 @@ end
 local VUI = {}
 _G.VeritasUI = VUI
 VUI.VERSION = "1.61.0"
+-- WoW Forever (game type camelot): one codebase serves both games, and a module drops what Forever lacks.
+-- MEASURED in Forever 1.60.1.70790 (owner's /vui forever probe, 2026-11-04): WOW_PROJECT_ID = 18 =
+-- WOW_PROJECT_CAMELOT (Blizzard_ProjectConstants/Camelot/ProjectConstants.lua:1-2). Retail defines only
+-- MAINLINE and CLASSIC (Gethe live 12.1.5.70783, Blizzard_ProjectConstants/ProjectConstants.lua:1-2), so
+-- this is false there.
+VUI.IS_FOREVER = _G.WOW_PROJECT_CAMELOT ~= nil and _G.WOW_PROJECT_ID == _G.WOW_PROJECT_CAMELOT
 -- Diagnostic gate.  When true, opt-in error prints surface from
 -- normally-silent paths (currently: the pcall failures caught in the
 -- VUI.CombatQueue drain handler, below).  Off by default to avoid clutter;

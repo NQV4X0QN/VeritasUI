@@ -155,6 +155,9 @@ local UNIVERSAL = {
     fadeMinimapButtonsOpacity = 0,
     fadeStatusBarsOpacity  = 0,
     fadeActionBarsOpacity  = 0,
+    -- v1.62.0 (owner): Fade Action Bars has its own slider, so Action Bar 1 can stay fully shown while
+    -- bars 2-8 fade. fadeActionBarsOpacity is now Action Bar 1's only. Takes that value on upgrade.
+    fadeMultiBarsOpacity   = 0,
 }
 
 -- ⚠ PER-CHARACTER. These two are the reason per-character storage was requested in the first
@@ -1179,7 +1182,7 @@ local function HookActionBarFade(i)
     local barFrame = _G[ACTION_BAR_FRAMES[i]]
     if not barFrame then return end
     local fo, rc = VUI.HookHoverFade(barFrame, IsEditModeActive,
-        function() return not cdb.fadeActionBars[i] end, true, Opacity("fadeActionBarsOpacity"))
+        function() return not cdb.fadeActionBars[i] end, true, Opacity("fadeMultiBarsOpacity"))
     barFadeHooked[i] = true
     if fo then barFadeOuts[#barFadeOuts + 1] = fo end
     if rc then barRefreshers[#barRefreshers + 1] = rc end
@@ -2008,13 +2011,18 @@ local function InitializeOptions()
           tip = "Action Bar 1 fades out unless you're in combat or mousing over it. It is shown in full "
              .. "while it holds vehicle or quest controls. Applies at once.",
           apply = function(value) if value then SetupMainActionBarFade() end end,
-          opacity = "fadeActionBarsOpacity",
-          opacityTip = " Also sets how faded the bars picked in Fade Action Bars get." },
+          opacity = "fadeActionBarsOpacity" },
+        -- Not offered in WoW Forever (removed below): the devs have said it will never have flying (owner).
         { key = "fadeMainActionBarShowFlying", name = "Show While Flying", parent = "fadeMainActionBar",
           tip = "Action Bar 1 is shown in full while you fly. Turn it off and it stays faded in flight, "
              .. "like any other time out of combat. Applies at once.",
           apply = function() end },
     }
+    if VUI.IS_FOREVER then
+        for i = #FADE_OPTIONS, 1, -1 do
+            if FADE_OPTIONS[i].key == "fadeMainActionBarShowFlying" then table.remove(FADE_OPTIONS, i) end
+        end
+    end
     local BuildTopBannersDropdown   -- defined after the Fade section, called from AddCheckboxes
     local BuildTransformsDropdown   -- likewise
     local HIDE_OPTIONS = {
@@ -2307,18 +2315,32 @@ local function InitializeOptions()
     cdb.fadeActionBarsLabel = nil  -- RETIRED v1.21.0: the old display string, now the mask
     local barItems = {}
     for i = 2, 8 do barItems[#barItems + 1] = { id = i, label = ACTION_BAR_LABELS[i] } end
-    KindsDropdown({
+    local barsInit = KindsDropdown({
         setting = ADDON_NAME .. "_fadeActionBars", maskKey = "fadeActionBarsMask",
         owner = cdb,                 -- PER-CHARACTER: paired with fadeActionBars
         setMask = function(v) cdb.fadeActionBarsMask = v end,
         name = "Fade Action Bars", items = barItems, truth = cdb.fadeActionBars,
         unavailableKey = "fadeActionBars",
         tip = "Pick a bar to fade it out when idle; it reappears on mouseover. How faded it gets is set "
-           .. "by the slider beside Fade Main Action Bar. Applies at once.",
+           .. "by the slider below. Applies at once.",
         onChanged = function()
             if not Unavailable("fadeActionBars") then SetupActionBarFading() end
         end,
     })
+    -- v1.62.0: its own faded opacity, UNIVERSAL like every other opacity, indented under the dropdown and
+    -- greyed while no bar is picked (as Fade Minimap Buttons' slider).
+    do
+        local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_fadeMultiBarsOpacity",
+            "fadeMultiBarsOpacity", db, "number", "Faded Opacity", UNIVERSAL.fadeMultiBarsOpacity)
+        local slider = Settings.CreateSlider(category, setting, OpacitySliderOptions(),
+            "How much of the picked action bars still shows while faded. At 0% they are hidden until you "
+            .. "mouse over them. Action Bar 1 has its own slider, beside Fade Main Action Bar. Applies at once.")
+        GreyIfUnavailable(slider, "fadeActionBars")
+        if barsInit and slider and VUI.SettingsSubOption then
+            VUI.SettingsSubOption(slider, ADDON_NAME .. "_fadeActionBars",
+                function() return next(cdb.fadeActionBars) ~= nil end)
+        end
+    end
 
     -- ── Fade Delay — slider, UNIVERSAL. Applies at once (as does Hide Profession Gear): it is a
     -- number the faders read each time they are about to fade (VUI.SetFadeDelay), not a hook, so
@@ -2524,6 +2546,13 @@ frame:RegisterEvent("LOADING_SCREEN_DISABLED")
 frame:SetScript("OnEvent", function(self, event, arg1, ...)
     if event == "ADDON_LOADED" then
         if arg1 ~= ADDON_NAME then return end
+        -- v1.62.0: bars 2-8 get their own opacity, starting from the shared one so nothing looks
+        -- different after the upgrade. Before the binder seeds the new key's default.
+        local saved = _G.VeritasUI_CleanSoloDB
+        if type(saved) == "table" and saved.fadeMultiBarsOpacity == nil
+            and type(saved.fadeActionBarsOpacity) == "number" then
+            saved.fadeMultiBarsOpacity = saved.fadeActionBarsOpacity
+        end
         -- Account table only: no identity yet, so cdb comes back nil. VUI.BindScopedDB replaces
         -- the hand-rolled seeding loop AND the local DeepCopy that used to live here -- that loop
         -- wrote EVERY default into the account root, which is the mechanism behind the pinning
