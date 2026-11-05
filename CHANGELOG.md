@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.66.0] - 2026-11-04
+
+### Changed
+
+- `VeritasUI_Interface`, `VeritasUI_QualityOfLife` — **WoW Forever: options for things Forever doesn't have are left out there.** Interface drops the Traveler's Log and Endeavors objective tracker sliders and Instance Difficulty from Fade Minimap Buttons; Quality of Life drops Show Mythic+ Rating on Character Sheet, Show Delve Counts, Journeys Shortcuts and the Skip Older-Expansion Quests choice in Quest Options. Retail is unchanged (`Interface.lua`, `QualityOfLife.lua`, `Automation.lua`)
+- `VeritasUI_AdvancedOptions` — **Featured leaves out settings the game doesn't have.** In WoW Forever that is Always Show Action Bars, Reduced Motion and Remove Chat Delay (`Featured.lua`)
+- `VeritasUI_PriorityRotation` — **A new profile starts empty when there is no Single-Button Assistant.** In Retail a new profile still starts with the assistant; in WoW Forever, which has none, it starts empty. The old hand-picked starter lists are gone (`Profiles.lua`)
+
+
 ## [1.65.0] - 2026-11-04
 
 ### Added
