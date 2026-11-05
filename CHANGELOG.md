@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.67.1] - 2026-11-04
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **Auto Equip Upgrades no longer puts on profession tools.** A Skinning Knife could replace your weapon because its item level was higher, leaving abilities that need a real weapon unusable. Tools (Skinning Knife, Mining Pick, Blacksmith Hammer, Arclight Spanner, Fishing Pole) are never equipped now, and a real weapon of the same kind replaces a tool you are holding (`AutoEquip.lua`)
+
+
 ## [1.67.0] - 2026-11-04
 
 ### Added
