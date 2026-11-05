@@ -1778,15 +1778,33 @@ local function SetupStatusBarFade()
         end
         return false
     end
+    -- WoW Forever draws segment dividers across the bar: STATUS_BAR_NUM_SEGMENTS = 20 (Retail 1), so
+    -- UpdateDividers puts 19 StatusBarDividerTemplate frames in the container's HorizontalDividersPool
+    -- (Blizzard_StatusTrackingBar Camelot/StatusTrackingBarConstants.lua:4, Mainline/
+    -- StatusTrackingManagerOverrides.lua:98-117; Gethe forever 1.60.1.70790). They sit on the container,
+    -- not the bar, so they stayed drawn while the bar faded (owner, 2026-11-04). They take the frame
+    -- art's alpha; Retail's pool holds none, so nothing changes there.
+    local function ArtAlpha(c, a)
+        if c.BarFrameTexture and c.BarFrameTexture.SetAlpha then c.BarFrameTexture:SetAlpha(a) end
+        local pool = c.HorizontalDividersPool
+        if type(pool) == "table" and pool.EnumerateActive then
+            for divider in pool:EnumerateActive() do divider:SetAlpha(a) end
+        end
+    end
+    local function ShownAlpha(c)
+        local shown = c.GetShownBar and c:GetShownBar()
+        return shown and shown:GetAlpha() or 1
+    end
     for _, c in ipairs(containers) do
-        local art = c and c.BarFrameTexture
         for _, bar in pairs(c and c.bars or {}) do
             bars[#bars + 1] = bar
-            if art then
-                hooksecurefunc(bar, "SetAlpha", function(self, a)
-                    if self:IsShown() and art.SetAlpha then art:SetAlpha(a) end
-                end)
-            end
+            hooksecurefunc(bar, "SetAlpha", function(self, a)
+                if self:IsShown() then ArtAlpha(c, a) end
+            end)
+        end
+        -- A layout change (gamepad mode, Edit Mode) releases and re-acquires the dividers at full alpha.
+        if c and c.UpdateDividers then
+            hooksecurefunc(c, "UpdateDividers", function(self) ArtAlpha(self, ShownAlpha(self)) end)
         end
     end
 
@@ -1808,7 +1826,7 @@ local function SetupStatusBarFade()
             c:SetAlpha(1)
             local a = VUI.FadedAlpha(barOpacity)
             for _, bar in pairs(c.bars or {}) do bar:SetAlpha(a) end
-            if c.BarFrameTexture then c.BarFrameTexture:SetAlpha(a) end
+            ArtAlpha(c, a)
         end
     end
     for _, c in ipairs(containers) do
@@ -1820,7 +1838,7 @@ local function SetupStatusBarFade()
     SetupLiveFade("fadeStatusBars", bars, Revealed, true, barOpacity)
     if db.fadeStatusBars then
         for _, c in ipairs(containers) do
-            if c and c.BarFrameTexture then c.BarFrameTexture:SetAlpha(VUI.FadedAlpha(barOpacity)) end
+            if c then ArtAlpha(c, VUI.FadedAlpha(barOpacity)) end
             Settle(c)
         end
     end
