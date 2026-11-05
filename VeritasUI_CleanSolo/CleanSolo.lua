@@ -76,7 +76,9 @@ local UNIVERSAL = {
     hideChatButtons     = true,
     hideVoiceChatButton = true,
     fadeMicroMenu       = true,
-    hideBagButtons      = true,
+    -- v1.62.0 (owner's request, 2026-11-04, for WoW Forever where the bag bar matters more): Fade Bag
+    -- Buttons replaces Hide Bag Buttons (hideBagButtons, a saved "off" carries over as off).
+    fadeBagButtons      = true,
     hideMacroNames      = true,
     hideErrorText       = true,   -- the "All" row of the Hide Error Text dropdown (was its own checkbox)
     -- [groupId] = true. TABLE-typed. Overridden while hideErrorText ("All") is on.
@@ -128,6 +130,7 @@ local UNIVERSAL = {
     -- Fade Action Bars (owner: the slider beside Fade Main Action Bar handles them all).
     fadeChatTabsOpacity    = 0,
     fadeMicroMenuOpacity   = 0,
+    fadeBagButtonsOpacity  = 0,
     fadePlayerFrameOpacity = 0,
     fadeDamageMeterOpacity = 0,
     -- v1.51.0 (feature batch item 5): one faded opacity per tracker section (OT_SECTIONS), replacing
@@ -587,28 +590,27 @@ local function SetupPlayerFrameFade()
     frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 end
 
--- ── Feature: Hide Bag Buttons ───────────────────────────────
--- SuppressFrame is idempotent, so repeated calls are safe.
--- KillAll runs immediately and again at 0.5 s and 2.0 s because
--- MainMenuBarBackpackButton and BagBarExpandToggle re-show themselves
--- asynchronously during the login sequence; SuppressFrame's Show-hook
--- keeps them permanently hidden after the login burst settles.
-local function HideBagButtons()
-    local function KillAll()
-        VUI.SuppressFrame(BagsBar)
-        VUI.SuppressFrame(BagBar)
-        for _, name in ipairs({
-            "MainMenuBarBackpackButton", "BagBarExpandToggle",
-            "CharacterBag0Slot", "CharacterBag1Slot",
-            "CharacterBag2Slot", "CharacterBag3Slot",
-            "CharacterReagentBag0Slot",
-        }) do
-            VUI.SuppressFrame(_G[name])
-        end
+-- ── Feature: Bag Buttons Fade ───────────────────────────────
+-- v1.62.0: replaces Hide Bag Buttons (owner, 2026-11-04: in WoW Forever the bag bar is bigger and
+-- matters more, so it must be reachable). One fade on BagsBar covers the backpack, the bag slots and,
+-- in Forever, the key ring and the bar's border art: all are BagsBar's children or regions
+-- (Blizzard_MainMenuBarBagButtons Camelot/MainMenuBarBagButtons.xml BagsBar; Gethe forever 1.60.1.70790).
+-- Blizzard only Shows and Hides BagsBar, never sets its alpha (Shared/MainActionBar.lua:39-52).
+-- No OnEnter hook: BagsBar is an Edit Mode system (EditModeBagsSystemTemplate), where a HookScript
+-- tainted Edit Mode once already (landmine 114); the poll sees the hover. Edit Mode exit is handled
+-- as for the micro menu above: the layout changes and nothing fires an OnLeave afterwards.
+local function SetupBagButtonsFade()
+    local bar = _G.BagsBar
+    if not bar then return end
+    local fo, rc = VUI.HookHoverFade(bar, nil, nil, true, Opacity("fadeBagButtonsOpacity"))
+    if fo and EditModeManagerFrame then
+        pcall(hooksecurefunc, EditModeManagerFrame, "ExitEditMode", function()
+            C_Timer.After(0.2, function()
+                if rc then rc() end
+                fo()
+            end)
+        end)
     end
-    KillAll()
-    C_Timer.After(0.5, KillAll)
-    C_Timer.After(2.0, KillAll)
 end
 
 -- ── Feature: Hide Macro Names ───────────────────────────────
@@ -1951,6 +1953,10 @@ local function InitializeOptions()
           tip = "The bottom-right menu bar fades out unless moused over. "
              .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.",
           opacity = "fadeMicroMenuOpacity" },
+        { key = "fadeBagButtons",      name = "Fade Bag Buttons",
+          tip = "The bag buttons fade out unless moused over. You can still open bags with B. "
+             .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.",
+          opacity = "fadeBagButtonsOpacity" },
         { key = "fadePlayerFrame",     name = "Fade Player Frame",
           tip = "Your player frame fades out when idle and reappears in combat, when damaged, or on mouseover. "
              .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.",
@@ -2013,9 +2019,6 @@ local function InitializeOptions()
           tip = "Hides the voice and channels button beside the chat window, and the mute and "
              .. "deafen buttons shown while you are in a voice channel. Left shown, they fade with "
              .. "the chat window while Fade Chat Window is on. "
-             .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
-        { key = "hideBagButtons",      name = "Hide Bag Buttons",
-          tip = "Hides the bag bar buttons. You can still open bags with B. "
              .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
         { key = "hideMacroNames",      name = "Hide Macro Names",
           tip = "Hides the macro name text displayed on action bar buttons. "
@@ -2573,6 +2576,10 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
             end
         end
         db.hideMinimapButtons, db.hideMinimapButtonsMask = nil, nil
+        -- v1.62.0: Hide Bag Buttons becomes Fade Bag Buttons at 0%: the bar looks as it did and now comes
+        -- back on hover. Someone who had turned Hide off keeps the bar shown.
+        if db.hideBagButtons == false then db.fadeBagButtons = false end
+        db.hideBagButtons = nil
         InitializeOptions()
         -- Before any fader runs, so the first fade of the session already uses it.
         if VUI.SetFadeDelay then VUI.SetFadeDelay(db.fadeDelay) end
@@ -2586,7 +2593,7 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         if db.hideVoiceChatButton and not Unavailable("hideVoiceChatButton") then HideVoiceChatButton() end
         if db.fadeMicroMenu    and not Unavailable("fadeMicroMenu")    then SetupMicroMenuFade()  end
         if cdb.fadePlayerFrame and not Unavailable("fadePlayerFrame")  then SetupPlayerFrameFade() end
-        if db.hideBagButtons and not Unavailable("hideBagButtons") then HideBagButtons() end
+        if db.fadeBagButtons and not Unavailable("fadeBagButtons") then SetupBagButtonsFade() end
         if db.hideMacroNames and not Unavailable("hideMacroNames") then HideMacroNames() end
         if (db.hideTalkingHead and not Unavailable("hideTalkingHead"))
             or (db.muteTalkingHead and not Unavailable("muteTalkingHead")) then SetupTalkingHead() end
