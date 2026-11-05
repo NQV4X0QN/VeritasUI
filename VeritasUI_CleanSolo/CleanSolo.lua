@@ -1165,30 +1165,41 @@ local function IsEditModeActive()
     return false
 end
 
-local function SetupActionBarFading()
-    local fadeOuts = {}
-    local refreshers = {}
-    for i = 2, 8 do
-        if cdb.fadeActionBars[i] then
-            local barFrame = _G[ACTION_BAR_FRAMES[i]]
-            if barFrame then
-                local fo, rc = VUI.HookHoverFade(barFrame, IsEditModeActive, nil, nil,
-                    Opacity("fadeActionBarsOpacity"))
-                if fo then fadeOuts[#fadeOuts + 1] = fo end
-                if rc then refreshers[#refreshers + 1] = rc end
-            end
-        end
-    end
+-- v1.62.0: applies at once, like Fade Main Action Bar (owner, 2026-11-04: ticked bars did nothing until a
+-- /reload, while Action Bar 1 faded at once). A bar is hooked the first time it is ticked; its shouldShow is
+-- "not ticked", so unticking fades it back in and keeps it shown. Bars never ticked are never touched.
+-- No OnEnter hook (was one before v1.62.0): bars 2-8 are Edit Mode system frames (EditModeActionBarTemplate,
+-- MultiActionBars.xml:45-221), the class where a HookScript tainted Edit Mode once already (landmine 114);
+-- the poll reveals a bar within 0.1 s, as for Action Bar 1 (audit C1).
+local barFadeHooked, barFadeOuts, barRefreshers = {}, {}, {}
+local barEditHooked = false
+
+local function HookActionBarFade(i)
+    if barFadeHooked[i] then return end
+    local barFrame = _G[ACTION_BAR_FRAMES[i]]
+    if not barFrame then return end
+    local fo, rc = VUI.HookHoverFade(barFrame, IsEditModeActive,
+        function() return not cdb.fadeActionBars[i] end, true, Opacity("fadeActionBarsOpacity"))
+    barFadeHooked[i] = true
+    if fo then barFadeOuts[#barFadeOuts + 1] = fo end
+    if rc then barRefreshers[#barRefreshers + 1] = rc end
     -- Re-fade bars after Edit Mode exits — Blizzard forces them visible
     -- during layout editing, and no OnLeave fires to trigger FadeOut.
     -- Also refresh child caches in case Edit Mode changed button layout.
-    if #fadeOuts > 0 and EditModeManagerFrame then
+    if not barEditHooked and EditModeManagerFrame then
+        barEditHooked = true
         pcall(hooksecurefunc, EditModeManagerFrame, "ExitEditMode", function()
             C_Timer.After(0.2, function()
-                for _, rc in ipairs(refreshers) do rc() end
-                for _, fo in ipairs(fadeOuts) do fo() end
+                for _, refresh in ipairs(barRefreshers) do refresh() end
+                for _, fadeOut in ipairs(barFadeOuts) do fadeOut() end
             end)
         end)
+    end
+end
+
+local function SetupActionBarFading()
+    for i = 2, 8 do
+        if cdb.fadeActionBars[i] then HookActionBarFade(i) end
     end
 end
 
@@ -2303,10 +2314,9 @@ local function InitializeOptions()
         name = "Fade Action Bars", items = barItems, truth = cdb.fadeActionBars,
         unavailableKey = "fadeActionBars",
         tip = "Pick a bar to fade it out when idle; it reappears on mouseover. How faded it gets is set "
-           .. "by the slider beside Fade Main Action Bar. Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.",
-        onItem = function(it, on)
-            VUI.Print("Clean Solo", it.label .. " fade " .. (on and "enabled" or "disabled")
-                .. " — " .. VUI.COL.YELLOW .. "/reload|r to apply.")
+           .. "by the slider beside Fade Main Action Bar. Applies at once.",
+        onChanged = function()
+            if not Unavailable("fadeActionBars") then SetupActionBarFading() end
         end,
     })
 
