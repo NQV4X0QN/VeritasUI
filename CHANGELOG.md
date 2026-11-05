@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.63.0] - 2026-11-04
+
+### Added
+
+- `VeritasUI_CleanSolo` — **Show Expiring Buffs.** A new option under Fade Buffs and Debuffs, on by default: while one of your buffs has 30 seconds or less left, that buff comes back on its own, with its countdown, while the rest stay faded, so you are not caught out when something like Walk on Air runs out. Once it ends the bar fades again; mousing over or combat still shows everything. Applies at once (`CleanSolo.lua`)
+- `VeritasUI_CleanSolo` — **Show Resource Changes.** A new option under Fade Player Frame, on by default: your player frame stays up while your mana, energy, rage, fury or other main resource is still filling or draining out of combat, so you don't walk into the next fight low on mana. It stays up through the end of combat and fades once mana is full or rage is empty, and your health has stopped changing. Applies at once (`CleanSolo.lua`, `Lib.lua`)
+
+
 ## [1.62.0] - 2026-11-04
 
 ### Added

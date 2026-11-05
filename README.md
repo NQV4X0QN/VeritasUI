@@ -12,9 +12,9 @@ The suite is split into modules. Each one does one job and has its own settings,
 Hides or fades the parts of the interface you don't need most of the time.
 
 - The **chat window** fades when you're not using chat and comes back on mouseover: its background, its tabs and the chat buttons you haven't hidden (with Chat Style set to IM, the box you type in too). The messages stay readable
-- The micro menu, the bag bar, chosen action bars (2–8) and your player frame fade out when idle and reappear on mouseover, in combat, or when you take damage
+- The micro menu, the bag bar, chosen action bars (2–8) and your player frame fade out when idle and reappear on mouseover, in combat, or when you take damage. Tick **Show Resource Changes** (on by default) to keep your player frame up while your mana, energy, rage, fury or other main resource is still filling or draining out of combat, through the end of a fight, until mana is full or rage is empty
 - **Action Bar 1** fades out unless you're in combat or mousing over it, and is shown in full while it holds vehicle or quest controls; tick **Show While Flying** (on by default; not in WoW Forever, which has no flying) to keep it up in flight
-- Your **buffs and debuffs** by the minimap fade out unless you're in combat or mousing over them
+- Your **buffs and debuffs** by the minimap fade out unless you're in combat or mousing over them. Tick **Show Expiring Buffs** (on by default) and a buff with 30 seconds or less left comes back on its own while the rest stay faded, so you see it run out
 - The **minimap alerts** (mail and crafting order icons, and Quality of Life's Great Vault button) fade out until you mouse over them
 - **Fade Minimap Buttons**: pick which pieces around the minimap fade out: zone name, clock, calendar, tracking, zoom buttons, addon compartment, expansion summary button and instance difficulty. Mouse over the minimap or any of them and they all come back; a faded one can still be clicked. Its own slider sets how much still shows. Applies at once
 - The **damage meter** fades out unless you're in combat or mousing over it
