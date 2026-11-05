@@ -61,9 +61,15 @@ end)
 -- (C_MountJournal.ClearFanfare, Blizzard_MountCollection.lua:874; C_PetJournal.ClearFanfare,
 -- Blizzard_PetCollection.lua:1451; C_ToyBoxInfo.ClearFanfare, Blizzard_ToyBox.lua:237). Unwrapped on
 -- NEW_MOUNT_ADDED / NEW_PET_ADDED / NEW_TOY_ADDED (payloads: MountJournalDocumentation.lua:638-643,
--- PetJournalInfoDocumentation.lua:364-369, ToyBoxInfoDocumentation.lua:70-75), and any mount still wrapped is
--- unwrapped at login (C_MountJournal.GetMountIDs + NeedsFanfare). Pets and toys have no filter-free owned list,
--- so a pet or toy learned before this option was on stays wrapped until you open it. C calls only.
+-- PetJournalInfoDocumentation.lua:364-369, ToyBoxInfoDocumentation.lua:70-75), and any mount or pet still wrapped is
+-- unwrapped at login (C_MountJournal.GetMountIDs / C_PetJournal.GetOwnedPetIDs + NeedsFanfare). Toys have no
+-- filter-free owned list, so a toy learned before this option was on stays wrapped until you open it. C calls only.
+-- ⚠ CORRECTED v1.62.0: pets DO have one. C_PetJournal.GetOwnedPetIDs returns every owned pet's GUID, no filters
+-- (PetJournalInfoDocumentation.lua:107-113 in BOTH Gethe live 12.1.5.70783 and forever 1.60.1.70790). The v1.52.0
+-- note said otherwise, so pets granted before VeritasUI loaded stayed wrapped (owner, WoW Forever, 2026-11-04:
+-- five account pets given on first login, before the addons were installed).
+-- HYPOTHESIS (unmeasured): the owned-pet list may still be empty at PLAYER_LOGIN, so the sweep runs again on the
+-- first PET_JOURNAL_LIST_UPDATE. If pets stay wrapped after a /reload, that is what to probe.
 local function UnwrapMount(id)
     local mj = C_MountJournal
     if not (mj and mj.NeedsFanfare and mj.ClearFanfare) or type(id) ~= "number" then return end
@@ -83,21 +89,36 @@ local function UnwrapToy(itemID)
     if ok and needs == true then pcall(tb.ClearFanfare, itemID) end
 end
 
+local function SweepPets()
+    local pj = C_PetJournal
+    if not (pj and pj.GetOwnedPetIDs) then return end
+    local ok, guids = pcall(pj.GetOwnedPetIDs)
+    if ok and type(guids) == "table" then
+        for _, guid in ipairs(guids) do UnwrapPet(guid) end
+    end
+end
+
 local unwrapFrame = CreateFrame("Frame")
 unwrapFrame:RegisterEvent("PLAYER_LOGIN")
+unwrapFrame:RegisterEvent("PET_JOURNAL_LIST_UPDATE")
 unwrapFrame:RegisterEvent("NEW_MOUNT_ADDED")
 unwrapFrame:RegisterEvent("NEW_PET_ADDED")
 unwrapFrame:RegisterEvent("NEW_TOY_ADDED")
-unwrapFrame:SetScript("OnEvent", function(_, event, arg)
+unwrapFrame:SetScript("OnEvent", function(self, event, arg)
+    if event == "PET_JOURNAL_LIST_UPDATE" then self:UnregisterEvent(event) end   -- the first one only
     if not On("autoUnwrapCollections") then return end
     if event == "NEW_MOUNT_ADDED" then UnwrapMount(arg)
     elseif event == "NEW_PET_ADDED" then UnwrapPet(arg)
     elseif event == "NEW_TOY_ADDED" then UnwrapToy(arg)
-    elseif event == "PLAYER_LOGIN" and C_MountJournal and C_MountJournal.GetMountIDs then
-        local ok, ids = pcall(C_MountJournal.GetMountIDs)
-        if ok and type(ids) == "table" then
-            for _, id in ipairs(ids) do UnwrapMount(id) end
+    elseif event == "PET_JOURNAL_LIST_UPDATE" then SweepPets()
+    elseif event == "PLAYER_LOGIN" then
+        if C_MountJournal and C_MountJournal.GetMountIDs then
+            local ok, ids = pcall(C_MountJournal.GetMountIDs)
+            if ok and type(ids) == "table" then
+                for _, id in ipairs(ids) do UnwrapMount(id) end
+            end
         end
+        SweepPets()
     end
 end)
 
