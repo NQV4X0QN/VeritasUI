@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.65.0] - 2026-11-04
+
+### Added
+
+- `VeritasUI_Interface` — **Show Quests Ready to Turn In.** A new option under Fade Objective Tracker, on by default: while the tracker is faded, quests you can hand in stay shown at full opacity, with their section's header and quest item button, at the top of their section under your focused quest, so you see them at a glance without mousing over. Hovering still shows everything, with the ready quests kept first; a quest leaves the group once you hand it in. Applies at once (`Interface.lua`)
+
+
 ## [1.64.0] - 2026-11-04
 
 ### Changed
