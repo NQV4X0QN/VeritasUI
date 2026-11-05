@@ -13,6 +13,7 @@ QualityOfLife.lua
 Journeys.lua
 WorldQuestUntrack.lua
 Automation.lua
+AutoEquip.lua
 CharacterStats.lua
 Chat.lua
 CopyChat.lua
