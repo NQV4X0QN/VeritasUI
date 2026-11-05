@@ -8,7 +8,7 @@ The suite is split into modules. Each one does one job and has its own settings,
 
 ## What's included
 
-### Clean Solo — a quieter screen
+### Interface — a cleaner screen, solo or in a raid
 Hides or fades the parts of the interface you don't need most of the time.
 
 - The **chat window** fades when you're not using chat and comes back on mouseover: its background, its tabs and the chat buttons you haven't hidden (with Chat Style set to IM, the box you type in too). The messages stay readable
@@ -25,10 +25,10 @@ Hides or fades the parts of the interface you don't need most of the time.
 - Optionally hides the social button, the chat menu and voice buttons (left shown, they fade with the chat window), and macro names on action buttons
 - Optionally hides the **talking head** story popup and, separately, **mutes its voice**, so you can keep either one
 - Optionally hides the **top banners**, picked by kind from a dropdown: zone names, boss kills and loot, level up, scenario and Delve stages, Delve and event messages (such as Nemesis Strongbox Upgraded), weekly rewards, renown, and everything else
-- **Hide Transforms**: takes costumes and transformations off you as soon as they land, picked by group: profession gear (on by default, so your own outfit stays while you craft, gather or fish), holiday costumes, toys and consumables. Not in combat; they come off when it ends. If one still shows, `/cs gear` lists what you're wearing
+- **Hide Transforms**: takes costumes and transformations off you as soon as they land, picked by group: profession gear (on by default, so your own outfit stays while you craft, gather or fish), holiday costumes, toys and consumables. Not in combat; they come off when it ends. If one still shows, `/interface gear` lists what you're wearing
 - Hides red error text — all of it, or only the kinds you pick (combat, spells and cooldowns, items and bags, mail/vendors/bank, looting, mounts and flight paths), so "Internal mail database error." can go while "You are too far away!" stays
 
-Settings: **Options → AddOns → VeritasUI → Clean Solo**, or `/cs`, grouped under **Fade** and **Hide**. Every dropdown of choices has **None** and **All** at the top. Changes apply after a `/reload`, except Fade Delay, the opacity sliders, Hide Transforms, Fade Minimap Buttons, Fade Action Bars and the Action Bar 1, buffs and debuffs, minimap alerts, damage meter, objective tracker and reputation bar fades, which apply at once.
+Settings: **Options → AddOns → VeritasUI → Interface**, or `/interface`, grouped by where things sit on screen: **All Fades**, **Action Bars**, **Micro Menu and Bags**, **Player**, **Chat**, **Minimap**, **Trackers and Meters** and **Messages and Popups**. Every dropdown of choices has **None** and **All** at the top. Changes apply after a `/reload`, except Fade Delay, the opacity sliders, Hide Transforms, Fade Minimap Buttons, Fade Action Bars and the Action Bar 1, buffs and debuffs, minimap alerts, damage meter, objective tracker and reputation bar fades, which apply at once.
 
 ### Quality of Life — small conveniences
 - **Item levels** on gear in your bags, bank, warband bank, character panel and at merchants

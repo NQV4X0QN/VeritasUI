@@ -100,7 +100,7 @@ local defaults = {
 local db
 
 -- Recursive deep copy so nested table defaults never share references with
--- the defaults table. Same pattern as CleanSolo/ZoneQuests (see SKILL.md
+-- the defaults table. Same pattern as Interface/ZoneQuests (see SKILL.md
 -- Known Landmines: shallow-copy aliasing trap).
 local function DeepCopy(t)
     local c = {}

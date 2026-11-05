@@ -25,7 +25,7 @@ local InCombatLockdown = InCombatLockdown
 -- global ever returns.  DO NOT collapse this to a bare GetMouseFocus call.
 -- VUI.HookPlayerFrameFade's hover test reads it from a 10 Hz ticker
 -- (PLAYER_FRAME_HOVER_POLL_RATE = 0.10; the note above that constant says 10 Hz
--- too), and CleanSolo hooks the player frame in normal play, so a nil call would
+-- too), and Interface hooks the player frame in normal play, so a nil call would
 -- error TEN times a second for as long as the frame is faded in — and that ticker
 -- keeps no handle, so it cannot be cancelled short of /reload.
 --
@@ -104,8 +104,8 @@ function VUI.Print(tag, msg)
     print(PrintStamp() .. format(VUI.COL.BRIGHTBLUE .. "[%s]|r %s", tag, msg))
 end
 
--- On/off print for settings that require a /reload to apply (CleanSolo's
--- hooksecurefunc-based features — see the POLICY block in CleanSolo.lua).
+-- On/off print for settings that require a /reload to apply (Interface's
+-- hooksecurefunc-based features — see the POLICY block in Interface.lua).
 function VUI.PrintOnOff(tag, label, state)
     local word = state and VUI.COL.GREEN .. "turned on|r" or VUI.COL.RED .. "turned off|r"
     VUI.Print(tag, label .. " " .. word .. " — " .. VUI.COL.YELLOW .. "/reload|r to apply.")
@@ -236,11 +236,11 @@ local HOVER_FADE_OUT  = 0.5
 local HOVER_FADE_POLL_RATE = 0.1    -- ~10 Hz always
 local HOVER_LEAVE_GRACE = 0.15 -- seconds after last "not over" before fading
 
--- Fade Delay (CleanSolo's slider, v1.25.0): how long a faded element stays up after it no longer
+-- Fade Delay (Interface's slider, v1.25.0): how long a faded element stays up after it no longer
 -- needs to show, before it starts fading. ONE value for the hover and player-frame faders so they
 -- behave alike. Each keeps its own built-in delay as a floor (hover 0.15 s, player frame 0.5 s),
--- so 0 means exactly the behaviour before the slider existed. CleanSolo's chat tabs are left off
--- it on purpose: Blizzard fades the chat window on its own timing (CleanSolo.lua, HideAllTabs).
+-- so 0 means exactly the behaviour before the slider existed. Interface's chat tabs are left off
+-- it on purpose: Blizzard fades the chat window on its own timing (Interface.lua, HideAllTabs).
 -- Read at the moment a fade is about to start, so a change applies at once, without /reload.
 local FADE_DELAY_MAX = 5
 local fadeDelay = 0
@@ -255,7 +255,7 @@ function VUI.GetFadeDelay()
     return fadeDelay
 end
 
--- Faded opacity (CleanSolo's per-fade sliders, v1.40.0): how much of a faded element still shows,
+-- Faded opacity (Interface's per-fade sliders, v1.40.0): how much of a faded element still shows,
 -- 0-1. The hover and player-frame faders take an optional getter and read it every time they fade
 -- out, and while faded they follow a change at once, so a slider applies without /reload.
 -- No getter, or a bad value, is 0: fully hidden, the behaviour before the sliders.
@@ -448,7 +448,7 @@ local HEALTH_IDLE_TIME = 3.0
 local PLAYER_FRAME_HOVER_POLL_RATE  = 0.10
 
 -- fadedAlpha (v1.40.0): optional getter for the faded opacity, as in HookHoverFade.
--- holdRef (v1.63.0): optional; while it returns true the frame stays shown (Clean Solo: a resource still filling
+-- holdRef (v1.63.0): optional; while it returns true the frame stays shown (Interface: a resource still filling
 -- or draining after combat, read from its value when the game lets us).
 function VUI.HookPlayerFrameFade(frame, inCombatRef, fadedAlpha, holdRef)
     if not frame then return end
@@ -547,7 +547,7 @@ function VUI.HookPlayerFrameFade(frame, inCombatRef, fadedAlpha, holdRef)
     -- ⚠ CORRECTED v1.13.8: this used to call that "the one place in this suite that
     -- hooked a secure Blizzard frame's mouse scripts". It is not. HookHoverFade still
     -- does exactly that (its target:HookScript("OnEnter")) — on MicroMenu and on up to
-    -- seven MultiBar* containers (CleanSolo's two VUI.HookHoverFade calls). That hooking
+    -- seven MultiBar* containers (Interface's two VUI.HookHoverFade calls). That hooking
     -- is DELIBERATE and documented (parent containers yes, child ActionButtons never — see
     -- HookHoverFade's header, its poll, and the note on its OnEnter hook); only the "one
     -- place" claim was false. It matters because a reader trusting it would believe no
@@ -823,7 +823,7 @@ end
 --
 --  ⚠ NEVER BACK THIS TRIGGER WITH A PERSISTED Settings VALUE. Blizzard's Settings
 --  framework REPLAYS a persisted value on load — proven in this codebase: v1.6.10
---  added a guard against that replay, silently broke CleanSolo's bar selection and
+--  added a guard against that replay, silently broke Interface's bar selection and
 --  was reverted in v1.6.11. A copy-on-select control whose choice is persisted
 --  would re-copy the source character onto this one on every /reload, destroying
 --  any divergence. The trigger IS a dropdown as of v1.12.1 — it anchors to itself,
@@ -957,7 +957,7 @@ local settingsParent
 local SUITE_MODULES = {   -- folder, shown name; every installed module except Lib itself
     { "VeritasUI_AdvancedOptions",  "Advanced Options" },
     { "VeritasUI_AuctionHouse",     "Auction House" },
-    { "VeritasUI_CleanSolo",        "Clean Solo" },
+    { "VeritasUI_Interface",        "Interface" },
     { "VeritasUI_PriorityRotation", "Priority Rotation" },
     { "VeritasUI_QualityOfLife",    "Quality of Life" },
     { "VeritasUI_ZoneQuests",       "Zone Quests" },
@@ -1730,7 +1730,7 @@ end
 --  reference (see the "Per-character settings storage" header). Swapping in a new table would leave both
 --  pointing at an orphan: the options panel would edit a table nobody reads, and
 --  every module read would return pre-copy values until a reload. Keeping table
---  identity means the copy is live for anything that re-reads, and only CleanSolo's
+--  identity means the copy is live for anything that re-reads, and only Interface's
 --  hook-based features need the reload they already require by policy.
 --
 --  Deliberately excluded: PriorityRotation (its rotations are keyed per character
@@ -1898,7 +1898,7 @@ end
 local MODULE_COMMANDS = {
     { "VeritasUI_AuctionHouse",     "/ah",  "Auction House" },
     { "VeritasUI_AdvancedOptions",  "/ao",  "Advanced Options" },
-    { "VeritasUI_CleanSolo",        "/cs",  "Clean Solo" },
+    { "VeritasUI_Interface",        "/interface", "Interface" },
     { "VeritasUI_PriorityRotation", "/pr",  "Priority Rotation" },
     { "VeritasUI_QualityOfLife",    "/qol", "Quality of Life" },
     { "VeritasUI_ZoneQuests",       "/zq",  "Zone Quests" },

@@ -40,7 +40,7 @@ globals = {
     -- SavedVariables (declared in each .toc; WoW injects/reads these as globals)
     "VeritasUI_AdvancedOptionsDB",
     "VeritasUI_AuctionHouseDB",
-    "VeritasUI_CleanSoloDB",
+    "VeritasUI_InterfaceDB",
     "VeritasUI_LibDB",
     "VeritasUI_PriorityRotationDB",
     "VeritasUI_QualityOfLifeDB",
@@ -49,7 +49,7 @@ globals = {
     "SLASH_VERITASUI1", "SLASH_VERITASUI2",
     "SLASH_VERITASUI_AO1", "SLASH_VERITASUI_AO2",
     "SLASH_VERITASUI_AH1", "SLASH_VERITASUI_AH2",
-    "SLASH_VERITASUI_CLEANSOLO1", "SLASH_VERITASUI_CLEANSOLO2",
+    "SLASH_VERITASUI_INTERFACE1",
     "SLASH_VERITASUI_PR1", "SLASH_VERITASUI_PR2",
     "SLASH_VERITASUI_QOL1", "SLASH_VERITASUI_QOL2", "SLASH_VERITASUI_WAY1",
     "SLASH_VERITASUI_MAPNOTE1", "SLASH_VERITASUI_MAPNOTE2", "VeritasUI_MapNotePinMixin",
@@ -57,7 +57,7 @@ globals = {
     "SlashCmdList",
     -- Addon-compartment callbacks (WoW calls these by global name from the TOC)
     "VeritasUI_AdvancedOptions_OnAddonCompartmentClick",
-    "VeritasUI_CleanSolo_OnAddonCompartmentClick",
+    "VeritasUI_Interface_OnAddonCompartmentClick",
     "VeritasUI_PriorityRotation_OnAddonCompartmentClick",
     "VeritasUI_QualityOfLife_OnAddonCompartmentClick",
     "VeritasUI_ZoneQuests_OnAddonCompartmentClick",
@@ -153,7 +153,7 @@ read_globals = {
     "NumberFontNormal", "NumberFontNormalRight",
     -- Auction House
     "C_AuctionHouse", "AuctionHouseFrame", "AuctionHouseFrameDisplayMode",
-    -- Chat / UI elements (CleanSolo)
+    -- Chat / UI elements (Interface)
     "NUM_CHAT_WINDOWS", "FCF_SetWindowAlpha", "FCF_SetWindowColor",
     "FCF_FadeInChatFrame", "FCF_FadeOutChatFrame", "CHAT_FRAME_FADE_TIME", "CHAT_FRAME_FADE_OUT_TIME",
     "CHAT_TAB_HIDE_DELAY", "QuickJoinToastButton", "MicroMenu", "PlayerFrame",

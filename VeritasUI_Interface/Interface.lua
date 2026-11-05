@@ -1,19 +1,19 @@
--- VeritasUI_CleanSolo / CleanSolo.lua
--- Fades or hides noisy default UI elements for solo play.
--- Settings: Options → AddOns → VeritasUI → Clean Solo  |  /cleansolo  |  /cs
+-- VeritasUI_Interface / Interface.lua
+-- Fades or hides parts of the default interface, grouped by where they sit on screen.
+-- Settings: Options → AddOns → VeritasUI → Interface  |  /interface
 --
 -- ────────────────────────────────────────────────────────────────
 --  POLICY: /reload required to apply setting changes (by design)
 -- ────────────────────────────────────────────────────────────────
 --
---  CleanSolo's features are implemented almost entirely via
+--  Interface's features are implemented almost entirely via
 --  hooksecurefunc — the chat window fade, the
 --  social/voice/chat button hides, micro menu fade, player frame fade,
 --  bag button hides, macro name hide, and error text suppression all
 --  install Blizzard secure-function hooks at PLAYER_LOGIN.
 --
 --  hooksecurefunc has no inverse: once installed, a hook cannot be
---  removed at runtime.  This means CleanSolo settings cannot cleanly
+--  removed at runtime.  This means Interface settings cannot cleanly
 --  toggle off mid-session — disabling a setting at runtime would
 --  leave the hook installed, which would either: (a) keep the side
 --  effect active despite the setting being "off", or (b) require
@@ -43,8 +43,8 @@
 --  options{} table inside InitializeOptions for the wording.
 -- ────────────────────────────────────────────────────────────────
 
-local ADDON_NAME     = "VeritasUI_CleanSolo"
-local SETTINGS_LABEL = "Clean Solo"
+local ADDON_NAME     = "VeritasUI_Interface"
+local SETTINGS_LABEL = "Interface"
 
 ----------------------------------------------------------------
 --  Localize hot globals
@@ -387,7 +387,7 @@ local function SetupChatTabFading()
     -- The messages are the frame's own text and are never touched (owner: they stay readable).
     -- The scroll bar keeps Blizzard's fade to 0 (FCF_FadeOutScrollbar, :1037-1050).
     --
-    -- The chat buttons Clean Solo can hide (social, chat menu, voice) fade with ChatFrame1 when
+    -- The chat buttons Interface can hide (social, chat menu, voice) fade with ChatFrame1 when
     -- they are not hidden: none of them has its alpha set by Blizzard (source, 2026-10-31), and
     -- the menu and channel buttons sit in ChatFrame1's button frame, which Blizzard leaves at 1 while
     -- docked (FCF_DockFrame, :1971). Hovering them, or the social button, already brings the window
@@ -441,7 +441,7 @@ local function SetupChatTabFading()
     local buttonsOwner = _G.ChatFrame1
     -- Quality of Life's Copy Chat button (v1.57.0) sits in the same column and fades with them. It is
     -- built at QoL's PLAYER_LOGIN, which can come after this, so it is taken now if it exists and
-    -- otherwise handed over by QoL through VUI.CS_AddChatButton, at the window's current look.
+    -- otherwise handed over by QoL through VUI.Interface_AddChatButton, at the window's current look.
     -- Hovering it brings the window in: it is in ChatFrame1's button frame, which Blizzard's hover test
     -- counts (FCF_OnUpdate, FloatingChatFrame.lua:1139-1143).
     local addedButtons = {}
@@ -493,7 +493,7 @@ local function SetupChatTabFading()
         ApplyWindow(cf)
     end
     AddLateButton(_G.VeritasUI_CopyChatButton)
-    VUI.CS_AddChatButton = AddLateButton
+    VUI.Interface_AddChatButton = AddLateButton
     -- Colour and opacity changes from the Background picker write the textures directly.
     if _G.FCF_SetWindowColor then
         hooksecurefunc("FCF_SetWindowColor", function(cf) if winTex[cf] then ApplyWindow(cf) end end)
@@ -856,7 +856,7 @@ end
 --
 -- ⚠ The aura spell IDs are NOT from Blizzard's UI source (an aura's spell ID is server data, not
 -- UI code). They come from EllesmereUI v9.6.9's transform list (EllesmereUIQoL.lua:4880-4893),
--- read 2026-10-29. If a profession's outfit still shows, `/cs gear` lists what is on you so the
+-- read 2026-10-29. If a profession's outfit still shows, `/interface gear` lists what is on you so the
 -- missing ID can be added here.
 --
 -- Removal: C_UnitAuras.CancelAuraByInstanceID (UnitAuraDocumentation.lua:85, HasRestrictions),
@@ -920,7 +920,7 @@ local FISHING_AURA, FISHING_CHANNEL = 394009, 131476
 
 local gearFrame = CreateFrame("Frame")
 local gearPending = false
-local gearLast = "none yet"   -- for /cs gear
+local gearLast = "none yet"   -- for /interface gear
 
 local function IsSecret(v)
     return issecretvalue and issecretvalue(v) or false
@@ -1019,7 +1019,7 @@ local MINIMAP_BUTTONS = {
       frames = function() local c = _G.MinimapCluster; return c and { c.InstanceDifficulty } end },
 }
 
--- /cs gear: what is on you now, so a profession whose outfit still shows can be identified.
+-- /interface gear: what is on you now, so a profession whose outfit still shows can be identified.
 -- Lists the listed outfit auras found, then every buff's name and spell ID (scan pcall'd: aura
 -- data is secret in restricted content).
 local function PrintGearDiag()
@@ -1027,16 +1027,16 @@ local function PrintGearDiag()
     for _, k in ipairs(TRANSFORM_KINDS) do
         if db and db.hideTransformTypes[k.id] then on[#on + 1] = k.label end
     end
-    VUI.Print("Clean Solo", "Hide Transforms: " .. (#on > 0 and table.concat(on, ", ") or "none")
+    VUI.Print("Interface", "Hide Transforms: " .. (#on > 0 and table.concat(on, ", ") or "none")
         .. "; last result: " .. gearLast)
     if not (C_UnitAuras and C_UnitAuras.GetBuffDataByIndex) then return end
     for i = 1, 40 do
         local ok, data = pcall(C_UnitAuras.GetBuffDataByIndex, "player", i)
-        if not ok then VUI.Print("Clean Solo", "  buffs can't be read here"); return end
+        if not ok then VUI.Print("Interface", "  buffs can't be read here"); return end
         if not data then return end
         local name, id = data.name, data.spellId
-        if IsSecret(name) or IsSecret(id) then VUI.Print("Clean Solo", "  (hidden)")
-        else VUI.Print("Clean Solo", string.format("  %s  %d", tostring(name), id or 0)) end
+        if IsSecret(name) or IsSecret(id) then VUI.Print("Interface", "  (hidden)")
+        else VUI.Print("Interface", string.format("  %s  %d", tostring(name), id or 0)) end
     end
 end
 
@@ -1746,7 +1746,7 @@ local function SetupAuraFade()
     end
 
     local watch = CreateFrame("Frame")
-    watch._vuiAuraWatch = true   -- found by cs_opacity_test
+    watch._vuiAuraWatch = true   -- found by interface_opacity_test
     watch:RegisterUnitEvent("UNIT_AURA", "player")
     watch:RegisterEvent("PLAYER_ENTERING_WORLD")
     watch:SetScript("OnEvent", Collect)
@@ -2040,7 +2040,7 @@ local function ErrorTypesMask()
     return mask > 0 and mask or Bit(ERR_NONE)
 end
 
--- An option another addon has taken over (VUI.SetOptionUnavailable). Nothing takes a Clean Solo
+-- An option another addon has taken over (VUI.SetOptionUnavailable). Nothing takes an Interface
 -- option today: the caller was VeritasUI_ElvUI (retired), kept for a possible revival. Its feature
 -- is skipped at login and its control is greyed out with the reason added to the tooltip; the
 -- saved value is left alone.
@@ -2063,7 +2063,7 @@ end
 local function InitializeOptions()
     local category, layout = VUI.RegisterSettingsCategory(SETTINGS_LABEL)
 
-    -- Every Clean Solo dropdown is drawn by Lib's cover dropdown (v1.59.0, VeritasUI_Lib/SettingsCoverDropdown.lua):
+    -- Every Interface dropdown is drawn by Lib's cover dropdown (v1.59.0, VeritasUI_Lib/SettingsCoverDropdown.lua):
     -- no Blizzard dropdown row on the page, because a Blizzard dropdown row filled in with our data is reused by
     -- Blizzard's own pages and taints them (Options > Social's IsUserOAuthed blocked). Blizzard's own dropdown
     -- only if Lib is older than this module. `opts` = { unavailableKey, sub, isEnabled }.
@@ -2083,10 +2083,10 @@ local function InitializeOptions()
         return init
     end
 
-    -- Two groups under section headers, the way Blizzard's own Options pages are laid out
+    -- Section headers, the way Blizzard's own Options pages are laid out
     -- (layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(...)),
-    -- Blizzard_SettingsDefinitions_Frame/Interface.lua:18). Owner's request, 2026-10-29: fades
-    -- and hides were interleaved. Order is presentation only; every key is unchanged.
+    -- Blizzard_SettingsDefinitions_Frame/Interface.lua:18). The sections are SECTIONS, at the end of this
+    -- function. Order is presentation only; every key is unchanged.
     local function Header(name)
         if layout and layout.AddInitializer and CreateSettingsListSectionHeaderInitializer then
             layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(name))
@@ -2172,7 +2172,7 @@ local function InitializeOptions()
             if FADE_OPTIONS[i].key == "fadeMainActionBarShowFlying" then table.remove(FADE_OPTIONS, i) end
         end
     end
-    local BuildTopBannersDropdown   -- defined after the Fade section, called from AddCheckboxes
+    local BuildTopBannersDropdown   -- defined below, called from AddCheckboxes
     local BuildTransformsDropdown   -- likewise
     local HIDE_OPTIONS = {
         { key = "hideSocialButton",    name = "Hide Social Button",
@@ -2235,7 +2235,7 @@ local function InitializeOptions()
         return o
     end
     -- ⚠ Built with Settings.CreateSettingInitializer, NOT CreateSettingsCheckboxSliderInitializer (owner's repro,
-    -- 2026-11-03: Options search "fade" -> Nameplates > Style -> Social popup, "VeritasUI_CleanSolo"). That helper
+    -- 2026-11-03: Options search "fade" -> Nameplates > Style -> Social popup, "VeritasUI_Interface"). That helper
     -- is the same data + template, then initializer:AddSearchTags(cbLabel, sliderLabel) in the CALLER's execution
     -- (Blizzard_SettingControls.lua:1305-1323), so from addon code the tags are written tainted, and every search
     -- reads every initializer's tags (Blizzard_SettingsPanel.lua:575-610). Putting the checkbox setting in
@@ -2289,7 +2289,7 @@ local function InitializeOptions()
                 -- An option with `apply` takes effect at once instead of after a /reload, and
                 -- says so: no "/reload to apply" for it (audit C2).
                 local printer = opt.apply and VUI.PrintOnOffLive or VUI.PrintOnOff
-                printer("Clean Solo", opt.name, value)
+                printer("Interface", opt.name, value)
                 if opt.apply and not Unavailable(opt.key) then opt.apply(value) end
             end)
             local init = CreateCheckboxRow(opt, setting)
@@ -2456,38 +2456,37 @@ local function InitializeOptions()
         end
     end
 
-    Header("Fade")
-    AddCheckboxes(FADE_OPTIONS)
-
     -- ── Fade Action Bars — tick-box dropdown, PER-CHARACTER (mask paired with fadeActionBars).
-    cdb.fadeActionBars[1] = nil  -- Bar 1 is Blizzard-protected
-    cdb.fadeActionBarsLabel = nil  -- RETIRED v1.21.0: the old display string, now the mask
-    local barItems = {}
-    for i = 2, 8 do barItems[#barItems + 1] = { id = i, label = ACTION_BAR_LABELS[i] } end
-    local barsInit = KindsDropdown({
-        setting = ADDON_NAME .. "_fadeActionBars", maskKey = "fadeActionBarsMask",
-        owner = cdb,                 -- PER-CHARACTER: paired with fadeActionBars
-        setMask = function(v) cdb.fadeActionBarsMask = v end,
-        name = "Fade Action Bars", items = barItems, truth = cdb.fadeActionBars,
-        unavailableKey = "fadeActionBars",
-        tip = "Pick a bar to fade it out when idle; it reappears on mouseover. How faded it gets is set "
-           .. "by the slider below. Applies at once.",
-        onChanged = function()
-            if not Unavailable("fadeActionBars") then SetupActionBarFading() end
-        end,
-    })
-    -- v1.62.0: its own faded opacity, UNIVERSAL like every other opacity, indented under the dropdown and
-    -- greyed while no bar is picked (as Fade Minimap Buttons' slider).
-    do
-        local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_fadeMultiBarsOpacity",
-            "fadeMultiBarsOpacity", db, "number", "Faded Opacity", UNIVERSAL.fadeMultiBarsOpacity)
-        local slider = Settings.CreateSlider(category, setting, OpacitySliderOptions(),
-            "How much of the picked action bars still shows while faded. At 0% they are hidden until you "
-            .. "mouse over them. Action Bar 1 has its own slider, beside Fade Main Action Bar. Applies at once.")
-        GreyIfUnavailable(slider, "fadeActionBars")
-        if barsInit and slider and VUI.SettingsSubOption then
-            VUI.SettingsSubOption(slider, ADDON_NAME .. "_fadeActionBars",
-                function() return next(cdb.fadeActionBars) ~= nil end)
+    local function BuildActionBarsDropdown()
+        cdb.fadeActionBars[1] = nil  -- Bar 1 is Blizzard-protected
+        cdb.fadeActionBarsLabel = nil  -- RETIRED v1.21.0: the old display string, now the mask
+        local barItems = {}
+        for i = 2, 8 do barItems[#barItems + 1] = { id = i, label = ACTION_BAR_LABELS[i] } end
+        local barsInit = KindsDropdown({
+            setting = ADDON_NAME .. "_fadeActionBars", maskKey = "fadeActionBarsMask",
+            owner = cdb,                 -- PER-CHARACTER: paired with fadeActionBars
+            setMask = function(v) cdb.fadeActionBarsMask = v end,
+            name = "Fade Action Bars", items = barItems, truth = cdb.fadeActionBars,
+            unavailableKey = "fadeActionBars",
+            tip = "Pick a bar to fade it out when idle; it reappears on mouseover. How faded it gets is set "
+               .. "by the slider below. Applies at once.",
+            onChanged = function()
+                if not Unavailable("fadeActionBars") then SetupActionBarFading() end
+            end,
+        })
+        -- v1.62.0: its own faded opacity, UNIVERSAL like every other opacity, indented under the dropdown and
+        -- greyed while no bar is picked (as Fade Minimap Buttons' slider).
+        do
+            local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_fadeMultiBarsOpacity",
+                "fadeMultiBarsOpacity", db, "number", "Faded Opacity", UNIVERSAL.fadeMultiBarsOpacity)
+            local slider = Settings.CreateSlider(category, setting, OpacitySliderOptions(),
+                "How much of the picked action bars still shows while faded. At 0% they are hidden until you "
+                .. "mouse over them. Action Bar 1 has its own slider, beside Fade Main Action Bar. Applies at once.")
+            GreyIfUnavailable(slider, "fadeActionBars")
+            if barsInit and slider and VUI.SettingsSubOption then
+                VUI.SettingsSubOption(slider, ADDON_NAME .. "_fadeActionBars",
+                    function() return next(cdb.fadeActionBars) ~= nil end)
+            end
         end
     end
 
@@ -2495,31 +2494,33 @@ local function InitializeOptions()
     -- number the faders read each time they are about to fade (VUI.SetFadeDelay), not a hook, so
     -- the /reload policy at the top of this file does not apply to it. 0.5 s steps, the step
     -- Blizzard's own seconds-valued sliders use (Blizzard_SettingsDefinitions_Frame/Mounts.lua:114).
-    local delaySetting = Settings.RegisterAddOnSetting(
-        category,
-        ADDON_NAME .. "_fadeDelay",
-        "fadeDelay",
-        db,                          -- UNIVERSAL
-        "number",
-        "Fade Delay",
-        UNIVERSAL.fadeDelay
-    )
-    delaySetting:SetValueChangedCallback(function(_, value)
-        VUI.SetFadeDelay(value)
-    end)
-    local delayOptions = Settings.CreateSliderOptions(0, 5, 0.5)
-    local labelRight = MinimalSliderWithSteppersMixin and MinimalSliderWithSteppersMixin.Label
-        and MinimalSliderWithSteppersMixin.Label.Right
-    if labelRight and delayOptions.SetLabelFormatter then
-        delayOptions:SetLabelFormatter(labelRight, function(value)
-            return string.format("%.1f sec", value)
+    local function BuildFadeDelay()
+        local delaySetting = Settings.RegisterAddOnSetting(
+            category,
+            ADDON_NAME .. "_fadeDelay",
+            "fadeDelay",
+            db,                          -- UNIVERSAL
+            "number",
+            "Fade Delay",
+            UNIVERSAL.fadeDelay
+        )
+        delaySetting:SetValueChangedCallback(function(_, value)
+            VUI.SetFadeDelay(value)
         end)
+        local delayOptions = Settings.CreateSliderOptions(0, 5, 0.5)
+        local labelRight = MinimalSliderWithSteppersMixin and MinimalSliderWithSteppersMixin.Label
+            and MinimalSliderWithSteppersMixin.Label.Right
+        if labelRight and delayOptions.SetLabelFormatter then
+            delayOptions:SetLabelFormatter(labelRight, function(value)
+                return string.format("%.1f sec", value)
+            end)
+        end
+        local delayInit = Settings.CreateSlider(category, delaySetting, delayOptions, TipWithReason(
+            "How long a faded element stays visible after you move the mouse away, before it fades: "
+            .. "every Fade option on this page. 0 keeps the usual short delay. The chat window and its tabs "
+            .. "keep Blizzard's own timing. Applies at once.", "fadeDelay"))
+        GreyIfUnavailable(delayInit, "fadeDelay")
     end
-    local delayInit = Settings.CreateSlider(category, delaySetting, delayOptions, TipWithReason(
-        "How long a faded element stays visible after you move the mouse away, before it fades: "
-        .. "every Fade option above. 0 keeps the usual short delay. The chat window and its tabs "
-        .. "keep Blizzard's own timing. Applies at once.", "fadeDelay"))
-    GreyIfUnavailable(delayInit, "fadeDelay")
 
 
     -- ── Hide Top Banners — tick-box dropdown, UNIVERSAL (mask paired with hideTopBannerTypes, both on
@@ -2535,7 +2536,7 @@ local function InitializeOptions()
             tip = "Pick the big messages at the top of the screen to stop. The rest still show. "
                .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.",
             onItem = function(g, on)
-                VUI.Print("Clean Solo", "Hide Top Banners: " .. g.label .. " "
+                VUI.Print("Interface", "Hide Top Banners: " .. g.label .. " "
                     .. (on and "hidden" or "shown") .. " — " .. VUI.COL.YELLOW .. "/reload|r to apply.")
             end,
         })
@@ -2556,7 +2557,7 @@ local function InitializeOptions()
                .. "look stays. Not during combat; anything that lands in combat comes off when it ends. "
                .. "Applies at once.",
             onItem = function(k, on)
-                VUI.Print("Clean Solo", "Hide Transforms: " .. k.label .. " "
+                VUI.Print("Interface", "Hide Transforms: " .. k.label .. " "
                     .. (on and "taken off" or "left on") .. ".")
             end,
             onChanged = function()
@@ -2565,109 +2566,141 @@ local function InitializeOptions()
         })
     end
 
-    Header("Hide")
-    AddCheckboxes(HIDE_OPTIONS)
-
     -- ── Hide Error Text — tick-box dropdown (see the Options Panel note above). UNIVERSAL:
     -- hideErrorText, hideErrorTypes and the mask all live on `db`.
     --
-    -- "All" is stored in hideErrorText, the key the old Hide Error Text checkbox used, so a
-    -- saved "on" from before this dropdown carries straight over as All. All is an override,
-    -- not a seventh group: it hides EVERY red error (not just the six groups) the way the
+    -- "All" is stored in hideErrorText, the key the old Hide Error Text checkbox used. All is an
+    -- override, not a seventh group: it hides EVERY red error (not just the six groups) the way the
     -- checkbox did. While it is on every group row is ticked too, and the individual picks
     -- underneath it are kept, so unticking All restores them. Unticking a group while All is
     -- on means "all but this one".
     --
     -- The mask is DERIVED from those two keys on every login and every change; they are the
     -- truth, the mask only feeds the control.
-    db.hideErrorTypesLabel = nil   -- left by the unreleased v1.21.0 test builds
-    db.hideErrorTypesMask = ErrorTypesMask()
-    local lastErrMask = db.hideErrorTypesMask
-
-    local errSetting = Settings.RegisterAddOnSetting(
-        category,
-        ADDON_NAME .. "_hideErrorTypes",
-        "hideErrorTypesMask",
-        db,                          -- UNIVERSAL: paired with hideErrorTypes
-        "number",
-        "Hide Error Text",
-        Bit(ERR_ALL) + (2 ^ ERR_MAX - 2 ^ (ERR_FIRST_GROUP - 1))   -- default: All, as before
-    )
-
-    local ignoreErrCallback = false
-
-    local function GetErrorTypeOptions()
-        local container = Settings.CreateControlTextContainer()
-        container:AddCheckbox(ERR_NONE, "None")
-        container:AddCheckbox(ERR_ALL, "All", "Every error message.")
-        for i, g in ipairs(ERROR_TYPE_GROUPS) do
-            local row = container:AddCheckbox(ERR_FIRST_GROUP + i - 1, g.label, g.tip)
-            -- While All is on the group rows are ticked but must not be listed in the bar,
-            -- which should read just "All". A row's `text` feeds only the bar text; the menu
-            -- draws the row from `label` (CreateTextContainerData, Blizzard_Settings.lua:244-
-            -- 246; the row initializer captures its label, MenuTemplates.lua:330-333). A nil
-            -- text adds nothing to the bar's list (MenuTemplates.lua:775-791).
-            if db.hideErrorText then row.text = nil end
-        end
-        return container:GetData()
-    end
-
-    local function ErrorSummary()
-        if db.hideErrorText then return "All" end
-        local names = {}
-        for _, g in ipairs(ERROR_TYPE_GROUPS) do
-            if db.hideErrorTypes[g.id] then names[#names + 1] = g.label end
-        end
-        return #names > 0 and table.concat(names, ", ") or "None"
-    end
-
-    errSetting:SetValueChangedCallback(function(_, val)
-        if ignoreErrCallback or type(val) ~= "number" then return end
-        local changed = ChangedBits(lastErrMask, val, ERR_MAX)
-        if #changed == 1 then
-            local v, on = changed[1], HasBit(val, changed[1])
-            if v == ERR_NONE then
-                if on then
-                    db.hideErrorText = false
-                    for k in pairs(db.hideErrorTypes) do db.hideErrorTypes[k] = nil end
-                end                                   -- unticking None alone changes nothing
-            elseif v == ERR_ALL then
-                db.hideErrorText = on
-            else
-                local g = ERROR_TYPE_GROUPS[v - ERR_FIRST_GROUP + 1]
-                if on then
-                    db.hideErrorTypes[g.id] = true
-                elseif db.hideErrorText then
-                    db.hideErrorText = false
-                    for _, other in ipairs(ERROR_TYPE_GROUPS) do
-                        db.hideErrorTypes[other.id] = (other.id ~= g.id) or nil
-                    end
-                else
-                    db.hideErrorTypes[g.id] = nil
-                end
-            end
-        elseif #changed > 1 then                      -- e.g. the Defaults button
-            db.hideErrorText = HasBit(val, ERR_ALL)
-            if not db.hideErrorText then
-                for i, g in ipairs(ERROR_TYPE_GROUPS) do
-                    db.hideErrorTypes[g.id] = HasBit(val, ERR_FIRST_GROUP + i - 1) or nil
-                end
-            end
-        end
-        if #changed > 0 then
-            VUI.Print("Clean Solo", "Hide Error Text: " .. ErrorSummary()
-                .. " — " .. VUI.COL.YELLOW .. "/reload|r to apply.")
-        end
+    local function BuildErrorTextDropdown()
+        db.hideErrorTypesLabel = nil   -- left by the unreleased v1.21.0 test builds
         db.hideErrorTypesMask = ErrorTypesMask()
-        lastErrMask = db.hideErrorTypesMask
-        ignoreErrCallback = true
-        pcall(errSetting.SetValue, errSetting, db.hideErrorTypesMask)
-        ignoreErrCallback = false
-    end)
+        local lastErrMask = db.hideErrorTypesMask
 
-    Dropdown(errSetting, "Hide Error Text", GetErrorTypeOptions,
-        "Pick the kinds of red error message to hide, and the spoken lines that go with them; the rest "
-        .. "still show. Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.")
+        local errSetting = Settings.RegisterAddOnSetting(
+            category,
+            ADDON_NAME .. "_hideErrorTypes",
+            "hideErrorTypesMask",
+            db,                          -- UNIVERSAL: paired with hideErrorTypes
+            "number",
+            "Hide Error Text",
+            Bit(ERR_ALL) + (2 ^ ERR_MAX - 2 ^ (ERR_FIRST_GROUP - 1))   -- default: All, as before
+        )
+
+        local ignoreErrCallback = false
+
+        local function GetErrorTypeOptions()
+            local container = Settings.CreateControlTextContainer()
+            container:AddCheckbox(ERR_NONE, "None")
+            container:AddCheckbox(ERR_ALL, "All", "Every error message.")
+            for i, g in ipairs(ERROR_TYPE_GROUPS) do
+                local row = container:AddCheckbox(ERR_FIRST_GROUP + i - 1, g.label, g.tip)
+                -- While All is on the group rows are ticked but must not be listed in the bar,
+                -- which should read just "All". A row's `text` feeds only the bar text; the menu
+                -- draws the row from `label` (CreateTextContainerData, Blizzard_Settings.lua:244-
+                -- 246; the row initializer captures its label, MenuTemplates.lua:330-333). A nil
+                -- text adds nothing to the bar's list (MenuTemplates.lua:775-791).
+                if db.hideErrorText then row.text = nil end
+            end
+            return container:GetData()
+        end
+
+        local function ErrorSummary()
+            if db.hideErrorText then return "All" end
+            local names = {}
+            for _, g in ipairs(ERROR_TYPE_GROUPS) do
+                if db.hideErrorTypes[g.id] then names[#names + 1] = g.label end
+            end
+            return #names > 0 and table.concat(names, ", ") or "None"
+        end
+
+        errSetting:SetValueChangedCallback(function(_, val)
+            if ignoreErrCallback or type(val) ~= "number" then return end
+            local changed = ChangedBits(lastErrMask, val, ERR_MAX)
+            if #changed == 1 then
+                local v, on = changed[1], HasBit(val, changed[1])
+                if v == ERR_NONE then
+                    if on then
+                        db.hideErrorText = false
+                        for k in pairs(db.hideErrorTypes) do db.hideErrorTypes[k] = nil end
+                    end                                   -- unticking None alone changes nothing
+                elseif v == ERR_ALL then
+                    db.hideErrorText = on
+                else
+                    local g = ERROR_TYPE_GROUPS[v - ERR_FIRST_GROUP + 1]
+                    if on then
+                        db.hideErrorTypes[g.id] = true
+                    elseif db.hideErrorText then
+                        db.hideErrorText = false
+                        for _, other in ipairs(ERROR_TYPE_GROUPS) do
+                            db.hideErrorTypes[other.id] = (other.id ~= g.id) or nil
+                        end
+                    else
+                        db.hideErrorTypes[g.id] = nil
+                    end
+                end
+            elseif #changed > 1 then                      -- e.g. the Defaults button
+                db.hideErrorText = HasBit(val, ERR_ALL)
+                if not db.hideErrorText then
+                    for i, g in ipairs(ERROR_TYPE_GROUPS) do
+                        db.hideErrorTypes[g.id] = HasBit(val, ERR_FIRST_GROUP + i - 1) or nil
+                    end
+                end
+            end
+            if #changed > 0 then
+                VUI.Print("Interface", "Hide Error Text: " .. ErrorSummary()
+                    .. " — " .. VUI.COL.YELLOW .. "/reload|r to apply.")
+            end
+            db.hideErrorTypesMask = ErrorTypesMask()
+            lastErrMask = db.hideErrorTypesMask
+            ignoreErrCallback = true
+            pcall(errSetting.SetValue, errSetting, db.hideErrorTypesMask)
+            ignoreErrCallback = false
+        end)
+
+        Dropdown(errSetting, "Hide Error Text", GetErrorTypeOptions,
+            "Pick the kinds of red error message to hide, and the spoken lines that go with them; the rest "
+            .. "still show. Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.")
+    end
+
+    -- ── The page, by where each thing sits on screen (owner, 2026-11-04: the Fade / Hide split had grown
+    -- too long to find anything, and a raider skipped the whole page). Every section holds at least two
+    -- options except All Fades: Fade Delay times every fade below it, so it heads the page (owner's choice).
+    -- A row's sub-options follow it in the same section. An entry missing from this game (Show While Flying
+    -- in WoW Forever) is skipped.
+    local entries = {}
+    for _, list in ipairs({ FADE_OPTIONS, HIDE_OPTIONS }) do
+        for _, opt in ipairs(list) do entries[opt.key] = opt end
+    end
+    entries.fadeDelay      = { key = "fadeDelay",      build = BuildFadeDelay }
+    entries.fadeActionBars = { key = "fadeActionBars", build = BuildActionBarsDropdown }
+    entries.hideErrorText  = { key = "hideErrorText",  build = BuildErrorTextDropdown }
+    local SECTIONS = {
+        { "All Fades",           { "fadeDelay" } },
+        { "Action Bars",         { "fadeMainActionBar", "fadeMainActionBarShowFlying", "fadeActionBars",
+                                   "hideMacroNames" } },
+        { "Micro Menu and Bags", { "fadeMicroMenu", "fadeBagButtons" } },
+        { "Player",              { "fadePlayerFrame", "fadePlayerFramePower", "fadeAuras", "fadeAurasShowExpiring",
+                                   "hideProfessionGear" } },
+        { "Chat",                { "fadeChatTabs", "hideSocialButton", "hideChatButtons", "hideVoiceChatButton" } },
+        { "Minimap",             { "fadeMinimapAlerts", "fadeMinimapButtons" } },
+        { "Trackers and Meters", { "fadeObjectiveTracker", "fadeObjectiveTrackerRaid", "fadeStatusBars",
+                                   "fadeStatusBarsOnGain", "fadeDamageMeter" } },
+        { "Messages and Popups", { "hideErrorText", "hideTopBanners", "hideTalkingHead", "muteTalkingHead" } },
+    }
+    for _, section in ipairs(SECTIONS) do
+        Header(section[1])
+        local list = {}
+        for _, key in ipairs(section[2]) do
+            if entries[key] then list[#list + 1] = entries[key] end
+        end
+        AddCheckboxes(list)
+    end
 
     Settings.RegisterAddOnCategory(category)
     settingsCategoryID = category:GetID()
@@ -2677,7 +2710,7 @@ end
 -- ── Events ──────────────────────────────────────────────────
 -- Player frame: no flash on login (owner, 2026-11-03). The frame shows for 3 s after any player UNIT_HEALTH /
 -- UNIT_MAXHEALTH (Lib HookPlayerFrameFade, HEALTH_IDLE_TIME: health is a Secret Value, so a recent event is
--- the only sign of damage or regen). MEASURED (`/cs login`, a fresh login that flashed): UNIT_MAXHEALTH x2 at
+-- the only sign of damage or regen). MEASURED (`/interface login`, a fresh login that flashed): UNIT_MAXHEALTH x2 at
 -- +0.6 s and UNIT_HEALTH at +2.1 s after PLAYER_ENTERING_WORLD, the moment the loading screen lifted; the frame
 -- rose at +2.5 s and faded from +6.1 s. Another login got none, so the flash was intermittent. So health events
 -- are ignored from load until LOGIN_HEALTH_QUIET after the session's first loading screen lifts
@@ -2697,7 +2730,7 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         if arg1 ~= ADDON_NAME then return end
         -- v1.62.0: bars 2-8 get their own opacity, starting from the shared one so nothing looks
         -- different after the upgrade. Before the binder seeds the new key's default.
-        local saved = _G.VeritasUI_CleanSoloDB
+        local saved = _G.VeritasUI_InterfaceDB
         if type(saved) == "table" and saved.fadeMultiBarsOpacity == nil
             and type(saved.fadeActionBarsOpacity) == "number" then
             saved.fadeMultiBarsOpacity = saved.fadeActionBarsOpacity
@@ -2708,7 +2741,7 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         -- defect this refactor removes, so it had to go rather than sit alongside the binder. The
         -- binder deep-copies, which its own comment said the shallow version would eventually
         -- need for a nested default.
-        db = VUI.BindScopedDB("VeritasUI_CleanSoloDB", UNIVERSAL, PERCHAR)
+        db = VUI.BindScopedDB("VeritasUI_InterfaceDB", UNIVERSAL, PERCHAR)
         -- InitializeOptions deliberately does NOT run here any more:
         -- Settings.RegisterAddOnSetting captures the TABLE it is given, so it must
         -- receive the per-character slot, which does not exist until PLAYER_LOGIN.
@@ -2722,18 +2755,18 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         -- table". That was true only while the whole module was per-character. The invariant now
         -- holds PER KEY: each read and each Settings registration must see the table that OWNS
         -- that key -- `db` for account-wide, `cdb` for the three per-character ones.
-        db, cdb = VUI.BindScopedDB("VeritasUI_CleanSoloDB", UNIVERSAL, PERCHAR)
+        db, cdb = VUI.BindScopedDB("VeritasUI_InterfaceDB", UNIVERSAL, PERCHAR)
 
         -- ⚠ MUST run here: after the per-character table exists, and BEFORE anything reads a
         -- universal key below. Read first and every feature acts on the pre-migration value for
         -- the whole session.
-        local promoted = VUI.MigrateScopedDB("VeritasUI_CleanSoloDB", UNIVERSAL, PERCHAR,
+        local promoted = VUI.MigrateScopedDB("VeritasUI_InterfaceDB", UNIVERSAL, PERCHAR,
                                              "__vuiScopeMigrated")
         if promoted then
             local names = {}
             for k in pairs(promoted) do names[#names + 1] = k end
             table.sort(names)
-            VUI.Print("Clean Solo", "settings now shared across characters: "
+            VUI.Print("Interface", "settings now shared across characters: "
                 .. table.concat(names, ", ") .. "  (taken from this character)")
         end
 
@@ -2848,20 +2881,19 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
 end)
 
 -- ── Slash commands ──────────────────────────────────────────
-SLASH_VERITASUI_CLEANSOLO1 = "/cleansolo"
-SLASH_VERITASUI_CLEANSOLO2 = "/cs"
-SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
+SLASH_VERITASUI_INTERFACE1 = "/interface"
+SlashCmdList["VERITASUI_INTERFACE"] = function(msg)
     if strtrim(msg or ""):lower() == "gear" then PrintGearDiag(); return end
     if strtrim(msg or ""):lower() == "tracker" then
         -- Which tracker sections are shown, and their alpha: if an event's objective still fades,
         -- this names the section it is in, so it can be added to OT_EVENT_MODULES.
         local otf = _G.ObjectiveTrackerFrame
-        if not (otf and otf.GetChildren) then VUI.Print("Clean Solo", "no objective tracker"); return end
+        if not (otf and otf.GetChildren) then VUI.Print("Interface", "no objective tracker"); return end
         for _, c in ipairs({ otf:GetChildren() }) do
             if c:IsShown() then
                 local name = (c.GetName and c:GetName()) or (c == otf.Header and "Header")
                     or (c == otf.NineSlice and "Background") or "?"
-                VUI.Print("Clean Solo", string.format("%s  alpha %.2f", tostring(name), c:GetAlpha()))
+                VUI.Print("Interface", string.format("%s  alpha %.2f", tostring(name), c:GetAlpha()))
             end
         end
         return
@@ -2880,7 +2912,7 @@ SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
                             tostring(i), a(bar), a(bar.StatusBar))
                     end
                 end
-                VUI.Print("Clean Solo", string.format("%s: shown %s, alpha %s, frame art %s; %s", name,
+                VUI.Print("Interface", string.format("%s: shown %s, alpha %s, frame art %s; %s", name,
                     tostring(c:IsShown()), a(c), a(c.BarFrameTexture),
                     #shown > 0 and table.concat(shown, "; ") or "no bar shown"))
             end
@@ -2892,13 +2924,13 @@ SlashCmdList["VERITASUI_CLEANSOLO"] = function(msg)
     if settingsCategoryID then
         Settings.OpenToCategory(settingsCategoryID)
     else
-        VUI.Print("Clean Solo",
+        VUI.Print("Interface",
             "Settings are still loading — try again in a moment.")
     end
 end
 
 -- ── Addon Compartment (minimap dropdown) ────────────────────
-function VeritasUI_CleanSolo_OnAddonCompartmentClick()
+function VeritasUI_Interface_OnAddonCompartmentClick()
     C_Timer.After(0, function()
         if settingsCategoryID then Settings.OpenToCategory(settingsCategoryID) end
     end)

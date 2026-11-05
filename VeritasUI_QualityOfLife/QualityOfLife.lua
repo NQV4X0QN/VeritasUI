@@ -149,7 +149,7 @@ local UNIVERSAL = {
     -- ON by default since v1.37.0 (owner, 2026-10-31: "People download the addon because they want a
     -- change"). Still OFF: options that act for the player in a way that is hard to undo or that
     -- remove game content -- Track Latest Reputation above, Fill In DELETE, Skip Cinematics, Auto
-    -- Accept / Turn In Quests, and CleanSolo's Talking Head and Top Banners hides. Defaults only
+    -- Accept / Turn In Quests, and Interface's Talking Head and Top Banners hides. Defaults only
     -- seed missing keys, so existing players keep what they have.
     repBarRenownLevel = true,     -- "[18/20]" beside the name on the reputation bar (owner, 2026-10-30)
     greatVaultButton  = true,     -- Great Vault button by the minimap's mail icon (owner, 2026-10-30)
@@ -1398,8 +1398,8 @@ end
 -- and self-corrects. Same reasoning as VUI.HookHoverFade. It runs ONLY while the
 -- AFK screen is up, and SetIgnoreParentAlpha is called only on a transition.
 --
--- NOTE on interaction with CleanSolo: SetIgnoreParentAlpha bypasses the PARENT's
--- alpha, not the frame's own. A chat tab CleanSolo has faded to alpha 0 stays
+-- NOTE on interaction with Interface: SetIgnoreParentAlpha bypasses the PARENT's
+-- alpha, not the frame's own. A chat tab Interface has faded to alpha 0 stays
 -- invisible, which is correct — we are undoing our own UIParent blanket, not
 -- overriding another feature's deliberate choice.
 local afkRevealed = {}     -- [frame] = true while we are overriding its alpha
@@ -1422,7 +1422,7 @@ end
 
 -- Revert every override. MUST run on AFK exit: leaving SetIgnoreParentAlpha(true)
 -- on a Blizzard frame would make it ignore future alpha changes entirely, which
--- would silently break the next AFK session and CleanSolo's fades.
+-- would silently break the next AFK session and Interface's fades.
 local function AFK_UnrevealAll()
     for f in pairs(afkRevealed) do
         pcall(f.SetIgnoreParentAlpha, f, false)
@@ -1653,7 +1653,7 @@ function AFK_Exit()
     -- Drop every SetIgnoreParentAlpha override first. Ordered before the alpha
     -- restore deliberately: an override left in place would make that frame ignore
     -- alpha changes for the rest of the session, breaking the next AFK screen and
-    -- CleanSolo's fades.
+    -- Interface's fades.
     AFK_StopReveal()
 
     -- Restore UI; only show MinimapCluster if it was visible before AFK started.
@@ -4374,7 +4374,7 @@ end)()
 local function InitializeOptions()
     local category, layout = VUI.RegisterSettingsCategory(SETTINGS_LABEL)
 
-    -- Section headers, the way Blizzard's own Options pages are laid out and as Clean Solo does
+    -- Section headers, the way Blizzard's own Options pages are laid out and as Interface does
     -- (layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(...)),
     -- Blizzard_SettingsDefinitions_Frame/Interface.lua:18). Owner's request, 2026-10-30: the page
     -- was one long list. Every section holds at least two options (his rule; qol_sections_test).
@@ -4500,7 +4500,7 @@ local function InitializeOptions()
         "repairFunding",
         -- ⚠ The ONLY per-character Settings control in this module. Every other setting here
         -- goes through AddCheckbox, which correctly targets the ACCOUNT table -- so unlike
-        -- CleanSolo there is no mixed loop, just this one registration that must not use `db`.
+        -- Interface there is no mixed loop, just this one registration that must not use `db`.
         cdb,
         type(PERCHAR.repairFunding),
         "Repair Funding",

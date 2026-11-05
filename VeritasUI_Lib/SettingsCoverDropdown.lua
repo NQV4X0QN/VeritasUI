@@ -1,5 +1,5 @@
 -- VeritasUI_Lib / SettingsCoverDropdown.lua -- a dropdown in the Options list with NO Blizzard dropdown in it
--- (v1.59.0: every Clean Solo and Quality of Life dropdown; owner-confirmed in game 2026-11-03).
+-- (v1.59.0: every Interface and Quality of Life dropdown; owner-confirmed in game 2026-11-03).
 --
 -- ⚠ WHY, measured in the owner's taintLog 11 run (~/Downloads/taint.log, 2026-11-02 23:21):
 --   * Blizzard's Options list reuses its row frames between pages. Our Settings.CreateDropdown row wrote its
