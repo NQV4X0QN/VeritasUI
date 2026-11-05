@@ -122,6 +122,9 @@ local UNIVERSAL = {
     -- v1.45.0 (owner's request): sub-option of Fade Main Action Bar, ON so the behaviour before it is
     -- kept: the bar is shown in flight. Off, flying is like any other time out of combat.
     fadeMainActionBarShowFlying = true,
+    -- v1.63.0 (owner's request): sub-option of the per-character fadePlayerFrame, ON. The frame stays up while
+    -- your main resource fills or drains out of combat. A display choice, so universal like Show While Flying.
+    fadePlayerFramePower = true,
     -- Sub-option, OFF by default (owner: some players want the bars only on hover, others want
     -- them shown on gains -- "an option that people can check if they want it").
     fadeStatusBarsOnGain = false,  -- also shown for 3 s after a reputation, experience or honor gain
@@ -590,6 +593,15 @@ local function SetupPlayerFrameFade()
     frame._playerHealthPing = healthPing
     frame:RegisterUnitEvent("UNIT_HEALTH", "player")
     frame:RegisterUnitEvent("UNIT_MAXHEALTH", "player")
+    -- Show Resource Changes (v1.63.0, owner's request 2026-11-04: a Mage walked into fights low on mana because
+    -- the frame only showed in combat). Your main resource -- the one on the player frame's bar, UnitPowerType's
+    -- token -- is treated like health: while it changes on its own the frame stays up, and HEALTH_IDLE_TIME after
+    -- the last change it fades. No table of classes: each resource settles by itself out of combat, so this
+    -- follows whichever way it goes -- mana, energy and focus fill until full; rage, runic power, fury, insanity,
+    -- maelstrom and the like drain until empty. Event timing, not values: UnitPower is a secret value whenever
+    -- power is restricted (SecretWhenUnitPowerRestricted, UnitDocumentation.lua), as UnitHealth always is. The
+    -- event's own powerType payload is plain (UNIT_POWER_FREQUENT, UnitDocumentation.lua:4386-4393).
+    frame:RegisterUnitEvent("UNIT_POWER_FREQUENT", "player")
     -- Combat events are only needed when this feature is active.
     frame:RegisterEvent("PLAYER_REGEN_DISABLED")
     frame:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -2074,6 +2086,11 @@ local function InitializeOptions()
           tip = "Your player frame fades out when idle and reappears in combat, when damaged, or on mouseover. "
              .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.",
           opacity = "fadePlayerFrameOpacity" },
+        { key = "fadePlayerFramePower", name = "Show Resource Changes", parent = "fadePlayerFrame",
+          tip = "Your player frame stays up while your mana, energy, rage, fury or other main resource is still "
+             .. "filling or draining out of combat, so you can see it: until mana is full or rage is empty. "
+             .. "Then it fades. Applies at once.",
+          apply = function() end },
         { key = "fadeAuras",           name = "Fade Buffs and Debuffs",
           tip = "Your buffs and debuffs by the minimap fade out unless you're in combat or mousing "
              .. "over them. Applies at once.",
@@ -2787,6 +2804,14 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
 
     elseif event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
         if GetTime() < healthQuietUntil then return end
+        if self._playerHealthPing then self._playerHealthPing() end
+
+    elseif event == "UNIT_POWER_FREQUENT" then
+        -- Only the main resource (a combo point or a rune is not on the player frame's bar), and only with
+        -- the sub-option on. The login quiet window applies as for health.
+        if not db.fadePlayerFramePower or GetTime() < healthQuietUntil then return end
+        local ok, _, token = pcall(_G.UnitPowerType, "player")
+        if not ok or type(token) ~= "string" or IsSecret(token) or ... ~= token then return end
         if self._playerHealthPing then self._playerHealthPing() end
     end
 end)
