@@ -114,6 +114,8 @@ local UNIVERSAL = {
     fadeObjectiveTracker = true,
     -- v1.43.0 (owner's request): your buffs and debuffs by the minimap, shown in combat or on hover.
     fadeAuras           = true,
+    -- v1.63.0 (owner's request): sub-option, ON -- the buffs come back while one has 30 s or less left.
+    fadeAurasShowExpiring = true,
     -- v1.44.0 (owner's request): the alert icons by the minimap (mail, crafting orders, and Quality
     -- of Life's Great Vault button), shown on hover.
     fadeMinimapAlerts   = true,
@@ -1610,7 +1612,15 @@ end
 -- Poll only, no OnEnter hook: a right-click cancels a buff through a protected call (CancelUnitBuff,
 -- BuffFrame.lua:868-877), so we stay off their scripts. External Defensives, at the top of the screen,
 -- is not by the minimap and is left alone.
+-- Show Expiring Buffs (v1.63.0, owner's request 2026-11-04: Walk on Air, 10 s, was invisible while faded):
+-- both frames come back while any of your buffs has 30 s or less left, so it is seen running out. Blizzard's
+-- own icons start flashing just below this (BUFF_WARNING_TIME = 31, BuffFrame.lua:1, in Retail and Forever).
+-- Read with C_UnitAuras.GetAuraDataByIndex (both games' UnitAuraDocumentation.lua), collected on UNIT_AURA
+-- only, so the 10 Hz poll compares cached numbers. A secret time (SecretWhenUnitAuraRestricted) is skipped:
+-- that happens under combat restrictions, when the frames are shown anyway.
 local function SetupAuraFade()
+    if liveFadeHooked.fadeAuras then return end   -- turned off and on again: already installed
+    local SHORT_BUFF_SECONDS = 30
     local frames = { _G.BuffFrame, _G.DebuffFrame }
     local function Hovered()
         for _, f in ipairs(frames) do
@@ -1618,8 +1628,37 @@ local function SetupAuraFade()
         end
         return false
     end
+    local expiries = {}
+    local function Collect()
+        for i = #expiries, 1, -1 do expiries[i] = nil end
+        local ua = _G.C_UnitAuras
+        if not (ua and ua.GetAuraDataByIndex) then return end
+        for i = 1, 255 do
+            local ok, aura = pcall(ua.GetAuraDataByIndex, "player", i, "HELPFUL")
+            if not ok or type(aura) ~= "table" then break end
+            local e, d = aura.expirationTime, aura.duration
+            if not IsSecret(e) and not IsSecret(d) and type(e) == "number" and type(d) == "number"
+                and d > 0 and e > 0 then
+                expiries[#expiries + 1] = e
+            end
+        end
+    end
+    local function Expiring()
+        if not db.fadeAurasShowExpiring then return false end
+        local now = GetTime()
+        for _, e in ipairs(expiries) do
+            local left = e - now
+            if left > 0 and left <= SHORT_BUFF_SECONDS then return true end
+        end
+        return false
+    end
+    local watch = CreateFrame("Frame")
+    watch:RegisterUnitEvent("UNIT_AURA", "player")
+    watch:RegisterEvent("PLAYER_ENTERING_WORLD")
+    watch:SetScript("OnEvent", Collect)
+    Collect()
     SetupLiveFade("fadeAuras", frames,
-        function() return not db.fadeAuras or InCombatLockdown() or Hovered() end,
+        function() return not db.fadeAuras or InCombatLockdown() or Hovered() or Expiring() end,
         true, Opacity("fadeAurasOpacity"))
 end
 
@@ -1980,6 +2019,10 @@ local function InitializeOptions()
              .. "over them. Applies at once.",
           apply = function(value) if value then SetupAuraFade() end end,
           opacity = "fadeAurasOpacity" },
+        { key = "fadeAurasShowExpiring", name = "Show Expiring Buffs", parent = "fadeAuras",
+          tip = "Your buffs and debuffs come back while one of your buffs has 30 seconds or less left, so "
+             .. "you can see it run out, then fade again. Applies at once.",
+          apply = function() end },
         { key = "fadeMinimapAlerts",   name = "Fade Minimap Alerts",
           tip = "The mail and crafting order icons by the minimap, and the Great Vault button, fade "
              .. "out unless you're mousing over them. Applies at once.",
