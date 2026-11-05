@@ -163,6 +163,14 @@ local UNIVERSAL = {
     autoAcceptRes       = true,
     autoAcceptResCombat = false,
     autoUnwrapCollections = true,   -- Automation.lua (v1.52.0): new mounts, pets and toys unwrapped
+    -- AutoEquip.lua (v1.67.0, owner's request): off until turned on; then Poor and Common count, the rest opt-in.
+    autoEquip = false,
+    autoEquipPoor = true,
+    autoEquipCommon = true,
+    autoEquipUncommon = false,
+    autoEquipRare = false,
+    autoEquipEpic = false,
+    autoEquipLegendary = false,
     -- Automation.lua (v1.52.0): OFF by default -- it uses up items in your bags. Warbound containers are
     -- kept for you unless the sub-option is turned off.
     autoOpenContainers = false,
@@ -4474,6 +4482,30 @@ local function InitializeOptions()
     AddCheckbox("charStatHighlight", "Highlight Gear for Stats",
         "Hover Critical Strike, Haste, Mastery, Versatility, Leech, Avoidance or Speed in the character "
         .. "window to highlight the gear that has it.")
+
+    -- AutoEquip.lua (v1.67.0, owner's request): one checkbox to turn it on, then one per quality under it.
+    local equipInit = AddCheckbox("autoEquip", "Auto Equip Upgrades",
+        "Puts on gear from your bags that beats what you're wearing in that slot, or fills an empty slot: "
+        .. "higher item level, or heavier armor your class can wear at the same item level, never a lighter "
+        .. "armor type. Only gear you can use, never gear that would bind when equipped or has the wrong main "
+        .. "stat for you. Trinkets are left alone, and weapons only replace one of the same kind. Not in "
+        .. "combat. Each swap is named in chat. Choose which qualities count below.",
+        function(value) if value and VUI.QoL_AutoEquipRun then VUI.QoL_AutoEquipRun() end end)
+    local QUALITY_ROWS = {
+        { "autoEquipPoor",      "Poor (Grey)" },
+        { "autoEquipCommon",    "Common (White)" },
+        { "autoEquipUncommon",  "Uncommon (Green)" },
+        { "autoEquipRare",      "Rare (Blue)" },
+        { "autoEquipEpic",      "Epic (Purple)" },
+        { "autoEquipLegendary", "Legendary (Orange)" },
+    }
+    for _, q in ipairs(QUALITY_ROWS) do
+        local init = AddCheckbox(q[1], q[2], q[2] .. " gear counts as an upgrade.",
+            function(value) if value and VUI.QoL_AutoEquipRun then VUI.QoL_AutoEquipRun() end end)
+        if init and equipInit and VUI.SettingsSubOption then
+            VUI.SettingsSubOption(init, ADDON_NAME .. "_autoEquip", function() return db.autoEquip end)
+        end
+    end
 
     Header("Merchants and Trainers")
     -- Mid-session enable: MERCHANT_SHOW/CLOSED are registered at PLAYER_LOGIN

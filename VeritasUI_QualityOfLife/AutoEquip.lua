@@ -2,21 +2,25 @@
 -- Auto Equip Upgrades (owner's request, 2026-11-04, WoW Forever: grey leather in the bags beat the starter cloth).
 -- Kept out of QualityOfLife.lua, whose main chunk is near Lua's 200-locals limit.
 --
--- ⚠ TEST BUILD 1 IS A PROBE ONLY: `/qol equipcheck` prints what the decision below would equip, and why, for
--- every equippable item in your bags. Nothing is equipped. Equipping and the options come once its output has
--- been read (evidence gate: the probe goes first, alone).
+-- Off until turned on (Quality of Life > Character and Gear). Then, out of combat, whenever your bags change and at
+-- login, the first upgrade found is equipped and named in chat; the next one follows on the next bag update. Which
+-- qualities count is one checkbox each: Poor and Common on, Uncommon, Rare, Epic, Legendary off (owner's spec).
+-- `/qol equipcheck` prints the decision for every piece of gear in your bags without equipping anything.
+-- Equipping: C_Item.EquipItemByName(link, slot) (ItemDocumentation.lua in both games; no restriction flag).
 --
 -- The decision, per bag item, all read-only:
---   * quality allowed (Poor and Common by default; Uncommon, Rare, Epic, Legendary each opt-in);
---   * equippable (C_Item.IsEquippableItem) and not a slot we leave alone: trinkets (their worth is their effect,
---     not item level), shirt, tabard, bags, profession gear;
+--   * equippable (C_Item.IsEquippableItem) and its quality ticked;
+--   * not a slot we leave alone: trinkets (their worth is their effect, not item level), shirt, tabard, bags,
+--     ammo, profession gear;
 --   * usable: no red line on its tooltip (C_TooltipInfo.GetBagItem). Blizzard writes an unmet requirement --
---     armor or weapon type your class can't use, a level above yours -- in red. UNMEASURED: that the tooltip
---     data is filled in for a newly looted item; the probe prints the lines it saw;
+--     armor or weapon type your class can't use, a level above yours -- in red. An unreadable tooltip waits for
+--     the next bag update;
 --   * would not bind on equip (an unbound Bind on Equip item asks you to confirm; that stays your call);
---   * no main stat that is wrong for your spec (Strength / Agility / Intellect, C_Item.GetItemStats; the spec's
---     primaryStat from GetSpecializationInfo, 1 Strength, 2 Agility, 4 Intellect -- the owner's Forever probe read
---     4 for a Mage). An item with no main stat (most greys) passes;
+--   * no main stat that is wrong for you (Strength / Agility / Intellect, C_Item.GetItemStats). Retail: the spec's
+--     primaryStat (GetSpecializationInfo, 1 Strength, 2 Agility, 4 Intellect). WoW Forever has one "spec" per
+--     class and it reported Intellect for the owner's Hunter (probe, 2026-11-04), so there the class decides:
+--     Hunter and Rogue Agility, Warrior Strength, Mage, Priest and Warlock Intellect; hybrid classes get no check.
+--     An item with no main stat (most greys) passes;
 --   * better than what is worn: an empty slot; or, for armor, a heavier armor type at the same or higher item level,
 --     or the same type at a higher item level (never a lighter type); for anything else, a higher item level.
 --     Rings go to an empty ring slot, else replace the lower one. Weapons only replace a worn weapon of the same
@@ -42,15 +46,19 @@ local WEAPONS = {
     INVTYPE_SHIELD = true, INVTYPE_HOLDABLE = true, INVTYPE_RANGED = true, INVTYPE_RANGEDRIGHT = true,
     INVTYPE_THROWN = true, INVTYPE_RELIC = true,
 }
-local QUALITY_DEFAULTS = { [0] = true, [1] = true }   -- Poor (grey), Common (white)
+-- Quality -> its option key (all universal, in QualityOfLife.lua's defaults).
+VUI.QoL_AutoEquipQualityKeys = {
+    [0] = "autoEquipPoor", [1] = "autoEquipCommon", [2] = "autoEquipUncommon",
+    [3] = "autoEquipRare", [4] = "autoEquipEpic", [5] = "autoEquipLegendary",
+}
 
 local MAIN_STATS = { [1] = "ITEM_MOD_STRENGTH_SHORT", [2] = "ITEM_MOD_AGILITY_SHORT", [4] = "ITEM_MOD_INTELLECT_SHORT" }
+local FOREVER_CLASS_STAT = { HUNTER = 2, ROGUE = 2, WARRIOR = 1, MAGE = 4, PRIEST = 4, WARLOCK = 4 }
 
 local function QualityAllowed(q)
     local db = DB()
-    local t = type(db) == "table" and type(db.autoEquipQualities) == "table" and db.autoEquipQualities
-    if t then return t[q] == true end
-    return QUALITY_DEFAULTS[q] == true
+    local key = VUI.QoL_AutoEquipQualityKeys[q]
+    return type(db) == "table" and key ~= nil and db[key] == true
 end
 
 local function ItemLevel(link)
@@ -81,14 +89,20 @@ local function RedLines(bag, slot)
 end
 
 local function SpecMainStat()
+    if VUI.IS_FOREVER then
+        local okC, _, classFile = pcall(UnitClass, "player")
+        return okC and FOREVER_CLASS_STAT[classFile] or nil
+    end
     local okI, idx = pcall(C_SpecializationInfo.GetSpecialization)
     if not okI or not idx then return nil end
     local ok, _, _, _, _, _, stat = pcall(C_SpecializationInfo.GetSpecializationInfo, idx)
     return ok and MAIN_STATS[stat] and stat or nil
 end
 
--- nil if the item has no main stat, else true when one of them is the spec's.
+-- nil if there is nothing to check (no main stat known for you, or none on the item), else true when one of the
+-- item's main stats is yours.
 local function MainStatFits(link, specStat)
+    if not specStat then return nil end
     local ok, stats = pcall(C_Item.GetItemStats, link)
     if not ok or type(stats) ~= "table" then return nil end
     local any, fits = false, false
@@ -127,7 +141,7 @@ local function Decide(bag, slot, info, specStat)
     local okB, bindType = pcall(function() return select(14, C_Item.GetItemInfo(link)) end)
     if okB and bindType == 2 and not info.isBound then return nil, "binds when equipped" end
     local fits = MainStatFits(link, specStat)
-    if fits == false then return nil, "main stat is not your spec's" end
+    if fits == false then return nil, "main stat is not yours" end
     local ilvl = ItemLevel(link)
     if WEAPONS[equipLoc] then
         for _, s in ipairs(WEAPON_SLOTS) do
@@ -176,8 +190,8 @@ end
 
 VUI.QoL_EquipCheck = function()
     local specStat = SpecMainStat()
-    VUI.Print("Quality of Life", format("Equip check (nothing is equipped). Spec main stat: %s; in combat: %s",
-        tostring(specStat and MAIN_STATS[specStat] or "unknown"), tostring(InCombatLockdown() and true or false)))
+    VUI.Print("Quality of Life", format("Equip check (nothing is equipped). Main stat: %s; in combat: %s",
+        tostring(specStat and MAIN_STATS[specStat] or "any"), tostring(InCombatLockdown() and true or false)))
     local n = 0
     ForEachBagItem(function(bag, slot, info)
         local target, reason = Decide(bag, slot, info, specStat)
@@ -190,3 +204,53 @@ VUI.QoL_EquipCheck = function()
     end)
     if n == 0 then VUI.Print("Quality of Life", "  no gear in your bags") end
 end
+
+-- ── Equipping ────────────────────────────────────────────────
+-- One upgrade per pass; the bag update its swap causes starts the next pass, so a bag full of upgrades goes on
+-- piece by piece and each decision sees the gear the previous one left. Never in combat (the game refuses armor
+-- changes then): a pass asked for in combat waits for PLAYER_REGEN_ENABLED. Never while dead, or while something
+-- is on the cursor (you are moving an item yourself). An item tried in the last 5 s is not tried again, so a swap
+-- the game refuses cannot loop.
+local pending, tried = false, {}
+local function On() local db = DB(); return type(db) == "table" and db.autoEquip == true end
+
+local function Run()
+    if not On() then pending = false; return end
+    if InCombatLockdown() then pending = true; return end
+    pending = false
+    local okD, dead = pcall(_G.UnitIsDeadOrGhost, "player")
+    if okD and dead then return end
+    local okC, cursor = pcall(GetCursorInfo)
+    if okC and cursor then return end
+    local specStat, now, done = SpecMainStat(), GetTime(), false
+    ForEachBagItem(function(bag, slot, info)
+        if done then return end
+        local target = Decide(bag, slot, info, specStat)
+        local link = info.hyperlink
+        if not target or (tried[link] and now - tried[link] < 5) then return end
+        tried[link] = now
+        local equipLoc = Info(link)
+        local ok = pcall(C_Item.EquipItemByName, link, target)
+        if ok then
+            done = true
+            VUI.Print("Quality of Life", format("Equipped %s (%s).", link, tostring(_G[equipLoc] or equipLoc)))
+        end
+    end)
+end
+VUI.QoL_AutoEquipRun = Run
+
+local f = CreateFrame("Frame")
+f:RegisterEvent("BAG_UPDATE_DELAYED")
+f:RegisterEvent("PLAYER_ENTERING_WORLD")
+f:RegisterEvent("PLAYER_REGEN_ENABLED")
+f:RegisterEvent("PLAYER_LEVEL_UP")
+f:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_ENABLED" then
+        if pending then Run() end
+    elseif event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_LEVEL_UP" then
+        -- Item data and tooltips settle after the loading screen; a new level can make an item wearable.
+        C_Timer.After(2, Run)
+    else
+        Run()
+    end
+end)
