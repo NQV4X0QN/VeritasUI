@@ -149,7 +149,14 @@ local function Build_Button()
     button:SetPushedAtlas("chatframe-button-down")
     button:SetHighlightAtlas("chatframe-button-highlight", "ADD")
     local icon = button:CreateTexture(nil, "OVERLAY")
-    icon:SetAtlas("common-icon-copy")
+    -- WoW Forever has no "common-icon-copy" atlas (wago.tools UiTextureAtlasMember, build 1.60.1.70790) and its
+    -- copy of the atlas file holds other art there; Media/CopyIcon.tga is Retail's icon cut from that file
+    -- (fileID 3487944, 12.1.5.70783, pixels 1,979 to 33,1011).
+    if C_Texture.GetAtlasInfo("common-icon-copy") then
+        icon:SetAtlas("common-icon-copy")
+    else
+        icon:SetTexture("Interface\\AddOns\\VeritasUI_QualityOfLife\\Media\\CopyIcon")
+    end
     icon:SetPoint("CENTER")
     button.Icon = icon
     -- The icon sinks with the frame when pressed, as on Blizzard's buttons.
