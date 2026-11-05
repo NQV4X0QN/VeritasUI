@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.67.2] - 2026-11-04
+
+### Fixed
+
+- `VeritasUI_Interface` — **Show Expiring Buffs no longer raises a Lua error.** While one buff was running out, fading the others could stop on a buff whose duration text the game keeps hidden from addons, and the error repeated. That text is now faded like the rest (`Interface.lua`)
+
+
 ## [1.67.1] - 2026-11-04
 
 ### Fixed
