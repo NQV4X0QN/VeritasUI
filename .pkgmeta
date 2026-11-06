@@ -1,0 +1,23 @@
+package-as: VeritasUI
+
+# The repo root holds seven addon folders; ship each at the zip's root.
+move-folders:
+  VeritasUI/VeritasUI_AdvancedOptions: VeritasUI_AdvancedOptions
+  VeritasUI/VeritasUI_AuctionHouse: VeritasUI_AuctionHouse
+  VeritasUI/VeritasUI_Interface: VeritasUI_Interface
+  VeritasUI/VeritasUI_Lib: VeritasUI_Lib
+  VeritasUI/VeritasUI_PriorityRotation: VeritasUI_PriorityRotation
+  VeritasUI/VeritasUI_QualityOfLife: VeritasUI_QualityOfLife
+  VeritasUI/VeritasUI_ZoneQuests: VeritasUI_ZoneQuests
+
+ignore:
+  - README.md
+  - CHANGELOG.md
+  - LICENSE
+  - PROBE_LIBRARY_AND_REFERENCE.md
+  - RELEASE_CHANGELOG.md
+
+# Written by the release workflow: this version's section of CHANGELOG.md only.
+manual-changelog:
+  filename: RELEASE_CHANGELOG.md
+  markup-type: markdown

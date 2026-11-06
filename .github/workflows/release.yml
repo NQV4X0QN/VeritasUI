@@ -1,0 +1,52 @@
+name: Package and upload
+
+# A pushed version tag (vX.Y.Z) builds the zip and uploads it to CurseForge.
+# The GitHub release is still made by hand (gh release create).
+# A push to test/packager builds the zip without uploading and keeps it as an artifact.
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - 'test/packager'
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: This version's changelog section
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            ver="${GITHUB_REF_NAME#v}"
+          else
+            ver="$(sed -n 's/^VUI\.VERSION *= *"\(.*\)".*/\1/p' VeritasUI_Lib/Lib.lua)"
+          fi
+          awk -v ver="$ver" '/^## \[/ { p = (index($0, "## [" ver "]") == 1) } p' CHANGELOG.md > RELEASE_CHANGELOG.md
+          if [ ! -s RELEASE_CHANGELOG.md ]; then
+            echo "No CHANGELOG.md section for $ver" >&2
+            exit 1
+          fi
+          cat RELEASE_CHANGELOG.md
+
+      - name: Package and upload (tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: BigWigsMods/packager@v2
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+
+      - name: Package only (test branch)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -d
+
+      - name: Keep the test zip
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: .release/*.zip
