@@ -1430,6 +1430,22 @@ local function SetupObjectiveTrackerFade()
             f:SetPoint("TOP", otf, "BOTTOM", 0, PARK_Y)
         end
     end
+    -- A parked QUEST keeps Blizzard's LEFT/RIGHT anchors (Module.lua AnchorBlock), so only its height on screen
+    -- changes, never its width. ⚠ Parked by TOP alone (v1.51.0-v1.69.0) a block has no width (the template sets
+    -- none): its title, anchored TOPLEFT/RIGHT to the block (Block.xml:7-11), re-flowed onto one line there, and
+    -- when hovering brought it back the title wrapped again while its objective line, anchored to the title's
+    -- BOTTOMLEFT (Block.lua AddObjective), stayed where one line had put it -> "(Elite)" over "0/1 Vulgara's
+    -- Head" (owner, Forever, 2026-11-05; fine with Interface off, and after a highlight re-laid the quest).
+    -- Modules need no such care: the module template is 260 wide (Module.xml).
+    local function ParkBlock(mod, b)
+        local p1, rel, _, _, y = b:GetPoint(1)
+        if p1 ~= "TOP" or rel ~= otf or y ~= PARK_Y or (b.GetNumPoints and b:GetNumPoints() < 2) then
+            b:ClearAllPoints()
+            b:SetPoint("TOP", otf, "BOTTOM", 0, PARK_Y)
+            b:SetPoint("LEFT", b.offsetX or mod.blockOffsetX or 0, 0)
+            if not b.fixedWidth then b:SetPoint("RIGHT") end
+        end
+    end
     local function AnchorBlockAt(mod, b, anchor, relPoint, y)
         local p1, rel, _, _, cy = b:GetPoint(1)
         if p1 == "TOP" and rel == anchor and math.abs((cy or 0) - y) <= 0.5 then return end
@@ -1453,7 +1469,7 @@ local function SetupObjectiveTrackerFade()
         local b, n = mod.firstBlock, 0
         while b and n < 200 do
             if not isFirst[b] then
-                if parkOthers then Park(b)
+                if parkOthers then ParkBlock(mod, b)
                 elseif prevB then AnchorBlockAt(mod, b, prevB, "BOTTOM", mod.fromBlockOffsetY or -10); prevB = b
                 elseif mod.ContentsFrame then
                     AnchorBlockAt(mod, b, mod.ContentsFrame, "TOP", mod.fromHeaderOffsetY or -10); prevB = b
