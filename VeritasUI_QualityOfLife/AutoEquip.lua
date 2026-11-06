@@ -21,9 +21,11 @@
 --     class and it reported Intellect for the owner's Hunter (probe, 2026-11-04), so there the class decides:
 --     Hunter and Rogue Agility, Warrior Strength, Mage, Priest and Warlock Intellect; hybrid classes get no check.
 --     An item with no main stat (most greys) passes;
---   * better than what is worn: an empty slot; or, for armor, a heavier armor type at the same or higher item level,
---     or the same type at a higher item level (never a lighter type); for anything else, a higher item level. At
---     equal item level, better quality wins, then more armor; the same item never replaces itself.
+--   * better than what is worn: an empty slot; or stats first -- at least as much of every stat and more of one
+--     wins, and the reverse never replaces, whatever the item levels (StatEdge); otherwise, for armor, a heavier
+--     armor type at the same or higher item level, or the same type at a higher item level (never a lighter type);
+--     for anything else, a higher item level. At equal item level, better quality wins, then more armor; the same
+--     item never replaces itself.
 --     Rings go to an empty ring slot, else replace the lower one. Weapons only replace a worn weapon of the same
 --     kind (two-hander for two-hander, ranged for ranged), so a weapon and off-hand pair is never broken up.
 
