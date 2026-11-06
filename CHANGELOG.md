@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.68.0] - 2026-11-05
+
+### Changed
+
+- `VeritasUI_PriorityRotation`, `VeritasUI_AdvancedOptions` — **WoW Forever: the tabs sit down the right edge of the window, with icons, like Forever's own windows.** Priority Rotation's Rotation and Settings tabs show crossed swords and a gear; Advanced Options' Featured and All CVars tabs show a book and a scroll; hover a tab for its name. Retail keeps the tabs along the bottom (`Lib.lua`, `Settings.lua` in both modules)
+
+### Fixed
+
+- `VeritasUI_PriorityRotation` — **The window title names your class once when no specialization is chosen.** It read "Hunter Hunter"; with a specialization it still reads like "Beast Mastery Hunter" (`Profiles.lua`)
+
+
 ## [1.67.3] - 2026-11-05
 
 ### Fixed
