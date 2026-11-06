@@ -455,10 +455,13 @@ local function Build()
         GameTooltip_SetTitle(GameTooltip, "New Skills at Your Trainer")
         for _, e in ipairs(now or {}) do
             local nm = (e.sub and e.sub ~= "") and format("%s (%s)", e.name, e.sub) or e.name
-            -- Gold body lines under the white title, as Blizzard's minimap tooltips do (owner, against Tracking's).
-            GameTooltip:AddLine(nm, NORMAL_FONT_COLOR:GetRGB())
+            -- Owner's colours: skills in tooltip light blue (as PR's tooltips), the click line in gold to match
+            -- Blizzard's Tracking tooltip instruction above it. The font colours come from the client's colour
+            -- table, not Lua, so the fallback is Lib's own LIGHTBLUE (|cff8080ff).
+            local lb = LIGHTBLUE_FONT_COLOR
+            if lb then GameTooltip:AddLine(nm, lb:GetRGB()) else GameTooltip:AddLine(nm, 0.502, 0.502, 1) end
         end
-        GameTooltip_AddInstructionLine(GameTooltip, "Click to see the trainer's list.")
+        GameTooltip:AddLine("Click to see the trainer's list.", NORMAL_FONT_COLOR:GetRGB())
         GameTooltip:Show()
     end)
     button:SetScript("OnLeave", function(self)
