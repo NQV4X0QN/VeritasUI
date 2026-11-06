@@ -14,6 +14,7 @@ Journeys.lua
 WorldQuestUntrack.lua
 Automation.lua
 AutoEquip.lua
+Trainer.lua
 CharacterStats.lua
 Chat.lua
 CopyChat.lua

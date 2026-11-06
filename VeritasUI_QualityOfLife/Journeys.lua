@@ -414,6 +414,16 @@ local function ToggleHonorUI()
 end
 
 ----------------------------------------------------------------
+--  Experience bar -> Character Info (owner, 2026-11-05). `ToggleCharacter("PaperDollFrame")` is what
+--  Blizzard's own Character Info key runs, in both games (Forever: Camelot/CharacterFrame.lua:3-30), and it
+--  already toggles: closes when Character Info is up on that page, switches to it from another page,
+--  opens it otherwise. One call, no toggle logic of ours.
+----------------------------------------------------------------
+local function ToggleCharacterInfo()
+    if _G.ToggleCharacter then pcall(_G.ToggleCharacter, "PaperDollFrame") end
+end
+
+----------------------------------------------------------------
 --  Click-catcher overlays for the status bars (v1.15.3).
 --
 --  ⛔ NEVER GO BACK TO `bar:HookScript(...)` HERE. v1.15.0/v1.15.1 did, and it tainted
@@ -486,10 +496,9 @@ end
 --  Attach an overlay to every status bar we have a destination for.
 --
 --  Add a bar by adding one entry to `actions` -- the enum key comes from
---  StatusTrackingBarInfo.BarsEnum (StatusTrackingManager.lua:5). Deliberately NOT wired:
---  Experience (no "experience window" exists), Artifact, Azerite, HouseFavor -- none were
---  asked for, and a click that opens something surprising is worse than a click that does
---  nothing.
+--  StatusTrackingBarInfo.BarsEnum (StatusTrackingManager.lua:5). Experience opens Character Info (owner's
+--  request, 2026-11-05). Deliberately NOT wired: Artifact, Azerite, HouseFavor -- none were asked for, and a
+--  click that opens something surprising is worse than a click that does nothing.
 ----------------------------------------------------------------
 local function AttachStatusBarOverlays()
     local manager = _G.StatusTrackingBarManager
@@ -500,6 +509,7 @@ local function AttachStatusBarOverlays()
         [info.BarsEnum.Reputation] = OpenWatchedFactionPage,
         [info.BarsEnum.Honor] = ToggleHonorUI,
     }
+    if info.BarsEnum.Experience then actions[info.BarsEnum.Experience] = ToggleCharacterInfo end
 
     local found = false
     for _, container in ipairs(manager.barContainers) do

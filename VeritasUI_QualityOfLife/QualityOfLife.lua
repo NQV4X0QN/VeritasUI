@@ -4629,8 +4629,8 @@ local function InitializeOptions()
 
         AddCheckbox("journeysShortcuts", "Journeys Shortcuts",
             "Adds the Show as Experience Bar checkbox to the Delve and Prey cards in the Journeys window, "
-            .. "and lets you click the reputation bar to open that faction's page, or the honor bar to "
-            .. "open the PvP window.")
+            .. "and lets you click the reputation bar to open that faction's page, the honor bar to "
+            .. "open the PvP window, or the experience bar to open Character Info.")
     end
 
     Header("Maps")
@@ -5118,6 +5118,10 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
     if arg:lower() == "notes" then DumpMapNotes(); return end
     if arg:lower() == "equipcheck" then
         if VUI.QoL_EquipCheck then VUI.QoL_EquipCheck() end
+        return
+    end
+    if arg:lower() == "trainable" then
+        if VUI.QoL_TrainableProbe then VUI.QoL_TrainableProbe() end
         return
     end
     if arg:lower() == "npc" then
