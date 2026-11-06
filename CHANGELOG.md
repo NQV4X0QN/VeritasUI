@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.69.3] - 2026-11-06
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **WoW Forever: Always Show Trainer Button.** A new option under Show Trainer Button by the Minimap keeps the button there even when there's nothing to learn, dimmed until there is. Its tooltip then names your next level's skills in grey, with the level they come at. Off by default (`Trainer.lua`, `QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **WoW Forever: `/qol trainer` opens your trainer's list**, whether or not the button is showing (`QualityOfLife.lua`)
+
+
 ## [1.69.2] - 2026-11-05
 
 ### Fixed
