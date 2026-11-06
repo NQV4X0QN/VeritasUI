@@ -19,9 +19,9 @@
 -- THE BUTTON copies the AddOn button's look (Camelot/AddonCompartment.xml: 23 x 22, atlas
 -- ui-hud-minimap-addon-indicator, the same atlas in ADD at 0.1 hover / 0.2 pressed) with the class icon
 -- (Interface\Icons\ClassIcon_<CLASS>) in the frame's opening: measured from the art (atlas 3945, the -2x rect
--- 911-957 x 509-553) as 31 x 23 at 2x -> 11.5 tall at 1x, centred, 1 px above the frame's centre. PLACE: 2 px
+-- 911-957 x 509-553) as 31 x 23 at 2x -> 11.5 tall at 1x, centred, 1 px above the frame's centre. PLACE: 1 px
 -- under the tracking button (MinimapCluster.Tracking.Button, 23 x 23, left of the zone text; Mainline/Minimap.xml
--- forever), which is left of the mail icon -- owner moved it there in game: Forever's mail icon is much larger
+-- forever), 1 px gap (owner), which is left of the mail icon -- owner moved it there in game: Forever's mail icon is much larger
 -- than Retail's and the button looked odd under it. Without a tracking button: the mail spot
 -- (MinimapCluster.IndicatorFrame), or under the mail icon. Parented to UIParent and only READS Blizzard's frames
 -- (MinimapCluster is an Edit Mode system, landmine 114).
@@ -365,6 +365,7 @@ VUI.QoL_TrainerWindowToggle = ToggleWindow
 
 -- ── The minimap button ───────────────────────────────────────
 local SIZE_W, SIZE_H, ICON, GAP = 23, 22, 11.5, 2
+local TRACK_GAP = 1   -- owner, in game: the gap between the calendar and the AddOn compartment under it
 local button, watcher, anchoredTo
 local enabled, active, pendingLevel = false, false, nil
 
@@ -385,9 +386,9 @@ local function Follow()
         -- map and the indicator ABOVE it (Camelot/Minimap.lua SetHeaderUnderneath: IndicatorFrame BOTTOMLEFT to
         -- ZoneTextButton TOPLEFT), so the button goes above the tracking button there.
         if ind:GetPoint(1) == "BOTTOMLEFT" then
-            point, target, rel, y = "BOTTOM", track, "TOP", GAP
+            point, target, rel, y = "BOTTOM", track, "TOP", TRACK_GAP
         else
-            point, target, rel, y = "TOP", track, "BOTTOM", -GAP
+            point, target, rel, y = "TOP", track, "BOTTOM", -TRACK_GAP
         end
     elseif Shown(ind.MailFrame) then
         target, rel, y = ind.MailFrame, "BOTTOM", -GAP
