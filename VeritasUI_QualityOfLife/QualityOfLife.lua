@@ -153,6 +153,7 @@ local UNIVERSAL = {
     -- seed missing keys, so existing players keep what they have.
     repBarRenownLevel = true,     -- "[18/20]" beside the name on the reputation bar (owner, 2026-10-30)
     greatVaultButton  = true,     -- Great Vault button by the minimap's mail icon (owner, 2026-10-30)
+    trainerButton     = true,     -- WoW Forever: new class skills button by the minimap (Trainer.lua, owner 2026-11-05)
     -- /way was always on and had no option until v1.34.4 (owner: a feature we mention must be one the
     -- player can see and switch). ON by default, unlike the options above, so nobody loses it.
     wayCommand        = true,
@@ -4567,6 +4568,15 @@ local function InitializeOptions()
         "Adds a Train All button beside Train at trainers, learning everything available that you "
         .. "can afford. Learning a new profession still asks first.",
         function(value) if value then SetupTrainAll() else RefreshTrainAll() end end)
+
+    -- WoW Forever only: Retail characters learn their class spells without a trainer.
+    if VUI.IS_FOREVER then
+        AddCheckbox("trainerButton", "Show Trainer Button by the Minimap",
+            "Shows your class icon by the minimap when your class trainer has new skills for your level. Click "
+            .. "it to see the trainer's list, with what you can learn now and what comes at later levels. The "
+            .. "list is saved each time you talk to your class trainer.",
+            function(value) if VUI.QoL_TrainerButtonSet then VUI.QoL_TrainerButtonSet(value) end end)
+    end
 
     Header("Quests and Dialogue")
     AddCheckbox("pickOnlyGossip", "Pick Only Dialogue Option",
