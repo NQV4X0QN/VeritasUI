@@ -299,7 +299,9 @@ local function RefreshWindow()
     -- surname as a second value, and Blizzard joins them with NameUtil.FormatUnitNameForDisplay
     -- (Blizzard_FrameXMLUtil/Camelot/NameUtil.lua, forever).
     local okN, me = false, nil
-    if NameUtil and NameUtil.FormatUnitNameForDisplay then okN, me = pcall(NameUtil.FormatUnitNameForDisplay, "player") end
+    if NameUtil and NameUtil.FormatUnitNameForDisplay then
+        okN, me = pcall(NameUtil.FormatUnitNameForDisplay, "player")
+    end
     if not (okN and me) then okN, me = pcall(UnitName, "player") end
     if okN and me and win.SetTitle then win:SetTitle(me) end
     local provider = CreateDataProvider()
