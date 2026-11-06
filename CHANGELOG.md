@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.69.0] - 2026-11-05
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **WoW Forever: a trainer button by the minimap.** When your class trainer has a skill you can learn at your level, your class icon appears under the minimap's tracking button. Hover it for the skills; click it for your trainer's list, saved at your last visit, in a window like the trainer's own, titled with your character's name. On unless you turn it off: **Show Trainer Button by the Minimap**, under Merchants and Trainers (`Trainer.lua`, `QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Click the experience bar to open Character Info**, the same as pressing C. Part of Journeys Shortcuts (`Journeys.lua`)
+
+### Changed
+
+- `VeritasUI_Interface`, `VeritasUI_QualityOfLife` — **Dropdown rows in Options are spaced like the rows around them.** They stood taller than the checkboxes and sliders beside them; they now match Blizzard's own pages (`SettingsCoverDropdown.lua`)
+- `VeritasUI_QualityOfLife` — **Class-Colored Labels is gone.** "Enchant:" and "Gem:" in the character sheet's enchants and gems tooltip are in the tooltip's normal color (`QualityOfLife.lua`)
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **Clicking the reputation bar with Character Info closed opens it the way the game does**, then switches to Reputation, so it can't raise a Lua error (`Journeys.lua`)
+
+
 ## [1.68.0] - 2026-11-05
 
 ### Changed
