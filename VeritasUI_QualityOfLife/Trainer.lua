@@ -455,7 +455,8 @@ local function Build()
         GameTooltip_SetTitle(GameTooltip, "New Skills at Your Trainer")
         for _, e in ipairs(now or {}) do
             local nm = (e.sub and e.sub ~= "") and format("%s (%s)", e.name, e.sub) or e.name
-            GameTooltip:AddLine(nm, HIGHLIGHT_FONT_COLOR:GetRGB())
+            -- Gold body lines under the white title, as Blizzard's minimap tooltips do (owner, against Tracking's).
+            GameTooltip:AddLine(nm, NORMAL_FONT_COLOR:GetRGB())
         end
         GameTooltip_AddInstructionLine(GameTooltip, "Click to see the trainer's list.")
         GameTooltip:Show()
