@@ -295,8 +295,12 @@ local function RefreshWindow()
     if not (win and win:IsShown()) then return end
     local _, _, _, shown = Trainable()
     -- Titled with your character's name, not the trainer's: any of the class's trainers teaches this list
-    -- (owner, 2026-11-05: naming one of them looked odd).
-    local okN, me = pcall(UnitName, "player")
+    -- (owner, 2026-11-05: naming one of them looked odd). First AND last name: Forever's UnitName returns the
+    -- surname as a second value, and Blizzard joins them with NameUtil.FormatUnitNameForDisplay
+    -- (Blizzard_FrameXMLUtil/Camelot/NameUtil.lua, forever).
+    local okN, me = false, nil
+    if NameUtil and NameUtil.FormatUnitNameForDisplay then okN, me = pcall(NameUtil.FormatUnitNameForDisplay, "player") end
+    if not (okN and me) then okN, me = pcall(UnitName, "player") end
     if okN and me and win.SetTitle then win:SetTitle(me) end
     local provider = CreateDataProvider()
     for _, e in ipairs(shown or {}) do provider:Insert(e) end
