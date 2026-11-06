@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.67.3] - 2026-11-05
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **Auto Equip Upgrades no longer tries to put on armor your class can't wear yet.** Mail on a Hunter below the level for mail was treated as an upgrade, because the game's red "can't use" mark on the armor type sits on the right side of the tooltip and was missed. Both sides are read now (`AutoEquip.lua`)
+- `VeritasUI_QualityOfLife` — **Auto Equip Upgrades only names a swap in chat once it has happened.** A swap the game refused was still announced as equipped (`AutoEquip.lua`)
+- `VeritasUI_QualityOfLife` — **Auto Equip Upgrades picks the better piece when item levels are equal.** A white belt with more armor stayed in the bags behind a grey one of the same item level. On a tie, better quality wins, then more armor (`AutoEquip.lua`)
+
+
 ## [1.67.2] - 2026-11-04
 
 ### Fixed
