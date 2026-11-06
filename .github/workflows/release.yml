@@ -33,11 +33,12 @@ jobs:
           cat RELEASE_CHANGELOG.md
 
       # -u keeps Unix line endings, so the files match the GitHub release zip byte for byte.
+      # -p is the CurseForge project id (curseforge.com, project 1788055).
       - name: Package and upload (tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: BigWigsMods/packager@v2
         with:
-          args: -u
+          args: -u -p 1788055
         env:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
 
