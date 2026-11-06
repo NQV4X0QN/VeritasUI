@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.69.2] - 2026-11-05
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **Auto Equip Upgrades looks at stats before item level.** A piece with at least as much of every stat and more of one now wins, whatever the item levels, and the weaker piece never swaps it back: Hunter's Simple Cloak (8 Armor, +1 Stamina) kept losing to a Handstitched Leather Cloak (8 Armor) one item level higher. A main stat that isn't yours doesn't count. When each piece is better at something, item level still decides (`AutoEquip.lua`)
+
+
 ## [1.69.1] - 2026-11-05
 
 ### Fixed
