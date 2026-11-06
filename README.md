@@ -105,10 +105,15 @@ Most modules are also listed in the minimap's addon menu (the addon compartment)
 
 ## Installation
 
+**With CurseForge:** install VeritasUI from CurseForge, in the CurseForge app or on the website. It updates from there like any other addon.
+
+**By hand:**
+
 1. Download the latest `VeritasUI-vX.Y.Z.zip` from the [Releases page](https://github.com/NQV4X0QN/VeritasUI/releases/latest).
-2. Extract it and copy all seven `VeritasUI_*` folders into:
+2. Extract it and copy all seven `VeritasUI_*` folders into the AddOns folder of the game you play:
    ```
-   World of Warcraft/_retail_/Interface/AddOns/
+   World of Warcraft/_retail_/Interface/AddOns/      (Retail)
+   World of Warcraft/_forever_/Interface/AddOns/     (WoW Forever)
    ```
 3. Keep the folder names exactly as they are.
 4. Restart the game, or type `/reload` if it's already running.
@@ -117,7 +122,7 @@ Install all seven folders together. They share one version number, and every mod
 
 ## Requirements
 
-- World of Warcraft: Midnight, patch 12.1.5
+- World of Warcraft: Midnight, patch 12.1.5, or WoW Forever 1.60.1. One download works in both
 - No other addons or libraries needed
 
 ## Design principles
