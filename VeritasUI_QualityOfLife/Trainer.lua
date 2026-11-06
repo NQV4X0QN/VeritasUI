@@ -293,8 +293,11 @@ end
 
 local function RefreshWindow()
     if not (win and win:IsShown()) then return end
-    local cache, _, _, shown = Trainable()
-    if cache and cache.trainer and win.SetTitle then win:SetTitle(cache.trainer) end
+    local _, _, _, shown = Trainable()
+    -- Titled with your character's name, not the trainer's: any of the class's trainers teaches this list
+    -- (owner, 2026-11-05: naming one of them looked odd).
+    local okN, me = pcall(UnitName, "player")
+    if okN and me and win.SetTitle then win:SetTitle(me) end
     local provider = CreateDataProvider()
     for _, e in ipairs(shown or {}) do provider:Insert(e) end
     win.ScrollBox:SetDataProvider(provider, ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition)
