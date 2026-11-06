@@ -43,7 +43,12 @@
 -- ⚠ NOT the bare SettingsListElementTemplate (owner's Lua error, 2026-11-03): that template has no OnLoad in its
 -- XML (:50-77; only the templates inheriting it run SettingsListElementMixin:OnLoad), so `cbrHandles` is never
 -- made and its Init fails at Blizzard_SettingControls.lua:306. That is why no Blizzard page uses it bare.
--- Cost: a header row is 45 high (:14), not 26, so this row is taller than the rows around it.
+-- Height: a header row is 45 high (:14), so these rows stood taller than the 26 of the Blizzard rows around them
+-- (owner, 2026-11-05, against Nameplates). Each initializer of ours answers GetExtent with a Blizzard row's 26.
+-- The list reads it as `securecallfunction(elementData.GetExtent, elementData)` (Blizzard_SettingsList.lua
+-- ExtentCalculator, forever :68-71 / live :60-63) -- the hook Blizzard made for initializers to size their own
+-- rows (ScrollBoxFactoryInitializerMixin:GetExtent returns nil -> template height, ScrollUtil.lua:1689), called
+-- isolated, as it already calls our GetTemplate. It reads and writes nothing; only our initializer holds it.
 local VUI = _G.VeritasUI
 if not VUI then return end
 
@@ -57,6 +62,7 @@ local DD_W, DD_H = 220, 25
 local DD_X, DD_Y = -48 + 223 / 2, 3
 local LABEL_X, LABEL_RIGHT, SUB_INDENT = 37, -85, 15
 local ROW_HALF = 26 / 2             -- half a Blizzard settings row (SettingsDropdownControlTemplate, 280 x 26)
+local function RowExtent() return 26 end
 
 -- ── The cover's face ──────────────────────────────────────────────────────
 -- Blizzard's dropdown face from the same template values (WowStyle2DropdownTemplate, MenuTemplates.xml:4-41)
@@ -571,6 +577,7 @@ function VUI.AddCoverDropdown(layout, spec)
     end
     init = init or Settings.CreateElementInitializer("SettingsListSectionHeaderTemplate",
         { name = "", tooltip = spec.tooltip })
+    init.GetExtent = RowExtent          -- a Blizzard row's 26, not the header's 45 (see the top of this file)
     entries[init] = {
         setting = spec.setting, name = spec.name, tooltip = spec.tooltip,
         getOptions = spec.getOptions, isEnabled = spec.isEnabled, sub = spec.sub,
