@@ -173,6 +173,52 @@ local function MainStatFits(link, specStat)
     return fits
 end
 
+-- Stats decide before item level when one item is at least as good in EVERY stat and better in one (owner,
+-- 2026-11-05, WoW Forever: Hunter's Simple Cloak, item level 8, 8 Armor +1 Stamina, kept being swapped back to a
+-- Handstitched Leather Cloak, item level 9, 8 Armor and nothing else). Every stat C_Item.GetItemStats reports
+-- (armor is RESISTANCE0_NAME; weapon DPS, sockets and the rest count too), except a main stat that is not yours.
+-- Returns 1 when `a` is better, -1 when `b` is, nil for equal stats, a trade-off (each better somewhere) or stats
+-- that cannot be read -- those fall back to item level -- and a description for `/qol equipcheck`.
+-- Armor comes from ArmorValue (the stats, else the tooltip's "N Armor" line: which one WoW Forever fills is
+-- unmeasured), so an item whose armor only the tooltip shows is never beaten by a stat it lacks.
+-- tip = { tooltip function name, arg1, arg2 } for that fallback.
+local function StatsOf(link, tip)
+    if not link then return nil end
+    local ok, stats = pcall(C_Item.GetItemStats, link)
+    if not ok or type(stats) ~= "table" then return nil end
+    local copy = {}
+    for k, v in pairs(stats) do
+        if type(v) ~= "number" or Secret(v) then return nil end
+        copy[k] = v
+    end
+    if copy.RESISTANCE0_NAME == nil and tip then copy.RESISTANCE0_NAME = ArmorValue(link, tip[1], tip[2], tip[3]) end
+    return copy
+end
+local function StatEdge(a, b, specStat, tipA, tipB)
+    local sa, sb = StatsOf(a, tipA), StatsOf(b, tipB)
+    if not (sa and sb) then return nil, "stats unreadable" end
+    local skip = {}
+    if specStat then
+        for stat, key in pairs(MAIN_STATS) do if stat ~= specStat then skip[key] = true end end
+    end
+    local aBetter, bBetter = {}, {}
+    local function Walk(from, other, into)
+        for key, v in pairs(from) do
+            if not skip[key] and v > (other[key] or 0) then
+                local name = tostring(_G[key] or key)
+                into[#into + 1] = format("%s %s vs %s", name, tostring(v), tostring(other[key] or 0))
+            end
+        end
+    end
+    Walk(sa, sb, aBetter)
+    Walk(sb, sa, bBetter)
+    table.sort(aBetter); table.sort(bBetter)
+    if #aBetter > 0 and #bBetter == 0 then return 1, "more " .. table.concat(aBetter, ", ") end
+    if #bBetter > 0 and #aBetter == 0 then return -1, "less " .. table.concat(bBetter, ", ") end
+    if #aBetter > 0 then return nil, "stats trade off" end
+    return nil, "same stats"
+end
+
 -- Profession tools are never put on, and any real weapon of the same kind replaces one you wear (owner, 2026-11-04:
 -- a Skinning Knife replaced his sword, and Raptor Strike needs a real weapon). In WoW Forever every tool is a weapon
 -- of subclass Miscellaneous (14) -- Skinning Knife 7005, Mining Pick 2901, Blacksmith Hammer 5956, Arclight Spanner
@@ -208,12 +254,16 @@ local function Decide(bag, slot, info, specStat)
     local fits = MainStatFits(link, specStat)
     if fits == false then return nil, "main stat is not yours" end
     local ilvl = ItemLevel(link)
+    local bagTip = { "GetBagItem", bag, slot }
     if WEAPONS[equipLoc] then
         for _, s in ipairs(WEAPON_SLOTS) do
             local worn = WornLink(s)
             if worn and Info(worn) == equipLoc then
                 local _, wClass, wSub = Info(worn)
                 if IsTool(wClass, wSub) then return s, "weapon: replaces a profession tool" end
+                local edge, how = StatEdge(link, worn, specStat, bagTip, { "GetInventoryItem", "player", s })
+                if edge == 1 then return s, "weapon: " .. how end
+                if edge == -1 then return nil, "weapon: " .. how end
                 local wl = ItemLevel(worn)
                 if ilvl > wl then return s, format("weapon: item level %d over %d", ilvl, wl) end
                 return nil, format("weapon: item level %d is not over %d", ilvl, wl)
@@ -232,8 +282,16 @@ local function Decide(bag, slot, info, specStat)
     end
     local worn = WornLink(lowestSlot)
     local mine, theirs = ArmorType(link, equipLoc), ArmorType(worn, equipLoc)
+    local edge, how = nil, nil
+    if worn ~= link then
+        edge, how = StatEdge(link, worn, specStat, bagTip, { "GetInventoryItem", "player", lowestSlot })
+    end
     if mine and theirs and mine < theirs then
         return nil, "lighter armor than what you wear"
+    elseif edge == 1 then
+        best, bestReason = lowestSlot, how
+    elseif edge == -1 then
+        bestReason = how
     elseif mine and theirs and mine > theirs and ilvl >= lowest then
         best, bestReason = lowestSlot, format("heavier armor, item level %d vs %d", ilvl, lowest)
     elseif ilvl > lowest then
