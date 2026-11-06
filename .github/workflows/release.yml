@@ -32,9 +32,12 @@ jobs:
           fi
           cat RELEASE_CHANGELOG.md
 
+      # -u keeps Unix line endings, so the files match the GitHub release zip byte for byte.
       - name: Package and upload (tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: BigWigsMods/packager@v2
+        with:
+          args: -u
         env:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
 
@@ -42,7 +45,7 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: BigWigsMods/packager@v2
         with:
-          args: -d
+          args: -d -u
 
       - name: Keep the test zip
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
