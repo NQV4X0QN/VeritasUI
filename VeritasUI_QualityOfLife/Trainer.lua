@@ -455,11 +455,11 @@ local function Build()
         GameTooltip_SetTitle(GameTooltip, "New Skills at Your Trainer")
         for _, e in ipairs(now or {}) do
             local nm = (e.sub and e.sub ~= "") and format("%s (%s)", e.name, e.sub) or e.name
-            -- Owner's colours: skills in tooltip light blue (as PR's tooltips), the click line in gold to match
-            -- Blizzard's Tracking tooltip instruction above it. The font colours come from the client's colour
-            -- table, not Lua, so the fallback is Lib's own LIGHTBLUE (|cff8080ff).
-            local lb = LIGHTBLUE_FONT_COLOR
-            if lb then GameTooltip:AddLine(nm, lb:GetRGB()) else GameTooltip:AddLine(nm, 0.502, 0.502, 1) end
+            -- Owner's colours: skills in tooltip green (GREEN_FONT_COLOR, the green of Blizzard's tooltip
+            -- instruction lines), the click line in gold to match Blizzard's Tracking tooltip instruction above it.
+            -- The font colours come from the client's colour table, not Lua, so the fallback is its value.
+            local green = GREEN_FONT_COLOR
+            if green then GameTooltip:AddLine(nm, green:GetRGB()) else GameTooltip:AddLine(nm, 0.1, 1, 0.1) end
         end
         GameTooltip:AddLine("Click to see the trainer's list.", NORMAL_FONT_COLOR:GetRGB())
         GameTooltip:Show()

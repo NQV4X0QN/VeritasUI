@@ -202,7 +202,7 @@ local UNIVERSAL = {
     charMythicRating  = true,    -- Mythic+ rating under the item level
     charDiminishingReturns = true,   -- CharacterStats.lua (v1.53.0): DR lines in stat tooltips
     charStatHighlight = true,    -- CharacterStats.lua (v1.53.0): hovered stat lights its gear
-    charLabelClassColor = true,  -- sub-option: "Enchant:" / "Gem:" in class colour (owner, 2026-10-30)
+    -- charLabelClassColor retired v1.69.0 (owner): "Enchant:" / "Gem:" are always plain; deleted at login.
     -- Phase 5 (v1.31.0): Blizzard's timestamp on system/loot/money/... lines too. On since v1.37.0.
     chatItemTooltips = true,      -- Chat.lua (v1.54.0): link tooltips on hover
     chatClassColorNames = true,   -- Chat.lua (v1.54.0): group names in class colour in message text
@@ -4225,15 +4225,6 @@ local SetupCharacterSheet
         end
         return "ffffffff"
     end
-    -- "Enchant:" / "Gem:" -- in your class colour when the sub-option is on.
-    local function Label(word)
-        if db and db.charLabelClassColor then
-            local _, class = UnitClass("player")
-            local c = class and C_ClassColor and C_ClassColor.GetClassColor and C_ClassColor.GetClassColor(class)
-            if c then return Wrap(ColorHex(c), word) end
-        end
-        return word
-    end
     local ENCHANT_GREEN = { r = 0.1, g = 1, b = 0.1 }
 
     PaintStatus = function(btn, slotID)
@@ -4253,7 +4244,7 @@ local SetupCharacterSheet
         local enchant, enchantColor = EnchantText(slotID)
         if enchant then
             applies = true
-            present[#present + 1] = Label("Enchant:") .. " " .. Wrap(ColorHex(enchantColor or ENCHANT_GREEN), enchant)
+            present[#present + 1] = "Enchant: " .. Wrap(ColorHex(enchantColor or ENCHANT_GREEN), enchant)
         elseif expected and SlotIsEnchantable(slotID) then
             applies = true
             missing[#missing + 1] = Wrap(RED, "Enchant Missing")
@@ -4262,7 +4253,7 @@ local SetupCharacterSheet
         local n, filled, names = GemState(slotID)
         if n > 0 and (expected or filled > 0) then
             applies = true
-            for _, g in ipairs(names) do present[#present + 1] = Label("Gem:") .. " " .. g end
+            for _, g in ipairs(names) do present[#present + 1] = "Gem: " .. g end
             local empty = expected and (n - filled) or 0
             if empty == 1 then missing[#missing + 1] = Wrap(RED, "Gem Missing")
             elseif empty > 1 then missing[#missing + 1] = Wrap(RED, empty .. " Gems Missing") end
@@ -4445,20 +4436,10 @@ local function InitializeOptions()
     -- Each one repaints the open character window at once; the hooks are installed on first use.
     local function CharSheetChanged() SetupCharacterSheet() end
 
-    local enchantsInit = AddCheckbox("charEnchants", "Show Enchants and Gems on Character Sheet",
+    AddCheckbox("charEnchants", "Show Enchants and Gems on Character Sheet",
         "Beside each slot on the character window that can hold an enchant or gems: a green check "
         .. "when they are all there, a red X when one is missing. Hover it to see which.",
         CharSheetChanged)
-
-    -- Sub-option, indented under its parent and greyed while the parent is off: VUI.SettingsSubOption (Blizzard's
-    -- Indent + AddEvaluateStateCVar), NOT SetParentInitializer -- Options search reads a matched row's
-    -- parentInitializer, and written from our code that taints the search (VeritasUI_Lib/SettingsCoverDropdown.lua).
-    local labelInit = AddCheckbox("charLabelClassColor", "Class-Colored Labels",
-        "In that icon's tooltip, shows the words \"Enchant:\" and \"Gem:\" in your class colour.",
-        CharSheetChanged)
-    if labelInit and enchantsInit and VUI.SettingsSubOption then
-        VUI.SettingsSubOption(labelInit, ADDON_NAME .. "_charEnchants", function() return db.charEnchants end)
-    end
 
     AddCheckbox("charDurability", "Show Durability on Character Sheet",
         "Shows each item's durability on its slot when it is below 100%, in yellow when it is low "
@@ -4833,6 +4814,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         db.delveCountCenterX  = nil
         db.delveCountCenterX1 = nil
         db.delveTintAlpha     = nil
+        db.charLabelClassColor = nil   -- v1.69.0: the Class-Colored Labels option is gone (owner)
         if _G.TomTom or (IsAddOnLoaded and IsAddOnLoaded("TomTom")) then
             VUI.SetOptionUnavailable(ADDON_NAME, "wayCommand", "TomTom is installed and handles /way.")
         end
