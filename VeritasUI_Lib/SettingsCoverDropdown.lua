@@ -12,10 +12,9 @@
 --     Blizzard dropdown filled in with our data.
 --   * A row template of our own in the list taints the list on scroll (frame creation reads our mixin).
 --   * Blizzard's menu opened from our code leaves its shared menu stock tainted for Blizzard's next dropdown.
--- So the row is Blizzard's SECTION HEADER row (SettingsListSectionHeaderTemplate, Blizzard_SettingControls.xml:13,
--- the same initializer CreateSettingsListSectionHeaderInitializer makes, :112-115) with an empty title. A header
--- has no control and nothing to click, so a Blizzard header later drawn on that frame has nothing that can open
--- a menu. A frame of ours parented to SettingsPanel (not to the list) draws the label and the dropdown where
+-- So the row is a Blizzard frame with no control and nothing to click (see ROW TEMPLATE below; v1.59.0-v1.68.0 it
+-- was the SECTION HEADER row, SettingsListSectionHeaderTemplate, Blizzard_SettingControls.xml:13, with an empty
+-- title). A frame of ours parented to SettingsPanel (not to the list) draws the label and the dropdown where
 -- Blizzard's sit and opens our own pop-out. Nothing is written on Blizzard's frames and Blizzard's menu is never
 -- opened.
 -- ⚠ SEARCH TAGS (owner's repro, 2026-11-03: Options search "repair" -> Nameplates > Style -> Social popup,
@@ -27,10 +26,11 @@
 -- securecallfunction (Blizzard_SettingsInbound.lua:229-238) -- the path every Settings.CreateCheckbox row takes.
 -- So each row gets its own TAG SETTING: an add-on setting on a throwaway table whose name is a plain string (the
 -- same SecureUnpackArgs path as every other add-on setting, :208-212): 400 spaces, then the label. The search
--- matches the label inside the tag (Blizzard_Settings.lua:65-77, plain find). The header row shows its setting's
--- name as its title (SettingsListSectionHeaderMixin:Init, Blizzard_SettingControls.lua:95-97, TOPLEFT 7,-16,
--- SetTextToFit), so the spaces push the label past the list's right edge, where the list's scroll box clips it
--- (ScrollBoxBaseTemplate clipChildren="true", Blizzard_SharedXML/Shared/Scroll/ScrollBox.xml:20).
+-- matches the label inside the tag (Blizzard_Settings.lua:65-77, plain find). The old header row showed its
+-- setting's name as its title (SettingsListSectionHeaderMixin:Init, Blizzard_SettingControls.lua:95-97, TOPLEFT 7,-16,
+-- SetTextToFit), so the spaces pushed the label past the list's right edge, where the list's scroll box clips it
+-- (ScrollBoxBaseTemplate clipChildren="true", Blizzard_SharedXML/Shared/Scroll/ScrollBox.xml:20). The current row
+-- has no Init and draws no title at all; the spaces stay, harmless, so the tag text is unchanged.
 -- ⚠ NOT a hidden hyperlink, "|Hvui:<label>|h|h" (step 7): the header title drew it as raw text
 -- ("|Hvui:Fade Action Bars", owner's screenshots 2026-11-03) on the pages and in search results.
 -- The tag setting holds no value.
@@ -43,12 +43,19 @@
 -- ⚠ NOT the bare SettingsListElementTemplate (owner's Lua error, 2026-11-03): that template has no OnLoad in its
 -- XML (:50-77; only the templates inheriting it run SettingsListElementMixin:OnLoad), so `cbrHandles` is never
 -- made and its Init fails at Blizzard_SettingControls.lua:306. That is why no Blizzard page uses it bare.
--- Height: a header row is 45 high (:14), so these rows stood taller than the 26 of the Blizzard rows around them
--- (owner, 2026-11-05, against Nameplates). Each initializer of ours answers GetExtent with a Blizzard row's 26.
--- The list reads it as `securecallfunction(elementData.GetExtent, elementData)` (Blizzard_SettingsList.lua
--- ExtentCalculator, forever :68-71 / live :60-63) -- the hook Blizzard made for initializers to size their own
--- rows (ScrollBoxFactoryInitializerMixin:GetExtent returns nil -> template height, ScrollUtil.lua:1689), called
--- isolated, as it already calls our GetTemplate. It reads and writes nothing; only our initializer holds it.
+-- ROW TEMPLATE (v1.69.0): AnimatedStatusBarGlowLinesTemplate (Blizzard_FrameXMLBase/AnimatedStatusBar.xml:3-17,
+-- same in live and forever): 26 high like a Blizzard settings row (SettingsDropdownControlTemplate, 280 x 26), no
+-- mixin, no scripts, no Init (ScrollBoxFactoryInitializerMixin:InitFrame / :Resetter only call frame.Init /
+-- frame.Release when present, ScrollUtil.lua:1695-1705), and its one texture is alpha 0 -- an invisible Blizzard
+-- frame. The list pools frames by template, and no Blizzard Options row uses this one, so no Blizzard row is ever
+-- drawn on our frames either. The height comes from the template through the C API (GetTemplateExtent), so
+-- nothing of ours enters the list's layout.
+-- ⛔ Was SettingsListSectionHeaderTemplate, 45 high (Blizzard_SettingControls.xml:13-14): the dropdown rows stood
+-- taller than their neighbours (owner, 2026-11-05, against Nameplates).
+-- ⛔ NEVER size a row through the initializer's GetExtent with a function of ours (62685a4): the list calls it
+-- through securecallfunction (Blizzard_SettingsList.lua ExtentCalculator), but the number it hands back is ours,
+-- and the layout that used it ran tainted -> Interface then Game > Social: the blocked-action popup naming
+-- VeritasUI_Lib (owner, 2026-11-05). The spacing was right; the taint came straight back.
 local VUI = _G.VeritasUI
 if not VUI then return end
 
@@ -62,7 +69,7 @@ local DD_W, DD_H = 220, 25
 local DD_X, DD_Y = -48 + 223 / 2, 3
 local LABEL_X, LABEL_RIGHT, SUB_INDENT = 37, -85, 15
 local ROW_HALF = 26 / 2             -- half a Blizzard settings row (SettingsDropdownControlTemplate, 280 x 26)
-local function RowExtent() return 26 end
+local ROW_TEMPLATE = "AnimatedStatusBarGlowLinesTemplate"   -- invisible Blizzard frame, 26 high (see the top)
 
 -- ── The cover's face ──────────────────────────────────────────────────────
 -- Blizzard's dropdown face from the same template values (WowStyle2DropdownTemplate, MenuTemplates.xml:4-41)
@@ -384,7 +391,7 @@ local function NewCover(init, parent)
     c.Text:SetHeight(20)
     c.Text:SetWordWrap(false)
     c.Text:SetJustifyH("CENTER")
-    -- The row label, drawn by us because the header row under it has an empty title: GameFontNormal, left
+    -- The row label, drawn by us because the Blizzard row under it draws nothing: GameFontNormal, left
     -- 37 in, ending 85 left of the row's centre (SettingsListElementMixin:Init, Blizzard_SettingControls.lua:331-335).
     -- A sub-option (spec.sub) is indented 15 in the same font, as a Blizzard row indented with Indent() and no
     -- parent link (GetIndent :230-232, indentSize :1; font :331) -- see VUI.SettingsSubOption below.
@@ -392,9 +399,9 @@ local function NewCover(init, parent)
     c.Label:SetJustifyH("LEFT")
     c.Label:SetWordWrap(false)
     c.Label:SetText(c.entry.name or "")
-    -- The rest of the row is ours too, so the mouse never reaches the header row underneath (its own tooltip
-    -- is anchored to its pushed-out title: far off the panel and titled "..."). `Hover` is where a Blizzard row's
-    -- Tooltip frame sits (row TOPLEFT to 80 left of BOTTOM, Blizzard_SettingControls.xml:57-67): it shows the
+    -- The rest of the row is ours too, so nothing of Blizzard's under it takes the mouse. `Hover` is where a
+    -- Blizzard row's Tooltip frame sits (row TOPLEFT to 80 left of BOTTOM, Blizzard_SettingControls.xml:57-67):
+    -- it shows the
     -- row's tooltip and Blizzard's hover bar (HoverBackgroundTemplate, :5-11: row TOPLEFT -10 to BOTTOMRIGHT -5,
     -- white at 0.1). `Block` catches the rest of the row and does nothing. Both sit below the dropdown.
     -- Hover area and bar are the height of a Blizzard row (26, SettingsDropdownControlTemplate's Size,
@@ -571,13 +578,11 @@ function VUI.AddCoverDropdown(layout, spec)
     local tag = Settings.CreateSettingInitializer and TagSetting(spec.category, spec.name)
     local init
     if tag then
-        local ok, made = pcall(Settings.CreateSettingInitializer, "SettingsListSectionHeaderTemplate",
+        local ok, made = pcall(Settings.CreateSettingInitializer, ROW_TEMPLATE,
             { setting = tag, tooltip = spec.tooltip })
         init = ok and made or nil
     end
-    init = init or Settings.CreateElementInitializer("SettingsListSectionHeaderTemplate",
-        { name = "", tooltip = spec.tooltip })
-    init.GetExtent = RowExtent          -- a Blizzard row's 26, not the header's 45 (see the top of this file)
+    init = init or Settings.CreateElementInitializer(ROW_TEMPLATE, { name = "", tooltip = spec.tooltip })
     entries[init] = {
         setting = spec.setting, name = spec.name, tooltip = spec.tooltip,
         getOptions = spec.getOptions, isEnabled = spec.isEnabled, sub = spec.sub,
