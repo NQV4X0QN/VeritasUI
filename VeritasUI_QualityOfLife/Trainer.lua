@@ -128,8 +128,21 @@ local function Capture()
     return true
 end
 
+-- ⚠ The probe build (9bc1946) saved each requirement as a bare name string, not { name, met }. Indexing
+-- that string gives nil, and format(tmpl, nil) threw on every row redraw (owner, 2026-11-05). A list saved
+-- that way says nothing about whether the requirement is met, so it counts as met (neither red nor
+-- blocking) until the next trainer visit saves the list again.
+local function ReqInfo(r)
+    if type(r) == "string" then return r, true end
+    if type(r) == "table" and type(r[1]) == "string" then return r[1], r[2] and true or false end
+    return nil
+end
+
 local function ReqsMet(e)
-    for _, r in ipairs(e.req or {}) do if not r[2] then return false end end
+    for _, r in ipairs(e.req or {}) do
+        local name, met = ReqInfo(r)
+        if name and not met then return false end
+    end
     return true
 end
 
@@ -197,8 +210,11 @@ local function Requirements(e)
         parts[#parts + 1] = format(tmpl, e.level)
     end
     for _, r in ipairs(e.req or {}) do
-        local tmpl = r[2] and (TRAINER_REQ_ABILITY or "%s") or (TRAINER_REQ_ABILITY_RED or "%s")
-        parts[#parts + 1] = format(tmpl, r[1])
+        local name, met = ReqInfo(r)
+        if name then
+            local tmpl = met and (TRAINER_REQ_ABILITY or "%s") or (TRAINER_REQ_ABILITY_RED or "%s")
+            parts[#parts + 1] = format(tmpl, name)
+        end
     end
     if #parts == 0 then return "" end
     return (REQUIRES_LABEL or "Requires:") .. " " .. table.concat(parts, PLAYER_LIST_DELIMITER or ", ")
