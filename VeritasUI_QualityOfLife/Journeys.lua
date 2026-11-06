@@ -352,10 +352,15 @@ local function ReputationPaneIsShowing(factionID)
     return data.factionID == factionID
 end
 
+-- Selects the faction on the Reputation pane, and closes or switches the pane when Character Info is ALREADY
+-- open. It never opens a closed Character Info: that runs CharacterFrame's OnShow from our code, which shows the
+-- player's secret health text tainted -> Lua error (landmine 157, FU-1). A closed window is opened by the
+-- reputation overlay's secure click on CharacterMicroButton, then switched here (OpenReputationAfterSecureOpen).
+-- Returns false when the window was closed and nothing was opened.
 local function OpenReputationPane(factionID)
     if ReputationPaneIsShowing(factionID) then
         if _G.ToggleCharacter then pcall(_G.ToggleCharacter, "ReputationFrame") end
-        return
+        return true
     end
 
     local okCount, count = pcall(Rep("GetNumFactions"))
@@ -370,9 +375,7 @@ local function OpenReputationPane(factionID)
             break
         end
     end
-    if _G.CharacterFrame and not _G.CharacterFrame:IsShown() and _G.ToggleCharacter then
-        pcall(_G.ToggleCharacter, "ReputationFrame")
-    end
+    return _G.CharacterFrame ~= nil and _G.CharacterFrame:IsShown()
 end
 
 local function OpenFactionPage(factionID)
@@ -392,8 +395,36 @@ local function OpenWatchedFactionPage(bar)
     local factionID = (okData and watched and watched.factionID) or (bar and bar.factionID)
     OpenFactionPage(factionID)
 end
+-- Since FU-1 this no longer opens a CLOSED Character Info (see OpenReputationPane); only the overlay's secure
+-- click does. The retired ElvUI bar was its only other caller.
 VUI.OpenWatchedFactionPage = function(bar)   -- also ElvUI's reputation bar (VeritasUI_ElvUI)
     if Enabled() then OpenWatchedFactionPage(bar) end
+end
+
+-- The reputation overlay's secure mode: Character Info is closed and the click is for the Reputation pane (not a
+-- Journeys page, which our code may open). Then the overlay's secure click opens Character Info through
+-- CharacterMicroButton, untainted, and this switches the now-open window to the faction's Reputation pane.
+local function WatchedFactionID(bar)
+    local okData, watched = pcall(Rep("GetWatchedFactionData"))
+    return (okData and watched and watched.factionID) or (bar and bar.factionID)
+end
+
+local function NeedsSecureOpen(bar)
+    if _G.CharacterFrame and _G.CharacterFrame:IsShown() then return false end
+    local factionID = WatchedFactionID(bar)
+    if not factionID or factionID == 0 then return false end
+    local ok, isMajor = pcall(Rep("IsMajorFaction"), factionID)
+    return not (ok and isMajor)
+end
+
+local function OpenReputationAfterSecureOpen(bar)
+    local cf = _G.CharacterFrame
+    if not (cf and cf:IsShown()) then return end   -- the click closed it (state changed in combat)
+    local factionID = WatchedFactionID(bar)
+    if factionID and factionID ~= 0 then OpenReputationPane(factionID) end
+    if not (_G.ReputationFrame and _G.ReputationFrame:IsShown()) and _G.ToggleCharacter then
+        pcall(_G.ToggleCharacter, "ReputationFrame", true)
+    end
 end
 
 ----------------------------------------------------------------
@@ -424,8 +455,15 @@ end
 --  (SECURE_ACTIONS.click, SecureTemplates.lua:557-563), so the micro button's own OnClick runs
 --  ToggleCharacter("PaperDollFrame") untainted (MainMenuBarMicroButtons.lua CharacterMicroButtonMixin:OnClick,
 --  both games), exactly as clicking the micro button or pressing C does -- toggle included.
+--  Reputation (FU-1): the same secure click while Character Info is closed and the watched faction has no
+--  Journeys page, then PostClick switches the now-open window to Reputation (a sub-frame switch; OnShow is not
+--  run again). Otherwise the click is ours alone: a Journeys page, or switching/closing an open window.
 ----------------------------------------------------------------
-local SECURE_CLICKS = { Experience = "CharacterMicroButton" }
+local SECURE_CLICKS = {
+    Experience = { "CharacterMicroButton" },
+    Reputation = { "CharacterMicroButton", {
+        needsSecure = NeedsSecureOpen, pre = OpenWatchedFactionPage, post = OpenReputationAfterSecureOpen } },
+}
 
 ----------------------------------------------------------------
 --  Click-catcher overlays for the status bars (v1.15.3).
@@ -491,7 +529,10 @@ end
 -- The same overlay as a secure button that clicks a Blizzard button for us (see SECURE_CLICKS). Protected,
 -- so it is built, shown and hidden only out of combat (SyncOverlays skips it in combat); Enabled() and Edit
 -- Mode are applied through its visibility, since a secure click cannot run our checks.
-local function EnsureSecureOverlay(bar, buttonName)
+-- opts (the reputation bar, FU-1): needsSecure(bar) decides, out of combat, whether the next click is the
+-- secure one (type1 "click") or ours alone (type1 nil); pre(bar) runs before an un-secure click, post(bar)
+-- after a secure one. PreClick/PostClick are plain scripts around the secure action (SecureTemplates.lua).
+local function EnsureSecureOverlay(bar, buttonName, opts)
     if overlays[bar] or InCombatLockdown() then return end
     local target = _G[buttonName]
     if not target then return end
@@ -504,6 +545,19 @@ local function EnsureSecureOverlay(bar, buttonName)
     click:SetAttribute("useOnKeyDown", false)
     click:SetAttribute("type1", "click")
     click:SetAttribute("clickbutton1", target)
+    click._open = true
+    if opts then
+        click._needsSecure = opts.needsSecure
+        click:SetScript("PreClick", function(self, button)
+            if button ~= "LeftButton" or self._open then return end
+            if EditModeIsActive() or not Enabled() then return end
+            if opts.pre then opts.pre(bar) end
+        end)
+        click:SetScript("PostClick", function(self, button)
+            if button ~= "LeftButton" or not self._open then return end
+            if opts.post then opts.post(bar) end
+        end)
+    end
     if click.SetPropagateMouseMotion then click:SetPropagateMouseMotion(true) end
     click:Hide()
     click._secure = true
@@ -516,6 +570,13 @@ local function SyncOverlays()
         if not (combat and click._secure) then
             local want = (not editing) and Enabled() and bar:IsVisible() or false
             if want ~= click:IsShown() then click:SetShown(want) end
+            if click._needsSecure then
+                local open = click._needsSecure(bar) and true or false
+                if open ~= click._open then
+                    click:SetAttribute("type1", open and "click" or nil)
+                    click._open = open
+                end
+            end
         end
     end
 end
@@ -534,7 +595,6 @@ local function AttachStatusBarOverlays()
     if not (manager and manager.barContainers and info and info.BarsEnum) then return false end
 
     local actions = {
-        [info.BarsEnum.Reputation] = OpenWatchedFactionPage,
         [info.BarsEnum.Honor] = ToggleHonorUI,
     }
 
@@ -547,9 +607,12 @@ local function AttachStatusBarOverlays()
                 EnsureOverlay(bar, action)
             end
         end
-        for key, buttonName in pairs(SECURE_CLICKS) do
+        for key, spec in pairs(SECURE_CLICKS) do
             local bar = info.BarsEnum[key] and container.bars and container.bars[info.BarsEnum[key]]
-            if bar then EnsureSecureOverlay(bar, buttonName) end
+            if bar then
+                EnsureSecureOverlay(bar, spec[1], spec[2])
+                if overlays[bar] then found = true end
+            end
         end
     end
     return found
@@ -557,8 +620,16 @@ end
 
 local barLoader = CreateFrame("Frame")
 barLoader:RegisterEvent("PLAYER_LOGIN")
-barLoader:SetScript("OnEvent", function(self)
+barLoader:SetScript("OnEvent", function(self, event)
+    -- A UI reload in combat cannot build the secure overlays (protected frames); the first combat end
+    -- after login builds whatever is missing (AttachStatusBarOverlays is idempotent).
+    if event == "PLAYER_REGEN_ENABLED" then
+        AttachStatusBarOverlays()
+        self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+        return
+    end
     self:UnregisterEvent("PLAYER_LOGIN")
+    if InCombatLockdown() then self:RegisterEvent("PLAYER_REGEN_ENABLED") end
 
     -- BOUNDED retry. `InitializeBars` (StatusTrackingManagerOverrides.lua:44-66) normally runs
     -- well before PLAYER_LOGIN, so the first attempt succeeds -- but the single next-frame retry
