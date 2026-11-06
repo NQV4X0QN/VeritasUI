@@ -19,11 +19,12 @@
 -- THE BUTTON copies the AddOn button's look (Camelot/AddonCompartment.xml: 23 x 22, atlas
 -- ui-hud-minimap-addon-indicator, the same atlas in ADD at 0.1 hover / 0.2 pressed) with the class icon
 -- (Interface\Icons\ClassIcon_<CLASS>) in the frame's opening: measured from the art (atlas 3945, the -2x rect
--- 911-957 x 509-553) as 31 x 23 at 2x -> 11.5 tall at 1x, centred, 1 px above the frame's centre. PLACE: the
--- mail spot, like QoL's Retail Great Vault button -- MinimapCluster.IndicatorFrame (fixed 32 x 24, under the zone
--- text, holding MailFrame; Camelot/MinimapIndicatorFrameTemplate.xml): at its top, or 2 px under the mail icon
--- when it shows. Parented to UIParent and only READS Blizzard's frames (MinimapCluster is an Edit Mode system,
--- landmine 114).
+-- 911-957 x 509-553) as 31 x 23 at 2x -> 11.5 tall at 1x, centred, 1 px above the frame's centre. PLACE: 2 px
+-- under the tracking button (MinimapCluster.Tracking.Button, 23 x 23, left of the zone text; Mainline/Minimap.xml
+-- forever), which is left of the mail icon -- owner moved it there in game: Forever's mail icon is much larger
+-- than Retail's and the button looked odd under it. Without a tracking button: the mail spot
+-- (MinimapCluster.IndicatorFrame), or under the mail icon. Parented to UIParent and only READS Blizzard's frames
+-- (MinimapCluster is an Edit Mode system, landmine 114).
 --
 -- THE WINDOW is our own frame built to the trainer window's measurements (Blizzard_TrainerUI.xml forever):
 -- ButtonFrameTemplate 338 x 424; list 302 x 330 at the Inset's TOPLEFT +5,-5 with MinimalScrollBar; the
@@ -370,17 +371,31 @@ local enabled, active, pendingLevel = false, false, nil
 local function Shown(f) return f and f.IsShown and f:IsShown() end
 
 local function Follow()
-    local ind = _G.MinimapCluster and _G.MinimapCluster.IndicatorFrame
+    local cluster = _G.MinimapCluster
+    local ind = cluster and cluster.IndicatorFrame
     if not (button and ind and active and ind:IsVisible()) then
         if button and button:IsShown() then button:Hide() end
         return
     end
-    local target, rel, y = ind, "TOP", 0
-    if Shown(ind.MailFrame) then target, rel, y = ind.MailFrame, "BOTTOM", -GAP end
-    local key = tostring(target) .. rel
+    local point, target, rel, y = "TOP", ind, "TOP", 0
+    local track = cluster.Tracking and cluster.Tracking.Button
+    if track and track:IsVisible() then
+        -- Under the tracking button, left of the mail icon (owner, 2026-11-05: Forever's mail icon is much larger
+        -- and the button looked odd hung beneath it). Header Underneath (Edit Mode) puts the zone text below the
+        -- map and the indicator ABOVE it (Camelot/Minimap.lua SetHeaderUnderneath: IndicatorFrame BOTTOMLEFT to
+        -- ZoneTextButton TOPLEFT), so the button goes above the tracking button there.
+        if ind:GetPoint(1) == "BOTTOMLEFT" then
+            point, target, rel, y = "BOTTOM", track, "TOP", GAP
+        else
+            point, target, rel, y = "TOP", track, "BOTTOM", -GAP
+        end
+    elseif Shown(ind.MailFrame) then
+        target, rel, y = ind.MailFrame, "BOTTOM", -GAP
+    end
+    local key = tostring(target) .. point .. rel
     if key ~= anchoredTo then
         button:ClearAllPoints()
-        button:SetPoint("TOP", target, rel, 0, y)
+        button:SetPoint(point, target, rel, 0, y)
         anchoredTo = key
     end
     local scale = ind:GetEffectiveScale() / UIParent:GetEffectiveScale()
