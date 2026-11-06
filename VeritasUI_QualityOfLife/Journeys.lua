@@ -414,14 +414,18 @@ local function ToggleHonorUI()
 end
 
 ----------------------------------------------------------------
---  Experience bar -> Character Info (owner, 2026-11-05). `ToggleCharacter("PaperDollFrame")` is what
---  Blizzard's own Character Info key runs, in both games (Forever: Camelot/CharacterFrame.lua:3-30), and it
---  already toggles: closes when Character Info is up on that page, switches to it from another page,
---  opens it otherwise. One call, no toggle logic of ours.
+--  Experience bar -> Character Info (owner, 2026-11-05), by a SECURE click on CharacterMicroButton.
+--  ⛔ Never call ToggleCharacter from our code for this. Build 1 did, and Character Info's OnShow then ran
+--  tainted: it shows the player frame's health text (Camelot/CharacterFrame.lua:710-735; Mainline
+--  CharacterFrame.lua:214-238 does the same), whose UpdateTextStringWithValues compares the health values,
+--  and those are secret -> "attempt to compare a secret number value (execution tainted by
+--  'VeritasUI_QualityOfLife')" at TextStatusBar.lua:110 (owner's Forever error, 2026-11-05).
+--  A SecureActionButton with type "click" calls CharacterMicroButton:Click() from secure code
+--  (SECURE_ACTIONS.click, SecureTemplates.lua:557-563), so the micro button's own OnClick runs
+--  ToggleCharacter("PaperDollFrame") untainted (MainMenuBarMicroButtons.lua CharacterMicroButtonMixin:OnClick,
+--  both games), exactly as clicking the micro button or pressing C does -- toggle included.
 ----------------------------------------------------------------
-local function ToggleCharacterInfo()
-    if _G.ToggleCharacter then pcall(_G.ToggleCharacter, "PaperDollFrame") end
-end
+local SECURE_CLICKS = { Experience = "CharacterMicroButton" }
 
 ----------------------------------------------------------------
 --  Click-catcher overlays for the status bars (v1.15.3).
@@ -484,11 +488,35 @@ local function EnsureOverlay(bar, action)
     overlays[bar] = click
 end
 
+-- The same overlay as a secure button that clicks a Blizzard button for us (see SECURE_CLICKS). Protected,
+-- so it is built, shown and hidden only out of combat (SyncOverlays skips it in combat); Enabled() and Edit
+-- Mode are applied through its visibility, since a secure click cannot run our checks.
+local function EnsureSecureOverlay(bar, buttonName)
+    if overlays[bar] or InCombatLockdown() then return end
+    local target = _G[buttonName]
+    if not target then return end
+    local click = CreateFrame("Button", nil, UIParent, "SecureActionButtonTemplate")
+    click:SetFrameStrata("MEDIUM")
+    click:SetFrameLevel(600)
+    click:SetPoint("TOPLEFT", bar, "TOPLEFT")
+    click:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT")
+    click:RegisterForClicks("LeftButtonUp")
+    click:SetAttribute("useOnKeyDown", false)
+    click:SetAttribute("type1", "click")
+    click:SetAttribute("clickbutton1", target)
+    if click.SetPropagateMouseMotion then click:SetPropagateMouseMotion(true) end
+    click:Hide()
+    click._secure = true
+    overlays[bar] = click
+end
+
 local function SyncOverlays()
-    local editing = EditModeIsActive()
+    local editing, combat = EditModeIsActive(), InCombatLockdown()
     for bar, click in pairs(overlays) do
-        local want = (not editing) and Enabled() and bar:IsVisible() or false
-        if want ~= click:IsShown() then click:SetShown(want) end
+        if not (combat and click._secure) then
+            local want = (not editing) and Enabled() and bar:IsVisible() or false
+            if want ~= click:IsShown() then click:SetShown(want) end
+        end
     end
 end
 
@@ -509,7 +537,6 @@ local function AttachStatusBarOverlays()
         [info.BarsEnum.Reputation] = OpenWatchedFactionPage,
         [info.BarsEnum.Honor] = ToggleHonorUI,
     }
-    if info.BarsEnum.Experience then actions[info.BarsEnum.Experience] = ToggleCharacterInfo end
 
     local found = false
     for _, container in ipairs(manager.barContainers) do
@@ -519,6 +546,10 @@ local function AttachStatusBarOverlays()
                 found = true
                 EnsureOverlay(bar, action)
             end
+        end
+        for key, buttonName in pairs(SECURE_CLICKS) do
+            local bar = info.BarsEnum[key] and container.bars and container.bars[info.BarsEnum[key]]
+            if bar then EnsureSecureOverlay(bar, buttonName) end
         end
     end
     return found
