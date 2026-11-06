@@ -378,6 +378,8 @@ local SIZE_W, SIZE_H, ICON, GAP = 23, 22, 11.5, 2
 local TRACK_GAP = 1   -- owner, in game: the gap between the calendar and the AddOn compartment under it
 local button, watcher, anchoredTo
 local enabled, active, pendingLevel = false, false, nil
+local hasNow = false   -- something on the saved list is learnable at your level
+local NEXT_SHOWN = 5   -- upcoming skills listed in the tooltip while nothing is learnable
 
 local function Shown(f) return f and f.IsShown and f:IsShown() end
 
@@ -416,14 +418,67 @@ local function Follow()
     if not button:IsShown() then button:Show() end
 end
 
+-- Shown when something is learnable now; with Always Show Trainer Button (owner, 2026-11-05) also when nothing
+-- is, the class icon then dimmed (desaturated, at 50%) so it reads at a glance that nothing is ready, as
+-- Blizzard greys a button with nothing to act on.
 local function Refresh()
     local _, now = Trainable()
-    active = enabled and now ~= nil and #now > 0
+    local db = DB()
+    local always = type(db) == "table" and db.trainerButtonAlways == true
+    hasNow = now ~= nil and #now > 0
+    active = enabled and (hasNow or always)
+    if button and button.Icon then
+        button.Icon:SetDesaturated(not hasNow)
+        button.Icon:SetAlpha(hasNow and 1 or 0.5)
+    end
     Follow()
 end
 VUI.QoL_TrainerButtonRefresh = Refresh
 
 local function SetAdd(a) if button then button.AddTexture:SetAlpha(a) end end
+
+local function SkillName(e) return (e.sub and e.sub ~= "") and format("%s (%s)", e.name, e.sub) or e.name end
+
+-- The tooltip. Learnable now: those skills, in tooltip green (owner's colours). Nothing yet: the next few with
+-- the level each comes at, in the trainer's order sorted by level. No saved list: how to get one.
+local function ShowTip(self)
+    local cache, now, later = Trainable()
+    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+    local gold, white = NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR
+    if not cache then
+        GameTooltip_SetTitle(GameTooltip, "No Trainer List Yet")
+        GameTooltip:AddLine("Talk to your class trainer once to see your skills here.", white.r, white.g, white.b, true)
+    elseif now and #now > 0 then
+        GameTooltip_SetTitle(GameTooltip, "New Skills at Your Trainer")
+        for _, e in ipairs(now) do
+            -- Skills in tooltip green (GREEN_FONT_COLOR, the green of Blizzard's tooltip instruction lines). The
+            -- font colours come from the client's colour table, not Lua, so the fallback is its value.
+            local green = GREEN_FONT_COLOR
+            if green then GameTooltip:AddLine(SkillName(e), green:GetRGB())
+            else GameTooltip:AddLine(SkillName(e), 0.1, 1, 0.1) end
+        end
+    else
+        GameTooltip_SetTitle(GameTooltip, "No New Skills Yet")
+        local upcoming = {}
+        for i, e in ipairs(later or {}) do upcoming[i] = { e = e, i = i } end
+        table.sort(upcoming, function(a, b)
+            local la, lb = a.e.level or 0, b.e.level or 0
+            if la ~= lb then return la < lb end
+            return a.i < b.i
+        end)
+        for i = 1, math.min(#upcoming, NEXT_SHOWN) do
+            local e = upcoming[i].e
+            GameTooltip:AddDoubleLine(SkillName(e), format("Level %d", e.level or 0),
+                white.r, white.g, white.b, gold.r, gold.g, gold.b)
+        end
+        if #upcoming > NEXT_SHOWN then
+            GameTooltip:AddLine(format("and %d more", #upcoming - NEXT_SHOWN), white.r, white.g, white.b)
+        end
+    end
+    -- The click line in gold, matching Blizzard's Tracking tooltip instruction above it (owner).
+    GameTooltip:AddLine("Click to see the trainer's list.", gold:GetRGB())
+    GameTooltip:Show()
+end
 
 local function Build()
     button = CreateFrame("Button", "VUIQoLTrainerButton", UIParent)
@@ -450,19 +505,7 @@ local function Build()
     button:SetScript("OnMouseUp", function(self) SetAdd(self:IsMouseOver() and 0.1 or 0) end)
     button:SetScript("OnEnter", function(self)
         SetAdd(0.1)
-        local _, now = Trainable()
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip_SetTitle(GameTooltip, "New Skills at Your Trainer")
-        for _, e in ipairs(now or {}) do
-            local nm = (e.sub and e.sub ~= "") and format("%s (%s)", e.name, e.sub) or e.name
-            -- Owner's colours: skills in tooltip green (GREEN_FONT_COLOR, the green of Blizzard's tooltip
-            -- instruction lines), the click line in gold to match Blizzard's Tracking tooltip instruction above it.
-            -- The font colours come from the client's colour table, not Lua, so the fallback is its value.
-            local green = GREEN_FONT_COLOR
-            if green then GameTooltip:AddLine(nm, green:GetRGB()) else GameTooltip:AddLine(nm, 0.1, 1, 0.1) end
-        end
-        GameTooltip:AddLine("Click to see the trainer's list.", NORMAL_FONT_COLOR:GetRGB())
-        GameTooltip:Show()
+        ShowTip(self)
     end)
     button:SetScript("OnLeave", function(self)
         SetAdd(0)

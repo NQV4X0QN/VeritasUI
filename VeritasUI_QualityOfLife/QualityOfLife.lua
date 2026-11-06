@@ -154,6 +154,7 @@ local UNIVERSAL = {
     repBarRenownLevel = true,     -- "[18/20]" beside the name on the reputation bar (owner, 2026-10-30)
     greatVaultButton  = true,     -- Great Vault button by the minimap's mail icon (owner, 2026-10-30)
     trainerButton     = true,     -- WoW Forever: new class skills button by the minimap (Trainer.lua, owner 2026-11-05)
+    trainerButtonAlways = false,  -- sub-option: button always shown, dimmed while nothing is learnable (2026-11-05)
     -- /way was always on and had no option until v1.34.4 (owner: a feature we mention must be one the
     -- player can see and switch). ON by default, unlike the options above, so nobody loses it.
     wayCommand        = true,
@@ -4555,8 +4556,16 @@ local function InitializeOptions()
         AddCheckbox("trainerButton", "Show Trainer Button by the Minimap",
             "Shows your class icon by the minimap when your class trainer has new skills for your level. Click "
             .. "it to see the trainer's list, with what you can learn now and what comes at later levels. The "
-            .. "list is saved each time you talk to your class trainer.",
+            .. "list is saved each time you talk to your class trainer. You can also type /qol trainer.",
             function(value) if VUI.QoL_TrainerButtonSet then VUI.QoL_TrainerButtonSet(value) end end)
+        -- Sub-option (owner, 2026-11-05): the list one click away even with nothing new to learn.
+        local alwaysInit = AddCheckbox("trainerButtonAlways", "Always Show Trainer Button",
+            "Keeps the trainer button by the minimap even when there is nothing new to learn, dimmed until "
+            .. "there is. Hover it to see your next skills and the levels they come at.",
+            function() if VUI.QoL_TrainerButtonRefresh then VUI.QoL_TrainerButtonRefresh() end end)
+        if alwaysInit and VUI.SettingsSubOption then
+            VUI.SettingsSubOption(alwaysInit, ADDON_NAME .. "_trainerButton", function() return db.trainerButton end)
+        end
     end
 
     Header("Quests and Dialogue")
@@ -5114,6 +5123,11 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
     end
     if arg:lower() == "trainable" then
         if VUI.QoL_TrainableProbe then VUI.QoL_TrainableProbe() end
+        return
+    end
+    if arg:lower() == "trainer" then   -- the trainer list window (WoW Forever; owner, 2026-11-05)
+        if VUI.QoL_TrainerWindowToggle then VUI.QoL_TrainerWindowToggle()
+        else VUI.Print("Quality of Life", "The trainer list is for WoW Forever.") end
         return
     end
     if arg:lower() == "npc" then
