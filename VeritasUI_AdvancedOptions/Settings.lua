@@ -107,25 +107,12 @@ local function BuildMainWindow()
     contBrowser:SetAllPoints(CONTENT)
     contBrowser:Hide()
 
-    -- ── Bottom Tabs ───────────────────────────────────────────
-    local tabFeatured = CreateFrame("Button", "$parentTab1", win, "PanelTabButtonTemplate")
-    tabFeatured:SetID(1)
-    tabFeatured:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 11, -30)
-    tabFeatured:SetText("Featured")
-    PanelTemplates_TabResize(tabFeatured, 0)
-
-    local tabBrowser = CreateFrame("Button", "$parentTab2", win, "PanelTabButtonTemplate")
-    tabBrowser:SetID(2)
-    tabBrowser:SetPoint("LEFT", tabFeatured, "RIGHT", -16, 0)
-    tabBrowser:SetText("All CVars")
-    PanelTemplates_TabResize(tabBrowser, 0)
-
-    PanelTemplates_SetNumTabs(win, 2)
-    PanelTemplates_SetTab(win, 1)
-
+    -- ── Tabs ──────────────────────────────────────────────────
+    -- WoW Forever: icon tabs down the right edge (Lib VUI.CreateSideTabs, owner 2026-11-05); Retail: bottom tabs.
+    local selectTab
     local function ActivateTab(which)
         local idx = (which == "browser") and 2 or 1
-        PanelTemplates_SetTab(win, idx)
+        selectTab(idx)
         contFeatured:SetShown(idx == 1)
         contBrowser:SetShown(idx == 2)
         subtitle:SetText(idx == 1 and "Featured Settings" or "All CVars")
@@ -133,8 +120,32 @@ local function BuildMainWindow()
         if AO.db then AO.db.lastTab = idx end
     end
 
-    tabFeatured:SetScript("OnClick", function() ActivateTab("featured") end)
-    tabBrowser:SetScript("OnClick",  function() ActivateTab("browser")  end)
+    if VUI.IS_FOREVER and VUI.CreateSideTabs then
+        selectTab = VUI.CreateSideTabs(win, {
+            { icon = "Interface/ICONS/INV_Misc_Book_09", tooltip = "Featured" },
+            { icon = "Interface/ICONS/INV_Scroll_03",    tooltip = "All CVars" },
+        }, function(i) ActivateTab(i == 2 and "browser" or "featured") end)
+        selectTab(1)
+    else
+        local tabFeatured = CreateFrame("Button", "$parentTab1", win, "PanelTabButtonTemplate")
+        tabFeatured:SetID(1)
+        tabFeatured:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 11, -30)
+        tabFeatured:SetText("Featured")
+        PanelTemplates_TabResize(tabFeatured, 0)
+
+        local tabBrowser = CreateFrame("Button", "$parentTab2", win, "PanelTabButtonTemplate")
+        tabBrowser:SetID(2)
+        tabBrowser:SetPoint("LEFT", tabFeatured, "RIGHT", -16, 0)
+        tabBrowser:SetText("All CVars")
+        PanelTemplates_TabResize(tabBrowser, 0)
+
+        PanelTemplates_SetNumTabs(win, 2)
+        PanelTemplates_SetTab(win, 1)
+        selectTab = function(idx) PanelTemplates_SetTab(win, idx) end
+
+        tabFeatured:SetScript("OnClick", function() ActivateTab("featured") end)
+        tabBrowser:SetScript("OnClick",  function() ActivateTab("browser")  end)
+    end
 
     function win:ShowTab(which)
         VUI.OpenManagedPanel(self)

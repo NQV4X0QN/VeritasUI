@@ -19,11 +19,18 @@ function PR:GetProfileKey()
     return string.format("%s-%s-%d", realm, name, specID)
 end
 
+-- With no specialization chosen, WoW Forever's one spec per class is named after the class itself (1485
+-- "Hunter", measured 2026-11-04), which read "Hunter Hunter" (owner, 2026-11-05): a spec named like the class
+-- shows the class alone. No spec index at all also falls back to the class.
 function PR:GetCurrentSpecLabel()
-    local specIndex = C_SpecializationInfo.GetSpecialization()
-    if not specIndex then return "Unknown Spec" end
-    local _, specName = C_SpecializationInfo.GetSpecializationInfo(specIndex)
     local className = UnitClass("player")
+    local specIndex = C_SpecializationInfo.GetSpecialization()
+    local specName
+    if specIndex then
+        local _, n = C_SpecializationInfo.GetSpecializationInfo(specIndex)
+        specName = n
+    end
+    if specName == "" or (specName and className and specName:lower() == className:lower()) then specName = nil end
     if specName and className then return specName .. " " .. className end
     return specName or className or "Unknown Spec"
 end

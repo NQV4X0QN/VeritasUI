@@ -746,6 +746,43 @@ function VUI.UseFlatInsetBackground(win)
     return true
 end
 
+-- Side tabs down a window's right edge, the WoW Forever look (owner, 2026-11-05: every Forever window has them).
+-- Built exactly like Forever's Character frame: Blizzard's LargeSideTabButtonTemplate
+-- (Blizzard_SharedXML/Mainline/SharedUIPanelTemplates.xml), the first tab's TOPLEFT on the window's TOPRIGHT at
+-- y -30 (Camelot/CharacterFrame.xml:568-572), each next one 2 below the last (CharacterFrame.lua UpdateTabLayout),
+-- the icon filled to the tab's interior (fillToInterior, CharacterFrame.xml:394-397; SetFillToInterior is in
+-- Forever's SidePanelTabButtonMixin only). Selection draws the tab's own SelectedTexture rather than calling the
+-- mixin's SetChecked, which in Retail sets an atlas we don't have. The tab is a Frame: a click is a left mouse-up
+-- released over it (the mixin's custom mouse-up handler). tabs = { { icon = file, tooltip = text }, ... };
+-- onSelect(index) runs on a click. Returns select(index), which only redraws, and the tab frames.
+function VUI.CreateSideTabs(win, tabs, onSelect)
+    local list = {}
+    local function Select(index)
+        for i, tab in ipairs(list) do
+            if tab.SelectedTexture then tab.SelectedTexture:SetShown(i == index) end
+        end
+    end
+    for i, spec in ipairs(tabs) do
+        local tab = CreateFrame("Frame", nil, win, "LargeSideTabButtonTemplate")
+        tab:SetID(i)
+        tab.tooltipText = spec.tooltip
+        if i == 1 then
+            tab:SetPoint("TOPLEFT", win, "TOPRIGHT", 0, -30)
+        else
+            tab:SetPoint("TOPLEFT", list[i - 1], "BOTTOMLEFT", 0, -2)
+        end
+        tab.Icon:SetTexture(spec.icon)
+        if tab.SetFillToInterior then tab:SetFillToInterior(true) end
+        if tab.SetCustomOnMouseUpHandler then
+            tab:SetCustomOnMouseUpHandler(function(_, button, upInside)
+                if button == "LeftButton" and upInside then onSelect(i) end
+            end)
+        end
+        list[i] = tab
+    end
+    return Select, list
+end
+
 function VUI.RegisterManagedPanel(frameName, opts)
     -- Frame doesn't need to exist yet — UIPanelWindows is a string-keyed
     -- lookup the manager consults at ShowUIPanel time. Registering at file

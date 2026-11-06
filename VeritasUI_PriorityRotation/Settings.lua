@@ -166,32 +166,43 @@ local function BuildMainWindow()
     contSettings:SetAllPoints(CONTENT)
     contSettings:Hide()
 
-    -- Bottom tabs — PanelTabButtonTemplate hangs below the frame edge in the
+    -- Tabs. WoW Forever: icon tabs down the right edge, like every Forever window (owner, 2026-11-05; Lib
+    -- VUI.CreateSideTabs). Retail: bottom tabs -- PanelTabButtonTemplate hangs below the frame edge in the
     -- modern Journeys / Collections style. Tabs overlap by -16 by design.
-    local tabRotation = CreateFrame("Button", "$parentTab1", win, "PanelTabButtonTemplate")
-    tabRotation:SetID(1)
-    tabRotation:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 11, -30)
-    tabRotation:SetText("Rotation")
-    PanelTemplates_TabResize(tabRotation, 0)
-
-    local tabSettings = CreateFrame("Button", "$parentTab2", win, "PanelTabButtonTemplate")
-    tabSettings:SetID(2)
-    tabSettings:SetPoint("LEFT", tabRotation, "RIGHT", -16, 0)
-    tabSettings:SetText("Settings")
-    PanelTemplates_TabResize(tabSettings, 0)
-
-    PanelTemplates_SetNumTabs(win, 2)
-    PanelTemplates_SetTab(win, 1)
-
+    local selectTab
     local function ActivateTab(which)
         local idx = (which == "editor") and 1 or 2
-        PanelTemplates_SetTab(win, idx)
+        selectTab(idx)
         contRotation:SetShown(idx == 1)
         contSettings:SetShown(idx == 2)
     end
 
-    tabRotation:SetScript("OnClick", function() ActivateTab("editor") end)
-    tabSettings:SetScript("OnClick", function() ActivateTab("settings") end)
+    if VUI.IS_FOREVER and VUI.CreateSideTabs then
+        selectTab = VUI.CreateSideTabs(win, {
+            { icon = "Interface/ICONS/Ability_DualWield", tooltip = "Rotation" },
+            { icon = "Interface/ICONS/INV_Misc_Gear_01",  tooltip = "Settings" },
+        }, function(i) ActivateTab(i == 1 and "editor" or "settings") end)
+        selectTab(1)
+    else
+        local tabRotation = CreateFrame("Button", "$parentTab1", win, "PanelTabButtonTemplate")
+        tabRotation:SetID(1)
+        tabRotation:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 11, -30)
+        tabRotation:SetText("Rotation")
+        PanelTemplates_TabResize(tabRotation, 0)
+
+        local tabSettings = CreateFrame("Button", "$parentTab2", win, "PanelTabButtonTemplate")
+        tabSettings:SetID(2)
+        tabSettings:SetPoint("LEFT", tabRotation, "RIGHT", -16, 0)
+        tabSettings:SetText("Settings")
+        PanelTemplates_TabResize(tabSettings, 0)
+
+        PanelTemplates_SetNumTabs(win, 2)
+        PanelTemplates_SetTab(win, 1)
+        selectTab = function(idx) PanelTemplates_SetTab(win, idx) end
+
+        tabRotation:SetScript("OnClick", function() ActivateTab("editor") end)
+        tabSettings:SetScript("OnClick", function() ActivateTab("settings") end)
+    end
 
     function win:ShowTab(which)
         VUI.OpenManagedPanel(self)
