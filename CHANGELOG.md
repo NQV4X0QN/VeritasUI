@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.69.1] - 2026-11-05
+
+### Fixed
+
+- `VeritasUI_Interface` — **Quest text no longer overlaps when you hover a faded objective tracker.** With a section at 0%, a quest whose title takes two lines could show its second line on top of its first objective until you highlighted it. Titles now wrap the same way while faded and while shown (`Interface.lua`)
+
+
 ## [1.69.0] - 2026-11-05
 
 ### Added
