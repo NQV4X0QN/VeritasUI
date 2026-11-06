@@ -379,7 +379,6 @@ local TRACK_GAP = 1   -- owner, in game: the gap between the calendar and the Ad
 local button, watcher, anchoredTo
 local enabled, active, pendingLevel = false, false, nil
 local hasNow = false   -- something on the saved list is learnable at your level
-local NEXT_SHOWN = 5   -- upcoming skills listed in the tooltip while nothing is learnable
 
 local function Shown(f) return f and f.IsShown and f:IsShown() end
 
@@ -439,8 +438,8 @@ local function SetAdd(a) if button then button.AddTexture:SetAlpha(a) end end
 
 local function SkillName(e) return (e.sub and e.sub ~= "") and format("%s (%s)", e.name, e.sub) or e.name end
 
--- The tooltip. Learnable now: those skills, in tooltip green (owner's colours). Nothing yet: the next few with
--- the level each comes at, in the trainer's order sorted by level. No saved list: how to get one.
+-- The tooltip. Learnable now: those skills, in tooltip green (owner's colours). Nothing yet: the next level's
+-- skills, greyed. No saved list: how to get one.
 local function ShowTip(self)
     local cache, now, later = Trainable()
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
@@ -458,21 +457,20 @@ local function ShowTip(self)
             else GameTooltip:AddLine(SkillName(e), 0.1, 1, 0.1) end
         end
     else
+        -- Only the next level's skills, in the trainer's order, in Blizzard's grey for "not ready yet", with
+        -- that level beside each (owner, 2026-11-06: no later levels, no "and N more").
         GameTooltip_SetTitle(GameTooltip, "No New Skills Yet")
-        local upcoming = {}
-        for i, e in ipairs(later or {}) do upcoming[i] = { e = e, i = i } end
-        table.sort(upcoming, function(a, b)
-            local la, lb = a.e.level or 0, b.e.level or 0
-            if la ~= lb then return la < lb end
-            return a.i < b.i
-        end)
-        for i = 1, math.min(#upcoming, NEXT_SHOWN) do
-            local e = upcoming[i].e
-            GameTooltip:AddDoubleLine(SkillName(e), format("Level %d", e.level or 0),
-                white.r, white.g, white.b, gold.r, gold.g, gold.b)
+        local nextLevel
+        for _, e in ipairs(later or {}) do
+            if e.level and (not nextLevel or e.level < nextLevel) then nextLevel = e.level end
         end
-        if #upcoming > NEXT_SHOWN then
-            GameTooltip:AddLine(format("and %d more", #upcoming - NEXT_SHOWN), white.r, white.g, white.b)
+        local grey = GRAY_FONT_COLOR
+        local r, g, b = 0.5, 0.5, 0.5   -- GRAY_FONT_COLOR's value, if the client's colour table lacks it
+        if grey then r, g, b = grey:GetRGB() end
+        for _, e in ipairs(later or {}) do
+            if e.level == nextLevel then
+                GameTooltip:AddDoubleLine(SkillName(e), format("Level %d", e.level), r, g, b, r, g, b)
+            end
         end
     end
     -- The click line in gold, matching Blizzard's Tracking tooltip instruction above it (owner).
