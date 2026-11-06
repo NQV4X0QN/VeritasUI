@@ -12,9 +12,9 @@
 --   * equippable (C_Item.IsEquippableItem) and its quality ticked;
 --   * not a slot we leave alone: trinkets (their worth is their effect, not item level), shirt, tabard, bags,
 --     ammo, profession gear; and never a profession tool (Skinning Knife, Mining Pick, Fishing Pole -- IsTool);
---   * usable: no red line on its tooltip (C_TooltipInfo.GetBagItem). Blizzard writes an unmet requirement --
---     armor or weapon type your class can't use, a level above yours -- in red. An unreadable tooltip waits for
---     the next bag update;
+--   * usable: no red line on its tooltip, left or right side (C_TooltipInfo.GetBagItem). Blizzard writes an unmet
+--     requirement -- armor or weapon type your class can't use (right side), a level above yours -- in red. An
+--     unreadable tooltip waits for the next bag update;
 --   * would not bind on equip (an unbound Bind on Equip item asks you to confirm; that stays your call);
 --   * no main stat that is wrong for you (Strength / Agility / Intellect, C_Item.GetItemStats). Retail: the spec's
 --     primaryStat (GetSpecializationInfo, 1 Strength, 2 Agility, 4 Intellect). WoW Forever has one "spec" per
@@ -22,7 +22,8 @@
 --     Hunter and Rogue Agility, Warrior Strength, Mage, Priest and Warlock Intellect; hybrid classes get no check.
 --     An item with no main stat (most greys) passes;
 --   * better than what is worn: an empty slot; or, for armor, a heavier armor type at the same or higher item level,
---     or the same type at a higher item level (never a lighter type); for anything else, a higher item level.
+--     or the same type at a higher item level (never a lighter type); for anything else, a higher item level. At
+--     equal item level, better quality wins, then more armor; the same item never replaces itself.
 --     Rings go to an empty ring slot, else replace the lower one. Weapons only replace a worn weapon of the same
 --     kind (two-hander for two-hander, ranged for ranged), so a weapon and off-hand pair is never broken up.
 
@@ -72,7 +73,13 @@ local function Info(link)
     return equipLoc, classID, subclassID
 end
 
--- The red tooltip lines of a bag item (an unmet requirement), and whether the tooltip could be read at all.
+local function IsRed(c)
+    return type(c) == "table" and c.r and not Secret(c.r) and c.r > 0.9 and c.g < 0.3 and c.b < 0.3
+end
+
+-- The red tooltip lines of a bag item (an unmet requirement), and whether the tooltip could be read at all. Both
+-- sides of a line: the armor or weapon type sits on the RIGHT, beside the slot (owner's screenshot, WoW Forever
+-- 2026-11-05: "Mail" in red right of "Legs" on a Hunter below the level for mail).
 local function RedLines(bag, slot)
     local tt = _G.C_TooltipInfo
     if not (tt and tt.GetBagItem) then return nil, false end
@@ -80,12 +87,65 @@ local function RedLines(bag, slot)
     if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then return nil, false end
     local red = {}
     for _, line in ipairs(data.lines) do
-        local c = line.leftColor
-        if type(c) == "table" and c.r and not Secret(c.r) and c.r > 0.9 and c.g < 0.3 and c.b < 0.3 then
-            red[#red + 1] = tostring(line.leftText)
-        end
+        if IsRed(line.leftColor) then red[#red + 1] = tostring(line.leftText) end
+        if IsRed(line.rightColor) then red[#red + 1] = tostring(line.rightText) end
     end
     return red, true
+end
+
+-- Armor value of an item, for a tie at equal item level: its stats first, else the "N Armor" line of its tooltip
+-- (ARMOR_TEMPLATE). Returns the value and where it came from, or nil.
+local function ArmorFromTooltip(data)
+    if type(data) ~= "table" or type(data.lines) ~= "table" then return nil end
+    local tmpl = type(_G.ARMOR_TEMPLATE) == "string" and _G.ARMOR_TEMPLATE or "%s Armor"
+    local pat = "^" .. tmpl:gsub("([%^%$%(%)%.%[%]%*%+%-%?])", "%%%1"):gsub("%%[sd]", "([%%d,%%.]+)") .. "$"
+    for _, line in ipairs(data.lines) do
+        local t = line.leftText
+        if type(t) == "string" and not Secret(t) then
+            local n = t:match(pat)
+            n = n and tonumber((n:gsub("%D", "")))
+            if n then return n end
+        end
+    end
+    return nil
+end
+
+local function ArmorValue(link, tipFn, a, b)
+    local ok, stats = pcall(C_Item.GetItemStats, link)
+    local v = ok and type(stats) == "table" and stats.RESISTANCE0_NAME
+    if type(v) == "number" and not Secret(v) then return v, "stats" end
+    local tt = _G.C_TooltipInfo
+    if not (tt and tt[tipFn]) then return nil end
+    local okT, data = pcall(tt[tipFn], a, b)
+    if not okT then return nil end
+    local n = ArmorFromTooltip(data)
+    return n, n and "tooltip" or nil
+end
+
+local function WornLink(slot)
+    local ok, link = pcall(GetInventoryItemLink, "player", slot)
+    return ok and link or nil
+end
+
+local function WornQuality(slot)
+    local ok, q = pcall(GetInventoryItemQuality, "player", slot)
+    return ok and type(q) == "number" and not Secret(q) and q or nil
+end
+
+-- Equal item level (owner, 2026-11-05: a white belt with 19 armor stayed in the bags behind a grey one with 18,
+-- both item level 5): better quality wins, then more armor. Returns true or false and the reason.
+local function TieBreak(bag, slot, info, wornSlot, ilvl)
+    local wq = WornQuality(wornSlot)
+    if wq and type(info.quality) == "number" then
+        local q = info.quality
+        if q > wq then return true, format("item level %d, better quality (%d over %d)", ilvl, q, wq) end
+        if q < wq then return false, format("item level %d, lower quality (%d under %d)", ilvl, q, wq) end
+    end
+    local mine, src1 = ArmorValue(info.hyperlink, "GetBagItem", bag, slot)
+    local theirs, src2 = ArmorValue(WornLink(wornSlot), "GetInventoryItem", "player", wornSlot)
+    local how = format("armor %s vs %s, from %s/%s", tostring(mine), tostring(theirs), tostring(src1), tostring(src2))
+    if mine and theirs and mine > theirs then return true, format("item level %d, more armor (%s)", ilvl, how) end
+    return false, format("item level %d is not over %d (%s)", ilvl, ilvl, how)
 end
 
 local function SpecMainStat()
@@ -111,11 +171,6 @@ local function MainStatFits(link, specStat)
     end
     if not any then return nil end
     return fits
-end
-
-local function WornLink(slot)
-    local ok, link = pcall(GetInventoryItemLink, "player", slot)
-    return ok and link or nil
 end
 
 -- Profession tools are never put on, and any real weapon of the same kind replaces one you wear (owner, 2026-11-04:
@@ -183,6 +238,9 @@ local function Decide(bag, slot, info, specStat)
         best, bestReason = lowestSlot, format("heavier armor, item level %d vs %d", ilvl, lowest)
     elseif ilvl > lowest then
         best, bestReason = lowestSlot, format("item level %d over %d", ilvl, lowest)
+    elseif ilvl == lowest and worn ~= link then
+        local better, why = TieBreak(bag, slot, info, lowestSlot, ilvl)
+        best, bestReason = better and lowestSlot or nil, why
     else
         bestReason = format("item level %d is not over %d", ilvl, lowest)
     end
@@ -245,7 +303,13 @@ local function Run()
         local ok = pcall(C_Item.EquipItemByName, link, target)
         if ok then
             done = true
-            VUI.Print("Quality of Life", format("Equipped %s (%s).", link, tostring(_G[equipLoc] or equipLoc)))
+            -- Named only once the slot holds it: the game can refuse the swap without an error to us (owner,
+            -- 2026-11-05: "Equipped [Flimsy Chain Pants]" printed while the pants stayed in the bags).
+            C_Timer.After(1, function()
+                if WornLink(target) == link then
+                    VUI.Print("Quality of Life", format("Equipped %s (%s).", link, tostring(_G[equipLoc] or equipLoc)))
+                end
+            end)
         end
     end)
 end
