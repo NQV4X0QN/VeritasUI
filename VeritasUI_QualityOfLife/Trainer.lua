@@ -21,8 +21,9 @@
 -- (Interface\Icons\ClassIcon_<CLASS>) in the frame's opening: measured from the art (atlas 3945, the -2x rect
 -- 911-957 x 509-553) as 31 x 23 at 2x -> 11.5 tall at 1x, centred, 1 px above the frame's centre. PLACE: 1 px
 -- under the tracking button (MinimapCluster.Tracking.Button, 23 x 23, left of the zone text; Mainline/Minimap.xml
--- forever), 1 px gap (owner), which is left of the mail icon -- owner moved it there in game: Forever's mail icon is much larger
--- than Retail's and the button looked odd under it. Without a tracking button: the mail spot
+-- forever), left of the mail icon -- owner moved it there in game (Forever's mail icon is much larger than
+-- Retail's and the button looked odd under it) and set the gap to match the calendar-to-compartment gap.
+-- Without a tracking button: the mail spot
 -- (MinimapCluster.IndicatorFrame), or under the mail icon. Parented to UIParent and only READS Blizzard's frames
 -- (MinimapCluster is an Edit Mode system, landmine 114).
 --
