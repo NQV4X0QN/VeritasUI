@@ -50,3 +50,4 @@ jobs:
         with:
           name: package
           path: .release/*.zip
+          include-hidden-files: true
