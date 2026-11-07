@@ -1281,12 +1281,22 @@ local ACTION_BAR_FRAMES = {
     [6] = "MultiBar5",
     [7] = "MultiBar6",
     [8] = "MultiBar7",
+    -- v1.75.0 (owner's request): the pet bar and the stance bar (Warrior stances, Druid forms, Rogue stealth,
+    -- Paladin auras ...). Both games: Blizzard_ActionBar/Mainline/PetActionBar.xml and StanceBar.xml (forever and
+    -- live), the same EditModeActionBarTemplate as bars 2-8; Blizzard shows and hides them but never sets their
+    -- alpha (Shared/PetActionBar.lua, Shared/StanceBar.lua forever).
+    pet    = "PetActionBar",
+    stance = "StanceBar",
 }
+-- The order rows appear in the Fade Action Bars dropdown.
+local ACTION_BAR_IDS = { 2, 3, 4, 5, 6, 7, 8, "pet", "stance" }
 
 local ACTION_BAR_LABELS = {
     [2] = "Action Bar 2", [3] = "Action Bar 3", [4] = "Action Bar 4",
     [5] = "Action Bar 5", [6] = "Action Bar 6", [7] = "Action Bar 7",
     [8] = "Action Bar 8",
+    pet    = HUD_EDIT_MODE_PET_ACTION_BAR_LABEL or "Pet Action Bar",   -- Edit Mode's own names for them
+    stance = HUD_EDIT_MODE_STANCE_BAR_LABEL or "Stance Bar",
 }
 
 local function IsEditModeActive()
@@ -1331,7 +1341,7 @@ local function HookActionBarFade(i)
 end
 
 local function SetupActionBarFading()
-    for i = 2, 8 do
+    for _, i in ipairs(ACTION_BAR_IDS) do
         if cdb.fadeActionBars[i] then HookActionBarFade(i) end
     end
 end
@@ -2742,7 +2752,7 @@ local function InitializeOptions()
         cdb.fadeActionBars[1] = nil  -- Bar 1 is Blizzard-protected
         cdb.fadeActionBarsLabel = nil  -- RETIRED v1.21.0: the old display string, now the mask
         local barItems = {}
-        for i = 2, 8 do barItems[#barItems + 1] = { id = i, label = ACTION_BAR_LABELS[i] } end
+        for _, i in ipairs(ACTION_BAR_IDS) do barItems[#barItems + 1] = { id = i, label = ACTION_BAR_LABELS[i] } end
         local barsInit = KindsDropdown({
             setting = ADDON_NAME .. "_fadeActionBars", maskKey = "fadeActionBarsMask",
             owner = cdb,                 -- PER-CHARACTER: paired with fadeActionBars

@@ -77,6 +77,7 @@ read_globals = {
     "issecretvalue", "debugprofilestop", "GetTime", "time", "date",
     "ReloadUI", "C_AddOns", "IsAddOnLoaded", "GetBuildInfo", "geterrorhandler",
     "StaticPopup_Show", "ACCEPT", "CANCEL", "CHAT_CONFIGURATION", "CHAT_DEFAULTS",
+    "HUD_EDIT_MODE_PET_ACTION_BAR_LABEL", "HUD_EDIT_MODE_STANCE_BAR_LABEL",   -- Edit Mode bar names (v1.75.0)
     -- Strings / math helpers WoW exposes globally
     "strtrim", "strsplit", "strjoin", "strlower", "strfind", "format",
     "CreateColor", "CreateVector2D", "C_ClassColor",
