@@ -755,8 +755,21 @@ end
 -- mixin's SetChecked, which in Retail sets an atlas we don't have. The tab is a Frame: a click is a left mouse-up
 -- released over it (the mixin's custom mouse-up handler). tabs = { { icon = file, tooltip = text }, ... };
 -- onSelect(index) runs on a click. Returns select(index), which only redraws, and the tab frames.
+-- The tabs hang outside the window, so the window's UI panel slot is widened by Blizzard's own padding for these
+-- tabs (CHARACTER_FRAME_WIDTH_PADDING = 82, Camelot/CharacterFrame.lua:1/:311-314, same tabs at the same anchor):
+-- the panel manager places the next window after GetUIPanelWidth, which adds the `extraWidth` attribute
+-- (UIParentPanelManager.lua:64/:950-965 forever). Without it, a window opened beside ours covered the tabs
+-- (owner, 2026-11-07). A plain number in our own UIPanelWindows entry: nothing of ours is called by the manager.
+VUI.SIDE_TAB_PANEL_PADDING = 82
+function VUI.SetManagedPanelExtraWidth(frameName, width)
+    local entry = type(frameName) == "string" and UIPanelWindows[frameName]
+    if type(entry) == "table" then entry.extraWidth = width end
+end
 function VUI.CreateSideTabs(win, tabs, onSelect)
     local list = {}
+    if win and win.GetName and win:GetName() then
+        VUI.SetManagedPanelExtraWidth(win:GetName(), VUI.SIDE_TAB_PANEL_PADDING)
+    end
     local function Select(index)
         for i, tab in ipairs(list) do
             if tab.SelectedTexture then tab.SelectedTexture:SetShown(i == index) end
@@ -806,6 +819,7 @@ function VUI.RegisterManagedPanel(frameName, opts)
         height    = opts.height,
         xoffset   = opts.xoffset,
         yoffset   = opts.yoffset,
+        extraWidth = opts.extraWidth,
     }
     -- Escape-key support — mirror every Blizzard panel.
     for _, n in ipairs(UISpecialFrames) do

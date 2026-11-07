@@ -440,6 +440,10 @@ local function RefreshWindow()
     if win.tabs then
         for _, t in ipairs(win.tabs) do t:SetShown(hasPet) end
     end
+    -- No tabs shown: no room kept for them (VUI.SetManagedPanelExtraWidth; read by the manager when it places windows).
+    if VUI.SetManagedPanelExtraWidth then
+        VUI.SetManagedPanelExtraWidth(WIN_NAME, hasPet and VUI.SIDE_TAB_PANEL_PADDING or nil)
+    end
     if not hasPet then curKind = "class" end
     if win.selectTab then win.selectTab(curKind == "pet" and 2 or 1) end
     local cache, _, _, shown = Trainable(curKind)
@@ -458,7 +462,13 @@ local function RefreshWindow()
         local okE, has = pcall(UnitExists, "pet")
         local okP, pname = pcall(UnitName, "pet")
         okN, me = true, (okE and has and okP and pname) or (PET or "Pet")
-        if okE and has and win.SetPortraitToUnit then win:SetPortraitToUnit("pet")
+        if okE and has and win.SetPortraitToUnit then
+            -- SetPortraitToClassIcon leaves the class-circle texture coords on the portrait
+            -- (Blizzard_SharedXML/PortraitFrame.lua:67-71) and SetPortraitToUnit does not reset them, so the pet's
+            -- portrait showed one dark corner -- a black circle (owner, 2026-11-07). Full coords first.
+            local tex = win.GetPortrait and win:GetPortrait()
+            if tex and tex.SetTexCoord then tex:SetTexCoord(0, 1, 0, 1) end
+            win:SetPortraitToUnit("pet")
         elseif win.SetPortraitToClassIcon then
             local okC, _, classFile = pcall(UnitClass, "player")
             if okC and classFile then win:SetPortraitToClassIcon(classFile) end
@@ -567,6 +577,10 @@ end
 
 local function ToggleWindow()
     if not win then BuildWindow() end
+    -- Before ShowUIPanel places the window: room for the tabs only when they will show.
+    if VUI.SetManagedPanelExtraWidth then
+        VUI.SetManagedPanelExtraWidth(WIN_NAME, HasPetList() and VUI.SIDE_TAB_PANEL_PADDING or nil)
+    end
     if win:IsShown() then VUI.CloseManagedPanel(win) else VUI.OpenManagedPanel(win) end
 end
 VUI.QoL_TrainerWindowToggle = ToggleWindow
