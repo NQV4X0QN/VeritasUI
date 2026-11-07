@@ -356,6 +356,72 @@ local function WipeWindows()
     for index in pairs(store) do if type(index) == "number" then store[index] = nil end end
 end
 
+-- ── Abbreviate Channel Names (v1.72.0, owner's request) ────────
+-- Blizzard writes the channel into each line from a global format string, e.g. CHAT_GUILD_GET =
+-- "|Hchannel:GUILD|h[Guild]|h %s: " (ChatFrameUtil.GetOutMessageFormatKey, Shared/ChatFrameUtil.lua:352-356;
+-- values from GlobalStrings, the same in both games). Rewriting those globals is known poison: Blizzard's chat
+-- handler then runs tainted and fails on a hidden sender's name (EllesmereUI's measured note). So nothing of
+-- Blizzard's is replaced: a post-hook on each window's AddMessage (as Remember Chat History) rewrites the line
+-- Blizzard just stored, through the window's own TransformMessages (Blizzard_SharedXML/ScrollingMessageFrame.lua
+-- :95-107, both games), which repackages the entry and redraws. The channel link itself is kept, so clicking [G]
+-- still opens guild chat. The full link is read from Blizzard's own global (locale-proof), so Party and Party
+-- Leader stay distinct; a numbered channel, |Hchannel:channel:2|h[2. Trade - City]|h, keeps its number.
+-- A line the game hides (a secret value) is never read, compared or rewritten.
+-- ⚠ UNMEASURED: whether a line rewritten from our code makes Blizzard's later redraw of that window misbehave
+-- in hidden-chat content (dungeons, raids). The same windows already show lines our code added (VUI.Print,
+-- Remember Chat History) with no known effect.
+local SHORT_CHANNELS = {   -- bracketed keys: these are the GlobalStrings suffixes, not the globals themselves
+    ["GUILD"] = "G", ["OFFICER"] = "O", ["PARTY"] = "P", ["PARTY_LEADER"] = "PL", ["PARTY_GUIDE"] = "DG",
+    ["RAID"] = "R", ["RAID_LEADER"] = "RL", ["INSTANCE_CHAT"] = "I", ["INSTANCE_CHAT_LEADER"] = "IL",
+}
+local shortLinks   -- [Blizzard's full channel link] = the short one, built on first use
+
+local function BuildShortLinks()
+    shortLinks = {}
+    for key, abbr in pairs(SHORT_CHANNELS) do
+        local fmt = _G["CHAT_" .. key .. "_GET"]
+        if type(fmt) == "string" and not IsSecret(fmt) then
+            local s, e = sfind(fmt, "|Hchannel:[^|]*|h%[[^%]]*%]|h")
+            if s then
+                local link = ssub(fmt, s, e)
+                local head = link:match("^(|Hchannel:[^|]*|h)")
+                if head then shortLinks[link] = head .. "[" .. abbr .. "]|h" end
+            end
+        end
+    end
+end
+
+local function ShortChannels(msg)
+    if not shortLinks then BuildShortLinks() end
+    local out = msg
+    for full, short in pairs(shortLinks) do
+        local s, e = sfind(out, full, 1, true)
+        if s then out = ssub(out, 1, s - 1) .. short .. ssub(out, e + 1) end
+    end
+    out = out:gsub("(|Hchannel:channel:(%d+)|h)%[[^%]]*%]|h", "%1[%2]|h", 1)
+    return out
+end
+VUI.QoL_ShortChannels = ShortChannels   -- for qol_chat_test
+
+local function ShortenLine(cf, msg)
+    if not On("chatShortChannels") then return end
+    if type(msg) ~= "string" or IsSecret(msg) or not sfind(msg, "|Hchannel:", 1, true) then return end
+    local short = ShortChannels(msg)
+    if short == msg or not cf.TransformMessages then return end
+    pcall(cf.TransformMessages, cf,
+        function(m) return not IsSecret(m) and m == msg end,
+        function(_, ...) return short, ... end)
+end
+
+local function HookShortChannels()
+    for index = FIRST_WINDOW, (_G.NUM_CHAT_WINDOWS or 10) do
+        local cf = _G["ChatFrame" .. index]
+        if cf and not SKIP[index] and cf.AddMessage then
+            hooksecurefunc(cf, "AddMessage", function(self, msg) ShortenLine(self, msg) end)
+        end
+    end
+end
+
 VUI.QoL_ChatRemember = function(on)
     if not on then WipeWindows() end
 end
@@ -366,6 +432,7 @@ remember:SetScript("OnEvent", function(self, _, name)
     if name ~= "VeritasUI_QualityOfLife" then return end
     self:UnregisterAllEvents()
     if not On("chatRememberLines") then WipeWindows() end
+    HookShortChannels()   -- first, so the lines put back are shortened too
     Restore()       -- before the hooks, so the lines put back are not stored a second time
     HookWindows()
 end)

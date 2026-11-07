@@ -104,6 +104,9 @@ read_globals = {
     -- Tooltips
     "GameTooltip", "ItemRefTooltip", "TooltipDataProcessor", "TooltipUtil",
     "C_TooltipInfo", "ITEM_LEVEL",
+    -- v1.72.0 guild and friends (Automation.lua, Social.lua)
+    "IsGuildMember", "AcceptGroup", "C_ChatInfo", "C_PartyInfo", "C_GuildInfo", "Ambiguate", "GUILD",
+    "C_BattleNet", "C_CreatureInfo", "C_FriendList",
     "BattlePetTooltip", "FloatingBattlePetTooltip", "BattlePetToolTip_Show",
     "FloatingBattlePet_Toggle",
     -- Item / container / inventory

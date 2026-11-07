@@ -1,0 +1,321 @@
+-- VeritasUI_QualityOfLife / Social.lua
+-- Online Lists on the Guild and Social Buttons (v1.72.0, owner's request; the idea from EllesmereUI's
+-- "Social & Guild Tooltip", none of its code). Hover the Guild & Communities micro button for who in your guild
+-- is online, or the Social button beside the chat window (QuickJoinToastButton) for your friends in game.
+-- Click a name to whisper; Shift-click to invite.
+--
+-- Nothing of Blizzard's is hooked, replaced or hidden: GuildMicroButton belongs to the micro menu, an Edit Mode
+-- system (landmine 114: a HookScript there tainted Edit Mode once), and GameTooltip is shared (never hidden or
+-- hooked from here). A 10 Hz poll reads IsMouseOver on the two buttons and shows OUR frame, Blizzard's
+-- TooltipBackdropTemplate (SharedTooltipTemplates.xml:111, both games) with Blizzard's tooltip fonts, attached to
+-- Blizzard's own tooltip for that button (or the button). It stays while the mouse is on it, so a name can be
+-- clicked, and goes 0.6 s after the mouse is on neither.
+--
+-- Data, all read-only, every value pcall'd and secret-checked: the guild roster (GetNumGuildMembers /
+-- GetGuildRosterInfo, refreshed with C_GuildInfo.GuildRoster at most every 10 s and never in combat: the server
+-- throttles it, GuildInfoDocumentation.lua), WoW friends (C_FriendList.GetFriendInfoByIndex) and Battle.net friends
+-- in WoW (C_BattleNet.GetFriendAccountInfo, clientProgram == BNET_CLIENT_WOW). All in both games' API docs.
+-- Whisper: ChatFrameUtil.SendTell / SendBNetTell with DEFAULT_CHAT_FRAME given, so no temporary whisper window is
+-- opened from our code (EllesmereUI's measured taint note); not while chat is locked down
+-- (C_ChatInfo.InChatMessagingLockdown). Invite: C_PartyInfo.InviteUnit (PartyInfoDocumentation.lua:357).
+
+local VUI = _G.VeritasUI
+if not VUI then return end
+
+local pcall, ipairs, type, format = pcall, ipairs, type, string.format
+
+local function DB() return _G.VeritasUI_QualityOfLifeDB end
+local function On(key)
+    local db = DB()
+    return type(db) == "table" and db[key] == true
+end
+local function IsSecret(v) return issecretvalue and issecretvalue(v) or false end
+local function Plain(v) return v ~= nil and not IsSecret(v) end
+-- The call's results when it ran (never pcall's error text), else nothing.
+local function Call(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local res = { pcall(fn, ...) }
+    if not res[1] then return nil end
+    return select(2, (unpack or table.unpack)(res))   -- luacheck: ignore 143
+end
+-- "|cffRRGGBB" for a colour table.
+local function Hex(c) return format("|cff%02x%02x%02x", math.floor(c.r * 255 + 0.5), math.floor(c.g * 255 + 0.5),
+    math.floor(c.b * 255 + 0.5)) end
+
+local MAX_ROWS, ROW_H, PAD, GRACE, POLL = 30, 16, 10, 0.6, 0.1
+local ROSTER_EVERY = 10
+
+local list, rows, owner, lastOver, lastRoster = nil, {}, nil, 0, -ROSTER_EVERY
+local watcher
+
+local function ClassRGB(classFile)
+    local c = Plain(classFile) and C_ClassColor and Call(C_ClassColor.GetClassColor, classFile)
+    if type(c) == "table" and c.r then return c.r, c.g, c.b end
+    return 1, 1, 1
+end
+
+-- Localized class name (WoW friends only give that) -> class file, from Blizzard's own tables.
+local function ClassFileFromName(localized)
+    if not Plain(localized) then return nil end
+    for _, t in ipairs({ _G.LOCALIZED_CLASS_NAMES_MALE, _G.LOCALIZED_CLASS_NAMES_FEMALE }) do
+        if type(t) == "table" then
+            for file, name in pairs(t) do if name == localized then return file end end
+        end
+    end
+end
+
+local function Whisper(name, bnet)
+    local util = _G.ChatFrameUtil
+    if not util then return end
+    local lock = C_ChatInfo and C_ChatInfo.InChatMessagingLockdown
+    local ok, locked = false, false
+    if lock then ok, locked = pcall(lock) end
+    if ok and locked and not IsSecret(locked) then
+        VUI.Print("Quality of Life", "Whispers are not available here right now.")
+        return
+    end
+    if bnet and util.SendBNetTell then pcall(util.SendBNetTell, bnet, _G.DEFAULT_CHAT_FRAME)
+    elseif name and util.SendTell then pcall(util.SendTell, name, _G.DEFAULT_CHAT_FRAME) end
+end
+
+local function Invite(name)
+    if name and C_PartyInfo and C_PartyInfo.InviteUnit then pcall(C_PartyInfo.InviteUnit, name) end
+end
+
+local function Row(i)
+    local r = rows[i]
+    if r then return r end
+    r = CreateFrame("Button", nil, list)
+    r:SetHeight(ROW_H)
+    r:RegisterForClicks("LeftButtonUp")
+    local hl = r:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.1)      -- Blizzard's list hover (Settings rows: white at 0.1)
+    r.Left = r:CreateFontString(nil, "ARTWORK", "GameTooltipText")
+    r.Left:SetPoint("LEFT", 0, 0)
+    r.Left:SetJustifyH("LEFT")
+    r.Right = r:CreateFontString(nil, "ARTWORK", "GameTooltipText")
+    r.Right:SetPoint("RIGHT", 0, 0)
+    r.Right:SetJustifyH("RIGHT")
+    r:SetScript("OnClick", function(self)
+        if not self.name and not self.bnet then return end
+        if IsShiftKeyDown() then Invite(self.name) else Whisper(self.name, self.bnet) end
+    end)
+    rows[i] = r
+    return r
+end
+
+-- lines: { left, right, lr, lg, lb, rr, rg, rb, name, bnet, font }
+local function Fill(lines)
+    local width, n = 0, 0
+    for i, l in ipairs(lines) do
+        local r = Row(i)
+        r.Left:SetFontObject(l.font or "GameTooltipText")
+        r.Left:SetText(l.left or "")
+        r.Left:SetTextColor(l.lr or 1, l.lg or 1, l.lb or 1)
+        r.Right:SetText(l.right or "")
+        r.Right:SetTextColor(l.rr or 1, l.rg or 1, l.rb or 1)
+        r.name, r.bnet = l.name, l.bnet
+        r:EnableMouse(l.name ~= nil or l.bnet ~= nil)
+        r:ClearAllPoints()
+        r:SetPoint("TOPLEFT", list, "TOPLEFT", PAD, -PAD - (i - 1) * ROW_H)
+        r:SetPoint("TOPRIGHT", list, "TOPRIGHT", -PAD, -PAD - (i - 1) * ROW_H)
+        r:Show()
+        local w = r.Left:GetStringWidth() + (l.right and l.right ~= "" and (r.Right:GetStringWidth() + 20) or 0)
+        if w > width then width = w end
+        n = i
+    end
+    for i = n + 1, #rows do rows[i]:Hide() end
+    list:SetSize(math.max(width, 120) + PAD * 2, n * ROW_H + PAD * 2)
+end
+
+local NORMAL = function() return (NORMAL_FONT_COLOR or { r = 1, g = 0.82, b = 0 }) end
+local GREY = function() return (GRAY_FONT_COLOR or { r = 0.5, g = 0.5, b = 0.5 }) end
+
+local function StatusTag(afk, dnd)
+    if afk then return " " .. (_G.CHAT_FLAG_AFK or "<Away>") end
+    if dnd then return " " .. (_G.CHAT_FLAG_DND or "<Busy>") end
+    return ""
+end
+
+local function GuildLines()
+    local gold, grey = NORMAL(), GREY()
+    local lines = {}
+    if not (IsInGuild and IsInGuild()) then
+        lines[1] = { left = _G.ERR_GUILD_PLAYER_NOT_IN_GUILD or "You are not in a guild.",
+            lr = grey.r, lg = grey.g, lb = grey.b }
+        return lines
+    end
+    local now = GetTime()
+    if not InCombatLockdown() and now - lastRoster >= ROSTER_EVERY and C_GuildInfo and C_GuildInfo.GuildRoster then
+        lastRoster = now
+        pcall(C_GuildInfo.GuildRoster)
+    end
+    local guild = Call(_G.GetGuildInfo, "player")
+    local me = UnitName("player")
+    local members, shown, more = {}, 0, 0
+    local count = Call(_G.GetNumGuildMembers) or 0
+    if not Plain(count) or type(count) ~= "number" then count = 0 end
+    local notes = On("socialGuildNotes")
+    for i = 1, count do
+        local name, _, _, level, _, zone, note, _, online, status, class = Call(_G.GetGuildRosterInfo, i)
+        if Plain(name) and Plain(online) and online then
+            local short = Ambiguate and Ambiguate(name, "guild") or name
+            if short ~= me then
+                if shown >= MAX_ROWS then more = more + 1 else
+                    shown = shown + 1
+                    local r, g, b = ClassRGB(class)
+                    local left = short .. (Plain(level) and level and format(" %s%d|r", Hex(grey), level) or "")
+                        .. (Plain(status) and StatusTag(status == 1, status == 2) or "")
+                    if notes and Plain(note) and type(note) == "string" and note ~= "" then
+                        left = left .. format(" %s(%s)|r", Hex(grey), note)
+                    end
+                    members[#members + 1] = { left = left, right = Plain(zone) and zone or "", lr = r, lg = g, lb = b,
+                        rr = 0.8, rg = 0.8, rb = 0.8, name = name }
+                end
+            end
+        end
+    end
+    local title = (Plain(guild) and type(guild) == "string" and guild ~= "") and guild or (GUILD or "Guild")
+    lines[1] = { left = title, right = format("%d %s", shown + more, _G.FRIENDS_LIST_ONLINE or "Online"),
+        font = "GameTooltipHeaderText", lr = gold.r, lg = gold.g, lb = gold.b }
+    for _, m in ipairs(members) do lines[#lines + 1] = m end
+    if shown == 0 then
+        lines[#lines + 1] = { left = "No one else is online.", lr = grey.r, lg = grey.g, lb = grey.b }
+    end
+    if more > 0 then
+        lines[#lines + 1] = { left = format("and %d more", more), lr = grey.r, lg = grey.g, lb = grey.b }
+    end
+    if shown > 0 then
+        lines[#lines + 1] = { left = "Click to whisper. Shift-click to invite.", lr = gold.r, lg = gold.g, lb = gold.b }
+    end
+    return lines
+end
+
+local function FriendLines()
+    local gold, grey = NORMAL(), GREY()
+    local lines, people, more = {}, {}, 0
+    local function Add(p) if #people >= MAX_ROWS then more = more + 1 else people[#people + 1] = p end end
+    -- Battle.net friends playing WoW.
+    local nBN = Call(_G.BNGetNumFriends) or 0
+    if not Plain(nBN) or type(nBN) ~= "number" then nBN = 0 end
+    for i = 1, nBN do
+        local acc = C_BattleNet and Call(C_BattleNet.GetFriendAccountInfo, i)
+        local ga = type(acc) == "table" and acc.gameAccountInfo
+        if ga and Plain(ga.isOnline) and ga.isOnline and Plain(ga.clientProgram)
+            and ga.clientProgram == _G.BNET_CLIENT_WOW
+            and Plain(acc.accountName) then
+            local char = Plain(ga.characterName) and ga.characterName or nil
+            local class
+            if Plain(ga.classID) and C_CreatureInfo then
+                local info = Call(C_CreatureInfo.GetClassInfo, ga.classID)
+                class = type(info) == "table" and info.classFile
+            end
+            local r, g, b = ClassRGB(class)
+            local who = char and format(" %s%s|r", Hex({ r = r, g = g, b = b }), char) or ""
+            local fb = _G.FRIENDS_BNET_NAME_COLOR or { r = 0.51, g = 0.77, b = 1 }
+            Add({ left = acc.accountName .. who .. StatusTag(acc.isAFK == true or ga.isGameAFK == true,
+                acc.isDND == true or ga.isGameBusy == true),
+                right = Plain(ga.areaName) and ga.areaName or "", lr = fb.r, lg = fb.g, lb = fb.b,
+                rr = 0.8, rg = 0.8, rb = 0.8, bnet = acc.accountName,
+                name = char and (Plain(ga.realmName) and ga.realmName and ga.realmName ~= ""
+                    and (char .. "-" .. ga.realmName) or char) })
+        end
+    end
+    -- WoW friends.
+    local nWoW = C_FriendList and Call(C_FriendList.GetNumFriends) or 0
+    if not Plain(nWoW) or type(nWoW) ~= "number" then nWoW = 0 end
+    for i = 1, nWoW do
+        local fi = Call(C_FriendList.GetFriendInfoByIndex, i)
+        if type(fi) == "table" and Plain(fi.connected) and fi.connected and Plain(fi.name) then
+            local r, g, b = ClassRGB(ClassFileFromName(fi.className))
+            local level = Plain(fi.level) and fi.level and format(" %s%d|r", Hex(grey), fi.level) or ""
+            Add({ left = fi.name .. level .. StatusTag(fi.afk == true, fi.dnd == true),
+                right = Plain(fi.area) and fi.area or "", lr = r, lg = g, lb = b, rr = 0.8, rg = 0.8, rb = 0.8,
+                name = fi.name })
+        end
+    end
+    lines[1] = { left = _G.FRIENDS or "Friends",
+        right = format("%d %s", #people + more, _G.FRIENDS_LIST_ONLINE or "Online"), font = "GameTooltipHeaderText",
+        lr = gold.r, lg = gold.g, lb = gold.b }
+    for _, p in ipairs(people) do lines[#lines + 1] = p end
+    if #people == 0 then
+        lines[#lines + 1] = { left = "No friends are in game.", lr = grey.r, lg = grey.g, lb = grey.b }
+    end
+    if more > 0 then
+        lines[#lines + 1] = { left = format("and %d more", more), lr = grey.r, lg = grey.g, lb = grey.b }
+    end
+    if #people > 0 then
+        lines[#lines + 1] = { left = "Click to whisper. Shift-click to invite.", lr = gold.r, lg = gold.g, lb = gold.b }
+    end
+    return lines
+end
+
+local TARGETS = {
+    { frame = function() return _G.GuildMicroButton end, lines = GuildLines },
+    { frame = function() return _G.QuickJoinToastButton end, lines = FriendLines },
+}
+
+local function Over(f) return f and f.IsVisible and f:IsVisible() and f:IsMouseOver() end
+
+local function Place(btn)
+    list:ClearAllPoints()
+    local tip = _G.GameTooltip
+    local anchor = (tip and tip:IsShown() and tip:GetOwner() == btn) and tip or btn
+    local _, y = anchor:GetCenter()
+    local up = y and y < (UIParent:GetHeight() / 2)
+    if up then list:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, 2)
+    else list:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2) end
+end
+
+local function Build()
+    list = CreateFrame("Frame", "VUIQoLSocialList", UIParent, "TooltipBackdropTemplate")
+    list:SetFrameStrata("TOOLTIP")
+    list:SetClampedToScreen(true)
+    list:EnableMouse(true)
+    list:Hide()
+    list:SetScript("OnEvent", function()
+        if owner and list:IsShown() then Fill(owner.lines()) end
+    end)
+    for _, e in ipairs({ "GUILD_ROSTER_UPDATE", "FRIENDLIST_UPDATE", "BN_FRIEND_INFO_CHANGED" }) do
+        pcall(list.RegisterEvent, list, e)
+    end
+    watcher = CreateFrame("Frame")
+    local t = 0
+    watcher:SetScript("OnUpdate", function(_, elapsed)
+        t = t + (elapsed or 0)
+        if t < POLL then return end
+        t = 0
+        local now = GetTime()
+        for _, target in ipairs(TARGETS) do
+            local btn = target.frame()
+            if Over(btn) then
+                lastOver = now
+                if owner ~= target or not list:IsShown() then
+                    owner = target
+                    Fill(target.lines())
+                    Place(btn)
+                    list:Show()
+                end
+                return
+            end
+        end
+        if list:IsShown() then
+            if list:IsMouseOver() then lastOver = now
+            elseif now - lastOver > GRACE then list:Hide(); owner = nil end
+        end
+    end)
+end
+
+function VUI.QoL_SocialTooltipsSet(on)
+    if on and not list then Build() end
+    if watcher then watcher:SetShown(on and true or false) end
+    if not on and list then list:Hide(); owner = nil end
+end
+VUI.QoL_SocialGuildLines, VUI.QoL_SocialFriendLines = GuildLines, FriendLines   -- for qol_social_test
+
+local f = CreateFrame("Frame")
+f:RegisterEvent("PLAYER_LOGIN")
+f:SetScript("OnEvent", function()
+    if On("socialTooltips") then VUI.QoL_SocialTooltipsSet(true) end
+end)

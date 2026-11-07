@@ -168,6 +168,8 @@ local UNIVERSAL = {
     autoAcceptRes       = true,
     autoAcceptResCombat = false,
     autoUnwrapCollections = false,  -- Automation.lua (v1.52.0): new mounts, pets and toys unwrapped; off since v1.74.0
+    -- Automation.lua (owner's request): group invites from your guild. Off by default: it acts for you (v1.74.0 rule).
+    autoAcceptGuildInvites = false,
     -- AutoEquip.lua (v1.67.0, owner's request): off until turned on; then Poor and Common count, the rest opt-in.
     autoEquip = false,
     autoEquipPoor = true,
@@ -200,6 +202,10 @@ local UNIVERSAL = {
     tooltipClassNames = true,    -- a player's name line in their class colour (v1.37.0)
     tooltipFactionColors = true, -- a player's Horde / Alliance line in Blizzard's faction colour (v1.46.0)
     tooltipWrapParagon   = true, -- wrap the max-renown reputation tooltip's long line (v1.46.1, Blizzard bug)
+    tooltipGuildRank     = true, -- a player's guild line names their rank (v1.72.0, owner's request)
+    tooltipGuildmates    = true, -- your own guild's name in your guild chat colour (v1.72.0)
+    socialTooltips       = true, -- Social.lua (v1.72.0): who is online on the Guild and Social buttons
+    socialGuildNotes     = false, -- Social.lua (v1.72.0): sub-option, each member's public note in the guild list
     -- Phase 6 (v1.32.0): character sheet details, independent; on since v1.37.0.
     charEnchants      = true,    -- each slot's enchant beside it
     charDurability    = true,    -- each slot's durability %, below 100%
@@ -213,6 +219,9 @@ local UNIVERSAL = {
     chatRememberLines = true,     -- Chat.lua (v1.55.0): last 100 lines per window, per character
     chatRememberTyped = true,     -- Chat.lua (v1.56.0, owner request): last 5 typed lines, per character
     chatCopyButton = true,        -- CopyChat.lua (v1.57.0, owner request): copy button by the chat window
+    -- Chat.lua (owner request): [G] for [Guild], [2] for [2. Trade]. Off by default: it changes how chat looks
+    -- (v1.74.0 rule, as Timestamp Every Message).
+    chatShortChannels = false,
     whisperSound = "default",     -- Chat.lua (v1.54.0): "default" = Blizzard's own, untouched
     timestampAllMessages = false,   -- off since v1.74.0
     -- The icon the next /note starts with: the last one chosen from a note's menu.
@@ -3932,7 +3941,7 @@ end
 
 local function OnUnitTooltip(tooltip, data)
     if not db or not (db.tooltipTarget or db.tooltipMount or db.tooltipClassNames
-                      or db.tooltipFactionColors) then return end
+                      or db.tooltipFactionColors or db.tooltipGuildRank or db.tooltipGuildmates) then return end
     if tooltip ~= GameTooltip or not (data and data.guid) or not Readable(data.guid) then return end
     local unit = Read(UnitTokenFromGUID, data.guid)
     if not unit then return end
@@ -3967,6 +3976,30 @@ local function OnUnitTooltip(tooltip, data)
     end) end
     if db.tooltipTarget then pcall(TargetLine, tooltip, unit) end
     if db.tooltipMount then pcall(MountLine, tooltip, unit) end
+    -- Guild line (v1.72.0, owner's request): the line Blizzard writes with the player's guild is found by the
+    -- guild name GetGuildInfo(unit) returns (the call Blizzard's TabardFrame.lua makes); no such line, no change.
+    -- Show Guild Rank rewrites it in Blizzard's own "<rank> of <guild>" wording (GUILD_TEMPLATE, GlobalStrings,
+    -- both games), once per tooltip build. Highlight Guildmates colours it in your guild chat colour
+    -- (ChatTypeInfo.GUILD) when UnitIsInMyGuild (UnitDocumentation.lua, both games). Secret values: left alone.
+    if (db.tooltipGuildRank or db.tooltipGuildmates) and Read(UnitIsPlayer, unit) then pcall(function()
+        local guild, rank = Read(_G.GetGuildInfo, unit)
+        if type(guild) ~= "string" or guild == "" then return end
+        for i = 2, tooltip:NumLines() do
+            local line = _G["GameTooltipTextLeft" .. i]
+            local text = line and line:GetText()
+            if text and Readable(text) and text:find(guild, 1, true) then
+                if db.tooltipGuildRank and type(rank) == "string" and rank ~= "" then
+                    local want = (_G.GUILD_TEMPLATE or "%s of %s"):format(rank, text)
+                    if not text:find(rank, 1, true) then line:SetText(want) end
+                end
+                local info = _G.ChatTypeInfo and _G.ChatTypeInfo.GUILD
+                if db.tooltipGuildmates and info and info.r and Read(_G.UnitIsInMyGuild, unit) then
+                    line:SetTextColor(info.r, info.g, info.b)
+                end
+                return
+            end
+        end
+    end) end
 end
 
 local function SetupTooltipLines()
@@ -4708,6 +4741,31 @@ local function InitializeOptions()
         .. "hover them. The rest of the tooltip is unchanged.",
         function(value) if value then SetupTooltipLines() end end)
 
+    -- v1.72.0 (owner's request, joining a guild): one place for the guild options.
+    Header("Guild and Friends")
+    AddCheckbox("autoAcceptGuildInvites", "Accept Invites from Guildmates",
+        "Accepts a group invite from someone in your guild. Invites from anyone else still ask.")
+
+    AddCheckbox("tooltipGuildRank", "Show Guild Rank in Tooltips",
+        "A player's guild line in their tooltip names their rank too, such as Officer of <Your Guild>.",
+        function(value) if value then SetupTooltipLines() end end)
+
+    AddCheckbox("tooltipGuildmates", "Highlight Guildmates in Tooltips",
+        "The guild line of someone in your own guild is shown in your guild chat color, so you can spot "
+        .. "guildmates at a glance.",
+        function(value) if value then SetupTooltipLines() end end)
+
+    local socialInit = AddCheckbox("socialTooltips", "Online Lists on the Guild and Social Buttons",
+        "Hover the Guild & Communities button on the micro menu to see who in your guild is online, or the "
+        .. "Social button beside the chat window to see your friends who are in game. Click a name to whisper, "
+        .. "Shift-click to invite.",
+        function(value) if VUI.QoL_SocialTooltipsSet then VUI.QoL_SocialTooltipsSet(value) end end)
+    local notesInit = AddCheckbox("socialGuildNotes", "Show Guild Notes",
+        "Each guild member's public note follows their name in the guild list.")
+    if notesInit and socialInit and VUI.SettingsSubOption then
+        VUI.SettingsSubOption(notesInit, ADDON_NAME .. "_socialTooltips", function() return db.socialTooltips end)
+    end
+
     Header("General")
     AddCheckbox("afkScreen", "AFK Screen",
         "When you go AFK, hides the UI and slowly circles the camera, showing your name, level, item level and zone. Also helps prevent screen burn-in.",
@@ -4764,6 +4822,10 @@ local function InitializeOptions()
     AddCheckbox("chatClassColorNames", "Class-Colored Names in Messages",
         "The names of people in your group are shown in their class colour where they appear in a "
         .. "chat message, not only as the sender.")
+
+    AddCheckbox("chatShortChannels", "Abbreviate Channel Names",
+        "Chat shows short channel names: [G] for Guild, [O] for Officer, [P] for Party, [R] for Raid, [I] "
+        .. "for Instance, and the number for numbered channels, such as [2] for Trade. New lines only.")
 
     if VUI.QoL_WhisperSoundDropdown then
         VUI.QoL_WhisperSoundDropdown(category, db, ADDON_NAME, layout)
@@ -4898,7 +4960,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.skipCinematics then SetupSkipCinematics() end
         UpdateNpcEvents()
         if db.trainAllButton then SetupTrainAll() end
-        if db.tooltipTarget or db.tooltipMount or db.tooltipClassNames or db.tooltipFactionColors then
+        if db.tooltipTarget or db.tooltipMount or db.tooltipClassNames or db.tooltipFactionColors
+            or db.tooltipGuildRank or db.tooltipGuildmates then
             SetupTooltipLines()
         end
         if db.timestampAllMessages then SetTimestampAll(true) end
