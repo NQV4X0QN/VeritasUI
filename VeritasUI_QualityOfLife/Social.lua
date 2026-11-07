@@ -333,6 +333,13 @@ local function Build()
     for _, e in ipairs({ "GUILD_ROSTER_UPDATE", "FRIENDLIST_UPDATE", "BN_FRIEND_INFO_CHANGED" }) do
         pcall(list.RegisterEvent, list, e)
     end
+    -- The guild list belongs to the micro menu (Interface's Fade Micro Menu, v1.76.0, owner): the mouse on it, or on
+    -- the way to it, keeps the micro menu -- and every fade linked to it with Fade Together -- shown.
+    VUI.RegisterFadeAttachment("fadeMicroMenu", function()
+        if not (list:IsShown() and owner == TARGETS[1]) then return false end
+        local btn = owner.frame()
+        return list:IsMouseOver() or (btn ~= nil and InReach(btn))
+    end)
     watcher = CreateFrame("Frame")
     local t = 0
     watcher:SetScript("OnUpdate", function(_, elapsed)

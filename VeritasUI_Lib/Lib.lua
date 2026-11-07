@@ -289,6 +289,29 @@ function VUI.RegisterFadeLink(key, probe)
     list[#list + 1] = probe
 end
 
+-- Attachments (v1.76.0, owner: moving from the Guild button up to Quality of Life's online list let the linked
+-- bars fade): a frame that belongs to a fade without being its child -- the online list for the micro menu, the
+-- Great Vault button for the minimap alerts. The mouse on one counts as on that fade: HookHoverFade's own hover
+-- test reads it, so the fade itself stays, and so does every fade linked to it. Any addon may register one.
+local attachProbes = {}          -- [key] = { probe, ... }
+
+function VUI.RegisterFadeAttachment(key, probe)
+    if not (key and probe) then return end
+    local list = attachProbes[key]
+    if not list then list = {}; attachProbes[key] = list end
+    list[#list + 1] = probe
+end
+
+function VUI.FadeAttachmentHovered(key)
+    local list = key and attachProbes[key]
+    if not list then return false end
+    for i = 1, #list do
+        local ok, h = pcall(list[i])
+        if ok and h then return true end
+    end
+    return false
+end
+
 local function AnyLinkedHovered()
     local now = GetTime()
     if linkCacheTime == now then return linkCacheValue end
@@ -300,6 +323,7 @@ local function AnyLinkedHovered()
                 local ok, h = pcall(list[i])
                 if ok and h then hit = true; break end
             end
+            if not hit and VUI.FadeAttachmentHovered(key) then hit = true end
         end
         if hit then break end
     end
@@ -410,6 +434,8 @@ function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook, f
             local child = childCache[i]
             if child:IsVisible() and child:IsMouseOver() then return true end
         end
+        -- Something that belongs to this fade but is not its child (attachments above): counts as this fade.
+        if linkKey and VUI.FadeAttachmentHovered(linkKey) then return true end
         -- Extended-widget checks run ONLY while the bar is already visible. A
         -- flyout cannot be opened without first hovering the bar, so on the faded
         -- path these could only burn work — and GetMouseFoci allocates a table per

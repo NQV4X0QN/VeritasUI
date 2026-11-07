@@ -2061,8 +2061,13 @@ local function SetupMinimapAlertsFade()
         local v = _G.VUIQoLGreatVaultButton
         return v and v.IsVisible and v:IsVisible() and v:IsMouseOver() or false
     end
+    -- v1.76.0: the Vault button is an attachment of this fade (Lib VUI.RegisterFadeAttachment), so hovering it is
+    -- hovering the alerts -- and brings in the fades linked to them with Fade Together.
+    if not liveFadeHooked.fadeMinimapAlerts then
+        VUI.RegisterFadeAttachment("fadeMinimapAlerts", VaultHovered)
+    end
     SetupLiveFade("fadeMinimapAlerts", { ind },
-        function() return not db.fadeMinimapAlerts or VaultHovered() end,
+        function() return not db.fadeMinimapAlerts end,
         true, Opacity("fadeMinimapAlertsOpacity"))
 end
 
