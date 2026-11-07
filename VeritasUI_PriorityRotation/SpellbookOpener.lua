@@ -14,6 +14,13 @@
 -- menu-bar button, PlayerSpellsMicroButton (type "click", SecureTemplates.lua:560-567), whose
 -- OnClick opens the window exactly as the menu bar does (MainMenuBarMicroButtons.lua:852-863).
 --
+-- ⚠ WOW FOREVER HAS ITS OWN SPELLBOOK BUTTON (v1.74.2). Its menu bar shows SpellbookMicroButton and
+-- TalentMicroButton instead of the combined PlayerSpellsMicroButton (Blizzard_MicroMenu/Camelot/
+-- MicroMenuContainerOverrides.lua:6-7, forever). The combined button still exists there and opens the tab
+-- it suggests -- Talents while a talent point is unspent (MainMenuBarMicroButtons.lua:940-956) -- so an empty
+-- PR slot opened the talent window (owner, 2026-11-07). In Forever we forward to SpellbookMicroButton,
+-- whose `spellbookOnly` always opens the Spellbook (:947-948). Retail keeps the combined button.
+--
 -- WHICH TAB: the micro button reopens the last tab, but the window is declared
 -- autoMinimizeWithOtherPanels (Blizzard_PlayerSpellsFrame.lua:489-498), so with another UI panel
 -- open -- Priority Rotation's own window counts -- the panel manager minimizes it
@@ -102,7 +109,7 @@ end
 
 local function Build()
     if overlay or InCombatLockdown() then return overlay ~= nil end
-    local micro = _G.PlayerSpellsMicroButton
+    local micro = (VUI.IS_FOREVER and _G.SpellbookMicroButton) or _G.PlayerSpellsMicroButton
     if not micro then return false end
 
     overlay = CreateFrame("Button", "VUIPRSpellbookOpener", UIParent, "SecureActionButtonTemplate")

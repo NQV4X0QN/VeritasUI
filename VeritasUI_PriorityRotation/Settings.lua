@@ -473,8 +473,9 @@ local function BuildMainWindow()
         -- Spellbook button. ⛔ Priority Rotation does NOT open the spellbook itself: doing so from
         -- this code tainted it, and a spell clicked in it was refused (CastSpellBookItem,
         -- ADDON_ACTION_FORBIDDEN, fixed v1.22.1). The click is taken by SpellbookOpener.lua's
-        -- secure overlay (AddTarget below) and forwarded to Blizzard's PlayerSpellsMicroButton,
-        -- which opens or closes it like the menu bar. PR.ToggleSpellBookPanel only explains, for
+        -- secure overlay (AddTarget below) and forwarded to Blizzard's menu-bar spellbook button
+        -- (PlayerSpellsMicroButton; SpellbookMicroButton in WoW Forever), which opens or closes it
+        -- like the menu bar. PR.ToggleSpellBookPanel only explains, for
         -- when the overlay is absent (in combat, or no micro button). Never call PlayerSpellsUtil here.
         local spellBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")
         spellBtn:SetSize(HALF, 24)
