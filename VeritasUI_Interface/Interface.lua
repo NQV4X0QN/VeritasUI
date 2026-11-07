@@ -121,6 +121,8 @@ local UNIVERSAL = {
     fadeAuras           = true,
     -- v1.63.0 (owner's request): sub-option, ON -- the buffs come back while one has 30 s or less left.
     fadeAurasShowExpiring = true,
+    -- v1.72.0 (owner's request, WoW Forever only): sub-option, ON -- the Campfire Nearby buff stays shown.
+    fadeAurasShowCampfire = true,
     -- v1.44.0 (owner's request): the alert icons by the minimap (mail, crafting orders, and Quality
     -- of Life's Great Vault button), shown on hover.
     fadeMinimapAlerts   = true,
@@ -763,7 +765,11 @@ end
 -- Delves, Labyrinths, scenarios, Great Vault, renown, profession gear, talking heads, world quests or bonus
 -- objectives, and no expansion summary (Blizzard_ExpansionLandingPage is standard only, Gethe forever 1.60.1).
 local function ForThisGame(list)
-    if not VUI.IS_FOREVER then return list end
+    if not VUI.IS_FOREVER then
+        local kept = {}
+        for _, e in ipairs(list) do if not e.foreverOnly then kept[#kept + 1] = e end end
+        return kept
+    end
     local kept = {}
     for _, e in ipairs(list) do
         if not e.retailOnly then
@@ -1865,8 +1871,29 @@ local function SetupAuraFade()
         return false
     end
     local expiries = {}
+    -- Show Campfire Buff (v1.72.0, owner's request, WoW Forever): the buff you get near a campfire stays shown
+    -- while you have it. Spell 1283391 "Campfire Nearby" (wago.tools SpellName, product wowf, 2026-11-07) -- the
+    -- only spell of that name; UNMEASURED that it is the buff the owner sees. Told by spell ID, or by the name
+    -- the game gives that ID (C_Spell.GetSpellName), for another rank of the same buff. Blizzard's buff icons
+    -- carry the aura's auraInstanceID, not its spell (BuffFrame.lua:744-756 forever), so those IDs are kept.
+    local CAMPFIRE_SPELL = 1283391
+    local campfire = {}   -- [auraInstanceID] = true
+    local campfireName
+    local function IsCampfire(aura)
+        local id, name = aura.spellId, aura.name
+        if IsSecret(id) or IsSecret(name) then return false end
+        if id == CAMPFIRE_SPELL then return true end
+        if campfireName == nil then
+            local sp = _G.C_Spell
+            local ok, n = false, nil
+            if sp and sp.GetSpellName then ok, n = pcall(sp.GetSpellName, CAMPFIRE_SPELL) end
+            campfireName = (ok and type(n) == "string") and n or false
+        end
+        return campfireName and name == campfireName or false
+    end
     local function Collect()
         for i = #expiries, 1, -1 do expiries[i] = nil end
+        for k in pairs(campfire) do campfire[k] = nil end
         local ua = _G.C_UnitAuras
         if not (ua and ua.GetAuraDataByIndex) then return end
         for i = 1, 255 do
@@ -1877,6 +1904,8 @@ local function SetupAuraFade()
                 and d > 0 and e > 0 then
                 expiries[#expiries + 1] = e
             end
+            local iid = aura.auraInstanceID
+            if VUI.IS_FOREVER and not IsSecret(iid) and iid and IsCampfire(aura) then campfire[iid] = true end
         end
     end
     local function Short(e, now)
@@ -1884,7 +1913,16 @@ local function SetupAuraFade()
         local left = e - now
         return left > 0 and left <= SHORT_BUFF_SECONDS
     end
+    local function CampfireOn() return VUI.IS_FOREVER and db.fadeAurasShowCampfire and next(campfire) ~= nil end
+    -- An icon kept at full opacity: a buff running out (Show Expiring Buffs), or the campfire buff.
+    local function Kept(info, now)
+        if type(info) ~= "table" then return false end
+        if db.fadeAurasShowExpiring and Short(info.expirationTime, now) then return true end
+        local iid = info.auraInstanceID
+        return CampfireOn() and not IsSecret(iid) and iid ~= nil and campfire[iid] == true
+    end
     local function Expiring()
+        if CampfireOn() then return true end
         if not db.fadeAurasShowExpiring then return false end
         local now = GetTime()
         for _, e in ipairs(expiries) do
@@ -1926,8 +1964,7 @@ local function SetupAuraFade()
             local now, faded = GetTime(), VUI.FadedAlpha(opacity)
             for _, b in ipairs(buffs.auraFrames or {}) do
                 if type(b) == "table" and b.IsShown and b:IsShown() then
-                    local info = b.buttonInfo
-                    SetPieces(b, Short(type(info) == "table" and info.expirationTime, now) and 1 or faded)
+                    SetPieces(b, Kept(b.buttonInfo, now) and 1 or faded)
                 end
             end
             SetPieces(buffs.CollapseAndExpandButton, faded)
@@ -2320,6 +2357,10 @@ local function InitializeOptions()
         { key = "fadeAurasShowExpiring", name = "Show Expiring Buffs", parent = "fadeAuras",
           tip = "Your buffs and debuffs come back while one of your buffs has 30 seconds or less left, so "
              .. "you can see it run out, then fade again. Applies at once.",
+          apply = function() end },
+        { key = "fadeAurasShowCampfire", name = "Show Campfire Buff", parent = "fadeAuras", foreverOnly = true,
+          tip = "The buff you get near a campfire stays shown while you have it, so you never miss a campfire "
+             .. "nearby. The rest of your buffs stay faded. Applies at once.",
           apply = function() end },
         { key = "fadeMinimapAlerts",   name = "Fade Minimap Alerts",
           tip = "The mail and crafting order icons by the minimap, and the Great Vault button, fade "
@@ -2895,6 +2936,7 @@ local function InitializeOptions()
                                    "hideMacroNames" } },
         { "Micro Menu and Bags", { "fadeMicroMenu", "fadeBagButtons" } },
         { "Player",              { "fadePlayerFrame", "fadePlayerFramePower", "fadeAuras", "fadeAurasShowExpiring",
+                                   "fadeAurasShowCampfire",
                                    "hideProfessionGear" } },
         { "Chat",                { "fadeChatTabs", "hideSocialButton", "hideChatButtons", "hideVoiceChatButton" } },
         { "Minimap",             { "fadeMinimapAlerts", "fadeMinimapButtons" } },
