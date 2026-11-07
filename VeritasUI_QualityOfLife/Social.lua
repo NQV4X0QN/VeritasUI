@@ -330,13 +330,17 @@ local function Build()
                 if owner ~= target or not list:IsShown() then
                     owner = target
                     Fill(target.lines())
-                    Place(btn)
                     VUI.SmoothFade(list, 0, 1)
                     list:SetAlpha(1)
                     list:Show()
                 elseif fadingOut then
                     VUI.SmoothFade(list, FADE_IN, 1)
                 end
+                -- Placed again on every poll while the mouse is on the button (owner, 2026-11-07: coming from
+                -- another menu-bar button, Blizzard's tooltip for this one was not up yet when the list opened, so
+                -- the list sat on the button and the tooltip came up over it). Once the button's own tooltip is
+                -- shown, the list moves past it; when the mouse leaves for the list, it stays where it was.
+                Place(btn)
                 fadingOut = false
                 return
             end
