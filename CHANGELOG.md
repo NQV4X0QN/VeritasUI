@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.70.0] - 2026-11-06
+
+### Added
+
+- `VeritasUI_AdvancedOptions`, `VeritasUI_PriorityRotation`, `VeritasUI_QualityOfLife` — **Windows make Blizzard's open and close sounds.** Advanced Options and the trainer window sound like Character Info and the class trainer; Priority Rotation sounds like the Spellbook (`Lib.lua`, `Settings.lua`, `Trainer.lua`)
+
+### Changed
+
+- `VeritasUI_Interface`, `VeritasUI_QualityOfLife`, `VeritasUI_AuctionHouse` — **WoW Forever: options for things Forever doesn't have are left out.** No Scenario, Bonus Objectives or World Quests tracker sliders, no talking head options, no Expansion Summary Button minimap piece, no Profession Gear under Hide Transforms, and no Scenario and Delve Stages, Weekly Rewards or Renown banner groups (Delve and Event Messages is Event Messages there). Quality of Life drops Show Renown Level, the Great Vault button, Wrap Long Reputation Tooltip Lines, Not Warbound Containers, Untrack World Quests and the Delve and Labyrinth map-note icons; Auction House drops Reagents Value on Crafting Orders. Retail is unchanged (`Interface.lua`, `QualityOfLife.lua`, `Settings.lua`, `CraftingOrder.lua`)
+- `VeritasUI_QualityOfLife` — **WoW Forever: the trainer button options sit under Progress** (`QualityOfLife.lua`)
+
+### Removed
+
+- `VeritasUI_Interface` — **Zoom Buttons is gone from Fade Minimap Buttons.** The game already hides them unless your mouse is on the minimap, and hovering the minimap brings every faded piece back, so it never did anything (`Interface.lua`)
+
+### Fixed
+
+- `VeritasUI_Interface` — **WoW Forever: Zone Name under Fade Minimap Buttons now fades** (`Interface.lua`)
+
+
 ## [1.69.3] - 2026-11-06
 
 ### Added
