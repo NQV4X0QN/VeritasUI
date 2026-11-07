@@ -1009,7 +1009,7 @@ end
 -- Blizzard has no option for these (Edit Mode's Minimap system offers only header position, size and
 -- rotation). The pieces picked fade out, and hovering the minimap or any of them brings them ALL back
 -- (owner: a button at 0% has to be findable). Each fades by ALPHA only, never Hide(): Blizzard Shows
--- several of them on its own (zoom buttons on hover, Minimap.lua:276-290; Tracking per game rule,
+-- several of them on its own (Tracking per game rule,
 -- :390/:746/:797; the clock for an alarm, Blizzard_TimeManager.lua:465; the compartment and expansion
 -- button from their own refresh, AddonCompartment.lua:141-147, Minimap.lua:866-891), and the expansion
 -- button's OnHide drops its EventRegistry callbacks (:901-906). Blizzard never sets these frames' alpha
@@ -1041,8 +1041,9 @@ local MINIMAP_BUTTONS = {
           local t = _G.MinimapCluster and _G.MinimapCluster.Tracking
           return t and { t }
       end },
-    { id = "zoom",       label = "Zoom Buttons", tip = "The + and - buttons shown when you hover the minimap.",
-      frames = function() local m = _G.Minimap; return m and { m.ZoomIn, m.ZoomOut } end },
+    -- No Zoom Buttons row (removed v1.70.0, owner): Blizzard shows them only while the mouse is on the minimap
+    -- (Mainline/Minimap.lua MinimapMixin:OnEnter/OnLeave, both games), and hovering the minimap brings every
+    -- picked piece back, so a fade could never be seen (measured with /interface zoom, owner, Forever).
     { id = "compartment", label = "Addon Compartment",
       tip = "The addon menu button, where VeritasUI's own shortcuts are listed.",
       frames = function() return { _G.AddonCompartmentFrame } end },
@@ -2543,6 +2544,7 @@ local function InitializeOptions()
     -- VUI.SettingsSubOption, re-checked whenever the dropdown's mask setting changes -- never
     -- SetParentInitializer (Options search reads it: the Social taint, landmine 149).
     function BuildMinimapButtonsDropdown()
+        db.fadeMinimapButtons.zoom = nil   -- RETIRED v1.70.0: the Zoom Buttons row
         local buttons = {}
         for _, b in ipairs(MINIMAP_BUTTONS) do
             if not (b.retailOnly and VUI.IS_FOREVER) then buttons[#buttons + 1] = b end
@@ -2995,57 +2997,10 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
     end
 end)
 
--- ── PROBE (test build only, remove before release): /interface zoom ──
--- Fade Minimap Buttons > Zoom Buttons does not fade them in WoW Forever (owner, 2026-11-06), and Forever's zoom
--- code is the same as Retail's (Mainline/Minimap.lua:253-267 both: shown on minimap enter, hidden on leave).
--- Records who calls Show/Hide on them and when, and prints their state with the mouse off the minimap.
-local zoomLog = {}
-local zoomProbe = CreateFrame("Frame")
-zoomProbe:RegisterEvent("PLAYER_LOGIN")
-zoomProbe:SetScript("OnEvent", function()
-    local m = _G.Minimap
-    for _, k in ipairs({ "ZoomIn", "ZoomOut" }) do
-        local b = m and m[k]
-        if b then
-            for _, method in ipairs({ "Show", "Hide", "SetShown", "SetAlpha" }) do
-                hooksecurefunc(b, method, function(_, v)
-                    if #zoomLog >= 40 then table.remove(zoomLog, 1) end
-                    local stack = (_G.debugstack and _G.debugstack(3, 2, 0) or "?"):gsub("\n", " < ")
-                    zoomLog[#zoomLog + 1] = string.format("%.1f %s:%s(%s) %s", GetTime(), k, method,
-                        tostring(v), stack)
-                end)
-            end
-        end
-    end
-end)
-local function PrintZoomProbe()
-    local m = _G.Minimap
-    VUI.Print("Interface", "Zoom probe. Keep the mouse OFF the minimap. Picked: "
-        .. tostring(db and db.fadeMinimapButtons and db.fadeMinimapButtons.zoom)
-        .. ", fade hooked: " .. tostring(liveFadeHooked["fadeMinimapButtons_zoom"])
-        .. ", hovered says: " .. tostring(MinimapButtonsHovered())
-        .. ", minimap under mouse: " .. tostring(m and m:IsMouseOver()))
-    for _, k in ipairs({ "ZoomIn", "ZoomOut" }) do
-        local b = m and m[k]
-        if b then
-            VUI.Print("Interface", string.format("%s shown %s visible %s alpha %.2f effective %.2f under mouse %s",
-                k, tostring(b:IsShown()), tostring(b:IsVisible()), b:GetAlpha(), b:GetEffectiveAlpha(),
-                tostring(b:IsMouseOver())))
-        else
-            VUI.Print("Interface", k .. " missing")
-        end
-    end
-    local hit = m and m.ZoomHitArea
-    VUI.Print("Interface", "ZoomHitArea under mouse: " .. tostring(hit and hit:IsMouseOver()))
-    VUI.Print("Interface", "Last calls (" .. #zoomLog .. "):")
-    for i = math.max(1, #zoomLog - 9), #zoomLog do VUI.Print("Interface", zoomLog[i]) end
-end
-
 -- ── Slash commands ──────────────────────────────────────────
 SLASH_VERITASUI_INTERFACE1 = "/interface"
 SlashCmdList["VERITASUI_INTERFACE"] = function(msg)
     if strtrim(msg or ""):lower() == "gear" then PrintGearDiag(); return end
-    if strtrim(msg or ""):lower() == "zoom" then PrintZoomProbe(); return end
     if strtrim(msg or ""):lower() == "tracker" then
         -- Which tracker sections are shown, and their alpha: if an event's objective still fades,
         -- this names the section it is in, so it can be added to OT_EVENT_MODULES.
