@@ -9,7 +9,7 @@
 -- hooked from here). A 10 Hz poll reads IsMouseOver on the two buttons and shows OUR frame, Blizzard's
 -- TooltipBackdropTemplate (SharedTooltipTemplates.xml:111, both games) with Blizzard's tooltip fonts, placed beside
 -- Blizzard's own tooltip for that button (or the button). It stays while the mouse is on it or on the way to it,
--- so a name can be clicked, and goes 0.6 s after the mouse is on neither.
+-- so a name can be clicked, and fades out over 0.5 s once the mouse is on neither.
 --
 -- Data, all read-only, every value pcall'd and secret-checked: the guild roster (GetNumGuildMembers /
 -- GetGuildRosterInfo, refreshed with C_GuildInfo.GuildRoster at most every 10 s and never in combat: the server
@@ -42,10 +42,12 @@ end
 local function Hex(c) return format("|cff%02x%02x%02x", math.floor(c.r * 255 + 0.5), math.floor(c.g * 255 + 0.5),
     math.floor(c.b * 255 + 0.5)) end
 
-local MAX_ROWS, ROW_H, PAD, GRACE, POLL = 30, 16, 10, 0.6, 0.1
+-- FADE_IN / FADE_OUT: the speeds of Lib's hover fades (Interface's OT_FADE_IN / OT_FADE_OUT), so the list goes
+-- like the rest of our faded interface.
+local MAX_ROWS, ROW_H, PAD, POLL, FADE_IN, FADE_OUT = 30, 16, 10, 0.1, 0.2, 0.5
 local ROSTER_EVERY = 10
 
-local list, rows, owner, lastOver, lastRoster = nil, {}, nil, 0, -ROSTER_EVERY
+local list, rows, owner, fadingOut, lastRoster = nil, {}, nil, false, -ROSTER_EVERY
 local watcher
 
 local function ClassRGB(classFile)
@@ -322,24 +324,34 @@ local function Build()
         t = t + (elapsed or 0)
         if t < POLL then return end
         t = 0
-        local now = GetTime()
         for _, target in ipairs(TARGETS) do
             local btn = target.frame()
             if Over(btn) then
-                lastOver = now
                 if owner ~= target or not list:IsShown() then
                     owner = target
                     Fill(target.lines())
                     Place(btn)
+                    VUI.SmoothFade(list, 0, 1)
+                    list:SetAlpha(1)
                     list:Show()
+                elseif fadingOut then
+                    VUI.SmoothFade(list, FADE_IN, 1)
                 end
+                fadingOut = false
                 return
             end
         end
         if list:IsShown() then
             local btn = owner and owner.frame()
-            if list:IsMouseOver() or (btn and InReach(btn)) then lastOver = now
-            elseif now - lastOver > GRACE then list:Hide(); owner = nil end
+            if list:IsMouseOver() or (btn and InReach(btn)) then
+                if fadingOut then fadingOut = false; VUI.SmoothFade(list, FADE_IN, 1) end
+            elseif not fadingOut then
+                -- Off it: fade out (owner, 2026-11-07: it vanished all at once). Back on it in time fades it back in.
+                fadingOut = true
+                VUI.SmoothFade(list, FADE_OUT, 0)
+            elseif list:GetAlpha() <= 0.01 then
+                list:Hide(); owner = nil; fadingOut = false
+            end
         end
     end)
 end
@@ -347,7 +359,7 @@ end
 function VUI.QoL_SocialTooltipsSet(on)
     if on and not list then Build() end
     if watcher then watcher:SetShown(on and true or false) end
-    if not on and list then list:Hide(); owner = nil end
+    if not on and list then list:Hide(); owner = nil; fadingOut = false end
 end
 VUI.QoL_SocialGuildLines, VUI.QoL_SocialFriendLines = GuildLines, FriendLines   -- for qol_social_test
 
