@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.72.0] - 2026-11-07
+
+### Added
+
+- `VeritasUI_Interface` — **Show Quests With Items.** While the objective tracker is faded, quests in the zone you're in that have an item to use stay shown at the top of their section, with the item button and the section's header, so you see them at a glance. Under Fade Objective Tracker, on by default; applies at once (`Interface.lua`)
+- `VeritasUI_Interface` — **WoW Forever: Show Campfire Buff.** The buff you get near a campfire stays shown while you have it, and your other buffs stay faded, so you never miss a campfire nearby. Under Fade Buffs and Debuffs, on by default; applies at once (`Interface.lua`)
+- `VeritasUI_QualityOfLife` — **WoW Forever: trainer window tooltips.** Hover a skill in the trainer window for the same tooltip the class trainer shows. They are saved at each visit to your class trainer (`Trainer.lua`)
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **Highlight Gear for Stats covers Strength, Agility, Stamina, Intellect and Spirit,** and in WoW Forever that game's own stats too: Hit, Critical Strike, Haste, Expertise, Armor Penetration, Spell Power, Healing, Defense, Dodge, Parry and Block (`CharacterStats.lua`)
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **WoW Forever: Highlight Gear for Stats did nothing** — Forever's character window builds its stat tooltips its own way, so hovering a stat lit no gear (`CharacterStats.lua`)
+
+### Removed
+
+- `VeritasUI_QualityOfLife` — **WoW Forever: Show Diminishing Returns is no longer offered** — rating has no diminishing returns there, so the tooltip line would always read 0. Retail is unchanged (`CharacterStats.lua`, `QualityOfLife.lua`)
+
+
 ## [1.71.2] - 2026-11-06
 
 ### Changed
