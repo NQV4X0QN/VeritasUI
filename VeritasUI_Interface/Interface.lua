@@ -69,18 +69,22 @@ end
 --
 -- Shared by every character: chrome-hiding and chat cosmetics are choices about the interface
 -- itself, not about how a particular character is played.
+-- ⚠ v1.74.0 (owner, from player feedback: "jarring to have all the elements suddenly disappear"): every
+-- fade and hide starts OFF for a new install, so a new player sees Blizzard's interface until they turn
+-- something on. Sub-options and sliders keep their values, ready for when the parent is turned on.
+-- Defaults only seed missing keys, so players who already have VeritasUI keep what they have.
 local UNIVERSAL = {
     -- Fade Chat Window (label since v1.41.0; the key keeps its old name so saved choices carry over)
-    fadeChatTabs        = true,
-    hideSocialButton    = true,
-    hideChatButtons     = true,
-    hideVoiceChatButton = true,
-    fadeMicroMenu       = true,
+    fadeChatTabs        = false,
+    hideSocialButton    = false,
+    hideChatButtons     = false,
+    hideVoiceChatButton = false,
+    fadeMicroMenu       = false,
     -- v1.62.0 (owner's request, 2026-11-04, for WoW Forever where the bag bar matters more): Fade Bag
     -- Buttons replaces Hide Bag Buttons (hideBagButtons, a saved "off" carries over as off).
-    fadeBagButtons      = true,
-    hideMacroNames      = true,
-    hideErrorText       = true,   -- the "All" row of the Hide Error Text dropdown (was its own checkbox)
+    fadeBagButtons      = false,
+    hideMacroNames      = false,
+    hideErrorText       = false,  -- the "All" row of the Hide Error Text dropdown (was its own checkbox)
     -- [groupId] = true. TABLE-typed. Overridden while hideErrorText ("All") is on.
     -- PAIRED: hideErrorTypesMask (the dropdown's tick-box value) is derived from this and
     -- hideErrorText, and must share their scope; like fadeActionBarsMask it has no default
@@ -100,32 +104,32 @@ local UNIVERSAL = {
     hideTopBannerTypes  = {},
     -- v1.49.0: Hide Transforms dropdown, [kindId] = true (TRANSFORM_KINDS). TABLE-typed. PAIRED with
     -- hideTransformsMask (derived), like hideTopBannersMask. Replaces hideProfessionGear (v1.27.0, ON
-    -- since v1.37.0): Profession Gear stays ticked for new installs; the rest start off.
-    hideTransformTypes  = { professions = true },
+    -- since v1.37.0). Every kind starts off for new installs since v1.74.0.
+    hideTransformTypes  = {},
     -- v1.60.0: Fade Minimap Buttons dropdown, [buttonId] = true (MINIMAP_BUTTONS). TABLE-typed, PAIRED
     -- with fadeMinimapButtonsMask (derived). Default none. Replaces hideMinimapButtons (v1.50.0), whose
     -- choices it takes on upgrade at 0% opacity.
     fadeMinimapButtons  = {},
     -- v1.39.0 (owner's request): two more hover fades, applied at once. Universal: the damage meter
     -- and the reputation / experience / honor bars sit in the same place on every character.
-    fadeDamageMeter     = true,    -- shown in combat or on hover
-    fadeStatusBars      = true,    -- shown on hover
+    fadeDamageMeter     = false,   -- shown in combat or on hover
+    fadeStatusBars      = false,   -- shown on hover
     -- v1.42.0 (owner's request): the All Objectives tracker, shown on hover. Universal, like the
     -- other interface fades.
-    fadeObjectiveTracker = true,
+    fadeObjectiveTracker = false,
     -- v1.65.0 (owner's request): sub-option, ON -- quests ready to turn in stay shown through the fade.
     fadeObjectiveTrackerTurnIn = true,
     -- v1.72.0 (owner's request): sub-option, ON -- this zone's quests with a usable item stay shown too.
     fadeObjectiveTrackerItems = true,
     -- v1.43.0 (owner's request): your buffs and debuffs by the minimap, shown in combat or on hover.
-    fadeAuras           = true,
+    fadeAuras           = false,
     -- v1.63.0 (owner's request): sub-option, ON -- the buffs come back while one has 30 s or less left.
     fadeAurasShowExpiring = true,
     -- v1.72.0 (owner's request, WoW Forever only): sub-option, ON -- the Campfire Nearby buff stays shown.
     fadeAurasShowCampfire = true,
     -- v1.44.0 (owner's request): the alert icons by the minimap (mail, crafting orders, and Quality
     -- of Life's Great Vault button), shown on hover.
-    fadeMinimapAlerts   = true,
+    fadeMinimapAlerts   = false,
     -- v1.45.0 (owner's request): sub-option of Fade Main Action Bar, ON so the behaviour before it is
     -- kept: the bar is shown in flight. Off, flying is like any other time out of combat.
     fadeMainActionBarShowFlying = true,
@@ -170,6 +174,11 @@ local UNIVERSAL = {
     -- v1.62.0 (owner): Fade Action Bars has its own slider, so Action Bar 1 can stay fully shown while
     -- bars 2-8 fade. fadeActionBarsOpacity is now Action Bar 1's only. Takes that value on upgrade.
     fadeMultiBarsOpacity   = 0,
+    -- v1.74.0, a technical value, never offered as a choice: what a NEW character's per-character fades
+    -- (PERCHAR) start as on this account. An account that already had VeritasUI seeds `true` here, so its
+    -- new characters keep the fades on as before; a first-ever install is given `false` at ADDON_LOADED,
+    -- before this default could be seeded.
+    newCharacterFades      = true,
 }
 
 -- ⚠ PER-CHARACTER. These two are the reason per-character storage was requested in the first
@@ -181,13 +190,27 @@ local UNIVERSAL = {
 -- a different character's bars. It has no default here on purpose -- Blizzard's Settings
 -- framework seeds it via the default passed at registration. (Until v1.21.0 the same role was
 -- played by the display string fadeActionBarsLabel, retired at login in InitializeOptions.)
+--
+-- fadePlayerFrame and fadeMainActionBar are written as a new install's value (off, v1.74.0) and set
+-- from the account's newCharacterFades by ApplyNewCharacterFades before each bind.
 local PERCHAR = {
     fadeActionBars  = {},     -- [barIndex] = true; TABLE-typed, so it needs a per-character copy
-    fadePlayerFrame = true,
+    fadePlayerFrame = false,
     -- v1.39.0: Action Bar 1, shown in combat, while flying or on hover. Per-character with the other
     -- action bar fades, for the same reason (bars are used differently on each character).
-    fadeMainActionBar = true,
+    fadeMainActionBar = false,
 }
+-- The PERCHAR keys that follow newCharacterFades.
+local NEW_CHARACTER_FADES = { "fadePlayerFrame", "fadeMainActionBar" }
+-- Sets them on the defaults table itself, which the binder seeds a new character from and /vui copy
+-- re-seeds from. Read from the saved root, so it works before the binder has seeded newCharacterFades
+-- (nil there = an account that had VeritasUI before v1.74.0 = on). Called before EVERY bind: the
+-- ADDON_LOADED bind already seeds this character when its identity is known (as in ZoneQuests).
+local function ApplyNewCharacterFades()
+    local root = _G.VeritasUI_InterfaceDB
+    local on = not (type(root) == "table" and root.newCharacterFades == false)
+    for _, k in ipairs(NEW_CHARACTER_FADES) do PERCHAR[k] = on end
+end
 
 
 local db
@@ -2801,7 +2824,7 @@ local function InitializeOptions()
             owner = db,              -- UNIVERSAL: paired with hideTransformTypes
             setMask = function(v) db.hideTransformsMask = v end,
             name = "Hide Transforms", items = TRANSFORM_KINDS, truth = db.hideTransformTypes,
-            defaultIds = { "professions" },          -- as UNIVERSAL.hideTransformTypes
+            defaultIds = {},                          -- as UNIVERSAL.hideTransformTypes (none since v1.74.0)
             unavailableKey = "hideProfessionGear",
             tip = "Pick the costumes and transformations to take off you as soon as they land, so your own "
                .. "look stays. Not during combat; anything that lands in combat comes off when it ends. "
@@ -2839,7 +2862,7 @@ local function InitializeOptions()
             db,                          -- UNIVERSAL: paired with hideErrorTypes
             "number",
             "Hide Error Text",
-            Bit(ERR_ALL) + (2 ^ ERR_MAX - 2 ^ (ERR_FIRST_GROUP - 1))   -- default: All, as before
+            Bit(ERR_NONE)                -- default: None, as UNIVERSAL.hideErrorText (v1.74.0)
         )
 
         local ignoreErrCallback = false
@@ -2984,10 +3007,17 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         -- v1.62.0: bars 2-8 get their own opacity, starting from the shared one so nothing looks
         -- different after the upgrade. Before the binder seeds the new key's default.
         local saved = _G.VeritasUI_InterfaceDB
-        if type(saved) == "table" and saved.fadeMultiBarsOpacity == nil
+        -- v1.74.0: a first-ever install (no saved table yet) starts new characters with the fades off.
+        -- Must run before the binder below, which would seed the `true` default.
+        if type(saved) ~= "table" then
+            saved = { newCharacterFades = false }
+            _G.VeritasUI_InterfaceDB = saved
+        end
+        if saved.fadeMultiBarsOpacity == nil
             and type(saved.fadeActionBarsOpacity) == "number" then
             saved.fadeMultiBarsOpacity = saved.fadeActionBarsOpacity
         end
+        ApplyNewCharacterFades()
         -- Account table only: no identity yet, so cdb comes back nil. VUI.BindScopedDB replaces
         -- the hand-rolled seeding loop AND the local DeepCopy that used to live here -- that loop
         -- wrote EVERY default into the account root, which is the mechanism behind the pinning
@@ -3008,6 +3038,8 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         -- table". That was true only while the whole module was per-character. The invariant now
         -- holds PER KEY: each read and each Settings registration must see the table that OWNS
         -- that key -- `db` for account-wide, `cdb` for the three per-character ones.
+        -- v1.74.0: a new character's fades start as this account's newCharacterFades (see UNIVERSAL).
+        ApplyNewCharacterFades()
         db, cdb = VUI.BindScopedDB("VeritasUI_InterfaceDB", UNIVERSAL, PERCHAR)
 
         -- ⚠ MUST run here: after the per-character table exists, and BEFORE anything reads a

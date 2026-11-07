@@ -23,6 +23,11 @@ local UNIVERSAL = {
     pinLegendary  = true,
     pinMeta       = true,
     pinRepeatable = true,
+    -- v1.74.0, a technical value, never offered as a choice: what a NEW character's `enabled` starts as on
+    -- this account. An account that already had VeritasUI seeds `true`, so its new characters still
+    -- filter; a first-ever install is given `false` at ADDON_LOADED, before this default could be seeded
+    -- (owner, from player feedback: quests leaving the tracker unasked is confusing).
+    newCharacterEnabled = true,
 }
 
 -- ⚠ PER-CHARACTER, and not a preference: `untrackedBeforeFilter` records THIS character's
@@ -33,10 +38,20 @@ local UNIVERSAL = {
 -- was shared, turning filtering off on one character restored only that character, and every alt
 -- it had filtered stayed filtered. Characters first seen after the change take the old shared
 -- value (`SeedEnabledFromShared`), so nothing flips on or off at the update.
+-- `enabled` is written as a new install's value (off, v1.74.0) and set from the account's
+-- newCharacterEnabled by ApplyNewCharacterEnabled before each bind.
 local PERCHAR = {
-    enabled               = true,
+    enabled               = false,
     untrackedBeforeFilter = false,
 }
+
+-- Sets PERCHAR.enabled, which the binder seeds a new character from and /vui copy re-seeds from. Read from
+-- the saved root, so it works before the binder has seeded newCharacterEnabled (nil there = an account that
+-- had VeritasUI before v1.74.0 = on).
+local function ApplyNewCharacterEnabled()
+    local root = _G.VeritasUI_ZoneQuestsDB
+    PERCHAR.enabled = not (type(root) == "table" and root.newCharacterEnabled == false)
+end
 
 local db  = nil  -- ACCOUNT-wide table; assigned at ADDON_LOADED
 -- ⚠ Declared HERE, above every function that reads it. `cdb` is the PER-CHARACTER table and is
@@ -510,7 +525,12 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         -- It also deep-copies table defaults, so the local DeepCopy is no longer needed.
         -- BindScopedDB seeds this character's slot here already when its identity is known, so
         -- the shared `enabled` must be copied in first (see SeedEnabledFromShared).
+        -- v1.74.0: a first-ever install (no saved table yet) starts new characters unfiltered.
+        if type(_G.VeritasUI_ZoneQuestsDB) ~= "table" then
+            _G.VeritasUI_ZoneQuestsDB = { newCharacterEnabled = false }
+        end
         SeedEnabledFromShared()
+        ApplyNewCharacterEnabled()
         db = VUI.BindScopedDB("VeritasUI_ZoneQuestsDB", UNIVERSAL, PERCHAR)
         -- InitializeOptions stays at PLAYER_LOGIN: Settings.RegisterAddOnSetting captures the
         -- table it is handed, and the per-character table (`enabled`) does not exist yet here.
@@ -524,6 +544,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         -- Identity is available: bind BOTH tables. `db` is account-wide (every universal read
         -- below is unchanged); `cdb` is this character's slot: enabled and untrackedBeforeFilter.
         SeedEnabledFromShared()
+        ApplyNewCharacterEnabled()
         db, cdb = VUI.BindScopedDB("VeritasUI_ZoneQuestsDB", UNIVERSAL, PERCHAR)
 
         -- ⚠ MIGRATION MUST RUN HERE: after the char table exists, and BEFORE anything reads a

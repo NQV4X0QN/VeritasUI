@@ -18,7 +18,8 @@ local pcall = pcall
 
 local function Enabled()
     local db = _G.VeritasUI_QualityOfLifeDB
-    return not (type(db) == "table" and db.untrackWorldQuestsOnUnfocus == false)
+    -- Off unless saved on (v1.74.0: off by default, so an unseeded table must not read as on).
+    return type(db) == "table" and db.untrackWorldQuestsOnUnfocus == true
 end
 
 local function Current()

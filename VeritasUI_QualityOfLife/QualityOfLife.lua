@@ -102,7 +102,7 @@ local UNIVERSAL = {
     autoSellJunk   = true,
     autoRepair     = true,
     showItemLevels = true,
-    afkScreen      = true,
+    afkScreen      = false,   -- OFF since v1.74.0: it hides the whole interface when you go AFK
     -- Paints the Nemesis groups-remaining count on the Delve plaque icon that
     -- otherwise only reveals it on hover, and a checkmark once all groups are down.
     delveNemesisCount = true,
@@ -151,6 +151,9 @@ local UNIVERSAL = {
     -- remove game content -- Track Latest Reputation above, Fill In DELETE, Skip Cinematics, Auto
     -- Accept / Turn In Quests, and Interface's Talking Head and Top Banners hides. Defaults only
     -- seed missing keys, so existing players keep what they have.
+    -- ⚠ v1.74.0 (owner, from player feedback that things changing unasked is jarring): also OFF for new
+    -- installs -- AFK Screen, every Quests and Dialogue option, Auto Unwrap Collections and Timestamp
+    -- Every Message, and every Interface fade and hide.
     repBarRenownLevel = true,     -- "[18/20]" beside the name on the reputation bar (owner, 2026-10-30)
     greatVaultButton  = true,     -- Great Vault button by the minimap's mail icon (owner, 2026-10-30)
     trainerButton     = true,     -- WoW Forever: new class skills button by the minimap (Trainer.lua, owner 2026-11-05)
@@ -159,12 +162,12 @@ local UNIVERSAL = {
     -- player can see and switch). ON by default, unlike the options above, so nobody loses it.
     wayCommand        = true,
     mapNotesEnabled   = true,     -- /note and the notes' map pins; same reason, on by default (v1.34.4)
-    untrackWorldQuestsOnUnfocus = true,   -- WorldQuestUntrack.lua (v1.51.0, owner's request)
+    untrackWorldQuestsOnUnfocus = false,  -- WorldQuestUntrack.lua (v1.51.0, owner's request); off since v1.74.0
     -- Automation.lua (v1.52.0, feature batch Phase 3): accepting a resurrection someone cast on you.
     -- A battle res (caster in combat) only with the sub-option, off by default.
     autoAcceptRes       = true,
     autoAcceptResCombat = false,
-    autoUnwrapCollections = true,   -- Automation.lua (v1.52.0): new mounts, pets and toys unwrapped
+    autoUnwrapCollections = false,  -- Automation.lua (v1.52.0): new mounts, pets and toys unwrapped; off since v1.74.0
     -- AutoEquip.lua (v1.67.0, owner's request): off until turned on; then Poor and Common count, the rest opt-in.
     autoEquip = false,
     autoEquipPoor = true,
@@ -182,9 +185,9 @@ local UNIVERSAL = {
     -- Blizzard's own confirmations behave.
     fillDeleteConfirm = false,   -- types DELETE into the delete-item confirmation
     skipCinematics    = false,   -- Escape skips a cinematic or movie without asking
-    -- Phase 3 (v1.29.0): NPC shortcuts; Shift held pauses the first three. The two quest ones stay
-    -- OFF; the others are on since v1.37.0.
-    pickOnlyGossip    = true,    -- pick an NPC's only dialogue option
+    -- Phase 3 (v1.29.0): NPC shortcuts; Shift held pauses the first three. All OFF since v1.74.0
+    -- (Pick Only Dialogue Option was on from v1.37.0).
+    pickOnlyGossip    = false,   -- pick an NPC's only dialogue option
     autoAcceptQuest   = false,   -- take offered quests (separate from turn-in, owner's request)
     autoTurnInQuest   = false,   -- hand in completed quests
     -- v1.52.0: Quest Options dropdown (Automation.lua), [id] = true. TABLE-typed, PAIRED with npcOptionsMask
@@ -211,7 +214,7 @@ local UNIVERSAL = {
     chatRememberTyped = true,     -- Chat.lua (v1.56.0, owner request): last 5 typed lines, per character
     chatCopyButton = true,        -- CopyChat.lua (v1.57.0, owner request): copy button by the chat window
     whisperSound = "default",     -- Chat.lua (v1.54.0): "default" = Blizzard's own, untouched
-    timestampAllMessages = true,
+    timestampAllMessages = false,   -- off since v1.74.0
     -- The icon the next /note starts with: the last one chosen from a note's menu.
     mapNoteIcon = "Waypoint-MapPin-Untracked",
 }
