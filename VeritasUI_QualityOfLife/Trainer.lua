@@ -115,12 +115,37 @@ local function TipLines(i)
     return out[1] and out or nil
 end
 
+-- THE PET TRAINER (owner, Forever Hunter, 2026-11-07): visiting it replaced the class list, so it reported a General
+-- trainer at our capture although Blizzard's window tests C_Trainer.GetTrainerType() == Enum.TrainerType.Pet
+-- (Blizzard_TrainerUI.lua:444/:571 forever). MEASURED (`/qol trainable`, owner): every pet service's skill line
+-- reads "Beast Training"; the class list's do not. A list counts as the pet trainer's when the type says Pet or
+-- every service is on that line; it is kept apart (db.trainerPetCache), so neither visit wipes the other.
+-- `points` = the type said Pet at a capture: Blizzard then shows costs as training points (:709-721), else money.
+local PET_LINE = "Beast Training"
+local function IsPetList(list)
+    if type(list) ~= "table" or not list[1] then return false end
+    for _, e in ipairs(list) do if e.line ~= PET_LINE then return false end end
+    return true
+end
+VUI.QoL_TrainerIsPetList = IsPetList   -- for qol_trainer_test
+
+-- A pet list saved by v1.72.0 or earlier sits in the class slot: move it to the pet slot (once, at read time).
+local function Refile(db, key)
+    local c = db.trainerCache and db.trainerCache[key]
+    if c and IsPetList(c.list) then
+        db.trainerPetCache = db.trainerPetCache or {}
+        if not db.trainerPetCache[key] then db.trainerPetCache[key] = c end
+        db.trainerCache[key] = nil
+    end
+end
+
 local function Capture()
     local db = DB()
     if type(db) ~= "table" then return false end
     local okT, ttype = pcall(C_Trainer.GetTrainerType)
-    local general = Enum and Enum.TrainerType and Enum.TrainerType.General or 0
-    if not okT or ttype ~= general then return false end
+    local TT = Enum and Enum.TrainerType
+    local general, petType = TT and TT.General or 0, TT and TT.Pet or 3
+    if not okT or (ttype ~= general and ttype ~= petType) then return false end
     local okTS, trade = pcall(IsTradeskillTrainer)
     if okTS and trade then return false end
     local okN, n = pcall(GetNumTrainerServices)
@@ -151,9 +176,14 @@ local function Capture()
         local okF, on = pcall(GetTrainerServiceTypeFilter, f)
         filters[f] = okF and on and true or false
     end
-    db.trainerCache = db.trainerCache or {}
-    db.trainerCache[CharKey()] = { list = list, filters = filters, level = Level(),
-        trainer = UnitName("npc"), time = time() }
+    local pet = ttype == petType or IsPetList(list)
+    local slot = pet and "trainerPetCache" or "trainerCache"
+    local key = CharKey()
+    db[slot] = db[slot] or {}
+    local old = db[slot][key]
+    db[slot][key] = { list = list, filters = filters, level = Level(),
+        trainer = UnitName("npc"), time = time(),
+        points = pet and (ttype == petType or (old and old.points)) or nil }
     return true
 end
 
@@ -177,11 +207,26 @@ end
 
 -- The saved list for this character, split: `now` = at or below your level and not known; `later` = above it.
 -- `shown` = both, in the trainer's own order (what the window lists).
-local function Trainable()
+-- Pet skills are learned by the pet and need the PET's level (Blizzard_TrainerUI.lua:611-613 forever: unit "pet"
+-- for a pet skill); with no pet out, your own level stands in. Your spellbook says nothing about them.
+local function KindLevel(kind)
+    if kind == "pet" then
+        local ok, l = pcall(UnitLevel, "pet")
+        if ok and type(l) == "number" and l > 0 then return l end
+    end
+    return Level()
+end
+
+-- kind: "class" (default) or "pet".
+local function Trainable(kind)
     local db = DB()
-    local cache = type(db) == "table" and db.trainerCache and db.trainerCache[CharKey()]
+    if type(db) ~= "table" then return nil end
+    local key = CharKey()
+    Refile(db, key)
+    local slot = kind == "pet" and db.trainerPetCache or db.trainerCache
+    local cache = slot and slot[key]
     if not cache then return nil end
-    local known, level = KnownSpells(), Level()
+    local known, level = kind == "pet" and {} or KnownSpells(), KindLevel(kind)
     local now, later, shown = {}, {}, {}
     for _, e in ipairs(cache.list or {}) do
         if e.type ~= "used" and not IsKnown(known, e) then
@@ -230,10 +275,22 @@ VUI.RegisterManagedPanel(WIN_NAME, { area = "left", pushable = 0 })
 
 local TRAINER_TEX = "Interface\\ClassTrainerFrame\\TrainerTextures"
 local ROW_H, LIST_W, LIST_H = 47, 302, 330
+local PET_TAB_ICON = "Interface\\Icons\\Ability_Hunter_BeastTraining"   -- file 132165 (wago listfile)
 local win
+local curKind = "class"   -- the window's tab: "class" or "pet"
+local curPoints = false   -- the shown pet list costs training points (its cache's `points`)
+
+-- Your pet's unspent training points (C_PetInfo.GetPetTrainingPoints -> total, used; Blizzard_TrainerUI.lua:588).
+local function PetPoints()
+    local pi = _G.C_PetInfo
+    if not (pi and pi.GetPetTrainingPoints) then return 0 end
+    local ok, total, used = pcall(pi.GetPetTrainingPoints)
+    if not ok or type(total) ~= "number" then return 0 end
+    return total - (tonumber(used) or 0)
+end
 
 local function Requirements(e)
-    local level, parts = Level(), {}
+    local level, parts = KindLevel(curKind), {}
     if e.level and e.level > 1 then
         local tmpl = level >= e.level and (TRAINER_REQ_LEVEL or "Level %d") or (TRAINER_REQ_LEVEL_RED or "Level %d")
         parts[#parts + 1] = format(tmpl, e.level)
@@ -316,6 +373,15 @@ local function BuildRow(row)
     money:SetPoint("TOPRIGHT", 5, -7)
     if MoneyFrame_SetType then pcall(MoneyFrame_SetType, money, "STATIC") end
     row.money = money
+    -- A pet skill's cost in training points (Blizzard_TrainerUI.xml:98-103 forever: GameFontNormalSmall, right
+    -- justified, 12 high, BOTTOMRIGHT to the money's BOTTOMRIGHT -15).
+    local alt = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    alt:SetJustifyH("RIGHT")
+    alt:SetJustifyV("MIDDLE")
+    alt:SetHeight(12)
+    alt:SetPoint("BOTTOMRIGHT", money, "BOTTOMRIGHT", -15, 0)
+    alt:Hide()
+    row.alternateCost = alt
     row.built = true
 end
 
@@ -323,7 +389,7 @@ local function InitRow(row, e)
     if not row.built then BuildRow(row) end
     row.entry = e
     if GameTooltip:IsOwned(row) then RowTooltip(row) end   -- a refresh under the mouse (money, level)
-    local level = Level()
+    local level = KindLevel(curKind)
     local available = (e.level or 0) <= level and ReqsMet(e)
     row.icon:SetTexture(e.icon)
     row.icon:SetDesaturated(not available)
@@ -339,7 +405,16 @@ local function InitRow(row, e)
         row.nameSubText:SetText("")
     end
     row.subText:SetText(Requirements(e))
-    if e.cost and e.cost > 0 and MoneyFrame_Update then
+    if row.alternateCost then row.alternateCost:Hide() end
+    if curPoints and e.cost and e.cost > 0 and row.alternateCost then
+        -- Training points, red when you have too few (Blizzard_TrainerUI.lua:709-721 forever).
+        row.money:Hide()
+        row.alternateCost:SetFormattedText(TRAINING_POINTS_ABBREV or "%s TP", tostring(e.cost))
+        local have = PetPoints()
+        local c = have < e.cost and RED_FONT_COLOR or DARKYELLOW_FONT_COLOR
+        if c then row.alternateCost:SetTextColor(c:GetRGB()) end
+        row.alternateCost:Show()
+    elseif e.cost and e.cost > 0 and MoneyFrame_Update then
         row.money:Show()
         pcall(MoneyFrame_Update, row.money, e.cost)
         if SetMoneyFrameColorByFrame then
@@ -351,9 +426,24 @@ local function InitRow(row, e)
     end
 end
 
+local function HasPetList()
+    local db = DB()
+    if type(db) ~= "table" then return false end
+    Refile(db, CharKey())
+    return db.trainerPetCache ~= nil and db.trainerPetCache[CharKey()] ~= nil
+end
+
 local function RefreshWindow()
     if not (win and win:IsShown()) then return end
-    local _, _, _, shown = Trainable()
+    -- The pet tab exists once a pet trainer's list is saved; with none, the window is the class trainer's only.
+    local hasPet = HasPetList()
+    if win.tabs then
+        for _, t in ipairs(win.tabs) do t:SetShown(hasPet) end
+    end
+    if not hasPet then curKind = "class" end
+    if win.selectTab then win.selectTab(curKind == "pet" and 2 or 1) end
+    local cache, _, _, shown = Trainable(curKind)
+    curPoints = curKind == "pet" and cache ~= nil and cache.points == true
     -- Titled with your character's name, not the trainer's: any of the class's trainers teaches this list
     -- (owner, 2026-11-05: naming one of them looked odd). First AND last name: Forever's UnitName returns the
     -- surname as a second value, and Blizzard joins them with NameUtil.FormatUnitNameForDisplay
@@ -363,12 +453,33 @@ local function RefreshWindow()
         okN, me = pcall(NameUtil.FormatUnitNameForDisplay, "player")
     end
     if not (okN and me) then okN, me = pcall(UnitName, "player") end
+    if curKind == "pet" then
+        -- Blizzard titles and portrays the pet trainer's window with your pet (Blizzard_TrainerUI.lua:444-450).
+        local okE, has = pcall(UnitExists, "pet")
+        local okP, pname = pcall(UnitName, "pet")
+        okN, me = true, (okE and has and okP and pname) or (PET or "Pet")
+        if okE and has and win.SetPortraitToUnit then win:SetPortraitToUnit("pet")
+        elseif win.SetPortraitToClassIcon then
+            local okC, _, classFile = pcall(UnitClass, "player")
+            if okC and classFile then win:SetPortraitToClassIcon(classFile) end
+        end
+    elseif win.SetPortraitToClassIcon then
+        local okC, _, classFile = pcall(UnitClass, "player")
+        if okC and classFile then win:SetPortraitToClassIcon(classFile) end
+    end
     if okN and me and win.SetTitle then win:SetTitle(me) end
     local provider = CreateDataProvider()
     for _, e in ipairs(shown or {}) do provider:Insert(e) end
     win.ScrollBox:SetDataProvider(provider, ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition)
     win.empty:SetShown(not shown or #shown == 0)
-    if MoneyFrame_Update then
+    -- Training points instead of your money on a pet list that costs them (Blizzard_TrainerUI.lua:571-578, :591;
+    -- the label at the money border's LEFT +8,+6, GameFontNormalSmall, Blizzard_TrainerUI.xml:244-264).
+    win.money:SetShown(not curPoints)
+    win.points:SetShown(curPoints)
+    if curPoints then
+        local pts = math.max(PetPoints(), 0)
+        win.points.text:SetFormattedText(TRAINING_POINTS or "Training Points: %d", pts)
+    elseif MoneyFrame_Update then
         local okM, money = pcall(GetMoney)
         pcall(MoneyFrame_Update, win.money, okM and money or 0)
     end
@@ -395,6 +506,29 @@ local function BuildWindow()
     local money = CreateFrame("Frame", nil, win, "SmallMoneyFrameTemplate")
     money:SetPoint("RIGHT", moneyBg, "RIGHT", 8, 6)
     win.money = money
+    local points = CreateFrame("Frame", nil, win)
+    points:SetSize(128, 13)
+    points:SetPoint("LEFT", moneyBg, "LEFT", 8, 6)
+    points.text = points:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    points.text:SetPoint("LEFT")
+    points:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(TRAINING_POINTS_TUTORIAL or "Training points are spent to teach your pet new skills.")
+        GameTooltip:Show()
+    end)
+    points:SetScript("OnLeave", GameTooltip_Hide)
+    points:Hide()
+    win.points = points
+
+    -- Side tabs (owner, 2026-11-07): your class trainer's list and, once one is saved, your pet trainer's.
+    -- Lib VUI.CreateSideTabs, as Priority Rotation and Advanced Options use in Forever.
+    if VUI.CreateSideTabs then
+        local select, tabs = VUI.CreateSideTabs(win, {
+            { icon = ClassIcon(), tooltip = "Class Trainer" },
+            { icon = PET_TAB_ICON, tooltip = "Pet Trainer" },
+        }, function(i) curKind = (i == 2) and "pet" or "class"; RefreshWindow() end)
+        win.selectTab, win.tabs = select, tabs
+    end
 
     local box = CreateFrame("Frame", nil, win, "WowScrollBoxList")
     box:SetSize(LIST_W, LIST_H)
