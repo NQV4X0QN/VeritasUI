@@ -3778,9 +3778,18 @@ end
 -- (Blizzard_TrainerUI.lua:13-30, :398-404). Calls the same BuyTrainerService Train does (:402).
 local trainAllButton
 
+-- WoW Forever's Beast Training spell opens this window as a Pet trainer (C_Trainer.GetTrainerType() ==
+-- Enum.TrainerType.Pet, Blizzard_TrainerUI.lua:444/:571 forever). MEASURED (owner, v1.74.0, `/vui taint`): there
+-- BuyTrainerService from our button is ADDON_ACTION_FORBIDDEN, once per skill. Train All is not offered there:
+-- the list comes back empty with a third value `true`. (Inline, not its own function: this file is at the
+-- 200-locals limit, landmine in locals_headroom_test.)
 local function TrainableServices()
     local list, total = {}, 0
     if not GetNumTrainerServices then return list, total end
+    if C_Trainer and C_Trainer.GetTrainerType then
+        local ok, t = pcall(C_Trainer.GetTrainerType)
+        if ok and t == (Enum and Enum.TrainerType and Enum.TrainerType.Pet or 3) then return list, total, true end
+    end
     local wallet = GetMoney and GetMoney() or 0
     for i = GetNumTrainerServices(), 1, -1 do
         local _, serviceType = GetTrainerServiceInfo(i)
@@ -3796,9 +3805,10 @@ end
 
 local function RefreshTrainAll()
     if not trainAllButton then return end
-    local on = db and db.trainAllButton
+    local list, _, beast = TrainableServices()
+    local on = db and db.trainAllButton and not beast
     trainAllButton:SetShown(on and true or false)
-    if on then trainAllButton:SetEnabled(#TrainableServices() > 0) end
+    if on then trainAllButton:SetEnabled(#list > 0) end
 end
 
 local function CreateTrainAll()
