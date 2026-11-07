@@ -159,6 +159,10 @@ local function BuildMainWindow()
     win:SetScript("OnShow", function()
         ApplyPortrait(win)
     end)
+    -- Blizzard's standard window sound, as the Character Info and class trainer windows (after SetScript).
+    if VUI.AddWindowSounds and SOUNDKIT then
+        VUI.AddWindowSounds(win, SOUNDKIT.IG_CHARACTER_INFO_OPEN, SOUNDKIT.IG_CHARACTER_INFO_CLOSE)
+    end
 
     AO.MainWindow = win
     VUI.AnnounceFrame("AdvancedOptions.Window", win)

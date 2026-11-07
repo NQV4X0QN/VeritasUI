@@ -838,6 +838,17 @@ function VUI.CloseManagedPanel(frame)
     end
 end
 
+-- Blizzard's open and close sounds on one of our windows (owner, 2026-11-06: Character Info, Professions and the
+-- Spellbook all sound, ours did not). Blizzard plays them from the window's own OnShow / OnHide (CharacterFrame.lua
+-- :218/:259, Blizzard_ProfessionsFrame.lua:469/:483, Blizzard_PlayerSpellsFrame.lua:51/:63, Blizzard_TrainerUI.lua
+-- :239/:273), so these are hooks on ours. Call it AFTER the window's own SetScript("OnShow"/"OnHide"): SetScript
+-- replaces any hook made before it. Both games define every SOUNDKIT used (SoundKitConstants.lua).
+function VUI.AddWindowSounds(frame, openKit, closeKit)
+    if not (frame and frame.HookScript and PlaySound and openKit and closeKit) then return end
+    frame:HookScript("OnShow", function() PlaySound(openKit) end)
+    frame:HookScript("OnHide", function() PlaySound(closeKit) end)
+end
+
 ----------------------------------------------------------------
 --  Settings Label Registry + Scoped Reload Button
 --

@@ -501,6 +501,10 @@ local function BuildMainWindow()
         win:RefreshBadge()
         if PR.Editor then PR.Editor:Refresh() end
     end)
+    -- The Spellbook's sound (Blizzard_PlayerSpellsFrame.lua): this is a window of your spells (after SetScript).
+    if VUI.AddWindowSounds and SOUNDKIT then
+        VUI.AddWindowSounds(win, SOUNDKIT.UI_CLASS_TALENT_OPEN_WINDOW, SOUNDKIT.UI_CLASS_TALENT_CLOSE_WINDOW)
+    end
 
     PR.MainWindow = win
     VUI.AnnounceFrame("PriorityRotation.Window", win)

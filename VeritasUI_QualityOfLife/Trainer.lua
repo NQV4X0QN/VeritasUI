@@ -362,6 +362,10 @@ local function BuildWindow()
     win.empty = empty
 
     win:SetScript("OnShow", RefreshWindow)
+    -- The class trainer window's own sound (Blizzard_TrainerUI.lua:239/:273), after SetScript.
+    if VUI.AddWindowSounds and SOUNDKIT then
+        VUI.AddWindowSounds(win, SOUNDKIT.IG_CHARACTER_INFO_OPEN, SOUNDKIT.IG_CHARACTER_INFO_CLOSE)
+    end
     win:RegisterEvent("PLAYER_MONEY")
     win:RegisterEvent("PLAYER_LEVEL_UP")
     win:SetScript("OnEvent", function() C_Timer.After(0, RefreshWindow) end)
