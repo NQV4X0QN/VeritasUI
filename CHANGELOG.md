@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.74.1] - 2026-11-07
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **WoW Forever: Train All in the Beast Training window caused a "blocked" popup** — the game lets only its own Train button teach pet skills there, so Train All is no longer shown in that window. Class trainers keep it (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **WoW Forever: opening Beast Training replaced the Pet Trainer tab in the trainer window** with the Beast Training list and its training points. The tab now shows only your pet trainer's skills and gold costs, saved at your last visit. Visit your pet trainer once to bring the tab back (`Trainer.lua`)
+
+
 ## [1.74.0] - 2026-11-07
 
 ### Changed
