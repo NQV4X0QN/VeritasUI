@@ -379,14 +379,36 @@ VUI.QoL_TrainerWindowToggle = ToggleWindow
 
 -- ── The minimap button ───────────────────────────────────────
 local SIZE_W, SIZE_H, ICON, GAP = 23, 22, 11.5, 2
-local TRACK_GAP = 1   -- owner, in game: the gap between the calendar and the AddOn compartment under it
+local TRACK_GAP = 1   -- owner, in game: the trainer button's gap under tracking; the AddOn compartment follows it
 local button, watcher, anchoredTo
 local enabled, active, pendingLevel = false, false, nil
 local hasNow = false   -- something on the saved list is learnable at your level
 
 local function Shown(f) return f and f.IsShown and f:IsShown() end
 
+-- The AddOn compartment under the calendar gets the trainer button's gap (owner, 2026-11-06: the space under the
+-- calendar looked narrower than the space under tracking). Blizzard hangs it 1 unit INTO the calendar
+-- (Camelot/Minimap.lua SetHeaderUnderneath: TOP to GameTimeFrame BOTTOM, 0, 1; BOTTOM to TOP, 0, -1 with the header
+-- underneath); the trainer button sits TRACK_GAP clear of tracking. Both pairs are the same art: tracking and
+-- calendar atlases share one rect and alpha box, and both lower buttons are ui-hud-minimap-addon-indicator
+-- (atlas 3945, wowf), so equal frame gaps are equal visible gaps. Only y is changed, and only when it differs.
+local function AlignCompartment(restore)
+    local comp, cal = _G.AddonCompartmentFrame, _G.GameTimeFrame
+    if not (comp and cal and comp.GetPoint and comp.GetNumPoints and comp:GetNumPoints() == 1) then return end
+    local point, rel, relPoint, x, y = comp:GetPoint(1)
+    if rel ~= cal or type(point) ~= "string" or type(y) ~= "number" then return end
+    local below = point:find("TOP") ~= nil         -- hung under the calendar (header on top)
+    local want
+    if restore then want = below and 1 or -1 else want = below and -TRACK_GAP or TRACK_GAP end
+    if math.abs(y - want) > 0.01 then
+        comp:ClearAllPoints()
+        comp:SetPoint(point, cal, relPoint, x, want)
+    end
+end
+VUI.QoL_AlignCompartment = AlignCompartment   -- for qol_trainer_test
+
 local function Follow()
+    AlignCompartment(false)
     local cluster = _G.MinimapCluster
     local ind = cluster and cluster.IndicatorFrame
     if not (button and ind and active and ind:IsVisible()) then
@@ -522,6 +544,7 @@ function VUI.QoL_TrainerButtonSet(on)
     enabled = on and true or false
     if on and not button then Build() end
     if watcher then watcher:SetShown(enabled) end
+    if not enabled then AlignCompartment(true) end   -- Blizzard's own gap back with the button off
     Refresh()
 end
 
