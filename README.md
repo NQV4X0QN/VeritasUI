@@ -24,6 +24,7 @@ Hides or fades the parts of the interface you don't need most of the time.
 - **Fade Delay**: keep the micro menu, action bars and player frame up for 0 to 5 seconds after the mouse leaves, before they fade (the chat window keeps Blizzard's own timing)
 - Optionally hides the social button, the chat menu and voice buttons (left shown, they fade with the chat window), and macro names on action buttons
 - Optionally hides the **talking head** story popup and, separately, **mutes its voice**, so you can keep either one
+- **Mute Spell Fizzle** (off until you turn it on) silences the fizzle sound a spell makes when it fails to cast
 - Optionally hides the **top banners**, picked by kind from a dropdown: zone names, boss kills and loot, level up, scenario and Delve stages, Delve and event messages (such as Nemesis Strongbox Upgraded), weekly rewards, renown, and everything else
 - **Hide Transforms**: takes costumes and transformations off you as soon as they land, picked by group: profession gear (on by default, so your own outfit stays while you craft, gather or fish), holiday costumes, toys and consumables. Not in combat; they come off when it ends. If one still shows, `/interface gear` lists what you're wearing
 - Hides red error text — all of it, or only the kinds you pick (combat, spells and cooldowns, items and bags, mail/vendors/bank, looting, mounts and flight paths), so "Internal mail database error." can go while "You are too far away!" stays

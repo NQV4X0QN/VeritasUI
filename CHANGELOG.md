@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.71.0] - 2026-11-06
+
+### Added
+
+- `VeritasUI_Interface` — **Mute Spell Fizzle.** Silences the fizzle sound a spell makes when it fails to cast, such as out of range or not ready. The red error message is unchanged. Under Messages and Popups, off until you turn it on; applies at once (`Interface.lua`)
+
+
 ## [1.70.0] - 2026-11-06
 
 ### Added
