@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.74.0] - 2026-11-07
+
+### Changed
+
+- `VeritasUI_Interface` — **A new install starts with every fade and hide off,** so the screen looks exactly as it did until you turn on what you want. Each fade's opacity slider and its sub-options keep their settings, ready for when you turn it on. Hide Transforms starts with nothing ticked (`Interface.lua`)
+- `VeritasUI_QualityOfLife` — **A new install starts with AFK Screen, Pick Only Dialogue Option, Untrack World Quests When Unfocused, Auto Unwrap Collections and Timestamp Every Message off** (`QualityOfLife.lua`, `WorldQuestUntrack.lua`)
+- `VeritasUI_ZoneQuests` — **A new install starts with zone filtering off** (`ZoneQuests.lua`)
+- `VeritasUI_Interface`, `VeritasUI_ZoneQuests` — **If you already use VeritasUI, nothing changes:** your settings stay as they are, and new characters still start with Fade Player Frame, Fade Main Action Bar and zone filtering on (`Interface.lua`, `ZoneQuests.lua`)
+
+
 ## [1.73.0] - 2026-11-07
 
 ### Added
