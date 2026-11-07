@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.76.0] - 2026-11-07
+
+### Added
+
+- `VeritasUI_Interface` — **Fade Together.** A dropdown in All Fades to pick fades that come in together: mouse over any of them and all the ones you picked come in, then fade out together when the mouse leaves them all — for example Action Bar 1, the micro menu, the bag bar and the reputation and experience bars along the bottom of the screen. Only the mouse links them; a fade that is turned off is left out, and the chat window can't be linked. Starts with nothing picked; applies at once (`Interface.lua`, `Lib.lua`)
+- `VeritasUI_Interface` — **Show in Combat**, under Fade Together, on by default: every linked fade is shown while you're in combat, so a bar made of linked pieces stays whole in a fight (`Interface.lua`, `Lib.lua`)
+
+### Changed
+
+- `VeritasUI_Interface`, `VeritasUI_QualityOfLife` — **The guild online list and the Great Vault button count as part of the fade they belong to:** with the mouse on the list over the Guild & Communities button, the micro menu stays shown, and with Fade Together so does everything linked to it; the Great Vault button does the same for the minimap alerts (`Social.lua`, `Interface.lua`, `Lib.lua`)
+
+
 ## [1.75.0] - 2026-11-07
 
 ### Added
