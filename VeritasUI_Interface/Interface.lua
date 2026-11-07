@@ -180,6 +180,9 @@ local UNIVERSAL = {
     -- v1.76.0 (owner's request): Fade Together dropdown, [linkKey] = true (FADE_TOGETHER). TABLE-typed, PAIRED with
     -- fadeTogetherMask (derived), like hideTopBannersMask. Default none.
     fadeTogetherTypes      = {},
+    -- v1.76.0 (owner's request): sub-option of Fade Together, ON -- in combat every linked fade is shown, so a bar
+    -- built from linked pieces looks whole in a fight.
+    fadeTogetherCombat     = true,
     -- v1.74.0, a technical value, never offered as a choice: what a NEW character's per-character fades
     -- (PERCHAR) start as on this account. An account that already had VeritasUI seeds `true` here, so its
     -- new characters keep the fades on as before; a first-ever install is given `false` at ADDON_LOADED,
@@ -2896,17 +2899,32 @@ local function InitializeOptions()
     end
     local function BuildFadeTogether()
         if VUI.SetFadeLinks then
-            VUI.SetFadeLinks(function(key) return db.fadeTogetherTypes[key] == true and FadeIsOn(key) end)
+            VUI.SetFadeLinks(function(key) return db.fadeTogetherTypes[key] == true and FadeIsOn(key) end,
+                function() return db.fadeTogetherCombat == true end)
         end
-        KindsDropdown({
+        local init = KindsDropdown({
             setting = ADDON_NAME .. "_fadeTogether", maskKey = "fadeTogetherMask",
             owner = db,              -- UNIVERSAL: paired with fadeTogetherTypes
             setMask = function(v) db.fadeTogetherMask = v end,
             name = "Fade Together", items = FADE_TOGETHER, truth = db.fadeTogetherTypes,
             tip = "Pick fades that come in together: mouse over any of them and all the ones you picked come in, "
-               .. "then fade out together when the mouse leaves them all. Only the mouse links them; combat and "
-               .. "the other reasons a fade comes in still bring in just that one. Applies at once.",
+               .. "then fade out together when the mouse leaves them all. Only the mouse links them, and combat "
+               .. "with Show in Combat below; the other reasons a fade comes in still bring in just that one. "
+               .. "Applies at once.",
         })
+        -- Show in Combat (v1.76.0, owner): indented under the dropdown, greyed while nothing is picked, as Fade
+        -- Minimap Buttons' slider. Read live by Lib's link test, so it applies at once.
+        local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_fadeTogetherCombat",
+            "fadeTogetherCombat", db, "boolean", "Show in Combat", UNIVERSAL.fadeTogetherCombat)
+        setting:SetValueChangedCallback(function(_, value) VUI.PrintOnOffLive("Interface", "Show in Combat", value) end)
+        local cb = Settings.CreateCheckbox(category, setting,
+            "While you are in combat, every fade picked above is shown, so a bar made of linked pieces stays whole "
+            .. "in a fight. Off, combat brings in only the pieces that come in for combat on their own. Applies at "
+            .. "once.")
+        if init and cb and VUI.SettingsSubOption then
+            VUI.SettingsSubOption(cb, ADDON_NAME .. "_fadeTogether",
+                function() return next(db.fadeTogetherTypes) ~= nil end)
+        end
     end
 
 

@@ -275,10 +275,14 @@ VUI.FadedAlpha = FadedAlpha
 -- Read once per frame: every fader's 10 Hz poll asks, so the answer is cached by GetTime().
 local linkProbes = {}            -- [key] = { probe, ... }
 local linkIsOn = function() return false end
+local linkInCombat = function() return false end
 local linkCacheTime, linkCacheValue = nil, false
 
-function VUI.SetFadeLinks(isOn)
+-- isOn(key): is this fade linked. inCombat() (optional, v1.76.0 Show in Combat): while it is true and the player
+-- is in combat, every linked fade counts as shown -- the one shared reason besides hover (owner's choice).
+function VUI.SetFadeLinks(isOn, inCombat)
     linkIsOn = type(isOn) == "function" and isOn or function() return false end
+    linkInCombat = type(inCombat) == "function" and inCombat or function() return false end
     linkCacheTime = nil
 end
 
@@ -331,11 +335,14 @@ local function AnyLinkedHovered()
     return hit
 end
 
--- True while `key` is linked and the mouse is on any linked fade (its own included).
+-- True while `key` is linked and the mouse is on any linked fade (its own included), or, with Show in Combat on,
+-- while the player is in combat.
 function VUI.FadeLinkHovered(key)
     if not key then return false end
     local okOn, on = pcall(linkIsOn, key)
     if not (okOn and on) then return false end
+    local okC, combat = pcall(linkInCombat)
+    if okC and combat and InCombatLockdown() then return true end
     return AnyLinkedHovered()
 end
 
