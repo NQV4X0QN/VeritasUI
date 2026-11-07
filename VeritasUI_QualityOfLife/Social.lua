@@ -271,14 +271,20 @@ end
 
 -- THE WAY ACROSS (owner, 2026-11-07: the list closed the moment the mouse left the button). The list sits past
 -- Blizzard's tooltip for the button, so the mouse crosses that tooltip to reach it -- and the tooltip hides as
--- soon as the button is left. While the list is up, the whole box from the button to the far edge of the list
--- counts as "on it", so crossing that space keeps it open.
--- Whether the point is inside the box spanning both rects ({ l, b, r, t } each).
-local function InBox(cx, cy, a, b)
-    return cx >= math.min(a[1], b[1]) and cx <= math.max(a[3], b[3])
-        and cy >= math.min(a[2], b[2]) and cy <= math.max(a[4], b[4])
+-- soon as the button is left. While the list is up, the strip straight from the button to the list (the button's
+-- width plus REACH_SLACK each side) counts as "on it", so crossing that space keeps it open.
+-- ⚠ Only that strip (owner, 2026-11-07): the first build counted the whole box spanning button and list, which
+-- took in the menu-bar buttons beside Guild under the wide list, so hovering them kept it open over their tooltips.
+local REACH_SLACK = 10
+-- Whether the point is in the strip between the two rects ({ l, b, r, t } each): the button's width, and the
+-- height from the button's edge to the list's facing edge.
+local function InStrip(cx, cy, btn, lst)
+    if cx < btn[1] - REACH_SLACK or cx > btn[3] + REACH_SLACK then return false end
+    if lst[2] >= btn[4] then return cy >= btn[4] and cy <= lst[2] end   -- list above the button
+    if lst[4] <= btn[2] then return cy <= btn[2] and cy >= lst[4] end   -- list below it
+    return false
 end
-VUI.QoL_SocialInBox = InBox   -- for qol_guild_test
+VUI.QoL_SocialInStrip = InStrip   -- for qol_guild_test
 
 local function InReach(btn)
     local cx, cy = GetCursorPosition()
@@ -287,15 +293,23 @@ local function InReach(btn)
     local bl, bb, br, bt = Rect(btn)
     local ll, lb, lr, lt = Rect(list)
     if not (bl and ll) then return false end
-    return InBox(cx / s, cy / s, { bl, bb, br, bt }, { ll, lb, lr, lt })
+    return InStrip(cx / s, cy / s, { bl, bb, br, bt }, { ll, lb, lr, lt })
 end
 
--- Placed by fixed coordinates on UIParent, taken from Blizzard's tooltip (or the button) when the list opens. Not
--- anchored to the tooltip: it hides when the mouse leaves the button, and the list must stay where it is.
+local function TooltipUp()
+    local tip = _G.GameTooltip
+    return tip and tip.IsShown and tip:IsShown() and true or false
+end
+
+-- Placed by fixed coordinates on UIParent, past Blizzard's tooltip while one is up (with the mouse on our button
+-- that tooltip is the button's), else past the button. Not anchored to the tooltip: it hides when the mouse leaves
+-- the button, and the list must stay where it is.
+-- ⚠ The tooltip's OWNER is not tested (owner, 2026-11-07): with an owner test, after a visit to the Quest Log
+-- button the list kept sitting on the Guild button under Blizzard's tooltip -- so the owner read was not the
+-- button then. Why is UNMEASURED; the placement no longer depends on it.
 local function Place(btn)
     list:ClearAllPoints()
-    local tip = _G.GameTooltip
-    local anchor = (tip and tip:IsShown() and tip:GetOwner() == btn) and tip or btn
+    local anchor = TooltipUp() and _G.GameTooltip or btn
     local l, b, _, t = Rect(anchor)
     if not l then
         list:SetPoint("BOTTOMLEFT", btn, "TOPLEFT", 0, 2)
@@ -349,6 +363,11 @@ local function Build()
             local btn = owner and owner.frame()
             if list:IsMouseOver() or (btn and InReach(btn)) then
                 if fadingOut then fadingOut = false; VUI.SmoothFade(list, FADE_IN, 1) end
+            elseif TooltipUp() then
+                -- Off it, and Blizzard's tooltip is up for something else (owner, 2026-11-07: Quest Log's came
+                -- up under the fading list): gone at once, as one tooltip gives way to the next.
+                VUI.SmoothFade(list, 0, 0)
+                list:Hide(); owner = nil; fadingOut = false
             elseif not fadingOut then
                 -- Off it: fade out (owner, 2026-11-07: it vanished all at once). Back on it in time fades it back in.
                 fadingOut = true
