@@ -93,6 +93,7 @@ local UNIVERSAL = {
     -- these remove game content (story popups, zone names, boss loot), so nobody gets them unasked.
     hideTalkingHead     = false,
     muteTalkingHead     = false,
+    muteSpellFizzle     = false,
     -- v1.48.0: Hide Top Banners is a dropdown. [groupId] = true for each kind hidden (TOP_BANNER_GROUPS).
     -- TABLE-typed. PAIRED: hideTopBannersMask (the dropdown's tick-box value) is derived from it, like
     -- hideErrorTypesMask. Replaces the hideTopBanners checkbox; a saved "on" becomes every row ticked.
@@ -721,6 +722,20 @@ local function SetupTalkingHead()
             if db.muteTalkingHead and self.voHandle and StopSound then StopSound(self.voHandle) end
         end)
     end
+end
+
+-- ── Feature: Mute Spell Fizzle (owner's request, 2026-11-06) ──
+-- The fizzle a spell makes when it fails to cast is an engine sound, not a Blizzard UI one (Error Speech in
+-- Options > Audio is only the voice lines, Blizzard_SettingsDefinitions_Shared/Audio.lua:503-508). The game's
+-- own MuteSoundFile / UnmuteSoundFile mute a sound file by its ID until the client closes (both games:
+-- warcraft.wiki.gg API MuteSoundFile, "standard 8.2.5, forever 1.60.1"), so it is applied at every login.
+-- File IDs from the wowdev community listfile: sound/spells/fizzle/fizzle{holy,fire,nature,frost,shadow}a.ogg.
+-- ⚠ That these five are the sound the owner hears is UNMEASURED (no Lua event reports a sound playing).
+local FIZZLE_SOUNDS = { 569772, 569773, 569774, 569775, 569776 }
+local function SetMuteSpellFizzle(on)
+    local apply = on and _G.MuteSoundFile or _G.UnmuteSoundFile
+    if type(apply) ~= "function" then return end
+    for _, id in ipairs(FIZZLE_SOUNDS) do pcall(apply, id) end
 end
 
 -- ── Feature: Hide Top Banners (v1.26.0) ─────────────────────
@@ -2307,6 +2322,10 @@ local function InitializeOptions()
         { key = "muteTalkingHead",     name = "Mute Talking Head Voice", retailOnly = true,
           tip = "Silences the voice line that plays with the talking head popup. The popup itself "
              .. "still shows unless Hide Talking Head is on. Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
+        { key = "muteSpellFizzle",     name = "Mute Spell Fizzle",
+          tip = "Silences the fizzle sound a spell makes when it fails to cast. The red error message still "
+             .. "shows unless Hide Error Text hides it. Applies at once.",
+          apply = function(value) SetMuteSpellFizzle(value) end },
         -- v1.48.0: a tick-box dropdown, built where the checkbox was (BuildTopBannersDropdown below).
         { key = "hideTopBanners", build = function() BuildTopBannersDropdown() end },
         -- v1.49.0: Hide Transforms, a tick-box dropdown (BuildTransformsDropdown below).
@@ -2808,7 +2827,8 @@ local function InitializeOptions()
         { "Minimap",             { "fadeMinimapAlerts", "fadeMinimapButtons" } },
         { "Trackers and Meters", { "fadeObjectiveTracker", "fadeObjectiveTrackerTurnIn", "fadeObjectiveTrackerRaid",
                                    "fadeStatusBars", "fadeStatusBarsOnGain", "fadeDamageMeter" } },
-        { "Messages and Popups", { "hideErrorText", "hideTopBanners", "hideTalkingHead", "muteTalkingHead" } },
+        { "Messages and Popups", { "hideErrorText", "hideTopBanners", "hideTalkingHead", "muteTalkingHead",
+                                   "muteSpellFizzle" } },
     }
     for _, section in ipairs(SECTIONS) do
         Header(section[1])
@@ -2935,6 +2955,7 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         if db.hideMacroNames and not Unavailable("hideMacroNames") then HideMacroNames() end
         if not VUI.IS_FOREVER and ((db.hideTalkingHead and not Unavailable("hideTalkingHead"))
             or (db.muteTalkingHead and not Unavailable("muteTalkingHead"))) then SetupTalkingHead() end
+        if db.muteSpellFizzle and not Unavailable("muteSpellFizzle") then SetMuteSpellFizzle(true) end
         if next(db.hideTopBannerTypes) ~= nil and not Unavailable("hideTopBanners") then HideTopBanners() end
         if not Unavailable("hideProfessionGear") then SetHideTransforms() end
         if db.hideErrorText       then HideErrorText()
