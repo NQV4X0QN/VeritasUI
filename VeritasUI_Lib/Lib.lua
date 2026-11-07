@@ -268,6 +268,53 @@ local function FadedAlpha(getter)
 end
 VUI.FadedAlpha = FadedAlpha
 
+-- Fade Together (v1.76.0, owner's request): hovering one linked fade brings in every linked fade. Each fader
+-- registers a PROBE under its link key -- "is the mouse on me", read from geometry only, so linking spreads
+-- hover alone and never combat, flying or any other reason to show (owner's choice). Interface says which keys
+-- are linked (VUI.SetFadeLinks); a fader then also shows while VUI.FadeLinkHovered(itsKey) is true.
+-- Read once per frame: every fader's 10 Hz poll asks, so the answer is cached by GetTime().
+local linkProbes = {}            -- [key] = { probe, ... }
+local linkIsOn = function() return false end
+local linkCacheTime, linkCacheValue = nil, false
+
+function VUI.SetFadeLinks(isOn)
+    linkIsOn = type(isOn) == "function" and isOn or function() return false end
+    linkCacheTime = nil
+end
+
+function VUI.RegisterFadeLink(key, probe)
+    if not (key and probe) then return end
+    local list = linkProbes[key]
+    if not list then list = {}; linkProbes[key] = list end
+    list[#list + 1] = probe
+end
+
+local function AnyLinkedHovered()
+    local now = GetTime()
+    if linkCacheTime == now then return linkCacheValue end
+    local hit = false
+    for key, list in pairs(linkProbes) do
+        local okOn, on = pcall(linkIsOn, key)
+        if okOn and on then
+            for i = 1, #list do
+                local ok, h = pcall(list[i])
+                if ok and h then hit = true; break end
+            end
+        end
+        if hit then break end
+    end
+    linkCacheTime, linkCacheValue = now, hit
+    return hit
+end
+
+-- True while `key` is linked and the mouse is on any linked fade (its own included).
+function VUI.FadeLinkHovered(key)
+    if not key then return false end
+    local okOn, on = pcall(linkIsOn, key)
+    if not (okOn and on) then return false end
+    return AnyLinkedHovered()
+end
+
 -- Widgets that belong to a bar but are NOT direct children of it.
 --
 -- Spell flyouts — Pet Utility, mage teleports, profession tools, warlock demons —
@@ -297,7 +344,8 @@ local HOVER_WALK_MAX_DEPTH = 8   -- flyoutButton → flyout → actionButton →
 --   Bar 1, whose frame is the most taint-sensitive bar in the game (landmine: never HookScript a
 --   secure Blizzard frame); fade-in then starts within 0.1 s instead of at once.
 -- fadedAlpha (v1.40.0): getter for the faded opacity (see FadedAlpha). nil = 0, as before.
-function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook, fadedAlpha)
+-- linkKey (v1.76.0): Fade Together key (VUI.RegisterFadeLink). nil = never linked.
+function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook, fadedAlpha, linkKey)
     if not target then return end
     local faded = FadedAlpha(fadedAlpha)
 
@@ -306,7 +354,7 @@ function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook, f
     end
 
     local function IsForced()
-        return shouldShow and shouldShow()
+        return (shouldShow and shouldShow()) or (linkKey ~= nil and VUI.FadeLinkHovered(linkKey))
     end
 
     -- Hooked while it must be shown (turned on mid-fight, or while flying): no drop to 0 and back.
@@ -369,6 +417,11 @@ function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook, f
         -- avoid. This keeps the idle cost identical to before.
         if not hovered then return false end
         return IsMouseOverDescendant() or IsMouseOverFlyout()
+    end
+
+    -- Fade Together: the mouse on this frame. Only while it is shown -- a hidden bar (no pet out) has a rect too.
+    if linkKey then
+        VUI.RegisterFadeLink(linkKey, function() return target:IsVisible() and IsMouseOverAny() end)
     end
 
     local poll       = CreateFrame("Frame")
@@ -450,7 +503,8 @@ local PLAYER_FRAME_HOVER_POLL_RATE  = 0.10
 -- fadedAlpha (v1.40.0): optional getter for the faded opacity, as in HookHoverFade.
 -- holdRef (v1.63.0): optional; while it returns true the frame stays shown (Interface: a resource still filling
 -- or draining after combat, read from its value when the game lets us).
-function VUI.HookPlayerFrameFade(frame, inCombatRef, fadedAlpha, holdRef)
+-- linkKey (v1.76.0): Fade Together key, as in HookHoverFade.
+function VUI.HookPlayerFrameFade(frame, inCombatRef, fadedAlpha, holdRef, linkKey)
     if not frame then return end
     local faded = FadedAlpha(fadedAlpha)
     frame:SetAlpha(faded)
@@ -496,6 +550,10 @@ function VUI.HookPlayerFrameFade(frame, inCombatRef, fadedAlpha, holdRef)
 
     local function ShouldShow()
         return inCombatRef() or healthActive or IsHovered() or (holdRef ~= nil and holdRef() == true)
+            or (linkKey ~= nil and VUI.FadeLinkHovered(linkKey))
+    end
+    if linkKey then
+        VUI.RegisterFadeLink(linkKey, function() return frame:IsVisible() and IsHovered() end)
     end
 
 

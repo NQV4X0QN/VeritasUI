@@ -23,6 +23,7 @@ Hides or fades the parts of the interface you don't need most of the time. On a 
 - **Faded opacity**: a slider beside each Fade option sets how much still shows while faded, from 0% (hidden) to 100%; Action Bar 1 and the bars picked in Fade Action Bars each have their own
 - **All Faded Opacity**: one slider that sets every Faded Opacity slider to the same value at once, as a starting point; each one can still be changed on its own afterwards. The objective tracker's Scenario, Event Objectives and Bonus Objectives sections are left as they are
 - **Fade Delay**: keep the micro menu, action bars and player frame up for 0 to 5 seconds after the mouse leaves, before they fade (the chat window keeps Blizzard's own timing)
+- **Fade Together**: pick fades that come in together, such as Action Bar 1, the micro menu, the bag bar and the reputation and experience bars along the bottom of the screen. Mouse over any of them and all the ones you picked come in, then fade out together when the mouse leaves them all. Only the mouse links them; combat and the other reasons still bring in just the one. The chat window can't be linked
 - Optionally hides the social button, the chat menu and voice buttons (left shown, they fade with the chat window), and macro names on action buttons
 - Optionally hides the **talking head** story popup and, separately, **mutes its voice**, so you can keep either one
 - **Mute Spell Fizzle** (off until you turn it on) silences the fizzle sound a spell makes when it fails to cast

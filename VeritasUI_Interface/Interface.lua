@@ -177,6 +177,9 @@ local UNIVERSAL = {
     -- v1.75.0 (owner's request from a player): All Faded Opacity, the baseline last set for every faded-opacity
     -- slider. Only a starting point: moving it writes its value into each slider's own key.
     fadeOpacityBaseline    = 0,
+    -- v1.76.0 (owner's request): Fade Together dropdown, [linkKey] = true (FADE_TOGETHER). TABLE-typed, PAIRED with
+    -- fadeTogetherMask (derived), like hideTopBannersMask. Default none.
+    fadeTogetherTypes      = {},
     -- v1.74.0, a technical value, never offered as a choice: what a NEW character's per-character fades
     -- (PERCHAR) start as on this account. An account that already had VeritasUI seeds `true` here, so its
     -- new characters keep the fades on as before; a first-ever install is given `false` at ADDON_LOADED,
@@ -604,7 +607,7 @@ end
 -- disappears), which invalidates the child cache HookHoverFade builds at hook
 -- time.
 local function SetupMicroMenuFade()
-    local fo, rc = VUI.HookHoverFade(MicroMenu, nil, nil, nil, Opacity("fadeMicroMenuOpacity"))
+    local fo, rc = VUI.HookHoverFade(MicroMenu, nil, nil, nil, Opacity("fadeMicroMenuOpacity"), "fadeMicroMenu")
     if fo and EditModeManagerFrame then
         pcall(hooksecurefunc, EditModeManagerFrame, "ExitEditMode", function()
             C_Timer.After(0.2, function()
@@ -649,7 +652,8 @@ local function SetupPlayerFrameFade()
         PlayerFrame,
         InCombatLockdown,
         Opacity("fadePlayerFrameOpacity"),
-        PowerUnsettled
+        PowerUnsettled,
+        "fadePlayerFrame"
     )
     frame._playerEvaluate   = evaluate
     frame._playerHealthPing = healthPing
@@ -681,7 +685,7 @@ end
 local function SetupBagButtonsFade()
     local bar = _G.BagsBar
     if not bar then return end
-    local fo, rc = VUI.HookHoverFade(bar, nil, nil, true, Opacity("fadeBagButtonsOpacity"))
+    local fo, rc = VUI.HookHoverFade(bar, nil, nil, true, Opacity("fadeBagButtonsOpacity"), "fadeBagButtons")
     if fo and EditModeManagerFrame then
         pcall(hooksecurefunc, EditModeManagerFrame, "ExitEditMode", function()
             C_Timer.After(0.2, function()
@@ -1322,7 +1326,7 @@ local function HookActionBarFade(i)
     local barFrame = _G[ACTION_BAR_FRAMES[i]]
     if not barFrame then return end
     local fo, rc = VUI.HookHoverFade(barFrame, IsEditModeActive,
-        function() return not cdb.fadeActionBars[i] end, true, Opacity("fadeMultiBarsOpacity"))
+        function() return not cdb.fadeActionBars[i] end, true, Opacity("fadeMultiBarsOpacity"), "fadeActionBars")
     barFadeHooked[i] = true
     if fo then barFadeOuts[#barFadeOuts + 1] = fo end
     if rc then barRefreshers[#barRefreshers + 1] = rc end
@@ -1358,12 +1362,21 @@ end
 -- the MainMenuBar era; the v1.39.0 test build measured Action Bar 1 fading correctly (owner).
 local liveFadeHooked = {}
 
+-- Fade Together keys (v1.76.0): one per row of the dropdown. A live fade's key is its own, except the debuff
+-- half of Buffs and Debuffs and each picked minimap button, which link as their option.
+local function LinkKeyOf(key)
+    if key == "fadeAurasDebuffs" then return "fadeAuras" end
+    if key:sub(1, 18) == "fadeMinimapButtons" then return "fadeMinimapButtons" end
+    return key
+end
+
 local function SetupLiveFade(key, targets, shouldShow, noEnterHook, fadedAlpha)
     if liveFadeHooked[key] then return end
     local fadeOuts, refreshers = {}, {}
     for _, target in ipairs(targets) do
         if target then
-            local fo, rc = VUI.HookHoverFade(target, IsEditModeActive, shouldShow, noEnterHook, fadedAlpha)
+            local fo, rc = VUI.HookHoverFade(target, IsEditModeActive, shouldShow, noEnterHook, fadedAlpha,
+                LinkKeyOf(key))
             if fo then fadeOuts[#fadeOuts + 1] = fo end
             if rc then refreshers[#refreshers + 1] = rc end
         end
@@ -1471,6 +1484,9 @@ local function SetupObjectiveTrackerFade()
         return
     end
     otHooked = true
+    if VUI.RegisterFadeLink then   -- Fade Together (v1.76.0): the mouse on the tracker
+        VUI.RegisterFadeLink("fadeObjectiveTracker", function() return otf:IsVisible() and otf:IsMouseOver() end)
+    end
     local nine, header = otf.NineSlice, otf.Header
     local mods = {}         -- { frame, sec } in Blizzard's order (Manager.lua:194-206)
     for _, sec in ipairs(OT_SECTIONS) do
@@ -1771,6 +1787,10 @@ local function SetupObjectiveTrackerFade()
         local now = GetTime()
         if otf:IsVisible() and otf:IsMouseOver() then
             hoverUntil = now + math.max(0.15, (VUI.GetFadeDelay and VUI.GetFadeDelay()) or 0)
+        end
+        -- Fade Together (v1.76.0): another linked fade hovered shows the tracker too, with the same leave delay.
+        if VUI.FadeLinkHovered and VUI.FadeLinkHovered("fadeObjectiveTracker") then
+            hoverUntil = math.max(hoverUntil, now + math.max(0.15, (VUI.GetFadeDelay and VUI.GetFadeDelay()) or 0))
         end
         local show = not db.fadeObjectiveTracker or now < hoverUntil or IsEditModeActive()
         local raidHidden = db.fadeObjectiveTracker and OTRaidHidden() and not show
@@ -2845,6 +2865,45 @@ local function InitializeOptions()
             .. "and Bonus Objectives sections are left as they are. Applies at once.")
     end
 
+    -- ── Fade Together — tick-box dropdown, UNIVERSAL (mask paired with fadeTogetherTypes), v1.76.0 (owner's
+    -- request: Forever's bottom bar is Action Bar 1, the micro menu, the bag bar and the reputation and experience
+    -- bars, and hovering one should bring in all). Hovering any ticked fade brings in every ticked fade (Lib
+    -- VUI.FadeLinkHovered); hover only, never combat or the other show rules (owner's choice). A row counts only
+    -- while its own fade is on. The chat window is not offered: Blizzard fades it on its own timing (landmine 33).
+    local FADE_TOGETHER = {
+        { id = "fadeMainActionBar",    label = "Action Bar 1" },
+        { id = "fadeActionBars",       label = "Fade Action Bars" },
+        { id = "fadeMicroMenu",        label = "Micro Menu" },
+        { id = "fadeBagButtons",       label = "Bag Buttons" },
+        { id = "fadeStatusBars",       label = "Reputation and Experience Bars" },
+        { id = "fadePlayerFrame",      label = "Player Frame" },
+        { id = "fadeAuras",            label = "Buffs and Debuffs" },
+        { id = "fadeMinimapAlerts",    label = "Minimap Alerts" },
+        { id = "fadeMinimapButtons",   label = "Fade Minimap Buttons" },
+        { id = "fadeDamageMeter",      label = "Damage Meter" },
+        { id = "fadeObjectiveTracker", label = "Objective Tracker" },
+    }
+    local function FadeIsOn(key)
+        if key == "fadeActionBars" then return next(cdb.fadeActionBars) ~= nil end
+        if key == "fadeMinimapButtons" then return next(db.fadeMinimapButtons) ~= nil end
+        if PERCHAR[key] ~= nil then return cdb[key] == true end
+        return db[key] == true
+    end
+    local function BuildFadeTogether()
+        if VUI.SetFadeLinks then
+            VUI.SetFadeLinks(function(key) return db.fadeTogetherTypes[key] == true and FadeIsOn(key) end)
+        end
+        KindsDropdown({
+            setting = ADDON_NAME .. "_fadeTogether", maskKey = "fadeTogetherMask",
+            owner = db,              -- UNIVERSAL: paired with fadeTogetherTypes
+            setMask = function(v) db.fadeTogetherMask = v end,
+            name = "Fade Together", items = FADE_TOGETHER, truth = db.fadeTogetherTypes,
+            tip = "Pick fades that come in together: mouse over any of them and all the ones you picked come in, "
+               .. "then fade out together when the mouse leaves them all. Only the mouse links them; combat and "
+               .. "the other reasons a fade comes in still bring in just that one. Applies at once.",
+        })
+    end
+
 
     -- ── Hide Top Banners — tick-box dropdown, UNIVERSAL (mask paired with hideTopBannerTypes, both on
     -- db). The Fade Action Bars pattern: a None row, then one row per TOP_BANNER_GROUPS entry; the
@@ -3003,10 +3062,11 @@ local function InitializeOptions()
     end
     entries.fadeDelay      = { key = "fadeDelay",      build = BuildFadeDelay }
     entries.fadeOpacityBaseline = { key = "fadeOpacityBaseline", build = BuildFadeBaseline }
+    entries.fadeTogether   = { key = "fadeTogether",   build = BuildFadeTogether }
     entries.fadeActionBars = { key = "fadeActionBars", build = BuildActionBarsDropdown }
     entries.hideErrorText  = { key = "hideErrorText",  build = BuildErrorTextDropdown }
     local SECTIONS = {
-        { "All Fades",           { "fadeDelay", "fadeOpacityBaseline" } },
+        { "All Fades",           { "fadeDelay", "fadeOpacityBaseline", "fadeTogether" } },
         { "Action Bars",         { "fadeMainActionBar", "fadeMainActionBarShowFlying", "fadeActionBars",
                                    "hideMacroNames" } },
         { "Micro Menu and Bags", { "fadeMicroMenu", "fadeBagButtons" } },
