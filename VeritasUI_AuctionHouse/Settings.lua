@@ -49,9 +49,12 @@ local function BuildNativeSettingsPanel()
         AddCheckbox("ttShowAge", true, "Show Price Age",
             "Shows how many days old the price is, when it isn't from today.")
 
-        AddCheckbox("craftShowReagentValue", true, "Show Reagents Value on Crafting Orders",
-            "Adds a " .. VUI.COL.YELLOW .. "Reagents Value:|r line to the Place Crafting Order form: what "
-            .. "the recipe's reagents would sell for at the Auction House.")
+        -- Not in WoW Forever: no crafting orders there (owner, 2026-11-06).
+        if not VUI.IS_FOREVER then
+            AddCheckbox("craftShowReagentValue", true, "Show Reagents Value on Crafting Orders",
+                "Adds a " .. VUI.COL.YELLOW .. "Reagents Value:|r line to the Place Crafting Order form: what "
+                .. "the recipe's reagents would sell for at the Auction House.")
+        end
 
         AddCheckbox("liveSearchPrices", true, "Correct Prices from Live Searches",
             "When you look at an item on the Buy or Sell tab, its saved price is updated from "

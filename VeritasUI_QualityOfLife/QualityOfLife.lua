@@ -3307,18 +3307,25 @@ local mapNotesProvider
 -- and the fallback for an atlas this client no longer has. Labels are ours.
 -- ⚠ A key icon was asked for but none was seen on a live map, so none is offered: do not add an
 -- atlas name to this list without a /qol mappins (or GetAtlasInfo) measurement behind it.
-local MAP_NOTE_ICONS = {
+-- WoW Forever has no Labyrinths or Delves (owner, 2026-11-06): their icons are not offered there. A note
+-- saved with one would still draw it if the client has the atlas, else the default.
+local MAP_NOTE_ICONS = (function(list)
+    if not VUI.IS_FOREVER then return list end
+    local kept = {}
+    for _, icon in ipairs(list) do if not icon.retailOnly then kept[#kept + 1] = icon end end
+    return kept
+end)({
     { atlas = "Waypoint-MapPin-Untracked", label = "Map Pin" },
-    { atlas = "labyrinth-locked-64x64",    label = "Locked Door" },
-    { atlas = "labyrinth-active-64x64",    label = "Open Door" },
+    { atlas = "labyrinth-locked-64x64",    label = "Locked Door", retailOnly = true },
+    { atlas = "labyrinth-active-64x64",    label = "Open Door",   retailOnly = true },
     { atlas = "VignetteLoot",              label = "Treasure" },
     { atlas = "QuestNormal",               label = "Quest" },
     { atlas = "Dungeon",                   label = "Dungeon" },
-    { atlas = "delves-regular",            label = "Delve" },
+    { atlas = "delves-regular",            label = "Delve",       retailOnly = true },
     { atlas = "Quartermaster",             label = "Vendor" },
     { atlas = "TaxiNode_Neutral",          label = "Flight Point" },
     { atlas = "poi-hub",                   label = "Quest Hub" },
-}
+})
 local MAP_NOTE_DEFAULT_ICON = MAP_NOTE_ICONS[1].atlas
 
 -- The atlas a note draws with: its own if this client has it, else the default.
@@ -4012,7 +4019,8 @@ end
     loader:RegisterEvent("PLAYER_LOGIN")
     loader:SetScript("OnEvent", function()
         local util = _G.ReputationUtil
-        if hooked or not (util and type(util.AddParagonRewardsToTooltip) == "function") then return end
+        if VUI.IS_FOREVER or hooked then return end
+        if not (util and type(util.AddParagonRewardsToTooltip) == "function") then return end
         hooked = true
         hooksecurefunc(util, "AddParagonRewardsToTooltip", function(tooltip) pcall(Widen, tooltip) end)
         if type(_G.EmbeddedItemTooltip_Hide) == "function" then
@@ -4551,23 +4559,6 @@ local function InitializeOptions()
         .. "can afford. Learning a new profession still asks first.",
         function(value) if value then SetupTrainAll() else RefreshTrainAll() end end)
 
-    -- WoW Forever only: Retail characters learn their class spells without a trainer.
-    if VUI.IS_FOREVER then
-        AddCheckbox("trainerButton", "Show Trainer Button by the Minimap",
-            "Shows your class icon by the minimap when your class trainer has new skills for your level. Click "
-            .. "it to see the trainer's list, with what you can learn now and what comes at later levels. The "
-            .. "list is saved each time you talk to your class trainer. You can also type /qol trainer.",
-            function(value) if VUI.QoL_TrainerButtonSet then VUI.QoL_TrainerButtonSet(value) end end)
-        -- Sub-option (owner, 2026-11-05): the list one click away even with nothing new to learn.
-        local alwaysInit = AddCheckbox("trainerButtonAlways", "Always Show Trainer Button",
-            "Keeps the trainer button by the minimap even when there is nothing new to learn, dimmed until "
-            .. "there is. Hover it to see your next skills and the levels they come at.",
-            function() if VUI.QoL_TrainerButtonRefresh then VUI.QoL_TrainerButtonRefresh() end end)
-        if alwaysInit and VUI.SettingsSubOption then
-            VUI.SettingsSubOption(alwaysInit, ADDON_NAME .. "_trainerButton", function() return db.trainerButton end)
-        end
-    end
-
     Header("Quests and Dialogue")
     AddCheckbox("pickOnlyGossip", "Pick Only Dialogue Option",
         "When an NPC has just one dialogue option and no quests, it is picked for you. Hold Shift "
@@ -4588,10 +4579,13 @@ local function InitializeOptions()
         VUI.QoL_NpcOptionsDropdown(category, db, ADDON_NAME, TipWithReason, layout)
     end
 
-    AddCheckbox("untrackWorldQuestsOnUnfocus", "Untrack World Quests When Unfocused",
-        "A world quest you clicked on the map leaves the objective tracker when you click it again, the "
-        .. "way other quests stop being highlighted. World quests you tracked yourself (Shift-click or "
-        .. "Track) stay.")
+    -- Not in WoW Forever: no world quests there (owner, 2026-11-06; its published feature list has none).
+    if not VUI.IS_FOREVER then
+        AddCheckbox("untrackWorldQuestsOnUnfocus", "Untrack World Quests When Unfocused",
+            "A world quest you clicked on the map leaves the objective tracker when you click it again, the "
+            .. "way other quests stop being highlighted. World quests you tracked yourself (Shift-click or "
+            .. "Track) stay.")
+    end
 
     Header("Progress")
     AddCheckbox("followReputationGains", "Track Latest Reputation",
@@ -4601,20 +4595,38 @@ local function InitializeOptions()
             if value then RepFollowStart() else RepFollowStop() end
         end)
 
-    AddCheckbox("repBarRenownLevel", "Show Renown Level on Reputation Bar",
-        "Adds your renown level to the end of the reputation bar's text, such as [18/20]. Past the "
-        .. "top renown, it counts the levels earned beyond it, such as [21/20].",
-        SetRenownOnRepBar)
+    -- WoW Forever only: Retail characters learn their class spells without a trainer. Under Progress (it is
+    -- about your level), which in Forever would otherwise hold Track Latest Reputation alone (v1.70.0).
+    if VUI.IS_FOREVER then
+        AddCheckbox("trainerButton", "Show Trainer Button by the Minimap",
+            "Shows your class icon by the minimap when your class trainer has new skills for your level. Click "
+            .. "it to see the trainer's list, with what you can learn now and what comes at later levels. The "
+            .. "list is saved each time you talk to your class trainer. You can also type /qol trainer.",
+            function(value) if VUI.QoL_TrainerButtonSet then VUI.QoL_TrainerButtonSet(value) end end)
+        -- Sub-option (owner, 2026-11-05): the list one click away even with nothing new to learn.
+        local alwaysInit = AddCheckbox("trainerButtonAlways", "Always Show Trainer Button",
+            "Keeps the trainer button by the minimap even when there is nothing new to learn, dimmed until "
+            .. "there is. Hover it to see your next skills and the levels they come at.",
+            function() if VUI.QoL_TrainerButtonRefresh then VUI.QoL_TrainerButtonRefresh() end end)
+        if alwaysInit and VUI.SettingsSubOption then
+            VUI.SettingsSubOption(alwaysInit, ADDON_NAME .. "_trainerButton", function() return db.trainerButton end)
+        end
+    end
 
-    AddCheckbox("greatVaultButton", "Show Great Vault Button by the Minimap",
-        "Shows the Great Vault button under the minimap's mail icon whenever your vault holds "
-        .. "something, including last week's rewards. Click it to open the vault.",
-        GreatVault.Set)
-
-    -- Not in WoW Forever: no Delves (Blizzard_DelvesDifficultyPicker and Blizzard_DelvesToast load in standard
-    -- only) and no Journeys window (Blizzard_EncounterJournal loads in standard and classic only; Gethe forever
-    -- 1.60.1.70790).
+    -- Not in WoW Forever: no renown and no Great Vault there (owner, 2026-11-06), nor Delves (Blizzard_Delves*
+    -- load in standard only) or a Journeys window (Blizzard_EncounterJournal loads in standard and classic
+    -- only; Gethe forever 1.60.1.70790).
     if not VUI.IS_FOREVER then
+        AddCheckbox("repBarRenownLevel", "Show Renown Level on Reputation Bar",
+            "Adds your renown level to the end of the reputation bar's text, such as [18/20]. Past the "
+            .. "top renown, it counts the levels earned beyond it, such as [21/20].",
+            SetRenownOnRepBar)
+
+        AddCheckbox("greatVaultButton", "Show Great Vault Button by the Minimap",
+            "Shows the Great Vault button under the minimap's mail icon whenever your vault holds "
+            .. "something, including last week's rewards. Click it to open the vault.",
+            GreatVault.Set)
+
         -- Key stays `delveNemesisCount` (saved on every account); only the label widened when
         -- Labyrinth chambers joined it in v1.20.0.
         AddCheckbox("delveNemesisCount", "Show Delve Counts",
@@ -4668,9 +4680,12 @@ local function InitializeOptions()
         .. "the tooltip is unchanged. Left as it is where the game hides a player's class from addons.",
         function(value) if value then SetupTooltipLines() end end)
 
-    AddCheckbox("tooltipWrapParagon", "Wrap Long Reputation Tooltip Lines",
-        "Fixes the tooltip of a reputation past its last rank, whose long line runs off the right edge: "
-        .. "the line is wrapped to fit inside the tooltip.")
+    -- Not in WoW Forever: the long line is a renown reputation's, and Forever has no renown (owner, 2026-11-06).
+    if not VUI.IS_FOREVER then
+        AddCheckbox("tooltipWrapParagon", "Wrap Long Reputation Tooltip Lines",
+            "Fixes the tooltip of a reputation past its last rank, whose long line runs off the right edge: "
+            .. "the line is wrapped to fit inside the tooltip.")
+    end
 
     AddCheckbox("tooltipFactionColors", "Faction Colors in Tooltips",
         "Shows a player's faction, Horde or Alliance, in the game's own faction red or blue when you "
@@ -4715,7 +4730,9 @@ local function InitializeOptions()
         .. "at a time. Never in combat, and never while a vendor, bank, mailbox, guild bank, auction "
         .. "house or trade window is open. Locked lockboxes are left alone.",
         function(value) if value and VUI.QoL_OpenContainers then VUI.QoL_OpenContainers() end end)
-    local warboundInit = AddCheckbox("autoOpenContainersExcludeWarbound", "Not Warbound Containers",
+    -- Not in WoW Forever: no warbound items there (owner, 2026-11-06).
+    local warboundInit = not VUI.IS_FOREVER
+        and AddCheckbox("autoOpenContainersExcludeWarbound", "Not Warbound Containers",
         "Leaves warbound containers (bound to your account) for you to open on the character you choose.")
     if warboundInit and openInit and VUI.SettingsSubOption then
         VUI.SettingsSubOption(warboundInit, ADDON_NAME .. "_autoOpenContainers",
@@ -4855,11 +4872,12 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- Starts unconditionally when enabled: the ticker's own body is cheap and
         -- early-outs unless a Delve plaque is on screen, so there is nothing to
         -- register or unregister on zone changes.
-        if db.delveNemesisCount then DelveStartCount() end
+        -- Not in WoW Forever: no Delves, renown or Great Vault there (the options are not offered either).
+        if db.delveNemesisCount and not VUI.IS_FOREVER then DelveStartCount() end
 
         if db.followReputationGains then RepFollowStart() end
-        if db.repBarRenownLevel then SetRenownOnRepBar(true) end
-        if db.greatVaultButton then GreatVault.Set(true) end
+        if db.repBarRenownLevel and not VUI.IS_FOREVER then SetRenownOnRepBar(true) end
+        if db.greatVaultButton and not VUI.IS_FOREVER then GreatVault.Set(true) end
         if db.fillDeleteConfirm then SetupDeleteFill() end
         if db.skipCinematics then SetupSkipCinematics() end
         UpdateNpcEvents()

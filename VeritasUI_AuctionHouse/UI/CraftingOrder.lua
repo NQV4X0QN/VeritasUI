@@ -200,7 +200,8 @@ local function BuildText(form)
     -- so it is guaranteed present — no guard, per the suite's guard policy for
     -- TOC-ordered module tables. It also supplies the default when the saved
     -- variable has not been seeded yet.
-    if not AH.Setting("craftShowReagentValue") then return nil end
+    -- WoW Forever has no crafting orders (owner, 2026-11-06), and no option for this there.
+    if VUI.IS_FOREVER or not AH.Setting("craftShowReagentValue") then return nil end
     local total, unpriced = Recompute(form)
     if not total then return nil end
     -- Nothing known at all: say so rather than showing a confident 0g.

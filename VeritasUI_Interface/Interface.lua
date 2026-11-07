@@ -741,7 +741,23 @@ end
 -- event toast; "Nemesis Strongbox Upgraded" and "Dundun Hides Within..." are eventType SpellScript,
 -- stage names ("The Darkway") eventType Scenario; no boss banner fired. The toast rows follow
 -- Blizzard's own Enum.EventToastEventType (UIEventToastConstantsDocumentation.lua:32-67).
-local TOP_BANNER_GROUPS = {
+-- WoW Forever: an entry marked retailOnly is left out there, and an entry's `forever` fields replace its own
+-- there (the thing exists, without the Retail content its text names). Owner, 2026-11-06: Forever has no
+-- Delves, Labyrinths, scenarios, Great Vault, renown, profession gear, talking heads, world quests or bonus
+-- objectives, and no expansion summary (Blizzard_ExpansionLandingPage is standard only, Gethe forever 1.60.1).
+local function ForThisGame(list)
+    if not VUI.IS_FOREVER then return list end
+    local kept = {}
+    for _, e in ipairs(list) do
+        if not e.retailOnly then
+            for k, v in pairs(e.forever or {}) do e[k] = v end
+            kept[#kept + 1] = e
+        end
+    end
+    return kept
+end
+
+local TOP_BANNER_GROUPS = ForThisGame({
     { id = "zone",     label = "Zone Names", tip = "The zone name when you travel.",
       frame = "ZoneTextFrame", events = { "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA" } },
     { id = "boss",     label = "Boss Kills and Loot", tip = "The banner when a boss dies, and what it dropped.",
@@ -750,18 +766,22 @@ local TOP_BANNER_GROUPS = {
       types = { "LevelUp", "LevelUpSpell", "LevelUpDungeon", "LevelUpRaid", "LevelUpPvP", "LevelUpOther",
                 "SpellLearned" } },
     { id = "scenario", label = "Scenario and Delve Stages", tip = "Stage names, such as The Darkway.",
-      types = { "Scenario" } },
+      types = { "Scenario" }, retailOnly = true },
     { id = "messages", label = "Delve and Event Messages",
       tip = "Messages during a Delve or event, such as Nemesis Strongbox Upgraded.",
+      forever = { label = "Event Messages", tip = "Messages in the middle of the screen during an event or quest." },
       types = { "SpellScript", "WorldStateChange", "QuestBossEmote", "CriteriaUpdated", "PlayerAuraAdded",
                 "PlayerAuraRemoved" } },
     { id = "weekly",   label = "Weekly Rewards and Ratings",
       tip = "The Great Vault, Mythic+ records and PvP rating changes.",
-      types = { "WeeklyRewardUnlock", "WeeklyRewardUpgrade", "MythicPlusWeeklyRecord", "PvPTierUpdate" } },
-    { id = "renown",   label = "Renown", tip = "A new renown level.", types = { "RenownFactionLeveledUp" } },
+      types = { "WeeklyRewardUnlock", "WeeklyRewardUpgrade", "MythicPlusWeeklyRecord", "PvPTierUpdate" },
+      retailOnly = true },
+    { id = "renown",   label = "Renown", tip = "A new renown level.", types = { "RenownFactionLeveledUp" },
+      retailOnly = true },
     { id = "other",    label = "Everything Else", tip = "Flight points, pet battles, treasure, housing and the rest.",
+      forever = { tip = "Flight points, treasure and the rest." },
       types = {} },   -- every toast type not named above
-}
+})
 
 -- Group id of an event toast, from its eventType; a type not listed (or a new one) is "other".
 local function ToastGroup(info)
@@ -872,8 +892,9 @@ end
 -- v1.49.0 (feature batch item 3): Hide Transforms, a dropdown of four groups. The new groups' aura IDs
 -- are server data too, from EllesmereUI v9.7.2's transform list
 -- (EllesmereUIQoL.lua:4977-5015, read 2026-11-01), as the profession list was.
-local TRANSFORM_KINDS = {
+local TRANSFORM_KINDS = ForThisGame({
     { id = "professions", label = "Profession Gear", tip = "The outfit crafting, gathering and fishing put on you.",
+      retailOnly = true,
       ids = {
         388658,   -- Blacksmithing
         394015,   -- Jewelcrafting
@@ -915,7 +936,7 @@ local TRANSFORM_KINDS = {
         16593, 1223630, 16595, 1223629, 1223631,   -- Noggenfogger Elixir
         163267,                              -- Reflecting Prism
     } },
-}
+})
 -- The aura IDs of every ticked kind, rebuilt by SetHideTransforms.
 local hiddenTransformAuras = {}
 local FISHING_AURA, FISHING_CHANNEL = 394009, 131476
@@ -1016,6 +1037,7 @@ local MINIMAP_BUTTONS = {
       tip = "The addon menu button, where VeritasUI's own shortcuts are listed.",
       frames = function() return { _G.AddonCompartmentFrame } end },
     { id = "expansion",  label = "Expansion Summary Button", tip = "The button that opens the expansion summary.",
+      retailOnly = true,
       frames = function() return { _G.ExpansionLandingPageMinimapButton } end },
     -- retailOnly: WoW Forever's minimap "intentionally omits InstanceDifficulty" (Blizzard_Minimap
     -- Camelot/MinimapInstanceDifficulty.lua:1-2, Gethe forever 1.60.1.70790), so it is not offered there.
@@ -1336,9 +1358,12 @@ end
 -- retailOnly: no slider in WoW Forever, which has neither feature: Traveler's Log lives in the Encounter Journal
 -- and the Trading Post (Blizzard_EncounterJournal loads in standard and classic only, Blizzard_PerksProgram
 -- excludes camelot), Endeavors in Housing (every Blizzard_Housing* addon is standard only). Gethe forever
--- 1.60.1.70790. Blizzard still builds both modules there; empty, they never show.
+-- 1.60.1.70790. Blizzard still builds both modules there; empty, they never show. Scenario, Bonus Objectives
+-- and World Quests: no such content in Forever (owner, 2026-11-06; world quests and scenarios from its
+-- published feature list, which has neither).
 local OT_SECTIONS = {
-    { id = "scenario",     frame = "ScenarioObjectiveTracker",          label = "Scenario",          full = true },
+    { id = "scenario",     frame = "ScenarioObjectiveTracker",          label = "Scenario",          full = true,
+      retailOnly = true },
     { id = "event",        frame = "UIWidgetObjectiveTracker",          label = "Event Objectives",  full = true },
     { id = "campaign",     frame = "CampaignQuestObjectiveTracker",     label = "Campaign",          quests = true },
     { id = "quests",       frame = "QuestObjectiveTracker",             label = "Quests",            quests = true },
@@ -1347,8 +1372,10 @@ local OT_SECTIONS = {
     { id = "travelerslog", frame = "MonthlyActivitiesObjectiveTracker", label = "Traveler's Log",   retailOnly = true },
     { id = "endeavors",    frame = "InitiativeTasksObjectiveTracker",   label = "Endeavors",        retailOnly = true },
     { id = "professions",  frame = "ProfessionsRecipeTracker",          label = "Professions" },
-    { id = "bonus",        frame = "BonusObjectiveTracker",             label = "Bonus Objectives",  full = true },
-    { id = "worldquests",  frame = "WorldQuestObjectiveTracker",        label = "World Quests",      quests = true },
+    { id = "bonus",        frame = "BonusObjectiveTracker",             label = "Bonus Objectives",  full = true,
+      retailOnly = true },
+    { id = "worldquests",  frame = "WorldQuestObjectiveTracker",        label = "World Quests",      quests = true,
+      retailOnly = true },
 }
 local OT_FADE_IN, OT_FADE_OUT, OT_POLL = 0.2, 0.5, 0.1   -- the hover fade's speeds (Lib HookHoverFade)
 local otHooked = false
@@ -2202,6 +2229,7 @@ local function InitializeOptions()
         { key = "fadeMinimapAlerts",   name = "Fade Minimap Alerts",
           tip = "The mail and crafting order icons by the minimap, and the Great Vault button, fade "
              .. "out unless you're mousing over them. Applies at once.",
+          forever = { tip = "The mail icon by the minimap fades out unless you're mousing over it. Applies at once." },
           apply = function(value) if value then SetupMinimapAlertsFade() end end,
           opacity = "fadeMinimapAlertsOpacity" },
         -- v1.60.0: a tick-box dropdown + its own opacity slider (BuildMinimapButtonsDropdown below).
@@ -2235,17 +2263,13 @@ local function InitializeOptions()
              .. "while it holds vehicle or quest controls. Applies at once.",
           apply = function(value) if value then SetupMainActionBarFade() end end,
           opacity = "fadeActionBarsOpacity" },
-        -- Not offered in WoW Forever (removed below): the devs have said it will never have flying (owner).
+        -- Not offered in WoW Forever: the devs have said it will never have flying (owner).
         { key = "fadeMainActionBarShowFlying", name = "Show While Flying", parent = "fadeMainActionBar",
+          retailOnly = true,
           tip = "Action Bar 1 is shown in full while you fly. Turn it off and it stays faded in flight, "
              .. "like any other time out of combat. Applies at once.",
           apply = function() end },
     }
-    if VUI.IS_FOREVER then
-        for i = #FADE_OPTIONS, 1, -1 do
-            if FADE_OPTIONS[i].key == "fadeMainActionBarShowFlying" then table.remove(FADE_OPTIONS, i) end
-        end
-    end
     local BuildTopBannersDropdown   -- defined below, called from AddCheckboxes
     local BuildTransformsDropdown   -- likewise
     local HIDE_OPTIONS = {
@@ -2265,11 +2289,11 @@ local function InitializeOptions()
         { key = "hideMacroNames",      name = "Hide Macro Names",
           tip = "Hides the macro name text displayed on action bar buttons. "
              .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
-        { key = "hideTalkingHead",     name = "Hide Talking Head",
+        { key = "hideTalkingHead",     name = "Hide Talking Head", retailOnly = true,
           tip = "Hides the NPC portrait that pops up with story dialogue in quests and dungeons. "
              .. "The voice still plays unless Mute Talking Head Voice is on. Still shown in Edit "
              .. "Mode so you can place it. Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
-        { key = "muteTalkingHead",     name = "Mute Talking Head Voice",
+        { key = "muteTalkingHead",     name = "Mute Talking Head Voice", retailOnly = true,
           tip = "Silences the voice line that plays with the talking head popup. The popup itself "
              .. "still shows unless Hide Talking Head is on. Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
         -- v1.48.0: a tick-box dropdown, built where the checkbox was (BuildTopBannersDropdown below).
@@ -2277,6 +2301,7 @@ local function InitializeOptions()
         -- v1.49.0: Hide Transforms, a tick-box dropdown (BuildTransformsDropdown below).
         { key = "hideProfessionGear", build = function() BuildTransformsDropdown() end },
     }
+    FADE_OPTIONS, HIDE_OPTIONS = ForThisGame(FADE_OPTIONS), ForThisGame(HIDE_OPTIONS)
 
     -- ⚠ THESE CHECKBOXES ARE MIXED-SCOPE. All the keys but one are account-wide and one
     -- (fadePlayerFrame) is per-character, so the table handed to Settings AND the table the
@@ -2896,8 +2921,8 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         if cdb.fadePlayerFrame and not Unavailable("fadePlayerFrame")  then SetupPlayerFrameFade() end
         if db.fadeBagButtons and not Unavailable("fadeBagButtons") then SetupBagButtonsFade() end
         if db.hideMacroNames and not Unavailable("hideMacroNames") then HideMacroNames() end
-        if (db.hideTalkingHead and not Unavailable("hideTalkingHead"))
-            or (db.muteTalkingHead and not Unavailable("muteTalkingHead")) then SetupTalkingHead() end
+        if not VUI.IS_FOREVER and ((db.hideTalkingHead and not Unavailable("hideTalkingHead"))
+            or (db.muteTalkingHead and not Unavailable("muteTalkingHead"))) then SetupTalkingHead() end
         if next(db.hideTopBannerTypes) ~= nil and not Unavailable("hideTopBanners") then HideTopBanners() end
         if not Unavailable("hideProfessionGear") then SetHideTransforms() end
         if db.hideErrorText       then HideErrorText()
