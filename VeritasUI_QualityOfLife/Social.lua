@@ -271,20 +271,21 @@ end
 
 -- THE WAY ACROSS (owner, 2026-11-07: the list closed the moment the mouse left the button). The list sits past
 -- Blizzard's tooltip for the button, so the mouse crosses that tooltip to reach it -- and the tooltip hides as
--- soon as the button is left. While the list is up, the strip straight from the button to the list (the button's
--- width plus REACH_SLACK each side) counts as "on it", so crossing that space keeps it open.
--- ⚠ Only that strip (owner, 2026-11-07): the first build counted the whole box spanning button and list, which
--- took in the menu-bar buttons beside Guild under the wide list, so hovering them kept it open over their tooltips.
-local REACH_SLACK = 10
--- Whether the point is in the strip between the two rects ({ l, b, r, t } each): the button's width, and the
--- height from the button's edge to the list's facing edge.
-local function InStrip(cx, cy, btn, lst)
-    if cx < btn[1] - REACH_SLACK or cx > btn[3] + REACH_SLACK then return false end
+-- soon as the button is left. While the list is up, the band between the button's edge and the list's facing
+-- edge, as wide as the list (and the button), counts as "on it", so crossing that space keeps it open, straight
+-- or on a slant toward the list's far side (Blizzard's tooltip reaches right of the button).
+-- ⚠ The band stops at the button's edge (owner, 2026-11-07): the first build counted the whole box down to the
+-- button's far edge, which took in the menu-bar buttons beside Guild under the wide list, so hovering them kept it
+-- open. A neighbour brushed on the way is not in the band either, but the list only fades from there (0.5 s), so
+-- carrying on into the band fades it straight back in.
+-- Whether the point is in the band between the two rects ({ l, b, r, t } each).
+local function InBand(cx, cy, btn, lst)
+    if cx < math.min(btn[1], lst[1]) or cx > math.max(btn[3], lst[3]) then return false end
     if lst[2] >= btn[4] then return cy >= btn[4] and cy <= lst[2] end   -- list above the button
     if lst[4] <= btn[2] then return cy <= btn[2] and cy >= lst[4] end   -- list below it
     return false
 end
-VUI.QoL_SocialInStrip = InStrip   -- for qol_guild_test
+VUI.QoL_SocialInBand = InBand   -- for qol_guild_test
 
 local function InReach(btn)
     local cx, cy = GetCursorPosition()
@@ -293,7 +294,7 @@ local function InReach(btn)
     local bl, bb, br, bt = Rect(btn)
     local ll, lb, lr, lt = Rect(list)
     if not (bl and ll) then return false end
-    return InStrip(cx / s, cy / s, { bl, bb, br, bt }, { ll, lb, lr, lt })
+    return InBand(cx / s, cy / s, { bl, bb, br, bt }, { ll, lb, lr, lt })
 end
 
 local function TooltipUp()
@@ -363,13 +364,10 @@ local function Build()
             local btn = owner and owner.frame()
             if list:IsMouseOver() or (btn and InReach(btn)) then
                 if fadingOut then fadingOut = false; VUI.SmoothFade(list, FADE_IN, 1) end
-            elseif TooltipUp() then
-                -- Off it, and Blizzard's tooltip is up for something else (owner, 2026-11-07: Quest Log's came
-                -- up under the fading list): gone at once, as one tooltip gives way to the next.
-                VUI.SmoothFade(list, 0, 0)
-                list:Hide(); owner = nil; fadingOut = false
             elseif not fadingOut then
                 -- Off it: fade out (owner, 2026-11-07: it vanished all at once). Back on it in time fades it back in.
+                -- Also when another button's tooltip comes up: that tooltip sits under the list (Place), and a
+                -- neighbour brushed on the way to the list must not close it (owner, 2026-11-07, 4th build).
                 fadingOut = true
                 VUI.SmoothFade(list, FADE_OUT, 0)
             elseif list:GetAlpha() <= 0.01 then
