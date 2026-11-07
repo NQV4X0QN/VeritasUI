@@ -89,6 +89,32 @@ local function IsKnown(known, e)
 end
 
 -- ── Capture at the trainer ───────────────────────────────────
+-- The tooltip the trainer shows for a service (GameTooltip:SetTrainerService, Blizzard_TrainerUI.xml:134-139
+-- forever) needs the trainer open, so its lines are saved too: C_TooltipInfo.GetTrainerService(i) -> TooltipData
+-- (TooltipInfoDocumentation.lua forever :1148), each line's left/right text and colour, and drawn again on hover.
+local function IsSecret(v) return issecretvalue and issecretvalue(v) or false end
+local function Rgb(c)
+    if type(c) ~= "table" or IsSecret(c.r) then return nil end
+    return { tonumber(c.r) or 1, tonumber(c.g) or 1, tonumber(c.b) or 1 }
+end
+local function TipLines(i)
+    local ti = _G.C_TooltipInfo
+    if not (ti and ti.GetTrainerService) then return nil end
+    local ok, data = pcall(ti.GetTrainerService, i)
+    if not (ok and type(data) == "table" and type(data.lines) == "table") then return nil end
+    local out = {}
+    for _, line in ipairs(data.lines) do
+        local l, r = line.leftText, line.rightText
+        if IsSecret(l) or IsSecret(r) then return nil end
+        if type(l) == "string" or type(r) == "string" then
+            out[#out + 1] = { l = type(l) == "string" and l or nil, lc = Rgb(line.leftColor),
+                r = (type(r) == "string" and r ~= "") and r or nil, rc = Rgb(line.rightColor),
+                w = line.wrapText and true or nil }
+        end
+    end
+    return out[1] and out or nil
+end
+
 local function Capture()
     local db = DB()
     if type(db) ~= "table" then return false end
@@ -116,6 +142,7 @@ local function Capture()
                     e.req[#e.req + 1] = { ability, met and true or false }
                 end
             end
+            e.tip = TipLines(i)
             list[#list + 1] = e
         end
     end
@@ -222,7 +249,38 @@ local function Requirements(e)
     return (REQUIRES_LABEL or "Requires:") .. " " .. table.concat(parts, PLAYER_LIST_DELIMITER or ", ")
 end
 
+local function DrawTip(tt, lines)
+    local W = HIGHLIGHT_FONT_COLOR or { r = 1, g = 1, b = 1 }
+    for _, l in ipairs(lines) do
+        local lc, rc = l.lc or { W.r, W.g, W.b }, l.rc or { W.r, W.g, W.b }
+        if l.r then
+            tt:AddDoubleLine(l.l or " ", l.r, lc[1], lc[2], lc[3], rc[1], rc[2], rc[3])
+        else
+            tt:AddLine((l.l and l.l ~= "") and l.l or " ", lc[1], lc[2], lc[3], l.w)
+        end
+    end
+end
+
+-- Hover: the trainer's own tooltip for the service, as saved at the last visit; anchored as the trainer's rows
+-- anchor theirs (ANCHOR_RIGHT, 35). A list saved before v1.72.0 has no lines: name, rank and requirements then.
+local function RowTooltip(row)
+    local e = row.entry
+    if not e then return end
+    GameTooltip:SetOwner(row, "ANCHOR_RIGHT", 35)
+    if type(e.tip) == "table" and e.tip[1] then
+        DrawTip(GameTooltip, e.tip)
+    else
+        GameTooltip:SetText(tostring(e.name), HIGHLIGHT_FONT_COLOR:GetRGB())
+        if e.sub and e.sub ~= "" then GameTooltip:AddLine(e.sub, GRAY_FONT_COLOR:GetRGB()) end
+        local req = Requirements(e)
+        if req ~= "" then GameTooltip:AddLine(req, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true) end
+    end
+    GameTooltip:Show()
+end
+
 local function BuildRow(row)
+    row:SetScript("OnEnter", RowTooltip)
+    row:SetScript("OnLeave", GameTooltip_Hide)
     row:SetSize(298, ROW_H)
     row:SetNormalTexture(TRAINER_TEX)
     row:GetNormalTexture():SetTexCoord(0.00195313, 0.57421875, 0.65820313, 0.75000000)
@@ -263,6 +321,8 @@ end
 
 local function InitRow(row, e)
     if not row.built then BuildRow(row) end
+    row.entry = e
+    if GameTooltip:IsOwned(row) then RowTooltip(row) end   -- a refresh under the mouse (money, level)
     local level = Level()
     local available = (e.level or 0) <= level and ReqsMet(e)
     row.icon:SetTexture(e.icon)
