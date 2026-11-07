@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.73.0] - 2026-11-07
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **WoW Forever: Pet Trainer tab in the trainer window.** Once you've visited a pet trainer, side tabs switch between your class trainer's list and your pet trainer's, each saved at its last visit. The pet tab shows your pet's name and face and checks skills against your pet's level. Classes without a pet trainer see the class list only (`Trainer.lua`)
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **WoW Forever: visiting the pet trainer replaced your class trainer's list** in the trainer window and the minimap button, which now lists your class skills only (`Trainer.lua`)
+- `VeritasUI_Lib`, `VeritasUI_PriorityRotation`, `VeritasUI_AdvancedOptions`, `VeritasUI_QualityOfLife` — **WoW Forever: a window opened beside Priority Rotation, Advanced Options or the trainer window covered their side tabs** — they now keep the same room for their tabs as Character Info (`Lib.lua`, `Trainer.lua`)
+
+### Changed
+
+- `VeritasUI_PriorityRotation`, `VeritasUI_AdvancedOptions`, `VeritasUI_QualityOfLife` — **Window order matches the game's: Professions takes the far left,** then Priority Rotation, Advanced Options or the trainer window, then Character Info (`Settings.lua`, `Trainer.lua`)
+
+
 ## [1.72.0] - 2026-11-07
 
 ### Added
