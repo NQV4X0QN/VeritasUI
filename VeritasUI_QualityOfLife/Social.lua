@@ -7,9 +7,9 @@
 -- Nothing of Blizzard's is hooked, replaced or hidden: GuildMicroButton belongs to the micro menu, an Edit Mode
 -- system (landmine 114: a HookScript there tainted Edit Mode once), and GameTooltip is shared (never hidden or
 -- hooked from here). A 10 Hz poll reads IsMouseOver on the two buttons and shows OUR frame, Blizzard's
--- TooltipBackdropTemplate (SharedTooltipTemplates.xml:111, both games) with Blizzard's tooltip fonts, attached to
--- Blizzard's own tooltip for that button (or the button). It stays while the mouse is on it, so a name can be
--- clicked, and goes 0.6 s after the mouse is on neither.
+-- TooltipBackdropTemplate (SharedTooltipTemplates.xml:111, both games) with Blizzard's tooltip fonts, placed beside
+-- Blizzard's own tooltip for that button (or the button). It stays while the mouse is on it or on the way to it,
+-- so a name can be clicked, and goes 0.6 s after the mouse is on neither.
 --
 -- Data, all read-only, every value pcall'd and secret-checked: the guild roster (GetNumGuildMembers /
 -- GetGuildRosterInfo, refreshed with C_GuildInfo.GuildRoster at most every 10 s and never in combat: the server
@@ -258,14 +258,50 @@ local TARGETS = {
 
 local function Over(f) return f and f.IsVisible and f:IsVisible() and f:IsMouseOver() end
 
+-- A frame's rect in UIParent units (left, bottom, right, top), or nil.
+local function Rect(f)
+    if not (f and f.GetRect) then return nil end
+    local ok, l, b, w, h = pcall(f.GetRect, f)
+    if not (ok and l and w and w > 0) then return nil end
+    local s = f:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    return l * s, b * s, (l + w) * s, (b + h) * s
+end
+
+-- THE WAY ACROSS (owner, 2026-11-07: the list closed the moment the mouse left the button). The list sits past
+-- Blizzard's tooltip for the button, so the mouse crosses that tooltip to reach it -- and the tooltip hides as
+-- soon as the button is left. While the list is up, the whole box from the button to the far edge of the list
+-- counts as "on it", so crossing that space keeps it open.
+-- Whether the point is inside the box spanning both rects ({ l, b, r, t } each).
+local function InBox(cx, cy, a, b)
+    return cx >= math.min(a[1], b[1]) and cx <= math.max(a[3], b[3])
+        and cy >= math.min(a[2], b[2]) and cy <= math.max(a[4], b[4])
+end
+VUI.QoL_SocialInBox = InBox   -- for qol_guild_test
+
+local function InReach(btn)
+    local cx, cy = GetCursorPosition()
+    if not cx then return false end
+    local s = UIParent:GetEffectiveScale()
+    local bl, bb, br, bt = Rect(btn)
+    local ll, lb, lr, lt = Rect(list)
+    if not (bl and ll) then return false end
+    return InBox(cx / s, cy / s, { bl, bb, br, bt }, { ll, lb, lr, lt })
+end
+
+-- Placed by fixed coordinates on UIParent, taken from Blizzard's tooltip (or the button) when the list opens. Not
+-- anchored to the tooltip: it hides when the mouse leaves the button, and the list must stay where it is.
 local function Place(btn)
     list:ClearAllPoints()
     local tip = _G.GameTooltip
     local anchor = (tip and tip:IsShown() and tip:GetOwner() == btn) and tip or btn
-    local _, y = anchor:GetCenter()
-    local up = y and y < (UIParent:GetHeight() / 2)
-    if up then list:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, 2)
-    else list:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2) end
+    local l, b, _, t = Rect(anchor)
+    if not l then
+        list:SetPoint("BOTTOMLEFT", btn, "TOPLEFT", 0, 2)
+        return
+    end
+    local up = (b + t) / 2 < (UIParent:GetHeight() / 2)
+    if up then list:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", l, t + 2)
+    else list:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", l, b - 2) end
 end
 
 local function Build()
@@ -301,7 +337,8 @@ local function Build()
             end
         end
         if list:IsShown() then
-            if list:IsMouseOver() then lastOver = now
+            local btn = owner and owner.frame()
+            if list:IsMouseOver() or (btn and InReach(btn)) then lastOver = now
             elseif now - lastOver > GRACE then list:Hide(); owner = nil end
         end
     end)
