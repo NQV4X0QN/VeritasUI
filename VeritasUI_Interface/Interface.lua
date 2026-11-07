@@ -174,6 +174,9 @@ local UNIVERSAL = {
     -- v1.62.0 (owner): Fade Action Bars has its own slider, so Action Bar 1 can stay fully shown while
     -- bars 2-8 fade. fadeActionBarsOpacity is now Action Bar 1's only. Takes that value on upgrade.
     fadeMultiBarsOpacity   = 0,
+    -- v1.75.0 (owner's request from a player): All Faded Opacity, the baseline last set for every faded-opacity
+    -- slider. Only a starting point: moving it writes its value into each slider's own key.
+    fadeOpacityBaseline    = 0,
     -- v1.74.0, a technical value, never offered as a choice: what a NEW character's per-character fades
     -- (PERCHAR) start as on this account. An account that already had VeritasUI seeds `true` here, so its
     -- new characters keep the fades on as before; a first-ever install is given `false` at ADDON_LOADED,
@@ -2478,6 +2481,8 @@ local function InitializeOptions()
     -- the table by reference (Blizzard_Setting.lua:420), so getting this wrong stays invisible
     -- until a setting fails to persist or leaks across characters.
     local inits = {}
+    -- Every faded-opacity slider's setting, by key, for All Faded Opacity (BuildFadeBaseline) to move them.
+    local opacitySettings = {}
 
     -- ── Faded opacity: a slider beside a Fade checkbox (v1.40.0, owner's request) ──
     -- Blizzard's own checkbox + slider row, the one Options > Audio > Ping Sounds uses: the slider
@@ -2523,6 +2528,7 @@ local function InitializeOptions()
             opt.name .. " Opacity",
             UNIVERSAL[opt.opacity]
         )
+        opacitySettings[opt.opacity] = slider
         if opt.opacityApply then
             slider:SetValueChangedCallback(function(_, value) opt.opacityApply(value) end)
         end
@@ -2687,6 +2693,7 @@ local function InitializeOptions()
             local key = "otOpacity_" .. sec.id
             local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_" .. key, key, db,
                 "number", sec.label, UNIVERSAL[key])
+            opacitySettings[key] = setting
             Under(Settings.CreateSlider(category, setting, OpacitySliderOptions(),
                 "How much of the " .. sec.label .. " section still shows while the tracker is faded. At 0% it "
                 .. "is hidden and the sections below move up into its place. Applies at once."))
@@ -2719,6 +2726,7 @@ local function InitializeOptions()
         })
         local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_fadeMinimapButtonsOpacity",
             "fadeMinimapButtonsOpacity", db, "number", "Faded Opacity", UNIVERSAL.fadeMinimapButtonsOpacity)
+        opacitySettings.fadeMinimapButtonsOpacity = setting
         local slider = Settings.CreateSlider(category, setting, OpacitySliderOptions(),
             "How much of the picked minimap buttons still shows while faded. At 0% they are hidden "
             .. "until you mouse over the minimap. Applies at once.")
@@ -2752,6 +2760,7 @@ local function InitializeOptions()
         do
             local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_fadeMultiBarsOpacity",
                 "fadeMultiBarsOpacity", db, "number", "Faded Opacity", UNIVERSAL.fadeMultiBarsOpacity)
+            opacitySettings.fadeMultiBarsOpacity = setting
             local slider = Settings.CreateSlider(category, setting, OpacitySliderOptions(),
                 "How much of the picked action bars still shows while faded. At 0% they are hidden until you "
                 .. "mouse over them. Action Bar 1 has its own slider, beside Fade Main Action Bar. Applies at once.")
@@ -2793,6 +2802,37 @@ local function InitializeOptions()
             .. "every Fade option on this page. 0 keeps the usual short delay. The chat window and its tabs "
             .. "keep Blizzard's own timing. Applies at once.", "fadeDelay"))
         GreyIfUnavailable(delayInit, "fadeDelay")
+    end
+
+    -- ── All Faded Opacity — slider, UNIVERSAL (v1.75.0, owner's request from a player). Moving it sets every
+    -- faded-opacity slider on the page to its value, as a baseline; each slider can then be changed on its own,
+    -- and this one keeps showing the baseline last set (owner's choice). The objective tracker's Scenario, Event
+    -- Objectives and Bonus Objectives sections (OT_SECTIONS `full`, shown in full by default) are left as they
+    -- are (owner's choice). Each slider is moved through its own setting, so the page shows the new value and
+    -- its callback runs, as a Defaults click would; a section this game does not offer is written directly.
+    local function BuildFadeBaseline()
+        local keys = {}
+        for _, opt in ipairs(FADE_OPTIONS) do
+            if opt.opacity then keys[#keys + 1] = opt.opacity end
+        end
+        keys[#keys + 1] = "fadeMinimapButtonsOpacity"
+        keys[#keys + 1] = "fadeMultiBarsOpacity"
+        for _, sec in ipairs(OT_SECTIONS) do
+            if not sec.full then keys[#keys + 1] = "otOpacity_" .. sec.id end
+        end
+        local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_fadeOpacityBaseline",
+            "fadeOpacityBaseline", db, "number", "All Faded Opacity", UNIVERSAL.fadeOpacityBaseline)
+        setting:SetValueChangedCallback(function(_, value)
+            if type(value) ~= "number" then return end
+            for _, k in ipairs(keys) do
+                local s = opacitySettings[k]
+                if s then pcall(s.SetValue, s, value) else db[k] = value end
+            end
+        end)
+        Settings.CreateSlider(category, setting, OpacitySliderOptions(),
+            "Sets every Faded Opacity slider on this page to this value at once, as a starting point. You can "
+            .. "still change each one on its own afterwards. The objective tracker's Scenario, Event Objectives "
+            .. "and Bonus Objectives sections are left as they are. Applies at once.")
     end
 
 
@@ -2943,7 +2983,8 @@ local function InitializeOptions()
 
     -- ── The page, by where each thing sits on screen (owner, 2026-11-04: the Fade / Hide split had grown
     -- too long to find anything, and a raider skipped the whole page). Every section holds at least two
-    -- options except All Fades: Fade Delay times every fade below it, so it heads the page (owner's choice).
+    -- options. All Fades heads the page: Fade Delay times every fade below it (owner's choice) and All Faded
+    -- Opacity sets every fade's opacity (v1.75.0).
     -- A row's sub-options follow it in the same section. An entry missing from this game (Show While Flying
     -- in WoW Forever) is skipped.
     local entries = {}
@@ -2951,10 +2992,11 @@ local function InitializeOptions()
         for _, opt in ipairs(list) do entries[opt.key] = opt end
     end
     entries.fadeDelay      = { key = "fadeDelay",      build = BuildFadeDelay }
+    entries.fadeOpacityBaseline = { key = "fadeOpacityBaseline", build = BuildFadeBaseline }
     entries.fadeActionBars = { key = "fadeActionBars", build = BuildActionBarsDropdown }
     entries.hideErrorText  = { key = "hideErrorText",  build = BuildErrorTextDropdown }
     local SECTIONS = {
-        { "All Fades",           { "fadeDelay" } },
+        { "All Fades",           { "fadeDelay", "fadeOpacityBaseline" } },
         { "Action Bars",         { "fadeMainActionBar", "fadeMainActionBarShowFlying", "fadeActionBars",
                                    "hideMacroNames" } },
         { "Micro Menu and Bags", { "fadeMicroMenu", "fadeBagButtons" } },
