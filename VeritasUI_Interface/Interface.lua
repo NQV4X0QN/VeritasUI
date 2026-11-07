@@ -1019,8 +1019,18 @@ end
 -- One frame per piece where a piece is a parent and its child (Tracking holds Tracking.Button,
 -- Minimap.xml:51-81): fading both would multiply their alphas.
 local MINIMAP_BUTTONS = {
+    -- WoW Forever's MinimapCluster has no BorderTop (Gethe forever Mainline/Minimap.xml:17-24 goes straight to
+    -- ZoneTextButton; live Minimap.xml:18 has it), so the list is built without holes: { nil, button } reads
+    -- as empty to ipairs and nothing faded there (owner, 2026-11-06).
     { id = "zone",       label = "Zone Name", tip = "The zone name above the minimap.",
-      frames = function() local c = _G.MinimapCluster; return c and { c.BorderTop, c.ZoneTextButton } end },
+      frames = function()
+          local c = _G.MinimapCluster
+          if not c then return nil end
+          local list = {}
+          if c.BorderTop then list[#list + 1] = c.BorderTop end
+          if c.ZoneTextButton then list[#list + 1] = c.ZoneTextButton end
+          return list
+      end },
     { id = "clock",      label = "Clock", tip = "The clock. A faded clock's alarm still plays its sound.",
       -- Blizzard_TimeManager is load-on-demand
       frames = function() return { _G.TimeManagerClockButton } end },
@@ -2985,10 +2995,57 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
     end
 end)
 
+-- ── PROBE (test build only, remove before release): /interface zoom ──
+-- Fade Minimap Buttons > Zoom Buttons does not fade them in WoW Forever (owner, 2026-11-06), and Forever's zoom
+-- code is the same as Retail's (Mainline/Minimap.lua:253-267 both: shown on minimap enter, hidden on leave).
+-- Records who calls Show/Hide on them and when, and prints their state with the mouse off the minimap.
+local zoomLog = {}
+local zoomProbe = CreateFrame("Frame")
+zoomProbe:RegisterEvent("PLAYER_LOGIN")
+zoomProbe:SetScript("OnEvent", function()
+    local m = _G.Minimap
+    for _, k in ipairs({ "ZoomIn", "ZoomOut" }) do
+        local b = m and m[k]
+        if b then
+            for _, method in ipairs({ "Show", "Hide", "SetShown", "SetAlpha" }) do
+                hooksecurefunc(b, method, function(_, v)
+                    if #zoomLog >= 40 then table.remove(zoomLog, 1) end
+                    local stack = (_G.debugstack and _G.debugstack(3, 2, 0) or "?"):gsub("\n", " < ")
+                    zoomLog[#zoomLog + 1] = string.format("%.1f %s:%s(%s) %s", GetTime(), k, method,
+                        tostring(v), stack)
+                end)
+            end
+        end
+    end
+end)
+local function PrintZoomProbe()
+    local m = _G.Minimap
+    VUI.Print("Interface", "Zoom probe. Keep the mouse OFF the minimap. Picked: "
+        .. tostring(db and db.fadeMinimapButtons and db.fadeMinimapButtons.zoom)
+        .. ", fade hooked: " .. tostring(liveFadeHooked["fadeMinimapButtons_zoom"])
+        .. ", hovered says: " .. tostring(MinimapButtonsHovered())
+        .. ", minimap under mouse: " .. tostring(m and m:IsMouseOver()))
+    for _, k in ipairs({ "ZoomIn", "ZoomOut" }) do
+        local b = m and m[k]
+        if b then
+            VUI.Print("Interface", string.format("%s shown %s visible %s alpha %.2f effective %.2f under mouse %s",
+                k, tostring(b:IsShown()), tostring(b:IsVisible()), b:GetAlpha(), b:GetEffectiveAlpha(),
+                tostring(b:IsMouseOver())))
+        else
+            VUI.Print("Interface", k .. " missing")
+        end
+    end
+    local hit = m and m.ZoomHitArea
+    VUI.Print("Interface", "ZoomHitArea under mouse: " .. tostring(hit and hit:IsMouseOver()))
+    VUI.Print("Interface", "Last calls (" .. #zoomLog .. "):")
+    for i = math.max(1, #zoomLog - 9), #zoomLog do VUI.Print("Interface", zoomLog[i]) end
+end
+
 -- ── Slash commands ──────────────────────────────────────────
 SLASH_VERITASUI_INTERFACE1 = "/interface"
 SlashCmdList["VERITASUI_INTERFACE"] = function(msg)
     if strtrim(msg or ""):lower() == "gear" then PrintGearDiag(); return end
+    if strtrim(msg or ""):lower() == "zoom" then PrintZoomProbe(); return end
     if strtrim(msg or ""):lower() == "tracker" then
         -- Which tracker sections are shown, and their alpha: if an event's objective still fades,
         -- this names the section it is in, so it can be added to OT_EVENT_MODULES.
