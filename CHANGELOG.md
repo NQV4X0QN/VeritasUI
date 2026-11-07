@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.74.2] - 2026-11-07
+
+### Fixed
+
+- `VeritasUI_PriorityRotation` — **WoW Forever: clicking an empty slot or the Spellbook button could open the talent window instead of the spellbook** — it happened while you had a talent point to spend. It now always opens the spellbook (`SpellbookOpener.lua`)
+
+
 ## [1.74.1] - 2026-11-07
 
 ### Fixed
