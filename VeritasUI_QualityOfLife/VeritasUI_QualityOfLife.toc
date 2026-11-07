@@ -17,5 +17,6 @@ AutoEquip.lua
 Trainer.lua
 CharacterStats.lua
 Chat.lua
+Social.lua
 CopyChat.lua
 MapNotes.xml
