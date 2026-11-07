@@ -20,10 +20,18 @@
 -- Crit uses the rating Blizzard's own tooltip uses (spell, ranged or melee, whichever crit is highest:
 -- PaperDollFrame_SetCritChance :1031-1053). Versatility uses damage done, the rating it shows (:1279).
 --
--- Highlight Gear for Stats. Hovering Critical Strike, Haste, Mastery, Versatility, Leech, Avoidance or
--- Speed lights the highlight of each equipped slot whose item has that stat (C_Item.GetItemStats keys, as
--- EllesmereUI reads them), with the slot button's own highlight (LockHighlight; no new art). Cleared when
--- the tooltip hides, which covers leaving the stat and closing the window.
+-- Highlight Gear for Stats. Hovering a stat lights the highlight of each equipped slot whose item has that
+-- stat (C_Item.GetItemStats keys, as EllesmereUI reads them), with the slot button's own highlight
+-- (LockHighlight; no new art). Cleared when the tooltip hides, which covers leaving the stat and closing
+-- the window. v1.71.3: the attributes too, and WoW Forever's own stat list (Hit, Expertise, Defense...).
+-- Forever's character window gives most stats a tooltip builder of its own, the attributes a LOCAL one
+-- (Camelot/PaperDollFrameStats.lua:249, :338), so the highlight is also hooked on each stat frame's
+-- OnEnter: every stat row is labelled by the global PaperDollFrame_SetLabelAndText in both games
+-- (Camelot/PaperDollFrame.lua:2504, Mainline :1988), and a post-hook there meets every frame.
+-- A key that is not in the list still matches when its text names the stat ("Agility or Intellect").
+--
+-- No diminishing returns in WoW Forever: owner's probe 2026-11-06, bonus(crit, 1) x 10,000 =
+-- bonus(crit, 10,000) = 714.2857 -- rating converts at a flat rate, so the option is not offered there.
 
 local VUI = _G.VeritasUI
 if not VUI then return end
@@ -38,25 +46,61 @@ local function On(key)
 end
 local function IsSecret(v) return issecretvalue and issecretvalue(v) or false end
 
--- label -> { cr = combat rating (nil for crit: chosen at hover), mod = GetItemStats key }
+-- label -> { cr = combat rating (nil for crit: chosen at hover; nil = no diminishing returns line),
+--            mods = GetItemStats keys, word = text a key's string must contain to match (nil = list only) }
 local STATS
 local function Stats()
     if STATS then return STATS end
     STATS = {}
     local fmt = _G.STAT_FORMAT
-    local function add(name, cr, mod)
+    local function add(name, cr, mods, word)
         if type(fmt) == "string" and type(name) == "string" then
-            STATS[format(fmt, name)] = { cr = cr, mod = mod, crit = (cr == "crit") }
+            local set = {}
+            for _, k in ipairs(mods) do set[k] = true end
+            STATS[format(fmt, name)] = { cr = cr, mods = set, crit = (cr == "crit"), word = word }
         end
     end
-    add(_G.STAT_CRITICAL_STRIKE, "crit", "ITEM_MOD_CRIT_RATING_SHORT")
-    add(_G.STAT_HASTE, _G.CR_HASTE_MELEE, "ITEM_MOD_HASTE_RATING_SHORT")
-    add(_G.STAT_MASTERY, _G.CR_MASTERY, "ITEM_MOD_MASTERY_RATING_SHORT")
-    add(_G.STAT_VERSATILITY, _G.CR_VERSATILITY_DAMAGE_DONE, "ITEM_MOD_VERSATILITY")
-    add(_G.STAT_LIFESTEAL, _G.CR_LIFESTEAL, "ITEM_MOD_CR_LIFESTEAL_SHORT")
-    add(_G.STAT_AVOIDANCE, _G.CR_AVOIDANCE, "ITEM_MOD_CR_AVOIDANCE_SHORT")
-    add(_G.STAT_SPEED, _G.CR_SPEED, "ITEM_MOD_CR_SPEED_SHORT")
+    -- Attributes: Blizzard labels them SPELL_STAT<i>_NAME (Mainline PaperDollFrame.lua:617, Camelot :690).
+    local ATTR = { "STRENGTH", "AGILITY", "STAMINA", "INTELLECT", "SPIRIT" }
+    for i, key in ipairs(ATTR) do
+        local name = _G["SPELL_STAT" .. i .. "_NAME"]
+        add(name, nil, { "ITEM_MOD_" .. key .. "_SHORT" }, name)
+    end
+    add(_G.STAT_CRITICAL_STRIKE, "crit", { "ITEM_MOD_CRIT_RATING_SHORT", "ITEM_MOD_CRIT_MELEE_RATING_SHORT",
+        "ITEM_MOD_CRIT_RANGED_RATING_SHORT", "ITEM_MOD_CRIT_SPELL_RATING_SHORT" })
+    add(_G.STAT_HASTE, _G.CR_HASTE_MELEE, { "ITEM_MOD_HASTE_RATING_SHORT" })
+    add(_G.STAT_MASTERY, _G.CR_MASTERY, { "ITEM_MOD_MASTERY_RATING_SHORT" })
+    add(_G.STAT_VERSATILITY, _G.CR_VERSATILITY_DAMAGE_DONE, { "ITEM_MOD_VERSATILITY" })
+    add(_G.STAT_LIFESTEAL, _G.CR_LIFESTEAL, { "ITEM_MOD_CR_LIFESTEAL_SHORT" })
+    add(_G.STAT_AVOIDANCE, _G.CR_AVOIDANCE, { "ITEM_MOD_CR_AVOIDANCE_SHORT" })
+    add(_G.STAT_SPEED, _G.CR_SPEED, { "ITEM_MOD_CR_SPEED_SHORT" })
+    -- WoW Forever's stat list (Camelot/PaperDollFrameConstants.lua:35-91); its rows are labelled with
+    -- these globals (Camelot/PaperDollFrameStats.lua :178 :362 :441 :550 :675, PaperDollFrame.lua :801
+    -- :841 :1102 :1143). No combat rating: Forever has no diminishing returns.
+    add(_G.STAT_HIT_CHANCE, nil, { "ITEM_MOD_HIT_RATING_SHORT", "ITEM_MOD_HIT_MELEE_RATING_SHORT",
+        "ITEM_MOD_HIT_RANGED_RATING_SHORT", "ITEM_MOD_HIT_SPELL_RATING_SHORT" })
+    add(_G.STAT_EXPERTISE, nil, { "ITEM_MOD_EXPERTISE_RATING_SHORT" })
+    add(_G.STAT_ARMOR_PENETRATION, nil, { "ITEM_MOD_ARMOR_PENETRATION_RATING_SHORT" })
+    add(_G.STAT_SPELLPOWER, nil, { "ITEM_MOD_SPELL_POWER_SHORT", "ITEM_MOD_SPELL_DAMAGE_DONE_SHORT" })
+    add(_G.STAT_SPELLHEALING, nil, { "ITEM_MOD_SPELL_HEALING_DONE_SHORT", "ITEM_MOD_SPELL_POWER_SHORT" })
+    add(_G.DEFENSE, nil, { "ITEM_MOD_DEFENSE_SKILL_RATING_SHORT" })
+    add(_G.STAT_DODGE, nil, { "ITEM_MOD_DODGE_RATING_SHORT" })
+    add(_G.STAT_PARRY, nil, { "ITEM_MOD_PARRY_RATING_SHORT" })
+    add(_G.STAT_BLOCK, nil, { "ITEM_MOD_BLOCK_RATING_SHORT", "ITEM_MOD_BLOCK_VALUE_SHORT" })
     return STATS
+end
+
+-- True when an item's GetItemStats table has the stat: a listed key, or (attributes) a key whose text
+-- names it, as Retail's "[Agility or Intellect]" keys do.
+local function HasStat(stats, stat)
+    for k in pairs(stats) do
+        if stat.mods[k] then return true end
+        if stat.word then
+            local s = _G[k]
+            if type(s) == "string" and s:find(stat.word, 1, true) then return true end
+        end
+    end
+    return false
 end
 
 local function StatFor(frame)
@@ -115,7 +159,7 @@ local function Number(n)
 end
 
 local function AddDiminishing(stat)
-    if not On("charDiminishingReturns") then return false end
+    if VUI.IS_FOREVER or not On("charDiminishingReturns") then return false end
     local bonus = _G.GetCombatRatingBonusForCombatRatingValue
     if not (bonus and GetCombatRating) then return false end
     local cr = stat.crit and CritRating() or stat.cr
@@ -157,7 +201,7 @@ local function Light(stat)
         local link = slot and GetInventoryItemLink("player", slot)
         if link then
             local ok, stats = pcall(C_Item.GetItemStats, link)
-            if ok and type(stats) == "table" and stats[stat.mod] then
+            if ok and type(stats) == "table" and HasStat(stats, stat) then
                 pcall(button.LockHighlight, button)
                 lit[button] = true
             end
@@ -169,11 +213,25 @@ local function OnStatTooltip(frame)
     if not (GameTooltip and GameTooltip:IsOwned(frame)) then return end
     local stat = StatFor(frame)
     if not stat then return end
-    Light(stat)
+    if frame.unit ~= "pet" then Light(stat) end
     if AddDiminishing(stat) then GameTooltip:Show() end
 end
 
--- PaperDollFrame.lua is part of Blizzard_UIPanels_Game; install as soon as its two globals exist.
+-- The frame-level hook: highlight only (the diminishing returns lines stay on the two builders above,
+-- which Retail's Mastery re-runs as its UpdateTooltip, PaperDollFrame.lua:1212).
+local hookedFrames = setmetatable({}, { __mode = "k" })
+local function OnStatEnter(frame)
+    if not (GameTooltip and GameTooltip:IsOwned(frame)) or frame.unit == "pet" then return end
+    local stat = StatFor(frame)
+    if stat then Light(stat) end
+end
+local function OnLabelSet(frame)
+    if type(frame) ~= "table" or hookedFrames[frame] or not frame.HookScript then return end
+    hookedFrames[frame] = true
+    pcall(frame.HookScript, frame, "OnEnter", OnStatEnter)
+end
+
+-- PaperDollFrame.lua is part of Blizzard_UIPanels_Game; install as soon as its globals exist.
 local installed = {}
 local function Install()
     for _, name in ipairs({ "PaperDollStatTooltip", "Mastery_OnEnter" }) do
@@ -182,7 +240,11 @@ local function Install()
             installed[name] = true
         end
     end
-    return installed.PaperDollStatTooltip and installed.Mastery_OnEnter
+    if not installed.label and type(_G.PaperDollFrame_SetLabelAndText) == "function" then
+        hooksecurefunc("PaperDollFrame_SetLabelAndText", OnLabelSet)
+        installed.label = true
+    end
+    return installed.PaperDollStatTooltip and installed.Mastery_OnEnter and installed.label
 end
 if not Install() then
     local waiter = CreateFrame("Frame")

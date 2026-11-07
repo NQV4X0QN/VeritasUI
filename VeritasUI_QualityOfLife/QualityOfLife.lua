@@ -4465,14 +4465,17 @@ local function InitializeOptions()
     end
 
     -- CharacterStats.lua reads both at hover time, so they apply at once with no callback.
-    AddCheckbox("charDiminishingReturns", "Show Diminishing Returns",
-        "In the character window's Critical Strike, Haste, Mastery, Versatility, Leech, Avoidance and "
-        .. "Speed tooltips: how much of your rating diminishing returns take away, and how much more "
-        .. "rating you can add before the next penalty.")
+    -- Not in WoW Forever: rating converts at a flat rate there (owner's probe 2026-11-06), nothing to show.
+    if not VUI.IS_FOREVER then
+        AddCheckbox("charDiminishingReturns", "Show Diminishing Returns",
+            "In the character window's Critical Strike, Haste, Mastery, Versatility, Leech, Avoidance and "
+            .. "Speed tooltips: how much of your rating diminishing returns take away, and how much more "
+            .. "rating you can add before the next penalty.")
+    end
 
     AddCheckbox("charStatHighlight", "Highlight Gear for Stats",
-        "Hover Critical Strike, Haste, Mastery, Versatility, Leech, Avoidance or Speed in the character "
-        .. "window to highlight the gear that has it.")
+        "Hover a stat in the character window, such as Stamina or Critical Strike, to highlight the gear "
+        .. "that has it.")
 
     -- AutoEquip.lua (v1.67.0, owner's request): one checkbox to turn it on, then one per quality under it.
     local equipInit = AddCheckbox("autoEquip", "Auto Equip Upgrades",
