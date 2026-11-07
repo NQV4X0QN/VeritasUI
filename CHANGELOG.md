@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.71.1] - 2026-11-06
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **WoW Forever: the AddOn button sits a little lower under the calendar,** so its gap matches the one between the tracking button and the trainer button. Back where the game puts it while Show Trainer Button by the Minimap is off (`Trainer.lua`)
+
+
 ## [1.71.0] - 2026-11-06
 
 ### Added
