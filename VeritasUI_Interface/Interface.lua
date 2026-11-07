@@ -115,6 +115,8 @@ local UNIVERSAL = {
     fadeObjectiveTracker = true,
     -- v1.65.0 (owner's request): sub-option, ON -- quests ready to turn in stay shown through the fade.
     fadeObjectiveTrackerTurnIn = true,
+    -- v1.72.0 (owner's request): sub-option, ON -- this zone's quests with a usable item stay shown too.
+    fadeObjectiveTrackerItems = true,
     -- v1.43.0 (owner's request): your buffs and debuffs by the minimap, shown in combat or on hover.
     fadeAuras           = true,
     -- v1.63.0 (owner's request): sub-option, ON -- the buffs come back while one has 30 s or less left.
@@ -1612,9 +1614,62 @@ local function SetupObjectiveTrackerFade()
         end
         return out
     end
-    -- The pinned blocks shown through the fade (the focused quest, quests ready to turn in), their right-edge
-    -- frames (quest item and POI buttons, anchored RIGHT to the block or to each other: Block.lua:341-362) and
-    -- their section's header show at full opacity through the section's fade.
+    -- Show Quests With Items (owner's request 2026-11-06, Forever: "Flutterfly Dust" and its Flutterfly Swatter
+    -- were hidden in a 0% section). A quest counts when Blizzard gave its block an item button --
+    -- block.ItemButton, set from QuestUtil.QuestShowsItemByIndex and cleared on every layout (Retail and Forever
+    -- Blizzard_QuestObjectiveTracker.lua: Mainline :133/:276-277, Camelot :161/:311-312), so Blizzard decides
+    -- which quests have a usable item -- AND it is a quest of the zone you are in.
+    -- Zone: the quests C_QuestLog.GetQuestsOnMap lists for your best map, each POI's own map being that map or
+    -- one inside it; with none there, the parent map's list filtered the same way. Zone Quests' measured rule
+    -- (ZoneQuests.lua BuildMapQuestSet), kept here so the two modules stay independent. Re-read once a second.
+    local zoneSet, zoneAt = {}, -10
+    local function ZoneQuestSet(now)
+        if now - zoneAt < 1 then return zoneSet end
+        zoneAt, zoneSet = now, {}
+        local cm, ql = _G.C_Map, _G.C_QuestLog
+        if not (cm and cm.GetBestMapForUnit and ql and ql.GetQuestsOnMap) then return zoneSet end
+        local okM, best = pcall(cm.GetBestMapForUnit, "player")
+        if not (okM and type(best) == "number" and best > 0) then return zoneSet end
+        local valid = { [best] = true }
+        local okC, kids = pcall(cm.GetMapChildrenInfo, best, nil, true)
+        if okC and type(kids) == "table" then
+            for _, c in ipairs(kids) do if c.mapID then valid[c.mapID] = true end end
+        end
+        local mapID, n = best, 0
+        while mapID and mapID > 0 and n < 20 do
+            n = n + 1
+            local okI, info = pcall(cm.GetMapInfo, mapID)
+            if not (okI and type(info) == "table") then break end
+            if info.mapType == 0 or info.mapType == 1 then break end   -- Cosmic, World
+            local okQ, quests = pcall(ql.GetQuestsOnMap, mapID)
+            if okQ and type(quests) == "table" and quests[1] then
+                for _, e in ipairs(quests) do
+                    if e.questID and (not e.mapID or e.mapID == 0 or valid[e.mapID]) then zoneSet[e.questID] = true end
+                end
+                break
+            end
+            mapID = info.parentMapID
+        end
+        return zoneSet
+    end
+    -- `skip` = blocks already pinned (focused, ready to turn in).
+    local function ItemBlocks(mod, skip, now)
+        local out, b, n = {}, mod.firstBlock, 0
+        local zone
+        while b and n < 200 do
+            local btn = b.ItemButton
+            if not skip[b] and type(b.id) == "number" and b.IsShown and b:IsShown()
+                and type(btn) == "table" and btn.IsShown and btn:IsShown() then
+                zone = zone or ZoneQuestSet(now)
+                if zone[b.id] then out[#out + 1] = b end
+            end
+            b, n = b.nextBlock, n + 1
+        end
+        return out
+    end
+    -- The pinned blocks shown through the fade (the focused quest, quests ready to turn in, quests with items),
+    -- their right-edge frames (quest item and POI buttons, anchored RIGHT to the block or to each other:
+    -- Block.lua:341-362) and their section's header show at full opacity through the section's fade.
     -- ⚠ SetIgnoreParentAlpha also escapes UIParent's alpha (landmine 142), which Quality of Life's AFK screen
     -- sets to 0, so it is dropped whenever UIParent is not fully shown.
     local ignoring = {}
@@ -1703,15 +1758,25 @@ local function SetupObjectiveTrackerFade()
             end
             local ready = (m.sec.quests and db.fadeObjectiveTracker and db.fadeObjectiveTrackerTurnIn
                 and not raidHidden) and ReadyBlocks(m.f, fb or lb) or {}
+            -- Quests with items follow the quests ready to turn in (a quest in both is pinned once).
+            local items = {}
+            if m.sec.quests and db.fadeObjectiveTracker and db.fadeObjectiveTrackerItems and not raidHidden then
+                local skip = {}
+                if fb or lb then skip[fb or lb] = true end
+                for _, b in ipairs(ready) do skip[b] = true end
+                items = ItemBlocks(m.f, skip, now)
+            end
             if lb then
                 -- Down to the section's own opacity (0 for a collapsed section, e.g. 0.3 otherwise), where
                 -- it can follow the section again without a jump; its header with it, unless quests ready to
-                -- turn in still hold the header up.
+                -- turn in or quests with items still hold the header up.
                 if (lb:GetAlpha() or 0) > target + 0.01 then
                     if not leavingFade[lb] then
                         leavingFade[lb] = true
                         VUI.SmoothFade(lb, OT_FADE_OUT, target)
-                        if m.f.Header and not ready[1] then VUI.SmoothFade(m.f.Header, OT_FADE_OUT, target) end
+                        if m.f.Header and not ready[1] and not items[1] then
+                            VUI.SmoothFade(m.f.Header, OT_FADE_OUT, target)
+                        end
                     end
                 else
                     EndLeaving(m.f); lb = nil
@@ -1725,8 +1790,12 @@ local function SetupObjectiveTrackerFade()
                 pins[#pins + 1] = b
                 if fading then through[#through + 1] = b end
             end
+            for _, b in ipairs(items) do
+                pins[#pins + 1] = b
+                if fading then through[#through + 1] = b end
+            end
             if pins[1] then pinned[m.f] = pins end
-            if through[1] and (fb or ready[1]) and fading then top = 1 end
+            if through[1] and (fb or ready[1] or items[1]) and fading then top = 1 end
             if m.sec.quests then SetFullOpacity(m.f, through) end
             -- Collapsed only once its fade-out has FINISHED (owner, 2026-11-01): parking it as soon as
             -- the target is 0 cut the fade short, so the tracker popped out instead of fading like the rest.
@@ -2272,6 +2341,10 @@ local function InitializeOptions()
         { key = "fadeObjectiveTrackerTurnIn", name = "Show Quests Ready to Turn In", parent = "fadeObjectiveTracker",
           tip = "Quests you can hand in stay shown, at the top of their section with its header, while the rest "
              .. "of the tracker is faded, so you can see them without mousing over. Applies at once.",
+          apply = function() end },
+        { key = "fadeObjectiveTrackerItems", name = "Show Quests With Items", parent = "fadeObjectiveTracker",
+          tip = "Quests in the zone you're in that have an item to use stay shown, at the top of their section "
+             .. "with its header and the item button, while the rest of the tracker is faded. Applies at once.",
           apply = function() end },
         -- v1.51.0: In Raids + one opacity slider per section, indented under it (built below).
         { key = "fadeObjectiveTrackerRaid", build = function() BuildTrackerSectionOptions() end },
@@ -2825,7 +2898,8 @@ local function InitializeOptions()
                                    "hideProfessionGear" } },
         { "Chat",                { "fadeChatTabs", "hideSocialButton", "hideChatButtons", "hideVoiceChatButton" } },
         { "Minimap",             { "fadeMinimapAlerts", "fadeMinimapButtons" } },
-        { "Trackers and Meters", { "fadeObjectiveTracker", "fadeObjectiveTrackerTurnIn", "fadeObjectiveTrackerRaid",
+        { "Trackers and Meters", { "fadeObjectiveTracker", "fadeObjectiveTrackerTurnIn", "fadeObjectiveTrackerItems",
+                                   "fadeObjectiveTrackerRaid",
                                    "fadeStatusBars", "fadeStatusBarsOnGain", "fadeDamageMeter" } },
         { "Messages and Popups", { "hideErrorText", "hideTopBanners", "hideTalkingHead", "muteTalkingHead",
                                    "muteSpellFizzle" } },
