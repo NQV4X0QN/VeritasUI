@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.75.0] - 2026-11-07
+
+### Added
+
+- `VeritasUI_Interface` — **All Faded Opacity.** One slider in All Fades that sets every Faded Opacity slider to the same value at once, as a starting point; each one can still be changed on its own afterwards. The objective tracker's Scenario, Event Objectives and Bonus Objectives sections are left as they are. Applies at once (`Interface.lua`)
+- `VeritasUI_Interface` — **Fade the pet bar and the stance bar.** Fade Action Bars now lists the Pet Action Bar and the Stance Bar (Warrior stances, Druid forms, Rogue stealth and the like) after Action Bar 8, using the same Faded Opacity slider; saved for each character (`Interface.lua`)
+- `VeritasUI_QualityOfLife` — **Guild and Friends section.** Show Guild Rank in Tooltips and Highlight Guildmates in Tooltips (your guild's name in your guild chat colour), both on by default; Online Lists on the Guild and Social Buttons, on by default — hover either button to see who in your guild or which friends are online, click a name to whisper, Shift-click to invite, with Show Guild Notes under it (off); and Accept Invites from Guildmates (off until you turn it on) (`Social.lua`, new; `Automation.lua`, `QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Abbreviate Channel Names** (off until you turn it on): [G] for [Guild], [P] for [Party], [2] for [2. Trade] and so on; clicking the short name still opens that channel (`Chat.lua`)
+
+### Requires
+
+- `VeritasUI_QualityOfLife` — **Restart the game once after updating:** this version adds a new file, which `/reload` does not load
+
+
 ## [1.74.2] - 2026-11-07
 
 ### Fixed
