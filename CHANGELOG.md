@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.71.2] - 2026-11-06
+
+### Changed
+
+- `VeritasUI_ZoneQuests` — **WoW Forever: no Always Show options.** Forever has no campaign, important, legendary, meta, daily or weekly quests, so those five options are left out there and no quest is kept in the tracker outside its zone. Retail is unchanged (`ZoneQuests.lua`)
+
+
 ## [1.71.1] - 2026-11-06
 
 ### Changed
