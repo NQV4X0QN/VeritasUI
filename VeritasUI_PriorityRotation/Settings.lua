@@ -40,9 +40,12 @@ local CONTENT_W = PNL_W - 18
 -- left edge) because PortraitFrameTemplate's portrait overhang makes
 -- the rendered geometry differ from the logical SetSize value the
 -- manager would otherwise use for positioning math.
+-- pushable 2 (owner, 2026-11-07): Blizzard sorts pushable windows left to right by this value, lowest first
+-- (UIParentPanelManager.lua:54-58), so Professions (1) takes the far left, then ours, then Character Info (3);
+-- with 0 ours stayed leftmost and pushed Professions into the middle.
 VUI.RegisterManagedPanel("PriorityRotMainWindow", {
     area     = "left",
-    pushable = 0,
+    pushable = 2,
 })
 
 -- Apply the current spec's icon to the frame's portrait slot through Blizzard's

@@ -271,7 +271,10 @@ end
 
 -- ── The window ───────────────────────────────────────────────
 local WIN_NAME = "VUIQoLTrainerListFrame"
-VUI.RegisterManagedPanel(WIN_NAME, { area = "left", pushable = 0 })
+-- pushable 2 (owner, 2026-11-07): Blizzard sorts pushable windows left to right by this value, lowest first
+-- (UIParentPanelManager.lua:54-58), so Professions (1) takes the far left, then ours, then Character Info (3);
+-- with 0 ours stayed leftmost and pushed Professions into the middle.
+VUI.RegisterManagedPanel(WIN_NAME, { area = "left", pushable = 2 })
 
 local TRAINER_TEX = "Interface\\ClassTrainerFrame\\TrainerTextures"
 local ROW_H, LIST_W, LIST_H = 47, 302, 330

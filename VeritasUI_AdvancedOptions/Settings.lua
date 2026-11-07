@@ -19,9 +19,12 @@ local PNL_H     = 660
 --  Register with Blizzard's UIPanel manager at FILE LOAD time.
 --  Same pattern as PriorityRotation — Tier A primary panel.
 ----------------------------------------------------------------
+-- pushable 2 (owner, 2026-11-07): Blizzard sorts pushable windows left to right by this value, lowest first
+-- (UIParentPanelManager.lua:54-58), so Professions (1) takes the far left, then ours, then Character Info (3);
+-- with 0 ours stayed leftmost and pushed Professions into the middle.
 VUI.RegisterManagedPanel("AdvancedOptionsMainWindow", {
     area     = "left",
-    pushable = 0,
+    pushable = 2,
 })
 
 ----------------------------------------------------------------
