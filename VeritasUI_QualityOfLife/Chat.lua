@@ -404,7 +404,9 @@ end
 VUI.QoL_ShortChannels = ShortChannels   -- for qol_chat_test
 
 local function ShortenLine(cf, msg)
-    if not On("chatShortChannels") then return end
+    -- Off by default, so an unseeded table must not read as on (On() treats nil as on; landmine 163).
+    local db = DB()
+    if not (type(db) == "table" and db.chatShortChannels == true) then return end
     if type(msg) ~= "string" or IsSecret(msg) or not sfind(msg, "|Hchannel:", 1, true) then return end
     local short = ShortChannels(msg)
     if short == msg or not cf.TransformMessages then return end
