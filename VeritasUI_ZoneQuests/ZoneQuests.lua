@@ -215,7 +215,10 @@ local QC_RECURRING = QC.Recurring
 -- campaignID field checks remain as a harmless backup for quests where
 -- classification is absent (nil never matches them).
 local function IsAlwaysTracked(info)
-    if not db then return false, nil end
+    -- WoW Forever has no campaign, important, legendary, meta, daily or weekly quests (owner, 2026-11-06), so
+    -- nothing is pinned there and the five options are not offered. This also keeps Meta's numeric fallback (4)
+    -- from matching whatever Forever's own classification 4 is.
+    if not db or VUI.IS_FOREVER then return false, nil end
 
     local qc = info.questClassification
 
@@ -446,6 +449,8 @@ local function InitializeOptions()
           name = "Always Show: Daily & Weekly Quests",
           tip  = "Repeatable quests (dailies and weeklies) always appear in the tracker." },
     }
+
+    if VUI.IS_FOREVER then pins = {} end   -- none of these quest kinds exist there (IsAlwaysTracked)
 
     for _, opt in ipairs(pins) do
         local setting = Settings.RegisterAddOnSetting(
