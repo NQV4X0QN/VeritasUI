@@ -7,3 +7,4 @@
 
 Lib.lua
 SettingsCoverDropdown.lua
+Conflicts.lua

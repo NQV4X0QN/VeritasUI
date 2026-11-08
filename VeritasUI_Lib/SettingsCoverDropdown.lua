@@ -172,6 +172,16 @@ end
 
 local function RowEnter(b)
     b.hover = true
+    if b.opt and b.opt.disabled then
+        -- v1.79.0: a row another AddOn is doing (graceful conflicts): no hover bar, the reason in red, as
+        -- Blizzard's option tooltip adds it (GameTooltip_AddErrorLine, Blizzard_Settings.lua:458-460).
+        GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
+        GameTooltip_SetTitle(GameTooltip, b.opt.label)
+        if b.opt.tooltip then GameTooltip_AddNormalLine(GameTooltip, b.opt.tooltip) end
+        if type(b.opt.disabled) == "string" then GameTooltip_AddErrorLine(GameTooltip, b.opt.disabled) end
+        GameTooltip:Show()
+        return
+    end
     if b.isRadio then b.radioBG:SetAlpha(0.15); RadioColour(b) else b.highlight:Show() end
     if b.opt and b.opt.tooltip then
         GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
@@ -188,7 +198,7 @@ end
 
 local function Pick(b)
     local e, opt = popout.entry, b.opt
-    if not (e and opt) then return end
+    if not (e and opt) or opt.disabled then return end
     local setting = e.setting
     if opt.controlType == CHECKBOX then
         local v = setting:GetValue()
@@ -251,6 +261,10 @@ local function SetupRow(b, opt, picked)
         return RADIO_TEXT_X + (b.radioText:GetStringWidth() or 0) + RADIO_PAD
     end
     b.text:SetText(opt.label or "")
+    -- A disabled row (graceful conflicts, v1.79.0): Blizzard's disabled colour, its box and tick desaturated.
+    local off = opt.disabled and true or false
+    b.text:SetTextColor((off and DISABLED_FONT_COLOR or HIGHLIGHT_FONT_COLOR):GetRGB())
+    b.box:SetDesaturated(off); b.mark:SetDesaturated(off)
     return BOX_X + (b.box:GetWidth() or 0) + TEXT_GAP + (b.text:GetStringWidth() or 0)
 end
 

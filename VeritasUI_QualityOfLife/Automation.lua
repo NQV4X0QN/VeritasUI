@@ -24,9 +24,11 @@ local function ExcludeWarbound()
     local db = DB()
     return not (type(db) == "table" and db.autoOpenContainersExcludeWarbound == false)
 end
+-- On, and not being done by another AddOn (graceful conflicts, VeritasUI_Lib/Conflicts.lua, v1.79.0).
 local function On(key)
     local db = DB()
-    return type(db) == "table" and db[key] == true
+    if not (type(db) == "table" and db[key] == true) then return false end
+    return not (VUI.OptionUnavailable and VUI.OptionUnavailable("VeritasUI_QualityOfLife", key))
 end
 
 local function IsSecret(v) return issecretvalue and issecretvalue(v) or false end

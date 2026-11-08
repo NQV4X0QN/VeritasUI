@@ -745,7 +745,8 @@ end
 -- skips that feature and shows the option greyed out with `reason` in its tooltip. The saved
 -- value is never touched, so the option comes back as it was without that addon. ⚠ IN USE:
 -- Quality of Life calls it for its own /way option when TomTom is installed (at PLAYER_LOGIN,
--- before InitializeOptions). VeritasUI_ElvUI (retired v1.35.0) was the other caller.
+-- before InitializeOptions), and Conflicts.lua for options another AddOn (Leatrix Plus) is already
+-- doing (v1.79.0). VeritasUI_ElvUI (retired v1.35.0) was the other caller.
 local unavailableOptions = {}
 
 function VUI.SetOptionUnavailable(addonName, key, reason)
@@ -755,7 +756,9 @@ function VUI.SetOptionUnavailable(addonName, key, reason)
 end
 
 -- Returns the reason (or true) when the option is unavailable, nil when it is available.
+-- First marks what other AddOns are already doing (Conflicts.lua, v1.79.0).
 function VUI.OptionUnavailable(addonName, key)
+    if VUI.ResolveConflicts then VUI.ResolveConflicts(addonName) end
     local list = unavailableOptions[addonName]
     return list and list[key] or nil
 end

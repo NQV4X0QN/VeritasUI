@@ -56,6 +56,11 @@ local function On(key)
     local db = DB()
     return not (type(db) == "table" and db[key] == false)
 end
+-- On, and not being done by another AddOn (graceful conflicts, VeritasUI_Lib/Conflicts.lua, v1.79.0). What a
+-- feature does; deleting what it saved still follows the option alone (`On`), so stepping aside never wipes it.
+local function Live(key)
+    return On(key) and not (VUI.OptionUnavailable and VUI.OptionUnavailable("VeritasUI_QualityOfLife", key))
+end
 local function IsSecret(v) return issecretvalue and issecretvalue(v) or false end
 
 -- ── Item Tooltips in Chat ──────────────────────────────────────
@@ -476,7 +481,7 @@ end
 VUI.QoL_ChatTypeOf = ChatTypeOf   -- for qol_chat_test
 
 local function Record(index, msg, r, g, b)
-    if not On("chatRememberLines") then return end
+    if not Live("chatRememberLines") then return end
     if type(msg) ~= "string" or IsSecret(msg) or IsSecret(r) or IsSecret(g) or IsSecret(b) then return end
     if msg == "" or sfind(msg, "|K", 1, true) then return end
     local store = Store()
@@ -502,7 +507,7 @@ local function Restore()
     local grey = GRAY_FONT_COLOR
     for index = FIRST_WINDOW, (_G.NUM_CHAT_WINDOWS or 10) do
         local cf, lines = _G["ChatFrame" .. index], store[index]
-        if cf and not SKIP[index] and type(lines) == "table" and On("chatRememberLines") then
+        if cf and not SKIP[index] and type(lines) == "table" and Live("chatRememberLines") then
             for _, line in ipairs(lines) do
                 if type(line) == "table" and type(line.t) == "string" then
                     local r, g, b = HistoryColor(line, grey)

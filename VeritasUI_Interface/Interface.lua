@@ -930,8 +930,17 @@ local function SetupToastFilter(hidden)
     if _G.TopBannerManager_BannerFinished then hooksecurefunc("TopBannerManager_BannerFinished", Check) end
 end
 
+-- A row of a tick-box dropdown another AddOn is already doing (graceful conflicts, v1.79.0): "key:rowId" in
+-- VUI.OptionUnavailable (VeritasUI_Lib/Conflicts.lua). Read directly: Unavailable is defined further down.
+local function RowTakenOver(key, id)
+    return VUI.OptionUnavailable and VUI.OptionUnavailable(ADDON_NAME, key .. ":" .. id) and true or false
+end
+
 local function HideTopBanners()
-    local hidden, anyToast, allToasts = db.hideTopBannerTypes or {}, false, true
+    local hidden, anyToast, allToasts = {}, false, true
+    for id, on in pairs(db.hideTopBannerTypes or {}) do
+        if on and not RowTakenOver("hideTopBanners", id) then hidden[id] = true end
+    end
     for _, g in ipairs(TOP_BANNER_GROUPS) do
         if g.frame then
             local f = _G[g.frame]
@@ -1067,7 +1076,7 @@ end)
 local function SetHideTransforms()
     local ids = {}
     for _, k in ipairs(TRANSFORM_KINDS) do
-        if db.hideTransformTypes[k.id] then
+        if db.hideTransformTypes[k.id] and not RowTakenOver("hideProfessionGear", k.id) then
             for _, id in ipairs(k.ids) do ids[#ids + 1] = id end
         end
     end
@@ -2355,10 +2364,10 @@ local function ErrorTypesMask()
     return mask > 0 and mask or Bit(ERR_NONE)
 end
 
--- An option another addon has taken over (VUI.SetOptionUnavailable). Nothing takes an Interface
--- option today: the caller was VeritasUI_ElvUI (retired), kept for a possible revival. Its feature
--- is skipped at login and its control is greyed out with the reason added to the tooltip; the
--- saved value is left alone.
+-- An option another addon has taken over (VUI.SetOptionUnavailable). Since v1.79.0 Lib's Conflicts.lua marks
+-- what another AddOn such as Leatrix Plus is already doing (VeritasUI_ElvUI, retired, was the first caller). Its
+-- feature is skipped at login and its control is greyed out with the reason added to the tooltip; the saved
+-- value is left alone. A dropdown row is "key:rowId" (RowTakenOver).
 local function Unavailable(key)
     return VUI.OptionUnavailable and VUI.OptionUnavailable(ADDON_NAME, key) or nil
 end
@@ -2692,6 +2701,10 @@ local function InitializeOptions()
             for i, it in ipairs(items) do
                 local row = container:AddCheckbox(KD_FIRST + i - 1, it.label, it.tip)
                 if all and type(row) == "table" then row.text = nil end
+                -- v1.79.0: a row another AddOn is doing (graceful conflicts) carries its reason the way Blizzard's
+                -- options do, in `disabled` (Settings.CreateOptionsInitTooltip, Blizzard_Settings.lua:433-460).
+                local why = spec.unavailableKey and Unavailable(spec.unavailableKey .. ":" .. it.id)
+                if type(why) == "string" and type(row) == "table" then row.disabled = why end
             end
             return container:GetData()
         end
@@ -3097,7 +3110,8 @@ local function InitializeOptions()
 
         Dropdown(errSetting, "Hide Error Text", GetErrorTypeOptions,
             "Pick the kinds of red error message to hide, and the spoken lines that go with them; the rest "
-            .. "still show. Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.")
+            .. "still show. Requires " .. VUI.COL.YELLOW .. "/reload|r to apply.",
+            { unavailableKey = "hideErrorText" })
     end
 
     -- ── The page, by where each thing sits on screen (owner, 2026-11-04: the Fade / Hide split had grown
@@ -3269,7 +3283,8 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         if db.muteSpellFizzle and not Unavailable("muteSpellFizzle") then SetMuteSpellFizzle(true) end
         if next(db.hideTopBannerTypes) ~= nil and not Unavailable("hideTopBanners") then HideTopBanners() end
         if not Unavailable("hideProfessionGear") then SetHideTransforms() end
-        if db.hideErrorText       then HideErrorText()
+        if Unavailable("hideErrorText") then                  -- another AddOn hides errors (v1.79.0)
+        elseif db.hideErrorText       then HideErrorText()
         else                           HideErrorTypes()      end
         if not Unavailable("fadeActionBars") then SetupActionBarFading() end
         if cdb.fadeMainActionBar and not Unavailable("fadeMainActionBar") then SetupMainActionBarFade() end

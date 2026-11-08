@@ -268,14 +268,18 @@ local db   -- ACCOUNT-wide table
 local cdb  -- PER-CHARACTER table; nil before PLAYER_LOGIN
 
 -- Options another addon has taken over (VUI.SetOptionUnavailable, set before InitializeOptions).
--- Today the only caller is this file's own TomTom check for /way at PLAYER_LOGIN; the retired
--- VeritasUI_ElvUI also marked the merchant features when ElvUI's own repair / grey-selling was on.
--- The saved value is left alone; only whether the feature runs this session changes.
+-- Callers: this file's own TomTom check for /way at PLAYER_LOGIN, and Lib's Conflicts.lua (v1.79.0) for what
+-- another AddOn such as Leatrix Plus is already doing; the retired VeritasUI_ElvUI also marked the merchant
+-- features. The saved value is left alone; only whether the feature runs this session changes.
 local function OptionUnavailable(key)
     return VUI.OptionUnavailable and VUI.OptionUnavailable(ADDON_NAME, key) or nil
 end
 local function SellJunkOn() return db and db.autoSellJunk and not OptionUnavailable("autoSellJunk") end
 local function RepairOn()   return db and db.autoRepair   and not OptionUnavailable("autoRepair")   end
+-- v1.79.0 (graceful conflicts): an option is live when it is on and no other AddOn is doing it
+-- (VeritasUI_Lib/Conflicts.lua). Every feature that another AddOn can take over reads this, or Automation.lua's /
+-- Chat.lua's own On(). A field, not a local: this chunk is at Lua's 200-locals limit.
+VUI.QoL_Live = function(key) return db and db[key] and not OptionUnavailable(key) or false end
 local settingsCategoryID
 local frame = CreateFrame("Frame")
 
@@ -3644,7 +3648,7 @@ local function SetupDeleteFill()
     if deleteHooked or not StaticPopup_Show then return end
     deleteHooked = true
     hooksecurefunc("StaticPopup_Show", function(which)
-        if not (db and db.fillDeleteConfirm and DELETE_POPUPS[which]) then return end
+        if not (db and VUI.QoL_Live("fillDeleteConfirm") and DELETE_POPUPS[which]) then return end
         local dialog = StaticPopup_FindVisible and StaticPopup_FindVisible(which)
         local box = dialog and dialog.GetEditBox and dialog:GetEditBox()
         if box and DELETE_ITEM_CONFIRM_STRING then box:SetText(DELETE_ITEM_CONFIRM_STRING) end
@@ -3670,14 +3674,14 @@ local function SetupSkipCinematics()
     local dlg = CinematicFrame and CinematicFrame.closeDialog
     if dlg and dlg.HookScript then
         dlg:HookScript("OnShow", function()
-            if db and db.skipCinematics and CinematicFrame.isRealCinematic and StopCinematic then
+            if db and VUI.QoL_Live("skipCinematics") and CinematicFrame.isRealCinematic and StopCinematic then
                 StopCinematic()
             end
         end)
     end
     if MovieFrame and MovieFrame.ShowCloseDialog then
         hooksecurefunc(MovieFrame, "ShowCloseDialog", function(self)
-            if db and db.skipCinematics and self.StopMovie then self:StopMovie() end
+            if db and VUI.QoL_Live("skipCinematics") and self.StopMovie then self:StopMovie() end
         end)
     end
 end
@@ -3761,12 +3765,12 @@ end
 local function OnGossipShow()
     local G = C_GossipInfo
     if not G then return end
-    if db.autoTurnInQuest and G.GetActiveQuests then
+    if VUI.QoL_Live("autoTurnInQuest") and G.GetActiveQuests then
         for _, q in ipairs(G.GetActiveQuests() or {}) do
             if q.isComplete and q.questID then G.SelectActiveQuest(q.questID); return end
         end
     end
-    if db.autoAcceptQuest and G.GetAvailableQuests then
+    if VUI.QoL_Live("autoAcceptQuest") and G.GetAvailableQuests then
         for _, q in ipairs(G.GetAvailableQuests() or {}) do
             npcFrame.Note("gossip offer %q id=%s isTrivial=%s", tostring(q.title), tostring(q.questID),
                 tostring(q.isTrivial))
@@ -3786,7 +3790,7 @@ local function OnGossipShow()
             G.SelectAvailableQuest(q.questID); return
         end
     end
-    if db.pickOnlyGossip and G.GetOptions then
+    if VUI.QoL_Live("pickOnlyGossip") and G.GetOptions then
         if G.GetNumAvailableQuests() ~= 0 or G.GetNumActiveQuests() ~= 0 then return end
         if G.ForceGossip and G.ForceGossip() then return end
         local options = G.GetOptions() or {}
@@ -3799,13 +3803,13 @@ local function OnGossipShow()
 end
 
 local function OnQuestGreeting()
-    if db.autoTurnInQuest and GetNumActiveQuests then
+    if VUI.QoL_Live("autoTurnInQuest") and GetNumActiveQuests then
         for i = 1, GetNumActiveQuests() do
             local _, isComplete = GetActiveTitle(i)
             if isComplete then SelectActiveQuest(i); return end
         end
     end
-    if db.autoAcceptQuest and GetNumAvailableQuests then
+    if VUI.QoL_Live("autoAcceptQuest") and GetNumAvailableQuests then
         if VUI.QoL_NpcSeveralBlocked and VUI.QoL_NpcSeveralBlocked(GetNumAvailableQuests()) then
             npcFrame.Note("greeting -> several offers, left for you")
             return
@@ -3828,7 +3832,7 @@ npcFrame:SetScript("OnEvent", function(_, event)
     elseif event == "QUEST_GREETING" then
         OnQuestGreeting()
     elseif event == "QUEST_DETAIL" then
-        if not db.autoAcceptQuest then return end
+        if not VUI.QoL_Live("autoAcceptQuest") then return end
         if QuestFlagsPVP and QuestFlagsPVP() then return end
         -- An NPC with one quest opens it straight away (QuestFrame.lua:37-63), skipping the
         -- gossip/greeting lists that filter grey quests, so check here too (audit Q1).
@@ -3856,13 +3860,13 @@ npcFrame:SetScript("OnEvent", function(_, event)
             AcceptQuest()
         end
     elseif event == "QUEST_PROGRESS" then
-        if not (db.autoTurnInQuest and IsQuestCompletable and IsQuestCompletable()) then return end
+        if not (VUI.QoL_Live("autoTurnInQuest") and IsQuestCompletable and IsQuestCompletable()) then return end
         local why = npcFrame.TurnInKept()
         npcFrame.kept = why and (GetQuestID and GetQuestID()) or nil
         if why then npcFrame.Note("progress -> left for you (%s)", why); return end
         CompleteQuest()
     elseif event == "QUEST_COMPLETE" then
-        if not db.autoTurnInQuest then return end
+        if not VUI.QoL_Live("autoTurnInQuest") then return end
         local qid = GetQuestID and GetQuestID()
         local kept = npcFrame.kept
         npcFrame.kept = nil   -- one hand-in's memory: used by the reward page that follows it, then gone
@@ -3921,7 +3925,7 @@ end
 local function RefreshTrainAll()
     if not trainAllButton then return end
     local list, _, beast = TrainableServices()
-    local on = db and db.trainAllButton and not beast
+    local on = db and VUI.QoL_Live("trainAllButton") and not beast
     trainAllButton:SetShown(on and true or false)
     if on then trainAllButton:SetEnabled(#list > 0) end
 end
@@ -4053,7 +4057,7 @@ local function OnUnitTooltip(tooltip, data)
     if not unit then return end
     -- Inline, not a file-level helper: this file's main chunk is near Lua's 200-locals limit
     -- (locals_headroom_test).
-    if db.tooltipClassNames then pcall(function()
+    if VUI.QoL_Live("tooltipClassNames") then pcall(function()
         local first = data.lines and data.lines[1]
         local nameType = Enum.TooltipDataLineType and Enum.TooltipDataLineType.UnitName
         if not (first and nameType and first.type == nameType) then return end
@@ -4080,26 +4084,27 @@ local function OnUnitTooltip(tooltip, data)
             end
         end
     end) end
-    if db.tooltipTarget then pcall(TargetLine, tooltip, unit) end
+    if VUI.QoL_Live("tooltipTarget") then pcall(TargetLine, tooltip, unit) end
     if db.tooltipMount then pcall(MountLine, tooltip, unit) end
     -- Guild line (v1.72.0, owner's request): the line Blizzard writes with the player's guild is found by the
     -- guild name GetGuildInfo(unit) returns (the call Blizzard's TabardFrame.lua makes); no such line, no change.
     -- Show Guild Rank rewrites it in Blizzard's own "<rank> of <guild>" wording (GUILD_TEMPLATE, GlobalStrings,
     -- both games), once per tooltip build. Highlight Guildmates colours it in your guild chat colour
     -- (ChatTypeInfo.GUILD) when UnitIsInMyGuild (UnitDocumentation.lua, both games). Secret values: left alone.
-    if (db.tooltipGuildRank or db.tooltipGuildmates) and Read(UnitIsPlayer, unit) then pcall(function()
+    if (VUI.QoL_Live("tooltipGuildRank") or VUI.QoL_Live("tooltipGuildmates"))
+        and Read(UnitIsPlayer, unit) then pcall(function()
         local guild, rank = Read(_G.GetGuildInfo, unit)
         if type(guild) ~= "string" or guild == "" then return end
         for i = 2, tooltip:NumLines() do
             local line = _G["GameTooltipTextLeft" .. i]
             local text = line and line:GetText()
             if text and Readable(text) and text:find(guild, 1, true) then
-                if db.tooltipGuildRank and type(rank) == "string" and rank ~= "" then
+                if VUI.QoL_Live("tooltipGuildRank") and type(rank) == "string" and rank ~= "" then
                     local want = (_G.GUILD_TEMPLATE or "%s of %s"):format(rank, text)
                     if not text:find(rank, 1, true) then line:SetText(want) end
                 end
                 local info = _G.ChatTypeInfo and _G.ChatTypeInfo.GUILD
-                if db.tooltipGuildmates and info and info.r and Read(_G.UnitIsInMyGuild, unit) then
+                if VUI.QoL_Live("tooltipGuildmates") and info and info.r and Read(_G.UnitIsInMyGuild, unit) then
                     line:SetTextColor(info.r, info.g, info.b)
                 end
                 return
@@ -4900,7 +4905,8 @@ local function InitializeOptions()
         "Also accepts a resurrection cast during combat, such as a battle resurrection in a raid or "
         .. "Mythic+ dungeon.")
     if resCombatInit and resInit and VUI.SettingsSubOption then
-        VUI.SettingsSubOption(resCombatInit, ADDON_NAME .. "_autoAcceptRes", function() return db.autoAcceptRes end)
+        VUI.SettingsSubOption(resCombatInit, ADDON_NAME .. "_autoAcceptRes",
+            function() return VUI.QoL_Live("autoAcceptRes") end)
     end
 
     AddCheckbox("autoUnwrapCollections", "Auto Unwrap Collections",
@@ -5068,10 +5074,10 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.followReputationGains then RepFollowStart() end
         if db.repBarRenownLevel and not VUI.IS_FOREVER then SetRenownOnRepBar(true) end
         if db.greatVaultButton and not VUI.IS_FOREVER then GreatVault.Set(true) end
-        if db.fillDeleteConfirm then SetupDeleteFill() end
-        if db.skipCinematics then SetupSkipCinematics() end
+        if VUI.QoL_Live("fillDeleteConfirm") then SetupDeleteFill() end
+        if VUI.QoL_Live("skipCinematics") then SetupSkipCinematics() end
         UpdateNpcEvents()
-        if db.trainAllButton then SetupTrainAll() end
+        if VUI.QoL_Live("trainAllButton") then SetupTrainAll() end
         if db.tooltipTarget or db.tooltipMount or db.tooltipClassNames or db.tooltipFactionColors
             or db.tooltipGuildRank or db.tooltipGuildmates then
             SetupTooltipLines()
