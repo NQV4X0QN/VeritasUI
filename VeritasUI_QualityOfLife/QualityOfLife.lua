@@ -5252,6 +5252,10 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
         if VUI.QoL_EquipCheck then VUI.QoL_EquipCheck() end
         return
     end
+    if arg:lower() == "chatlines" then   -- TEMP probe (Chat.lua), chat history colours 2026-11-07
+        if VUI.QoL_ChatLinesProbe then VUI.QoL_ChatLinesProbe() end
+        return
+    end
     if arg:lower() == "trainable" then
         if VUI.QoL_TrainableProbe then VUI.QoL_TrainableProbe() end
         return
