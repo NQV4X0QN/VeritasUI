@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.78.0] - 2026-11-08
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Hide AddOn Messages**, under Chat: hides the messages other players' AddOns post in chat on their own, for players who don't use those AddOns — Questie's quest progress, Astral Keys' keystone replies and announcements, Details! death announcements and Nova World Buffs' timers. Tick the ones you don't want to see; an AddOn you have installed is not listed, because its own settings decide what you see. Messages people type, boss mod warnings and anything an AddOn shows only to you are left alone (`Chat.lua`, `QualityOfLife.lua`)
+
+
 ## [1.77.3] - 2026-11-07
 
 ### Fixed
