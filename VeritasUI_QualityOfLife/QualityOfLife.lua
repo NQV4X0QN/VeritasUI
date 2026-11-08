@@ -1468,7 +1468,7 @@ end
 -- everything else (owner, 2026-10-31: "I can see windows but I can't see tooltips"). A tooltip
 -- is shown only when the thing it describes is visible: its owner, or one of the owner's
 -- parents, is a frame we revealed. So hovering a bag slot or a chat link shows it, while
--- hovering the hidden action bars or a unit in the world still shows nothing. ItemRefTooltip
+-- hovering the hidden action bars still shows nothing; a unit in the world shows since v1.77.0 (WorldTip). ItemRefTooltip
 -- (a clicked chat link) is a window the player opened, so it shows whenever it is shown.
 -- The comparison tooltips are owned by the tooltip they compare against, so they follow it;
 -- they come after their owners in this list so their owner is already decided.
@@ -1492,6 +1492,17 @@ end
         return false
     end
 
+    -- ⚠ v1.77.0 (owner's request): a tooltip for something in the WORLD -- a player, NPC or object -- shows too.
+    -- MEASURED (owner's /qol afkprobe, Forever, 2026-11-07): such a tooltip is owned by UIParent while no frame is
+    -- under the mouse (GetMouseFoci()[1] nil); hovering the hidden player frame or a hidden bar has that frame under
+    -- the mouse and as the owner, so those stay hidden as before.
+    local function WorldTip(tip)
+        local ok, owner = pcall(tip.GetOwner, tip)
+        if not (ok and owner == UIParent) then return false end
+        local foci = GetMouseFoci and GetMouseFoci()
+        return not (foci and foci[1])
+    end
+
     -- Returns true when any tooltip changed, so the caller can resync the overlay strata.
     function AFKReveal.SyncTips()
         local changed = false
@@ -1499,7 +1510,7 @@ end
             local tip = _G[name]
             if tip and tip.IsShown then
                 local want = tip:IsShown()
-                    and (name == "ItemRefTooltip" or OwnerRevealed(tip))
+                    and (name == "ItemRefTooltip" or OwnerRevealed(tip) or (name == "GameTooltip" and WorldTip(tip)))
                 if want and not afkRevealed[tip] then AFK_Reveal(tip); changed = true
                 elseif not want and afkRevealed[tip] then AFK_Unreveal(tip); changed = true end
             end
@@ -1556,6 +1567,14 @@ local function AFK_ScanPanels()
         if cf and cf.IsShown then
             if typing and cf:IsShown() then AFK_Reveal(cf) else AFK_Unreveal(cf) end
         end
+    end
+    -- The Social button belongs with the chat window but is UIParent's child, not the chat window's (MEASURED, owner's
+    -- /qol afkprobe 2026-11-07: QuickJoinToastButton < UIParent, while the chat buttons sit under ChatFrame1), so it
+    -- stayed hidden while they showed. It comes back with the main chat window and keeps its own alpha (Blizzard's,
+    -- or Interface's chat fade), as the chat buttons do.
+    local social, cf1 = _G.QuickJoinToastButton, _G.ChatFrame1
+    if social and social.IsShown then
+        if cf1 and afkRevealed[cf1] and social:IsShown() then AFK_Reveal(social) else AFK_Unreveal(social) end
     end
 
     AFKReveal.SyncTips()
@@ -5216,10 +5235,6 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
     if arg:lower() == "notes" then DumpMapNotes(); return end
     if arg:lower() == "equipcheck" then
         if VUI.QoL_EquipCheck then VUI.QoL_EquipCheck() end
-        return
-    end
-    if arg:lower() == "afkprobe" then   -- TEMP probe (Chat.lua), owner's AFK-screen questions 2026-11-07
-        if VUI.QoL_AFKProbe then VUI.QoL_AFKProbe() end
         return
     end
     if arg:lower() == "trainable" then
