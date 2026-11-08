@@ -4861,6 +4861,10 @@ local function InitializeOptions()
         "Chat shows short channel names: [G] for Guild, [O] for Officer, [P] for Party, [R] for Raid, [I] "
         .. "for Instance, and the number for numbered channels, such as [2] for Trade. New lines only.")
 
+    if VUI.QoL_HideAddonsDropdown then
+        VUI.QoL_HideAddonsDropdown(category, db, ADDON_NAME, layout)
+    end
+
     if VUI.QoL_WhisperSoundDropdown then
         VUI.QoL_WhisperSoundDropdown(category, db, ADDON_NAME, layout)
     end

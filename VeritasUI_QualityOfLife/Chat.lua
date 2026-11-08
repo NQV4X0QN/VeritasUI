@@ -305,9 +305,248 @@ VUI.QoL_WhisperSoundDropdown = function(category, db, addonName, coverLayout)
     Settings.CreateDropdown(category, setting, Options, tip)
 end
 
+-- ── Hide AddOn Messages (owner's request, 2026-11-08) ──────────
+-- Two kinds of AddOn chat:
+-- 1. Lines an AddOn writes to your own chat windows: print() (Blizzard_PrintHandler.lua: print -> securecall ->
+--    the print handler -> DEFAULT_CHAT_FRAME:AddMessage, forever) or a window's AddMessage. A post-hook on each
+--    window's AddMessage runs while the AddOn's code is still on the call stack, so debugstack names its folder
+--    ("[Interface/AddOns/Questie/Modules/Foo.lua]:3: in ...", the form Questie relies on, QuestieLoader.lua:87; a
+--    long path is cut from the left with "...", QuestieProfiler.lua:180). A line from a ticked AddOn is removed at
+--    once with the window's own RemoveMessagesByPredicate (Blizzard_SharedXML/ScrollingMessageFrame.lua:45-52,
+--    forever): AddMessage only marks the window dirty (:10-17), so the line is gone before it is drawn.
+--    Never hidden: Blizzard's own lines, any line made by Blizzard's chat event handlers (ChatFrame.lua OnEvent,
+--    ChatFrameOverrides.lua Message/System/ConfigEventHandler -- every line a person or the server sends), a reply
+--    to a command you type (Blizzard's edit box ParseText calls the command, ChatFrameEditBox.lua:269-271), any
+--    line the game hides (a secret value), and VeritasUI's own lines.
+-- 2. Chat an AddOn SENDS for other people (Questie's party announcements) arrives as ordinary player chat, so it
+--    is only known by its words: SENDERS, through Blizzard's message filters (as Class-Colored Names).
+-- An AddOn is offered once it has written a line (kept in chatSeenAddons); SENDERS are always offered.
+-- ⚠ UNMEASURED: whether every AddOn's lines name its folder in the stack; an AddOn that writes before VeritasUI
+-- has loaded is not caught (nothing is hooked yet).
+local SENDERS = {
+    -- QuestieAnnounce.lua _GetAnnounceMarker: "{rt1} Questie: ", frFR "{rt1} Questie : ", ruRU "{звезда} Questie: ";
+    -- its own Questie logo once Questie has swapped the marker (QuestieShutUp.lua:62-65).
+    Questie = { "^{rt1} Questie%s?: ", "^{звезда} Questie%s?: ",
+        "^|TInterface\\Addons\\Questie\\Icons\\questie%.png:0|t " },
+}
+-- Chat windows hooked here and by Remember Chat History: not the combat log or voice transcription windows
+-- (ChatFrame2, ChatFrame3: FloatingChatFrame.lua:1712-1718).
+local FIRST_WINDOW, SKIP = 1, { [2] = true, [3] = true }
+local SENDER_EVENTS = { "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER",
+    "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER" }
+local hideLoaded = false                -- saved variables are read only after our ADDON_LOADED
+local pendingSeen = {}
+local hiddenNow, lineSource = {}, {}    -- [chat window] = the line just added was hidden / its AddOn
+
+local function HiddenSet()
+    local db = DB()
+    local t = hideLoaded and type(db) == "table" and db.chatHideAddons
+    return type(t) == "table" and t or nil
+end
+
+local function NoteSeen(folder)
+    local db = DB()
+    if not (hideLoaded and type(db) == "table") then pendingSeen[folder] = true; return end
+    if type(db.chatSeenAddons) ~= "table" then db.chatSeenAddons = {} end
+    db.chatSeenAddons[folder] = true
+end
+
+local function IsLoaded(name)
+    local fn = C_AddOns and C_AddOns.IsAddOnLoaded
+    if not fn then return false end
+    local ok, loaded = pcall(fn, name)
+    return ok and loaded == true
+end
+
+-- The AddOn folder a stack frame line belongs to, or nil.
+local function FolderOf(line)
+    local folder = line:match("[Aa][Dd][Dd][Oo][Nn][Ss][/\\]+([^/\\%[%]]+)[/\\]")
+    if folder then return folder end
+    -- Cut from the left: "...<tail>/<next>/...". <next> is the folder only when the cut fell inside
+    -- "Interface/AddOns"; a loaded AddOn by that exact name tells.
+    local nextSeg = line:match("%.%.%.[^/\\]*[/\\]+([^/\\%[%]]+)[/\\]")
+    if nextSeg and IsLoaded(nextSeg) then return nextSeg end
+    return nil
+end
+
+-- The AddOn that wrote the line, from the stack at the moment it was added; nil = keep it.
+local function SourceOf(stack)
+    if type(stack) ~= "string" or sfind(stack, "ChatFrameEditBox", 1, true) then return nil end
+    for line in stack:gmatch("[^\n]+") do
+        if sfind(line, "ChatFrameOverrides", 1, true)
+            or (sfind(line, "Blizzard_ChatFrameBase", 1, true) and sfind(line, "[/\\]ChatFrame%.lua")) then
+            return nil   -- Blizzard's chat event handling: chat from a person or the server
+        end
+        local folder = FolderOf(line)
+        if folder and not sfind(folder, "^Blizzard_")
+            and not (folder == "VeritasUI_QualityOfLife" and sfind(line, "[/\\]Chat%.lua")) then
+            return folder
+        end
+    end
+    return nil
+end
+VUI.QoL_ChatSourceOf = SourceOf   -- for qol_hidemsgs_test
+
+local function HideAddonLine(cf, msg)
+    hiddenNow[cf], lineSource[cf] = nil, nil
+    if type(msg) ~= "string" or IsSecret(msg) or not _G.debugstack then return end
+    local ok, stack = pcall(_G.debugstack, 2, 30, 0)
+    if not ok then return end
+    local folder = SourceOf(stack)
+    if not folder or sfind(folder, "^VeritasUI") then return end
+    lineSource[cf] = folder
+    NoteSeen(folder)
+    local hidden = HiddenSet()
+    if not (hidden and hidden[folder]) or not cf.RemoveMessagesByPredicate then return end
+    hiddenNow[cf] = true
+    pcall(cf.RemoveMessagesByPredicate, cf, function(m) return not IsSecret(m) and m == msg end)
+end
+
+local function SenderFilter(_, _, msg)
+    local hidden = HiddenSet()
+    if not hidden or type(msg) ~= "string" or IsSecret(msg) then return false end
+    for folder, patterns in pairs(SENDERS) do
+        if hidden[folder] then
+            for _, p in ipairs(patterns) do
+                if sfind(msg, p) then return true end
+            end
+        end
+    end
+    return false
+end
+
+if add then
+    for _, ev in ipairs(SENDER_EVENTS) do add(ev, SenderFilter) end
+end
+
+-- The dropdown: None, All, then every AddOn seen so far by name. Lib's cover dropdown draws a tick row as a bit
+-- of a 32-bit mask (bit.lshift), so at most 29 AddOns are listed.
+local MAX_ROWS = 29
+local labels = {}
+local function Label(folder)
+    if labels[folder] then return labels[folder] end
+    local text = folder
+    local get = C_AddOns and C_AddOns.GetAddOnMetadata
+    local ok, title = false, nil
+    if get then ok, title = pcall(get, folder, "Title") end
+    if ok and type(title) == "string" and not IsSecret(title) then
+        title = title:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cn[^:]*:", ""):gsub("|r", ""):gsub("|T.-|t", "")
+        title = title:gsub("%s+v?%d[%w%.%-]*%s*$", ""):match("^%s*(.-)%s*$")
+        if title ~= "" then text = title end
+    end
+    labels[folder] = text
+    return text
+end
+
+local function Rows()
+    local set, db = {}, DB()
+    local seen = hideLoaded and type(db) == "table" and type(db.chatSeenAddons) == "table" and db.chatSeenAddons
+    for f in pairs(seen or {}) do set[f] = true end
+    for f in pairs(pendingSeen) do set[f] = true end
+    for f in pairs(SENDERS) do set[f] = true end
+    for f in pairs(HiddenSet() or {}) do set[f] = true end
+    local list = {}
+    for f in pairs(set) do
+        if type(f) == "string" and not sfind(f, "^VeritasUI") then list[#list + 1] = { id = f, label = Label(f) } end
+    end
+    table.sort(list, function(a, b)
+        local la, lb = slower(a.label), slower(b.label)
+        if la == lb then return a.id < b.id end
+        return la < lb
+    end)
+    while #list > MAX_ROWS do table.remove(list) end
+    return list
+end
+VUI.QoL_HideAddonRows = Rows   -- for qol_hidemsgs_test
+
+local function Bit(v) return 2 ^ (v - 1) end
+local function HasBit(mask, v) return math.floor((mask or 0) / Bit(v)) % 2 == 1 end
+
+VUI.QoL_HideAddonsDropdown = function(category, db, addonName, coverLayout)
+    if type(db.chatHideAddons) ~= "table" then db.chatHideAddons = {} end
+    local truth = db.chatHideAddons
+    local NONE, ALL, FIRST = 1, 2, 3
+    local rows = Rows()
+    local function Mask()
+        local m, n = 0, 0
+        for i, r in ipairs(rows) do if truth[r.id] then m = m + Bit(FIRST + i - 1); n = n + 1 end end
+        if n == 0 then return Bit(NONE) end
+        if n == #rows then m = m + Bit(ALL) end
+        return m
+    end
+    db.chatHideAddonsMask = Mask()
+    local last = db.chatHideAddonsMask
+    local setting = Settings.RegisterAddOnSetting(category, addonName .. "_chatHideAddons", "chatHideAddonsMask", db,
+        "number", "Hide AddOn Messages", Bit(NONE))
+    local ignore = false
+    -- The list grows as AddOns write to chat, so the rows and the mask are re-read each time they are shown.
+    local function Sync()
+        rows = Rows()
+        local m = Mask()
+        if m ~= last then
+            last = m
+            db.chatHideAddonsMask = m
+            ignore = true
+            pcall(setting.SetValue, setting, m)
+            ignore = false
+        end
+    end
+    setting:SetValueChangedCallback(function(_, val)
+        if ignore or type(val) ~= "number" then return end
+        local changed = {}
+        for v = 1, FIRST + #rows - 1 do if HasBit(last, v) ~= HasBit(val, v) then changed[#changed + 1] = v end end
+        local function SetAll(on) for _, r in ipairs(rows) do truth[r.id] = on or nil end end
+        if #changed == 1 then
+            local v, on = changed[1], HasBit(val, changed[1])
+            if v == NONE then if on then SetAll(false) end
+            elseif v == ALL then SetAll(on)
+            else truth[rows[v - FIRST + 1].id] = on or nil end
+        elseif #changed > 1 then
+            for i, r in ipairs(rows) do truth[r.id] = HasBit(val, FIRST + i - 1) or nil end
+        end
+        db.chatHideAddonsMask = Mask()
+        last = db.chatHideAddonsMask
+        ignore = true
+        pcall(setting.SetValue, setting, db.chatHideAddonsMask)
+        ignore = false
+    end)
+    local function GetOptions()
+        Sync()
+        local all = #rows > 0
+        for _, r in ipairs(rows) do if not truth[r.id] then all = false end end
+        local c = Settings.CreateControlTextContainer()
+        c:AddCheckbox(NONE, "None")
+        c:AddCheckbox(ALL, "All")
+        for i, r in ipairs(rows) do
+            local tip = SENDERS[r.id] and "Also hides what it sends for other players to read in party, raid "
+                .. "and instance chat, from anyone who uses it." or nil
+            local row = c:AddCheckbox(FIRST + i - 1, r.label, tip)
+            if all and type(row) == "table" then row.text = nil end
+        end
+        return c:GetData()
+    end
+    local tip = "Hides what the AddOns you tick write in your chat windows. An AddOn is listed once it has written "
+        .. "something. Still shown: Blizzard's messages, chat from other people, and an AddOn's reply to a command "
+        .. "you type. New lines only."
+    if coverLayout and VUI.AddCoverDropdown then
+        VUI.AddCoverDropdown(coverLayout, { category = category, setting = setting, name = "Hide AddOn Messages",
+            getOptions = GetOptions, tooltip = tip })
+        return
+    end
+    Settings.CreateDropdown(category, setting, GetOptions, tip)
+end
+
+local function HookHideAddons()
+    for index = FIRST_WINDOW, (_G.NUM_CHAT_WINDOWS or 10) do
+        local cf = _G["ChatFrame" .. index]
+        if cf and not SKIP[index] and cf.AddMessage then
+            hooksecurefunc(cf, "AddMessage", function(self, msg) HideAddonLine(self, msg) end)
+        end
+    end
+end
+
 -- ── Remember Chat History ──────────────────────────────────────
 local KEEP = 100
-local FIRST_WINDOW, SKIP = 1, { [2] = true, [3] = true }
 
 local function Store()
     if type(_G.VeritasUI_QualityOfLifeChatDB) ~= "table" then _G.VeritasUI_QualityOfLifeChatDB = {} end
@@ -337,15 +576,16 @@ local function ChatTypeOf(r, g, b)
 end
 VUI.QoL_ChatTypeOf = ChatTypeOf   -- for qol_chat_test
 
-local function Record(index, msg, r, g, b)
+local function Record(index, msg, r, g, b, source)
     if not On("chatRememberLines") then return end
     if type(msg) ~= "string" or IsSecret(msg) or IsSecret(r) or IsSecret(g) or IsSecret(b) then return end
     if msg == "" or sfind(msg, "|K", 1, true) then return end
     local store = Store()
     local lines = store[index]
     if type(lines) ~= "table" then lines = {}; store[index] = lines end
+    -- `a`: the AddOn that wrote it (Hide AddOn Messages), so a line kept before you hid that AddOn is not put back.
     lines[#lines + 1] = { t = msg, r = type(r) == "number" and r or nil, g = type(g) == "number" and g or nil,
-        b = type(b) == "number" and b or nil, k = ChatTypeOf(r, g, b) }
+        b = type(b) == "number" and b or nil, k = ChatTypeOf(r, g, b), a = source }
     while #lines > KEEP do table.remove(lines, 1) end
 end
 VUI.QoL_ChatRecord = Record
@@ -362,11 +602,12 @@ VUI.QoL_ChatHistoryColor = HistoryColor   -- for qol_chat_test
 local function Restore()
     local store = Store()
     local grey = GRAY_FONT_COLOR
+    local hidden = HiddenSet() or {}
     for index = FIRST_WINDOW, (_G.NUM_CHAT_WINDOWS or 10) do
         local cf, lines = _G["ChatFrame" .. index], store[index]
         if cf and not SKIP[index] and type(lines) == "table" and On("chatRememberLines") then
             for _, line in ipairs(lines) do
-                if type(line) == "table" and type(line.t) == "string" then
+                if type(line) == "table" and type(line.t) == "string" and not (line.a and hidden[line.a]) then
                     local r, g, b = HistoryColor(line, grey)
                     pcall(cf.AddMessage, cf, line.t, r, g, b)
                 end
@@ -379,7 +620,10 @@ local function HookWindows()
     for index = FIRST_WINDOW, (_G.NUM_CHAT_WINDOWS or 10) do
         local cf = _G["ChatFrame" .. index]
         if cf and not SKIP[index] and cf.AddMessage then
-            hooksecurefunc(cf, "AddMessage", function(_, msg, r, g, b) Record(index, msg, r, g, b) end)
+            hooksecurefunc(cf, "AddMessage", function(self, msg, r, g, b)
+                if hiddenNow[self] then return end   -- Hide AddOn Messages took it out (its hook runs first)
+                Record(index, msg, r, g, b, lineSource[self])
+            end)
         end
     end
 end
@@ -452,7 +696,9 @@ local function HookShortChannels()
     for index = FIRST_WINDOW, (_G.NUM_CHAT_WINDOWS or 10) do
         local cf = _G["ChatFrame" .. index]
         if cf and not SKIP[index] and cf.AddMessage then
-            hooksecurefunc(cf, "AddMessage", function(self, msg) ShortenLine(self, msg) end)
+            hooksecurefunc(cf, "AddMessage", function(self, msg)
+                if not hiddenNow[self] then ShortenLine(self, msg) end
+            end)
         end
     end
 end
@@ -466,6 +712,14 @@ remember:RegisterEvent("ADDON_LOADED")
 remember:SetScript("OnEvent", function(self, _, name)
     if name ~= "VeritasUI_QualityOfLife" then return end
     self:UnregisterAllEvents()
+    hideLoaded = true
+    local db = DB()
+    if type(db) == "table" and next(pendingSeen) then
+        if type(db.chatSeenAddons) ~= "table" then db.chatSeenAddons = {} end
+        for folder in pairs(pendingSeen) do db.chatSeenAddons[folder] = true end
+        wipe(pendingSeen)
+    end
+    HookHideAddons()      -- first: the hooks after it skip a line it took out
     if not On("chatRememberLines") then WipeWindows() end
     HookShortChannels()   -- first, so the lines put back are shortened too
     Restore()       -- before the hooks, so the lines put back are not stored a second time
