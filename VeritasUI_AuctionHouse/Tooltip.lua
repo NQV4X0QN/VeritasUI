@@ -524,6 +524,27 @@ end
 --  there is no line-stacking on repeated refreshes — each rebuild starts clean
 --  and we append exactly once.
 ----------------------------------------------------------------
+
+-- Is the hovered item a bound instance? The tooltip data's GUID names the actual item under the
+-- cursor (TooltipUtil.lua:9-21 resolves it first); C_Item.GetItemLocation(guid) turns it into a
+-- location and C_Item.IsBound reads its bound state (ItemDocumentation.lua forever). No GUID, no
+-- location, or any error -> not bound, so the price still shows.
+local function IsBoundInstance(data, tooltip)
+    local C = C_Item
+    if not (C and C.GetItemLocation and C.IsBound) then return false end
+    local guid = data and data.guid
+    if not guid and tooltip and tooltip.GetPrimaryTooltipData then
+        local okP, td = pcall(tooltip.GetPrimaryTooltipData, tooltip)
+        if okP and type(td) == "table" then guid = td.guid end
+    end
+    if not guid then return false end
+    local okL, loc = pcall(C.GetItemLocation, guid)
+    if not (okL and loc) then return false end
+    if loc.IsValid and not loc:IsValid() then return false end
+    local okB, bound = pcall(C.IsBound, loc)
+    return okB and bound == true
+end
+
 local function OnItemTooltip(tooltip, data)
     -- Only handle the shared GameTooltip + ItemRefTooltip family. Some internal
     -- tooltips (compare shopping, etc.) are children we don't want to touch.
@@ -634,6 +655,14 @@ local function OnItemTooltip(tooltip, data)
     else
         link = displayedLink or dataLink
         lastRender.used = displayedLink and "GetDisplayedItem (no id)" or "data.hyperlink (no id)"
+    end
+
+    -- A bound item (soulbound, warbound, Battle.net bound) can never go on the Auction House, so it
+    -- gets no price line: a price there reads as "you can sell this". Only an item the player HOLDS
+    -- has a bound state; a link (chat, dungeon journal) has no GUID and keeps its price.
+    if not IsPetLink(link) and IsBoundInstance(data, tooltip) then
+        lastRender.used = "bound (no line)"
+        return
     end
 
     if keyFromID then
