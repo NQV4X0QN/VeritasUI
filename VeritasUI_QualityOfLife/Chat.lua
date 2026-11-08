@@ -306,19 +306,44 @@ VUI.QoL_WhisperSoundDropdown = function(category, db, addonName, coverLayout)
 end
 
 -- ── Hide AddOn Messages (owner's request, 2026-11-08) ──────────
--- For a player who does NOT use an AddOn: some AddOns post in party, raid and instance chat for everyone in the
--- group (Questie's quest progress announcements). That arrives as ordinary chat from the player whose AddOn sent
--- it, so it is known only by its words: SENDERS, through Blizzard's message filters (as Class-Colored Names).
+-- For a player who does NOT use an AddOn: some AddOns post in group or guild chat on their own, for everyone to
+-- read. That arrives as ordinary chat from the player whose AddOn sent it, so it is known only by its words:
+-- SENDERS, through Blizzard's message filters (as Class-Colored Names), on the channels each one posts in.
 -- An AddOn you have installed is never listed or filtered: you chose it, and its own settings decide what you see
 -- (owner, 2026-11-08). Nothing an AddOn writes to your own chat windows is touched.
+-- Only messages an AddOn sends by itself and marks with its name. Read from each AddOn's source (2026-11-08) and
+-- deliberately left out: boss mods' say/yell mechanic callouts and whisper auto-replies (DBM, BigWigs), messages a
+-- player sends by clicking (Details reports, KeystoneLoot, Leatrix Plus), and loot-council announcements whose text
+-- the raid leader writes (RCLootCouncil, Gargul).
+local GROUP = { "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER",
+    "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER" }
+local function Channels(...)
+    local set = {}
+    for _, ev in ipairs(GROUP) do set[ev] = true end
+    for i = 1, select("#", ...) do set[select(i, ...)] = true end
+    return set
+end
 local SENDERS = {
+    -- AstralKeys Communications.lua: "Astral Keys: <keystone>" in reply to anyone's "!keys" (party on by default,
+    -- guild and raid opt-in) and AnnounceKey "Astral Keys: New key <keystone>" (party on by default), every locale
+    -- starting "Astral Keys: " (Localization/*.lua). An Identity-2 user's lines start "[Name] " (:313 strips it).
+    { id = "AstralKeys", label = "Astral Keys", events = Channels("CHAT_MSG_GUILD"),
+        patterns = { "^Astral Keys: ", "^%[[^%]]+%] Astral Keys: " } },
+    -- Details core/plugins_raid.lua death_announcer (the sender opts in): "Details! <name>'s Death: ..."
+    -- (STRING_OPTIONS_RT_DEATH_MSG, English in every locale), to the group or officer chat.
+    { id = "Details", label = "Details! Damage Meter", events = Channels("CHAT_MSG_OFFICER"),
+        patterns = { "^Details! .-'s Death:" } },
+    -- NovaWorldBuffs.lua: buff timers and drops posted by one guild member's copy ("[WorldBuffs] ", :1564-1566),
+    -- other channels "[NovaWorldBuffs] " (:978-985), reset timers "[NWB] " (Modules/Data.lua:4448-4588).
+    { id = "NovaWorldBuffs", label = "Nova World Buffs", events = Channels("CHAT_MSG_GUILD", "CHAT_MSG_SAY",
+        "CHAT_MSG_YELL", "CHAT_MSG_OFFICER"),
+        patterns = { "^%[WorldBuffs%] ", "^%[NovaWorldBuffs%] ", "^%[NWB%]" } },
     -- QuestieAnnounce.lua _GetAnnounceMarker: "{rt1} Questie: ", frFR "{rt1} Questie : ", ruRU "{звезда} Questie: ";
     -- its own Questie logo once Questie has swapped the marker (QuestieShutUp.lua:62-65).
-    { id = "Questie", label = "Questie", patterns = { "^{rt1} Questie%s?: ", "^{звезда} Questie%s?: ",
-        "^|TInterface\\Addons\\Questie\\Icons\\questie%.png:0|t " } },
+    { id = "Questie", label = "Questie", events = Channels(),
+        patterns = { "^{rt1} Questie%s?: ", "^{звезда} Questie%s?: ",
+            "^|TInterface\\Addons\\Questie\\Icons\\questie%.png:0|t " } },
 }
-local SENDER_EVENTS = { "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER",
-    "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER" }
 
 local function Installed(name)
     local fn = C_AddOns and C_AddOns.IsAddOnLoaded
@@ -337,12 +362,12 @@ local function SenderRows()
 end
 VUI.QoL_HideAddonRows = SenderRows   -- for qol_hidemsgs_test
 
-local function SenderFilter(_, _, msg)
+local function SenderFilter(_, event, msg)
     local db = DB()
     local hidden = type(db) == "table" and db.chatHideAddons
     if type(hidden) ~= "table" or type(msg) ~= "string" or IsSecret(msg) then return false end
     for _, s in ipairs(SENDERS) do
-        if hidden[s.id] and not Installed(s.id) then
+        if hidden[s.id] and s.events[event] and not Installed(s.id) then
             for _, p in ipairs(s.patterns) do
                 if sfind(msg, p) then return true end
             end
@@ -352,7 +377,9 @@ local function SenderFilter(_, _, msg)
 end
 
 if add then
-    for _, ev in ipairs(SENDER_EVENTS) do add(ev, SenderFilter) end
+    local events = {}
+    for _, s in ipairs(SENDERS) do for ev in pairs(s.events) do events[ev] = true end end
+    for ev in pairs(events) do add(ev, SenderFilter) end
 end
 
 local function Bit(v) return 2 ^ (v - 1) end
@@ -406,7 +433,7 @@ VUI.QoL_HideAddonsDropdown = function(category, db, addonName, coverLayout)
         end
         return c:GetData()
     end
-    local tip = "Hides the messages other players' AddOns post in party, raid and instance chat, such as Questie's "
+    local tip = "Hides the messages other players' AddOns post on their own in group or guild chat, such as Questie's "
         .. "quest progress. An AddOn you have installed is not listed: its own settings decide what you see."
     if coverLayout and VUI.AddCoverDropdown then
         VUI.AddCoverDropdown(coverLayout, { category = category, setting = setting, name = "Hide AddOn Messages",
