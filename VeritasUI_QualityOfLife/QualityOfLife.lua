@@ -377,10 +377,29 @@ end
 -- from the bag, which is the only signal that proves the server accepted
 -- the request.  Scrap's GetReport excludes locked items and would have
 -- the same premature-print risk at any merchant that rejects a sell.
+-- Blizzard's bag menu "Ignore this bag" for junk selling (SELL_ALL_JUNK_ITEMS_EXCLUDE_FLAG): the backpack keeps it
+-- in C_Container.GetBackpackSellJunkDisabled, every other bag in Enum.BagSlotFlags.ExcludeJunkSell
+-- (ContainerFrame.lua :627-645 live, :690-710 forever). Sell Junk leaves those bags alone, as Blizzard's own
+-- Sell All Junk does (v1.79.0; before it, greys in an ignored bag were sold). A field, not a local: this chunk
+-- is at Lua's 200-locals limit.
+VUI.QoL_JunkBagIgnored = function(bag)
+    local C = C_Container
+    if not C then return false end
+    if bag == 0 then
+        if not C.GetBackpackSellJunkDisabled then return false end
+        local ok, v = pcall(C.GetBackpackSellJunkDisabled)
+        return ok and v == true
+    end
+    local flag = Enum and Enum.BagSlotFlags and Enum.BagSlotFlags.ExcludeJunkSell
+    if not (flag and C.GetBagSlotFlag) then return false end
+    local ok, v = pcall(C.GetBagSlotFlag, bag, flag)
+    return ok and v == true
+end
+
 local function ScanJunk()
     local total, count = 0, 0
     for bag = 0, (NUM_BAG_SLOTS or 4) do
-        local n = C_Container.GetContainerNumSlots(bag) or 0
+        local n = VUI.QoL_JunkBagIgnored(bag) and 0 or (C_Container.GetContainerNumSlots(bag) or 0)
         for slot = 1, n do
             local info = C_Container.GetContainerItemInfo(bag, slot)
             if info then
@@ -464,7 +483,7 @@ local function SellNextBatch()
     -- haven't been confirmed sold yet.
     local sold = 0
     for bag = 0, (NUM_BAG_SLOTS or 4) do
-        local n = C_Container.GetContainerNumSlots(bag) or 0
+        local n = VUI.QoL_JunkBagIgnored(bag) and 0 or (C_Container.GetContainerNumSlots(bag) or 0)
         for slot = 1, n do
             local info = C_Container.GetContainerItemInfo(bag, slot)
             if info then
@@ -3694,6 +3713,45 @@ npcFrame.Note = function(fmt, ...)
     if #log > 12 then table.remove(log, 1) end
 end
 
+-- Turn-in safety (v1.79.0; the idea from Leatrix Plus, none of its code). Auto Turn In leaves a quest for you
+-- when handing it in would spend what you may want to keep: any currency it asks for, an account-bound
+-- (warbound) item, or -- on a REPEATABLE quest only (reputation hand-ins) -- a crafting reagent; owner's choice
+-- 2026-11-08, so levelling quests that ask for meat or cloth still hand in. What the quest asks for is read with
+-- the calls Blizzard's progress page makes (QuestFrame.lua:230-297 both games: GetNumQuestItems, GetQuestItemInfo
+-- "required" -- itemID is its 6th return, Mainline/QuestInfo.lua:525 -- and GetNumQuestCurrencies); repeatable
+-- from C_QuestLog.IsRepeatableQuest (QuestLogDocumentation, both games); bind type and isCraftingReagent from
+-- C_Item.GetItemInfo (14th / 17th returns). An item whose data is not loaded yet is left for you, never guessed.
+-- Returns why the quest is kept, or nil to hand it in.
+npcFrame.TurnInKept = function()
+    local okC, nCur = pcall(function() return GetNumQuestCurrencies and GetNumQuestCurrencies() or 0 end)
+    if okC and type(nCur) == "number" and nCur > 0 then return "asks for currency" end
+    local okN, nItems = pcall(function() return GetNumQuestItems and GetNumQuestItems() or 0 end)
+    if not (okN and type(nItems) == "number") or nItems < 1 then return nil end
+    local repeatable = false
+    local qid = GetQuestID and GetQuestID()
+    if type(qid) == "number" and C_QuestLog and C_QuestLog.IsRepeatableQuest then
+        local okR, r = pcall(C_QuestLog.IsRepeatableQuest, qid)
+        repeatable = okR and r == true
+    end
+    local B = Enum and Enum.ItemBind or {}
+    local CI = _G.C_Item
+    if not (CI and CI.GetItemInfo and GetQuestItemInfo) then return "item data not loaded" end
+    for i = 1, nItems do
+        local okI, _, _, _, _, _, itemID = pcall(GetQuestItemInfo, "required", i)
+        if okI and type(itemID) == "number" then
+            local okG, name, _, _, _, _, _, _, _, _, _, _, _, _, bindType, _, _, isReagent =
+                pcall(CI.GetItemInfo, itemID)
+            if not okG or name == nil then return "item data not loaded" end
+            if bindType ~= nil and (bindType == B.ToWoWAccount or bindType == B.ToBnetAccount
+                    or bindType == B.ToBnetAccountUntilEquipped) then
+                return "asks for an account-bound item"
+            end
+            if repeatable and isReagent == true then return "repeatable, asks for a crafting reagent" end
+        end
+    end
+    return nil
+end
+
 -- v1.52.0: Quest Options (Automation.lua) can invert Shift and turn the shortcuts off in instances.
 local function NpcPaused()
     if VUI.QoL_NpcPaused then return VUI.QoL_NpcPaused() end
@@ -3762,6 +3820,8 @@ local function OnQuestGreeting()
 end
 
 npcFrame:SetScript("OnEvent", function(_, event)
+    -- A new conversation step forgets a quest kept at its hand-in (turn-in safety, below).
+    if event == "GOSSIP_SHOW" or event == "QUEST_GREETING" or event == "QUEST_DETAIL" then npcFrame.kept = nil end
     if not db or NpcPaused() then return end
     if event == "GOSSIP_SHOW" then
         OnGossipShow()
@@ -3796,9 +3856,21 @@ npcFrame:SetScript("OnEvent", function(_, event)
             AcceptQuest()
         end
     elseif event == "QUEST_PROGRESS" then
-        if db.autoTurnInQuest and IsQuestCompletable and IsQuestCompletable() then CompleteQuest() end
+        if not (db.autoTurnInQuest and IsQuestCompletable and IsQuestCompletable()) then return end
+        local why = npcFrame.TurnInKept()
+        npcFrame.kept = why and (GetQuestID and GetQuestID()) or nil
+        if why then npcFrame.Note("progress -> left for you (%s)", why); return end
+        CompleteQuest()
     elseif event == "QUEST_COMPLETE" then
         if not db.autoTurnInQuest then return end
+        local qid = GetQuestID and GetQuestID()
+        local kept = npcFrame.kept
+        npcFrame.kept = nil   -- one hand-in's memory: used by the reward page that follows it, then gone
+        if kept ~= nil and qid == kept then
+            npcFrame.Note("complete -> left for you (kept at the hand-in)"); return
+        end
+        local why = npcFrame.TurnInKept()
+        if why then npcFrame.Note("complete -> left for you (%s)", why); return end
         local choices = GetNumQuestChoices and GetNumQuestChoices() or 0
         local money = GetQuestMoneyToGet and GetQuestMoneyToGet() or 0
         if choices <= 1 and not (money and money > 0) then GetQuestReward(choices) end
@@ -4596,7 +4668,8 @@ local function InitializeOptions()
     end
 
     AddCheckbox("autoSellJunk", "Auto Sell Junk",
-        "Sells your grey items when you visit a merchant.",
+        "Sells your grey items when you visit a merchant. Bags you set to ignore junk selling in their "
+        .. "bag menu are left alone.",
         EnsureMerchantEvents)
 
     AddCheckbox("autoRepair", "Auto Repair",
@@ -4654,8 +4727,9 @@ local function InitializeOptions()
         UpdateNpcEvents)
 
     AddCheckbox("autoTurnInQuest", "Auto Turn In Quests",
-        "Hands in completed quests. If you have to choose a reward, or the quest costs gold, you "
-        .. "still choose. Hold Shift while talking to the NPC to do it yourself.",
+        "Hands in completed quests. If you have to choose a reward, the quest costs gold, or handing "
+        .. "it in would spend currency, an account-bound item or, on a repeatable quest, crafting "
+        .. "reagents, you still choose. Hold Shift while talking to the NPC to do it yourself.",
         UpdateNpcEvents)
 
     if VUI.QoL_NpcOptionsDropdown then
