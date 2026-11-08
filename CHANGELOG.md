@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.77.1] - 2026-11-07
+
+### Fixed
+
+- `VeritasUI_AuctionHouse` — **Soulbound items no longer show an Auction price in their tooltip.** A bound item (soulbound, Warbound or Battle.net bound) can't be put on the Auction House, so the price line and its age line are left out; items that aren't bound yet, such as Bind on Equip gear, and item links in chat keep their price (`Tooltip.lua`)
+
+
 ## [1.77.0] - 2026-11-07
 
 ### Added

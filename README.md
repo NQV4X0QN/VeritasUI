@@ -66,7 +66,7 @@ Settings: **Options → AddOns → VeritasUI → Quality of Life**, or `/qol`.
 
 ### Auction House — prices and faster selling
 - A **Scan** button records current prices across the whole auction house
-- **Tooltip prices** on items and battle pets, anywhere in the game, styled like Blizzard's "Sell Price" line
+- **Tooltip prices** on items and battle pets, anywhere in the game, styled like Blizzard's "Sell Price" line; soulbound and other bound items show none, since they can't be auctioned
 - A **sell strip** on the Sell tab lists your sellable bag items: right-click one to load it, then left-click it again to post (Shift-click hides an item from the strip). Your bags need to be open.
 - **Reagents value** on the Place Crafting Order form, so you can weigh a commission against the cost of materials
 
