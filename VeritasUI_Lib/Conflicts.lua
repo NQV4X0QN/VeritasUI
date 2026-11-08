@@ -121,9 +121,13 @@ end
 --                                 to fade. Questie has its own tracker fading options.
 --   autoAccept.enabled / autocomplete (default off)   "Auto Accept Quests" / "Auto Complete Quests" (AutoTab/
 --                                 QuestieOptionsAuto.lua:43, :60; Auto/AutoQuesting.lua:16-106).
--- Zone Quests gets no rule: Questie's tracker follows the game's tracked list in Forever (hooks on C_QuestLog.Add/
--- RemoveQuestWatch, Tracker/QuestieTracker.lua:1248-1268), so it should show what Zone Quests tracks. UNMEASURED in
--- game (2026-11-08).
+-- Zone Quests: Questie's tracker does NOT follow the game's tracked list (owner, 2026-11-08: it showed every quest
+-- with Zone Quests on). Why, from its source: with "Automatically track quests" (autoTrackQuests, default on) it
+-- shows every quest not in its OWN untracked list (QuestieTracker.IsTrackedByQuestie, Tracker/QuestieTracker.lua
+-- :1174-1183; the game's list is read only while its tracker is off, Quest/QuestieQuest.lua:486-491), its start-up
+-- never reads the game's tracked list (QuestieTracker.Initialize, :225-270), and it learns of an untrack only through
+-- a hook it installs at that start-up (:1248-1268) -- after Zone Quests has already filtered the list at login. So
+-- Zone Quests steps aside while Questie's tracker is on.
 local function QuestieOpt(read, default)
     local ok, v = pcall(function() return read(_G.Questie.db.profile) end)
     if not ok or v == nil then return default end
@@ -133,6 +137,9 @@ local function Q(module, key, feature, when, reason)
     return { module = module, key = key, addon = "Questie", title = "Questie", feature = feature, when = when,
              reason = reason }
 end
+local function QuestieTracker()
+    return VUI.IS_FOREVER and QuestieOpt(function(p) return p.trackerEnabled end, true)
+end
 for _, rule in ipairs({
     Q(QOL, "autoAcceptQuest", "Auto Accept Quests", function()
         return QuestieOpt(function(p) return p.autoAccept.enabled end, false)
@@ -140,10 +147,12 @@ for _, rule in ipairs({
     Q(QOL, "autoTurnInQuest", "Auto Complete Quests", function()
         return QuestieOpt(function(p) return p.autocomplete end, false)
     end),
-    Q(IFACE, "fadeObjectiveTracker", "Enable Tracker", function()
-        return VUI.IS_FOREVER and QuestieOpt(function(p) return p.trackerEnabled end, true)
-    end, "Questie's tracker replaces the game's (Questie: Enable Tracker), so there is no tracker here to fade. "
+    Q(IFACE, "fadeObjectiveTracker", "Enable Tracker", QuestieTracker,
+        "Questie's tracker replaces the game's (Questie: Enable Tracker), so there is no tracker here to fade. "
         .. "Turn it off in Questie to use this one."),
+    Q("VeritasUI_ZoneQuests", "enabled", "Enable Tracker", QuestieTracker,
+        "Questie's tracker replaces the game's (Questie: Enable Tracker) and keeps its own list of quests, so Zone "
+        .. "Quests cannot filter it. Turn it off in Questie to use this one."),
 }) do VUI.CONFLICT_RULES[#VUI.CONFLICT_RULES + 1] = rule end
 
 local function Loaded(name)

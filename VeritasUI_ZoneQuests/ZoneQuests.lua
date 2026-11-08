@@ -61,6 +61,12 @@ local db  = nil  -- ACCOUNT-wide table; assigned at ADDON_LOADED
 local cdb = nil  -- PER-CHARACTER table (enabled, untrackedBeforeFilter); nil until PLAYER_LOGIN
 
 local function Enabled() return cdb ~= nil and cdb.enabled == true end
+-- v1.79.1 (graceful conflicts, VeritasUI_Lib/Conflicts.lua): another AddOn's tracker that keeps its own quest list
+-- (Questie's, in WoW Forever) cannot be filtered, so the filtering steps aside while it is on. The setting and the
+-- record of your own tracking (untrackedBeforeFilter) are left as they are; Enabled() still reads the setting.
+local function TakenOver()
+    return VUI.OptionUnavailable and VUI.OptionUnavailable(ADDON_NAME, "enabled") or nil
+end
 
 -- ── No hot-global localization block here, on purpose ─────────────
 -- Most modules in the suite open with a block of `local x = x` upvalues; this one
@@ -277,7 +283,7 @@ local SYNC_COOLDOWN  = 0.5
 local cachedQuestSet = nil   -- rebuilt on ZONE_CHANGED*, reused for QUEST_LOG_UPDATE
 
 local function SyncTracking(verbose)
-    if not db or not Enabled() then
+    if not db or not Enabled() or TakenOver() then
         if verbose then print("[ZQ sync] disabled, aborting.") end
         return
     end
@@ -442,10 +448,15 @@ local function InitializeOptions()
             VUI.Print("Zone Quests", VUI.COL.RED .. "Off.|r Your own quest tracking is back.")
         end
     end)
-    Settings.CreateCheckbox(category, enableSetting,
-        "Shows only quests for your current zone in the Objective Tracker. In a dungeon or raid, quests "
-        .. "your quest log lists under its name count too. Turning it off "
-        .. "puts back the tracking you had before. Set for each character.")
+    local enableTip = "Shows only quests for your current zone in the Objective Tracker. In a dungeon or raid, "
+        .. "quests your quest log lists under its name count too. Turning it off "
+        .. "puts back the tracking you had before. Set for each character."
+    local why = TakenOver()
+    if type(why) == "string" then enableTip = enableTip .. "\n\n" .. VUI.COL.RED .. why .. "|r" end
+    local enableInit = Settings.CreateCheckbox(category, enableSetting, enableTip)
+    if why and enableInit and enableInit.AddModifyPredicate then
+        enableInit:AddModifyPredicate(function() return false end)
+    end
 
     local pins = {
         { key = "pinCampaign",
@@ -626,6 +637,8 @@ SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
 
     elseif msg == "on" or msg == "enable" then
         if not cdb then VUI.Print("Zone Quests", "Not ready."); return end
+        local why = TakenOver()
+        if type(why) == "string" then VUI.Print("Zone Quests", why); return end
         if cdb.enabled then VUI.Print("Zone Quests", "Already on."); return end
         cdb.enabled = true
         FinishPendingRestore()
