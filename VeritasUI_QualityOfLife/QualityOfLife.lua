@@ -380,7 +380,7 @@ end
 -- Blizzard's bag menu "Ignore this bag" for junk selling (SELL_ALL_JUNK_ITEMS_EXCLUDE_FLAG): the backpack keeps it
 -- in C_Container.GetBackpackSellJunkDisabled, every other bag in Enum.BagSlotFlags.ExcludeJunkSell
 -- (ContainerFrame.lua :627-645 live, :690-710 forever). Sell Junk leaves those bags alone, as Blizzard's own
--- Sell All Junk does (v1.79.0; before it, greys in an ignored bag were sold). A field, not a local: this chunk
+-- Sell All Junk does (v1.78.1; before it, greys in an ignored bag were sold). A field, not a local: this chunk
 -- is at Lua's 200-locals limit.
 VUI.QoL_JunkBagIgnored = function(bag)
     local C = C_Container
@@ -3713,7 +3713,7 @@ npcFrame.Note = function(fmt, ...)
     if #log > 12 then table.remove(log, 1) end
 end
 
--- Turn-in safety (v1.79.0; the idea from Leatrix Plus, none of its code). Auto Turn In leaves a quest for you
+-- Turn-in safety (v1.78.1; the idea from Leatrix Plus, none of its code). Auto Turn In leaves a quest for you
 -- when handing it in would spend what you may want to keep: any currency it asks for, an account-bound
 -- (warbound) item, or -- on a REPEATABLE quest only (reputation hand-ins) -- a crafting reagent; owner's choice
 -- 2026-11-08, so levelling quests that ask for meat or cloth still hand in. What the quest asks for is read with

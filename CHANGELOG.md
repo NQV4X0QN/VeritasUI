@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.78.1] - 2026-11-08
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **Auto Turn In leaves a hand-in for you when it would spend something you may want to keep**: currency, an account-bound item, or crafting reagents on a repeatable quest such as a reputation turn-in. Ordinary quests that ask for materials like meat or cloth still hand in, and `/qol npc` says why a quest was left (`QualityOfLife.lua`)
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **Auto Sell Junk sold greys from bags set to ignore junk selling.** A bag, or the backpack, ticked to ignore junk selling in its bag menu is now left alone, as the game's own Sell All Junk does (`QualityOfLife.lua`)
+
+
 ## [1.78.0] - 2026-11-08
 
 ### Added
