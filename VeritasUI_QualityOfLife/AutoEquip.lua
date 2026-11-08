@@ -16,7 +16,9 @@
 --     requirement -- armor or weapon type your class can't use (right side), a level above yours -- in red. An
 --     unreadable tooltip waits for the next bag update;
 --   * would not bind on equip (an unbound Bind on Equip item asks you to confirm; that stays your call);
---   * no main stat that is wrong for you (Strength / Agility / Intellect, C_Item.GetItemStats). Retail: the spec's
+--   * a main stat that is wrong for you (Strength / Agility / Intellect, C_Item.GetItemStats) only stops it when
+--     what you wear has YOUR main stat; against gear with none (or an empty slot) the wrong stat counts for nothing
+--     and the rest decides (v1.77.2, owner). Retail: the spec's
 --     primaryStat (GetSpecializationInfo, 1 Strength, 2 Agility, 4 Intellect). WoW Forever has one "spec" per
 --     class and it reported Intellect for the owner's Hunter (probe, 2026-11-04), so there the class decides:
 --     Hunter and Rogue Agility, Warrior Strength, Mage, Priest and Warlock Intellect; hybrid classes get no check.
@@ -254,7 +256,14 @@ local function Decide(bag, slot, info, specStat)
     local okB, bindType = pcall(function() return select(14, C_Item.GetItemInfo(link)) end)
     if okB and bindType == 2 and not info.isBound then return nil, "binds when equipped" end
     local fits = MainStatFits(link, specStat)
-    if fits == false then return nil, "main stat is not yours" end
+    -- A main stat that is not yours only stops the swap when what you wear carries YOUR main stat (owner,
+    -- 2026-11-07, WoW Forever: Empyrean Treads, item level 15, 48 Armor +3 Intellect, stayed in the bags of a
+    -- Hunter wearing Handstitched Leather Boots, item level 8, 31 Armor and no stat). Otherwise the wrong stat is
+    -- worth nothing to you either way and the rest of the comparison decides (StatEdge already ignores it).
+    local function KeepsYours(worn)
+        return fits == false and worn ~= nil and MainStatFits(worn, specStat) == true
+    end
+    local OFF_STAT = "main stat is not yours, and what you wear has yours"
     local ilvl = ItemLevel(link)
     local bagTip = { "GetBagItem", bag, slot }
     if WEAPONS[equipLoc] then
@@ -263,6 +272,7 @@ local function Decide(bag, slot, info, specStat)
             if worn and Info(worn) == equipLoc then
                 local _, wClass, wSub = Info(worn)
                 if IsTool(wClass, wSub) then return s, "weapon: replaces a profession tool" end
+                if KeepsYours(worn) then return nil, "weapon: " .. OFF_STAT end
                 local edge, how = StatEdge(link, worn, specStat, bagTip, { "GetInventoryItem", "player", s })
                 if edge == 1 then return s, "weapon: " .. how end
                 if edge == -1 then return nil, "weapon: " .. how end
@@ -283,6 +293,7 @@ local function Decide(bag, slot, info, specStat)
         if not lowest or wl < lowest then lowest, lowestSlot = wl, s end
     end
     local worn = WornLink(lowestSlot)
+    if KeepsYours(worn) then return nil, OFF_STAT end
     local mine, theirs = ArmorType(link, equipLoc), ArmorType(worn, equipLoc)
     local edge, how = nil, nil
     if worn ~= link then
