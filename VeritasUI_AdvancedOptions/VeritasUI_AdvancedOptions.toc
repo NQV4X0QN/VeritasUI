@@ -1,7 +1,7 @@
 ## Interface: 120105, 16001
 ## Title: VeritasUI — Advanced Options
 ## Notes: WoW's hidden settings, plus a searchable browser of every CVar. |cFF888888by NQV4X0QN|r
-## Version: 1.76.0
+## Version: 1.77.0
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
 ## SavedVariables: VeritasUI_AdvancedOptionsDB

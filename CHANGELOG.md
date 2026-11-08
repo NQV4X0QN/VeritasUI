@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.77.0] - 2026-11-07
+
+### Added
+
+- `VeritasUI_Interface` — **WoW Forever: Show While Your Pet Isn't Happy**, under Fade Player Frame, on by default: the player frame and the pet frame stay shown while your pet is unhappy, so you notice in time to feed it (`Interface.lua`)
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **Remembered chat lines keep a soft version of their chat colour** after a reload: whispers, guild, party, raid and instance chat come back in a muted shade of their usual colour instead of plain grey. Officer chat is protected by the game and is not remembered (`Chat.lua`)
+- `VeritasUI_QualityOfLife` — **WoW Forever: the AFK screen shows your guild rank and guild** (for example "Officer of My Guild") in place of item level, with your level and zone; the clock is below it (`QualityOfLife.lua`)
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **AFK screen: the Social button now comes back with the chat window**, and tooltips for things in the world (players, NPCs, objects) show when you mouse over them (`QualityOfLife.lua`)
+
+
 ## [1.76.0] - 2026-11-07
 
 ### Added

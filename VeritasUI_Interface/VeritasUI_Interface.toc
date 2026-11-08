@@ -1,7 +1,7 @@
 ## Interface: 120105, 16001
 ## Title: VeritasUI — Interface
 ## Notes: Fades or hides parts of the default interface: action bars, chat, player frame, buffs, minimap, trackers and pop-ups. |cFF888888by NQV4X0QN|r
-## Version: 1.76.0
+## Version: 1.77.0
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
 ## SavedVariables: VeritasUI_InterfaceDB
