@@ -1388,7 +1388,21 @@ local function AFK_RefreshInfo()
     local parts = {}
     -- Blizzard's translated labels, so a non-English client does not get English here.
     parts[#parts + 1] = (LEVEL or "Level") .. " " .. tostring(level)
-    parts[#parts + 1] = (STAT_AVERAGE_ITEM_LEVEL or "Item Level") .. " " .. ilvlStr
+    if VUI.IS_FOREVER then
+        -- WoW Forever (v1.77.0, owner): no item level there as Retail has it; your guild rank and guild instead,
+        -- in Blizzard's "<rank> of <guild>" (GUILD_TEMPLATE, as Show Guild Rank in Tooltips writes it). No guild:
+        -- left out.
+        local okG, guild, rank = pcall(_G.GetGuildInfo, "player")
+        if okG and type(guild) == "string" and guild ~= "" and not (issecretvalue and issecretvalue(guild)) then
+            if type(rank) == "string" and rank ~= "" then
+                parts[#parts + 1] = (_G.GUILD_TEMPLATE or "%s of %s"):format(rank, guild)
+            else
+                parts[#parts + 1] = guild
+            end
+        end
+    else
+        parts[#parts + 1] = (STAT_AVERAGE_ITEM_LEVEL or "Item Level") .. " " .. ilvlStr
+    end
     if zoneDisplay ~= "" then
         parts[#parts + 1] = zoneDisplay
     end
@@ -1468,7 +1482,8 @@ end
 -- everything else (owner, 2026-10-31: "I can see windows but I can't see tooltips"). A tooltip
 -- is shown only when the thing it describes is visible: its owner, or one of the owner's
 -- parents, is a frame we revealed. So hovering a bag slot or a chat link shows it, while
--- hovering the hidden action bars still shows nothing; a unit in the world shows since v1.77.0 (WorldTip). ItemRefTooltip
+-- hovering the hidden action bars still shows nothing; a unit in the world shows since v1.77.0
+-- (WorldTip). ItemRefTooltip
 -- (a clicked chat link) is a window the player opened, so it shows whenever it is shown.
 -- The comparison tooltips are owned by the tooltip they compare against, so they follow it;
 -- they come after their owners in this list so their owner is already decided.
