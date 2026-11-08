@@ -177,6 +177,11 @@ local function Capture()
             list[#list + 1] = e
         end
     end
+    -- An empty list is never saved over the last one (owner, 2026-11-07, Forever level 14: `/qol trainable` read
+    -- "list from Quel'dora Quickgale at level 14, 0 services" with the default filters, right after training).
+    -- A class trainer's list with the default filters holds every later level's skills, so a read of none is the
+    -- trainer answering before its list is ready, not a finished class.
+    if not list[1] then return false end
     local filters = {}
     for _, f in ipairs({ "available", "unavailable", "used" }) do
         local okF, on = pcall(GetTrainerServiceTypeFilter, f)

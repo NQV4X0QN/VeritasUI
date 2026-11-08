@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.77.3] - 2026-11-07
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — **WoW Forever: the trainer list could go empty** ("Nothing left to learn from this trainer") right after a visit, when the trainer briefly reported no skills and that empty list replaced the saved one. An empty list is no longer saved; visit your class trainer once to refill it (`Trainer.lua`)
+
+
 ## [1.77.2] - 2026-11-07
 
 ### Changed
