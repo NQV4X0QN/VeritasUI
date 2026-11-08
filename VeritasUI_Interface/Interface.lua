@@ -136,6 +136,9 @@ local UNIVERSAL = {
     -- v1.63.0 (owner's request): sub-option of the per-character fadePlayerFrame, ON. The frame stays up while
     -- your main resource fills or drains out of combat. A display choice, so universal like Show While Flying.
     fadePlayerFramePower = true,
+    -- v1.77.0 (owner's request, WoW Forever only): sub-option of fadePlayerFrame, ON. The frame (and the pet frame,
+    -- its child) stays up while your pet is not Happy.
+    fadePlayerFramePet = true,
     -- Sub-option, OFF by default (owner: some players want the bars only on hover, others want
     -- them shown on gains -- "an option that people can check if they want it").
     fadeStatusBarsOnGain = false,  -- also shown for 3 s after a reputation, experience or honor gain
@@ -650,12 +653,31 @@ local function PowerUnsettled()
     return cur < max
 end
 
+-- Show While Your Pet Isn't Happy (v1.77.0, owner's request, WoW Forever only). The pet frame is a child of the player
+-- frame (Blizzard_UnitFrame/Mainline/PetFrame.xml:11 forever: parent="PlayerFrame"), so it fades with it: the
+-- whole frame is held up, as for a resource still settling. Your hunter pet's mood: C_PetInfo.GetPetHappiness ->
+-- 1 Mad, 2 Neutral, 3 Happy (Blizzard_FrameXML/PetHappiness.lua:1-6 forever, Blizzard's own pet-happiness icon);
+-- nothing back with no pet. Read on the player frame fade's 10 Hz poll, so a change shows within 0.1 s.
+local PET_HAPPY = 3
+local function PetUnhappy()
+    if not (VUI.IS_FOREVER and db and db.fadePlayerFramePet) then return false end
+    local pi = _G.C_PetInfo
+    if not (pi and pi.GetPetHappiness) then return false end
+    local ok, happiness = pcall(pi.GetPetHappiness)
+    if not ok or type(happiness) ~= "number" or (issecretvalue and issecretvalue(happiness)) then return false end
+    return happiness < PET_HAPPY
+end
+
+local function PlayerFrameHeld()
+    return PowerUnsettled() or PetUnhappy()
+end
+
 local function SetupPlayerFrameFade()
     local evaluate, healthPing = VUI.HookPlayerFrameFade(
         PlayerFrame,
         InCombatLockdown,
         Opacity("fadePlayerFrameOpacity"),
-        PowerUnsettled,
+        PlayerFrameHeld,
         "fadePlayerFrame"
     )
     frame._playerEvaluate   = evaluate
@@ -2413,6 +2435,11 @@ local function InitializeOptions()
              .. "filling or draining out of combat, so you can see it: until mana is full or rage is empty. "
              .. "Then it fades. Applies at once.",
           apply = function() end },
+        { key = "fadePlayerFramePet", name = "Show While Your Pet Isn't Happy", parent = "fadePlayerFrame",
+          foreverOnly = true,
+          tip = "Your player frame, with your pet's frame, stays up while your pet is not happy, so you can see when "
+             .. "it needs feeding. Then it fades. Applies at once.",
+          apply = function() end },
         { key = "fadeAuras",           name = "Fade Buffs and Debuffs",
           tip = "Your buffs and debuffs by the minimap fade out unless you're in combat or mousing "
              .. "over them. Applies at once.",
@@ -3093,7 +3120,8 @@ local function InitializeOptions()
         { "Action Bars",         { "fadeMainActionBar", "fadeMainActionBarShowFlying", "fadeActionBars",
                                    "hideMacroNames" } },
         { "Micro Menu and Bags", { "fadeMicroMenu", "fadeBagButtons" } },
-        { "Player",              { "fadePlayerFrame", "fadePlayerFramePower", "fadeAuras", "fadeAurasShowExpiring",
+        { "Player",              { "fadePlayerFrame", "fadePlayerFramePower", "fadePlayerFramePet", "fadeAuras",
+                                   "fadeAurasShowExpiring",
                                    "fadeAurasShowCampfire",
                                    "hideProfessionGear" } },
         { "Chat",                { "fadeChatTabs", "hideSocialButton", "hideChatButtons", "hideVoiceChatButton" } },

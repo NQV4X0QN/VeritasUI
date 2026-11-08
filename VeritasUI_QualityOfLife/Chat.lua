@@ -327,6 +327,28 @@ local function Record(index, msg, r, g, b)
 end
 VUI.QoL_ChatRecord = Record
 
+-- v1.77.0 (owner's request): saved Guild, Officer, Whisper, Party, Instance and Raid lines come back in their own chat
+-- colour toned halfway to grey, so past conversations stand out at a glance; everything else comes back grey as
+-- before. A line's type is told by its saved colour against the type's colour NOW (ChatTypeInfo, Blizzard's table
+-- the chat settings write), so a colour changed in chat settings is followed. A channel set to the same colour as
+-- one of these takes its tint too.
+local HISTORY_TINTED = { "GUILD", "OFFICER", "WHISPER", "WHISPER_INFORM", "PARTY", "PARTY_LEADER",
+    "INSTANCE_CHAT", "INSTANCE_CHAT_LEADER", "RAID", "RAID_LEADER" }
+local function Close(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < 0.01 end
+local function HistoryColor(line, grey)
+    local cti = _G.ChatTypeInfo
+    if type(cti) == "table" and line.r and line.g and line.b then
+        for _, t in ipairs(HISTORY_TINTED) do
+            local c = cti[t]
+            if type(c) == "table" and Close(c.r, line.r) and Close(c.g, line.g) and Close(c.b, line.b) then
+                return (line.r + grey.r) / 2, (line.g + grey.g) / 2, (line.b + grey.b) / 2
+            end
+        end
+    end
+    return grey.r, grey.g, grey.b
+end
+VUI.QoL_ChatHistoryColor = HistoryColor   -- for qol_chat_test
+
 local function Restore()
     local store = Store()
     local grey = GRAY_FONT_COLOR
@@ -335,7 +357,8 @@ local function Restore()
         if cf and not SKIP[index] and type(lines) == "table" and On("chatRememberLines") then
             for _, line in ipairs(lines) do
                 if type(line) == "table" and type(line.t) == "string" then
-                    pcall(cf.AddMessage, cf, line.t, grey.r, grey.g, grey.b)
+                    local r, g, b = HistoryColor(line, grey)
+                    pcall(cf.AddMessage, cf, line.t, r, g, b)
                 end
             end
         end
