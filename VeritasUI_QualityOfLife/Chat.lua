@@ -521,31 +521,3 @@ typedLoader:SetScript("OnEvent", function(self, _, name)
         hooksecurefunc(box, "AddHistoryLine", function(_, text) RecordTyped(text) end)
     end
 end)
-
--- ── TEMP PROBE: /qol chatlines (chat history colours, 2026-11-07). MEASURE ONLY, removed before release. ──
--- Prints the chat type colours as they are now and the last 4 saved lines of each kept window: their saved
--- colour and saved type (`k`).
-VUI.QoL_ChatLinesProbe = function()
-    local cti = _G.ChatTypeInfo or {}
-    local function C(t)
-        local c = cti[t]
-        if type(c) ~= "table" then return t .. "=nil" end
-        return format("%s=%s,%s,%s", t, tostring(c.r), tostring(c.g), tostring(c.b))
-    end
-    VUI.Print("Quality of Life", "Now: " .. C("WHISPER") .. "  " .. C("WHISPER_INFORM") .. "  " .. C("GUILD")
-        .. "  " .. C("OFFICER"))
-    local store = Store()
-    for index = FIRST_WINDOW, (_G.NUM_CHAT_WINDOWS or 10) do
-        local lines = store[index]
-        if not SKIP[index] and type(lines) == "table" then
-            VUI.Print("Quality of Life", format("Window %d: %d lines saved", index, #lines))
-            for i = math.max(1, #lines - 3), #lines do
-                local l = lines[i]
-                local text = type(l.t) == "string"
-                    and l.t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|[rHhT][^|]*", "") or "?"
-                VUI.Print("Quality of Life", format("  k=%s rgb=%s,%s,%s  %s", tostring(l.k), tostring(l.r),
-                    tostring(l.g), tostring(l.b), text:sub(1, 40)))
-            end
-        end
-    end
-end
