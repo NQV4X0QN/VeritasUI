@@ -511,3 +511,67 @@ typedLoader:SetScript("OnEvent", function(self, _, name)
         hooksecurefunc(box, "AddHistoryLine", function(_, text) RecordTyped(text) end)
     end
 end)
+
+-- ── TEMP PROBE: /qol afkprobe (owner's AFK-screen questions, 2026-11-07) ──────────────────────────────────
+-- MEASURE ONLY, removed before release. With the AFK screen up, every 0.25 s: the frame under the mouse and the
+-- frames it sits in (name, alpha, effective alpha, ignores-parent-alpha), and GameTooltip (shown, owner). A line is
+-- logged only when it differs from the last. Kept in VeritasUI_QualityOfLifeChatDB.afkProbe (last 200 lines),
+-- printed by /qol afkprobe again after AFK. Nothing is written to any frame.
+local probeTicker
+local function FrameName(f)
+    if not f then return "nil" end
+    local ok, n = pcall(f.GetDebugName, f)
+    if ok and type(n) == "string" and n ~= "" then return n end
+    ok, n = pcall(f.GetName, f)
+    return (ok and n) or tostring(f)
+end
+local function Describe(f)
+    local okA, a = pcall(f.GetAlpha, f)
+    local okE, e = pcall(f.GetEffectiveAlpha, f)
+    local okI, ig = pcall(f.IsIgnoringParentAlpha, f)
+    return format("%s a=%.2f eff=%.2f ign=%s", FrameName(f), okA and a or -1, okE and e or -1,
+        tostring(okI and ig))
+end
+local function ProbeLine()
+    local foci = _G.GetMouseFoci and _G.GetMouseFoci()
+    local f, parts = foci and foci[1], {}
+    for _ = 1, 6 do
+        if not f then break end
+        parts[#parts + 1] = Describe(f)
+        local ok, p = pcall(f.GetParent, f)
+        f = ok and p or nil
+    end
+    local tip, tipText = _G.GameTooltip, "tip=hidden"
+    if tip and tip:IsShown() then
+        local ok, o = pcall(tip.GetOwner, tip)
+        local okL, l = pcall(function() return _G.GameTooltipTextLeft1 and _G.GameTooltipTextLeft1:GetText() end)
+        tipText = format("tip=shown owner=%s eff=%.2f text=%s", FrameName(ok and o or nil),
+            tip:GetEffectiveAlpha() or -1, tostring(okL and not IsSecret(l) and l or "?"))
+    end
+    return (#parts > 0 and table.concat(parts, " < ") or "focus=nil") .. " | " .. tipText
+end
+VUI.QoL_AFKProbe = function()
+    local store = Store()
+    if probeTicker then
+        probeTicker:Cancel(); probeTicker = nil
+        VUI.Print("Quality of Life", "AFK probe off. Log:")
+        for _, l in ipairs(store.afkProbe or {}) do VUI.Print("Quality of Life", l) end
+        return
+    end
+    store.afkProbe = {}
+    local last
+    probeTicker = C_Timer.NewTicker(0.25, function()
+        local afk = _G.VeritasUI_AFKScreen
+        if not (afk and afk:IsShown()) then return end
+        local ok, line = pcall(ProbeLine)
+        line = ok and line or ("error: " .. tostring(line))
+        if line ~= last then
+            last = line
+            local log = store.afkProbe
+            log[#log + 1] = format("%.1f %s", GetTime(), line)
+            while #log > 200 do table.remove(log, 1) end
+        end
+    end)
+    VUI.Print("Quality of Life", "AFK probe on: go AFK, hover the chat, a chat button, the Social button and a "
+        .. "player, NPC or object, then type /qol afkprobe again to see the log.")
+end
