@@ -314,6 +314,29 @@ local function Store()
     return _G.VeritasUI_QualityOfLifeChatDB
 end
 
+-- v1.77.0 (owner's request): saved Guild, Officer, Whisper, Party, Instance and Raid lines come back in their own chat
+-- colour toned halfway to grey, so past conversations stand out at a glance; everything else comes back grey as
+-- before. The line's type is told when it is SAVED, by its colour against ChatTypeInfo (Blizzard's table the chat
+-- settings write), and kept with it (`k`).
+-- ⚠ Not at restore time (owner, test build 1: whispers came back grey): history is put back at ADDON_LOADED, when
+-- every ChatTypeInfo colour is still Blizzard's 1,1,1 placeholder, "replaced when chat settings load later"
+-- (Blizzard_ChatFrameBase/Shared/ChatTypeInfoColors.lua:1-13 forever; UPDATE_CHAT_COLOR, ChatFrameOverrides.lua:145).
+-- A white colour is never matched, for the same reason. A channel set to the same colour as one of these takes it.
+local HISTORY_TINTED = { "GUILD", "OFFICER", "WHISPER", "WHISPER_INFORM", "PARTY", "PARTY_LEADER",
+    "INSTANCE_CHAT", "INSTANCE_CHAT_LEADER", "RAID", "RAID_LEADER" }
+local function Close(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < 0.01 end
+local function ChatTypeOf(r, g, b)
+    local cti = _G.ChatTypeInfo
+    if type(cti) ~= "table" or type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then return nil end
+    if Close(r, 1) and Close(g, 1) and Close(b, 1) then return nil end
+    for _, t in ipairs(HISTORY_TINTED) do
+        local c = cti[t]
+        if type(c) == "table" and Close(c.r, r) and Close(c.g, g) and Close(c.b, b) then return t end
+    end
+    return nil
+end
+VUI.QoL_ChatTypeOf = ChatTypeOf   -- for qol_chat_test
+
 local function Record(index, msg, r, g, b)
     if not On("chatRememberLines") then return end
     if type(msg) ~= "string" or IsSecret(msg) or IsSecret(r) or IsSecret(g) or IsSecret(b) then return end
@@ -322,28 +345,15 @@ local function Record(index, msg, r, g, b)
     local lines = store[index]
     if type(lines) ~= "table" then lines = {}; store[index] = lines end
     lines[#lines + 1] = { t = msg, r = type(r) == "number" and r or nil, g = type(g) == "number" and g or nil,
-        b = type(b) == "number" and b or nil }
+        b = type(b) == "number" and b or nil, k = ChatTypeOf(r, g, b) }
     while #lines > KEEP do table.remove(lines, 1) end
 end
 VUI.QoL_ChatRecord = Record
 
--- v1.77.0 (owner's request): saved Guild, Officer, Whisper, Party, Instance and Raid lines come back in their own chat
--- colour toned halfway to grey, so past conversations stand out at a glance; everything else comes back grey as
--- before. A line's type is told by its saved colour against the type's colour NOW (ChatTypeInfo, Blizzard's table
--- the chat settings write), so a colour changed in chat settings is followed. A channel set to the same colour as
--- one of these takes its tint too.
-local HISTORY_TINTED = { "GUILD", "OFFICER", "WHISPER", "WHISPER_INFORM", "PARTY", "PARTY_LEADER",
-    "INSTANCE_CHAT", "INSTANCE_CHAT_LEADER", "RAID", "RAID_LEADER" }
-local function Close(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) < 0.01 end
+-- A line saved with a type comes back in its own colour, halfway to grey; any other line grey.
 local function HistoryColor(line, grey)
-    local cti = _G.ChatTypeInfo
-    if type(cti) == "table" and line.r and line.g and line.b then
-        for _, t in ipairs(HISTORY_TINTED) do
-            local c = cti[t]
-            if type(c) == "table" and Close(c.r, line.r) and Close(c.g, line.g) and Close(c.b, line.b) then
-                return (line.r + grey.r) / 2, (line.g + grey.g) / 2, (line.b + grey.b) / 2
-            end
-        end
+    if line.k and type(line.r) == "number" and type(line.g) == "number" and type(line.b) == "number" then
+        return (line.r + grey.r) / 2, (line.g + grey.g) / 2, (line.b + grey.b) / 2
     end
     return grey.r, grey.g, grey.b
 end
