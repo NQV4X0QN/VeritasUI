@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.77.2] - 2026-11-07
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — **Auto Equip: gear with a main stat that isn't yours is no longer always skipped.** It can now replace gear that has no main stat of yours when it wins the usual comparison — for example green boots with more armor and +3 Intellect over white boots with no stats, on a Hunter. Gear that carries your main stat stays on unless the new piece is at least 5 item levels or 25% higher (whichever is more) and still comes out ahead; `/qol equipcheck` names the item level needed (`AutoEquip.lua`)
+
+
 ## [1.77.1] - 2026-11-07
 
 ### Fixed
