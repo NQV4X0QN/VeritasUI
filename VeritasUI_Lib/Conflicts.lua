@@ -112,6 +112,40 @@ for _, id in ipairs({ "levelup", "scenario", "messages", "weekly", "renown", "ot
         function() return Lea("HideEventToasts") end)
 end
 
+-- Questie (12.6.4, WoW Forever; read 2026-11-08). Its options live in AceDB: the live profile is Questie.db.profile
+-- (Questie.lua:35, made at its ADDON_LOADED), defaults from Modules/Options/QuestieOptionsDefaults.lua; a value that
+-- cannot be read takes that default.
+--   trackerEnabled (default ON)   "Enable Tracker" "will replace the default Blizzard Quest Tracker with the Questie
+--                                 Tracker" (TrackerTab/QuestieOptionsTracker.lua:103-104); in Forever it hides
+--                                 ObjectiveTrackerFrame (QuestieCompat.lua:395-416), so our tracker fade has nothing
+--                                 to fade. Questie has its own tracker fading options.
+--   autoAccept.enabled / autocomplete (default off)   "Auto Accept Quests" / "Auto Complete Quests" (AutoTab/
+--                                 QuestieOptionsAuto.lua:43, :60; Auto/AutoQuesting.lua:16-106).
+-- Zone Quests gets no rule: Questie's tracker follows the game's tracked list in Forever (hooks on C_QuestLog.Add/
+-- RemoveQuestWatch, Tracker/QuestieTracker.lua:1248-1268), so it should show what Zone Quests tracks. UNMEASURED in
+-- game (2026-11-08).
+local function QuestieOpt(read, default)
+    local ok, v = pcall(function() return read(_G.Questie.db.profile) end)
+    if not ok or v == nil then return default end
+    return v and true or false
+end
+local function Q(module, key, feature, when, reason)
+    return { module = module, key = key, addon = "Questie", title = "Questie", feature = feature, when = when,
+             reason = reason }
+end
+for _, rule in ipairs({
+    Q(QOL, "autoAcceptQuest", "Auto Accept Quests", function()
+        return QuestieOpt(function(p) return p.autoAccept.enabled end, false)
+    end),
+    Q(QOL, "autoTurnInQuest", "Auto Complete Quests", function()
+        return QuestieOpt(function(p) return p.autocomplete end, false)
+    end),
+    Q(IFACE, "fadeObjectiveTracker", "Enable Tracker", function()
+        return VUI.IS_FOREVER and QuestieOpt(function(p) return p.trackerEnabled end, true)
+    end, "Questie's tracker replaces the game's (Questie: Enable Tracker), so there is no tracker here to fade. "
+        .. "Turn it off in Questie to use this one."),
+}) do VUI.CONFLICT_RULES[#VUI.CONFLICT_RULES + 1] = rule end
+
 local function Loaded(name)
     local fn = C_AddOns and C_AddOns.IsAddOnLoaded
     if not fn then return false end
@@ -120,8 +154,10 @@ local function Loaded(name)
 end
 
 -- "Leatrix Plus is doing this (Sell junk automatically). Turn it off there and /reload to use this one."
--- Plain text: callers colour the whole line red (TipWithReason, GameTooltip_AddErrorLine).
+-- A rule may carry its own `reason` where "doing this" would not fit. Plain text: callers colour the whole line
+-- red (TipWithReason, GameTooltip_AddErrorLine).
 function VUI.ConflictReason(rule)
+    if rule.reason then return rule.reason end
     return rule.title .. " is doing this (" .. rule.feature .. "). Turn it off there and /reload to use this one."
 end
 

@@ -2648,7 +2648,7 @@ local function InitializeOptions()
             if parentInit and VUI.SettingsSubOption then
                 local parentOwner = PERCHAR[opt.parent] ~= nil and cdb or db
                 VUI.SettingsSubOption(init, ADDON_NAME .. "_" .. opt.parent,
-                    function() return parentOwner[opt.parent] end)
+                    function() return parentOwner[opt.parent] and not Unavailable(opt.parent) end)
             end
           end
         end
@@ -2746,7 +2746,7 @@ local function InitializeOptions()
         local function Under(init)
             if parentInit and init and VUI.SettingsSubOption then
                 VUI.SettingsSubOption(init, ADDON_NAME .. "_fadeObjectiveTracker",
-                    function() return db.fadeObjectiveTracker end)
+                    function() return db.fadeObjectiveTracker and not Unavailable("fadeObjectiveTracker") end)
             end
         end
         local raidSetting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_fadeObjectiveTrackerRaid",
@@ -2762,7 +2762,8 @@ local function InitializeOptions()
             .. "can still be clicked. Applies at once."
         if VUI.AddCoverDropdown then
             Dropdown(raidSetting, "In Raids", RaidOptions, raidTip,
-                { sub = true, isEnabled = function() return db.fadeObjectiveTracker end })
+                { sub = true, isEnabled = function()
+                    return db.fadeObjectiveTracker and not Unavailable("fadeObjectiveTracker") end })
         else
             Under(Settings.CreateDropdown(category, raidSetting, RaidOptions, raidTip))
         end
@@ -3283,9 +3284,9 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         if db.muteSpellFizzle and not Unavailable("muteSpellFizzle") then SetMuteSpellFizzle(true) end
         if next(db.hideTopBannerTypes) ~= nil and not Unavailable("hideTopBanners") then HideTopBanners() end
         if not Unavailable("hideProfessionGear") then SetHideTransforms() end
-        if Unavailable("hideErrorText") then                  -- another AddOn hides errors (v1.79.0)
-        elseif db.hideErrorText       then HideErrorText()
-        else                           HideErrorTypes()      end
+        if not Unavailable("hideErrorText") then             -- another AddOn hides errors (v1.79.0)
+            if db.hideErrorText then HideErrorText() else HideErrorTypes() end
+        end
         if not Unavailable("fadeActionBars") then SetupActionBarFading() end
         if cdb.fadeMainActionBar and not Unavailable("fadeMainActionBar") then SetupMainActionBarFade() end
         if db.fadeDamageMeter and not Unavailable("fadeDamageMeter") then SetupDamageMeterFade() end
