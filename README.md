@@ -102,6 +102,7 @@ Required by every other module. It also provides:
 - `/vui`, which lists every module's command
 - **Copy settings** from another of your characters (`/vui copy`, or the **Copy From…** button on VeritasUI's Options panels)
 - A **Reload UI** button on those panels
+- **Steps aside for other AddOns**: when Leatrix Plus already does what one of VeritasUI's options does (and that option of Leatrix's is on), VeritasUI's option is greyed out with the reason in its tooltip and doesn't run, and your setting comes back as it was once Leatrix stops doing it. In a list of choices, only the overlapping choice is greyed
 
 ## Settings across characters
 

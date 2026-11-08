@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.79.0] - 2026-11-08
+
+### Added
+
+- `VeritasUI_Lib` — **VeritasUI steps aside where Leatrix Plus already does the job.** When one of Leatrix Plus's options that matches a VeritasUI option is on, VeritasUI's option is greyed out in Options with the reason in red at the end of its tooltip ("Leatrix Plus is doing this (…). Turn it off there and /reload to use this one."), and its feature doesn't run. Your setting is kept, so it comes back by itself once Leatrix stops doing it; remembered chat history is never deleted meanwhile. In a list of choices only the overlapping choice is greyed, such as Zone Names in Hide Top Banners when Leatrix hides the zone text. Covers merchant, quest, dialogue, resurrection, invite, trainer, cinematic, DELETE, chat history and tooltip options in Quality of Life, and chat buttons, macro names, spell fizzle, error text, top banners and holiday costumes in Interface (`Conflicts.lua`, new; `Lib.lua`, `SettingsCoverDropdown.lua`, `QualityOfLife.lua`, `Automation.lua`, `Chat.lua`, `Interface.lua`)
+
+
 ## [1.78.1] - 2026-11-08
 
 ### Changed
