@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.82.0] - 2026-11-08
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Arrow Keys in Chat**, under Chat, on by default: while you type, the Left and Right arrow keys move the cursor instead of turning your character, without holding Alt. Alt+Up and Alt+Down still bring back the lines you typed before (`Chat.lua`, `QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Messages Never Fade**, under Chat, off until you turn it on: chat messages stay in the window instead of fading away after two minutes, whisper windows included (`Chat.lua`, `QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Hide Chat Spam**, under Chat, none until you pick: spell links in say, yell, emote and group chat while you are in combat, other players' drunk messages, and the results of duels you were not in. Your own drunk messages and duels are still shown, and a message the game hides from AddOns is always shown (`Chat.lua`, `Invites.lua`, `QualityOfLife.lua`)
+
+### Changed
+
+- `VeritasUI_Lib` — the new chat options step aside when another AddOn is already doing the same thing (`Conflicts.lua`)
+
 ## [1.81.1] - 2026-11-08
 
 ### Changed
