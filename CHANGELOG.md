@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.81.1] - 2026-11-08
+
+### Changed
+
+- `VeritasUI_Lib` — an option greyed out because another AddOn is already doing it now says so in its tooltip as "Another AddOn is doing this (…)", with the name of that AddOn's matching option (`Conflicts.lua`)
+
 ## [1.81.0] - 2026-11-08
 
 ### Added
