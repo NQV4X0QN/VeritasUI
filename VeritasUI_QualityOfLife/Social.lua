@@ -1,6 +1,6 @@
 -- VeritasUI_QualityOfLife / Social.lua
--- Online Lists on the Guild and Social Buttons (v1.72.0, owner's request; the idea from EllesmereUI's
--- "Social & Guild Tooltip", none of its code). Hover the Guild & Communities micro button for who in your guild
+-- Online Lists on the Guild and Social Buttons (v1.72.0, owner's request).
+-- Hover the Guild & Communities micro button for who in your guild
 -- is online, or the Social button beside the chat window (QuickJoinToastButton) for your friends in game.
 -- Click a name to whisper; Shift-click to invite.
 --
@@ -16,7 +16,7 @@
 -- throttles it, GuildInfoDocumentation.lua), WoW friends (C_FriendList.GetFriendInfoByIndex) and Battle.net friends
 -- in WoW (C_BattleNet.GetFriendAccountInfo, clientProgram == BNET_CLIENT_WOW). All in both games' API docs.
 -- Whisper: ChatFrameUtil.SendTell / SendBNetTell with DEFAULT_CHAT_FRAME given, so no temporary whisper window is
--- opened from our code (EllesmereUI's measured taint note); not while chat is locked down
+-- opened from our code (a known taint source); not while chat is locked down
 -- (C_ChatInfo.InChatMessagingLockdown). Invite: C_PartyInfo.InviteUnit (PartyInfoDocumentation.lua:357).
 
 local VUI = _G.VeritasUI

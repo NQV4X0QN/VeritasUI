@@ -93,7 +93,7 @@ local UNIVERSAL = {
     -- Fade Delay slider, seconds (0-5). One value for every fade, an interface choice like the
     -- rest of this table. 0 = each fade's own built-in delay, i.e. the behaviour before v1.25.0.
     fadeDelay           = 0,
-    -- v1.26.0 (EllesmereUI-inspired plan, phase 1). OFF by default: unlike the original options
+    -- v1.26.0 (feature plan, phase 1). OFF by default: unlike the original options
     -- these remove game content (story popups, zone names, boss loot), so nobody gets them unasked.
     hideTalkingHead     = false,
     muteTalkingHead     = false,
@@ -964,7 +964,7 @@ end
 -- that aura puts your own outfit back. Owner's request, 2026-10-29.
 --
 -- ⚠ The aura spell IDs are NOT from Blizzard's UI source (an aura's spell ID is server data, not
--- UI code). They come from EllesmereUI v9.6.9's transform list (EllesmereUIQoL.lua:4880-4893),
+-- UI code). They come from another AddOn's transform list,
 -- read 2026-10-29. If a profession's outfit still shows, `/interface gear` lists what is on you so the
 -- missing ID can be added here.
 --
@@ -977,8 +977,7 @@ end
 -- (131476) runs, so it is removed when the channel stops.
 --
 -- v1.49.0 (feature batch item 3): Hide Transforms, a dropdown of four groups. The new groups' aura IDs
--- are server data too, from EllesmereUI v9.7.2's transform list
--- (EllesmereUIQoL.lua:4977-5015, read 2026-11-01), as the profession list was.
+-- are server data too, from that list (read 2026-11-01), as the profession list was.
 local TRANSFORM_KINDS = ForThisGame({
     { id = "professions", label = "Profession Gear", tip = "The outfit crafting, gathering and fishing put on you.",
       retailOnly = true,
@@ -2365,7 +2364,7 @@ local function ErrorTypesMask()
 end
 
 -- An option another addon has taken over (VUI.SetOptionUnavailable). Since v1.79.0 Lib's Conflicts.lua marks
--- what another AddOn such as Leatrix Plus is already doing (VeritasUI_ElvUI, retired, was the first caller). Its
+-- what another AddOn is already doing (a retired VeritasUI module was the first caller). Its
 -- feature is skipped at login and its control is greyed out with the reason added to the tooltip; the saved
 -- value is left alone. A dropdown row is "key:rowId" (RowTakenOver).
 local function Unavailable(key)

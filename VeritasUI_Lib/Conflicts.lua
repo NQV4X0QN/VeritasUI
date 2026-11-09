@@ -1,5 +1,5 @@
 -- VeritasUI_Lib / Conflicts.lua
--- Graceful conflicts (v1.79.0; the idea from Leatrix Plus's greyed-out options, none of its code). When
+-- Graceful conflicts (v1.79.0). When
 -- another AddOn is already doing what one of our options does, ours steps aside: the option is greyed in
 -- Options with the reason in red at the end of its tooltip, its feature does not run, and its saved value is
 -- left as it was, so it comes back by itself once the other AddOn stops doing that job. This only builds on
@@ -154,11 +154,11 @@ for _, rule in ipairs({
         return QuestieOpt(function(p) return p.autocomplete end, false)
     end),
     Q(IFACE, "fadeObjectiveTracker", "Enable Tracker", QuestieTracker,
-        "Questie's tracker replaces the game's (Questie: Enable Tracker), so there is no tracker here to fade. "
-        .. "Turn it off in Questie to use this one."),
+        "Another AddOn's quest tracker replaces the game's (its Enable Tracker option), so there is no tracker "
+        .. "here to fade. Turn that off to use this one."),
     Q("VeritasUI_ZoneQuests", "enabled", "Enable Tracker", QuestieTracker,
-        "Questie's tracker replaces the game's (Questie: Enable Tracker) and keeps its own list of quests, so Zone "
-        .. "Quests cannot filter it. Turn it off in Questie to use this one."),
+        "Another AddOn's quest tracker replaces the game's (its Enable Tracker option) and keeps its own list "
+        .. "of quests, so Zone Quests cannot filter it. Turn that off to use this one."),
 }) do VUI.CONFLICT_RULES[#VUI.CONFLICT_RULES + 1] = rule end
 
 local function Loaded(name)
@@ -168,12 +168,12 @@ local function Loaded(name)
     return ok and yes and true or false
 end
 
--- "Leatrix Plus is doing this (Sell junk automatically). Turn it off there and /reload to use this one."
+-- "Another AddOn is doing this (Sell junk automatically). Turn it off there and /reload to use this one."
 -- A rule may carry its own `reason` where "doing this" would not fit. Plain text: callers colour the whole line
 -- red (TipWithReason, GameTooltip_AddErrorLine).
 function VUI.ConflictReason(rule)
     if rule.reason then return rule.reason end
-    return rule.title .. " is doing this (" .. rule.feature .. "). Turn it off there and /reload to use this one."
+    return "Another AddOn is doing this (" .. rule.feature .. "). Turn it off there and /reload to use this one."
 end
 
 local resolved = {}

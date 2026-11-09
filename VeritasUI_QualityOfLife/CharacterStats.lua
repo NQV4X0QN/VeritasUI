@@ -21,7 +21,7 @@
 -- PaperDollFrame_SetCritChance :1031-1053). Versatility uses damage done, the rating it shows (:1279).
 --
 -- Highlight Gear for Stats. Hovering a stat lights the highlight of each equipped slot whose item has that
--- stat (C_Item.GetItemStats keys, as EllesmereUI reads them), with the slot button's own highlight
+-- stat (C_Item.GetItemStats keys), with the slot button's own highlight
 -- (LockHighlight; no new art). Cleared when the tooltip hides, which covers leaving the stat and closing
 -- the window. v1.71.3: the attributes too, and WoW Forever's own stat list (Hit, Expertise, Defense...).
 -- Forever's character window gives most stats a tooltip builder of its own, the attributes a LOCAL one

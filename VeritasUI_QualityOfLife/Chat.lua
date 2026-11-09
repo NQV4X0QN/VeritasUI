@@ -318,7 +318,7 @@ end
 -- (owner, 2026-11-08). Nothing an AddOn writes to your own chat windows is touched.
 -- Only messages an AddOn sends by itself and marks with its name. Read from each AddOn's source (2026-11-08) and
 -- deliberately left out: boss mods' say/yell mechanic callouts and whisper auto-replies (DBM, BigWigs), messages a
--- player sends by clicking (Details reports, KeystoneLoot, Leatrix Plus), and loot-council announcements whose text
+-- player sends by clicking (Details reports, KeystoneLoot), and loot-council announcements whose text
 -- the raid leader writes (RCLootCouncil, Gargul).
 local GROUP = { "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER",
     "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER" }
@@ -536,7 +536,7 @@ end
 -- Blizzard writes the channel into each line from a global format string, e.g. CHAT_GUILD_GET =
 -- "|Hchannel:GUILD|h[Guild]|h %s: " (ChatFrameUtil.GetOutMessageFormatKey, Shared/ChatFrameUtil.lua:352-356;
 -- values from GlobalStrings, the same in both games). Rewriting those globals is known poison: Blizzard's chat
--- handler then runs tainted and fails on a hidden sender's name (EllesmereUI's measured note). So nothing of
+-- handler then runs tainted and fails on a hidden sender's name (measured). So nothing of
 -- Blizzard's is replaced: a post-hook on each window's AddMessage (as Remember Chat History) rewrites the line
 -- Blizzard just stored, through the window's own TransformMessages (Blizzard_SharedXML/ScrollingMessageFrame.lua
 -- :95-107, both games), which repackages the entry and redraws. The channel link itself is kept, so clicking [G]

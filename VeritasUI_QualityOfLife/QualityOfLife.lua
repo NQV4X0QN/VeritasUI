@@ -186,7 +186,7 @@ local UNIVERSAL = {
     autoOpenContainers = false,
     autoOpenContainersExcludeWarbound = true,
     journeysShortcuts = true,     -- Journeys.lua's card checkbox and bar clicks; same (v1.34.4)
-    -- EllesmereUI-inspired plan, phase 2 (v1.28.0). OFF by default: they change how two of
+    -- feature plan phase 2 (v1.28.0). OFF by default: they change how two of
     -- Blizzard's own confirmations behave.
     fillDeleteConfirm = false,   -- types DELETE into the delete-item confirmation
     skipCinematics    = false,   -- Escape skips a cinematic or movie without asking
@@ -278,7 +278,7 @@ local cdb  -- PER-CHARACTER table; nil before PLAYER_LOGIN
 
 -- Options another addon has taken over (VUI.SetOptionUnavailable, set before InitializeOptions).
 -- Callers: this file's own TomTom check for /way at PLAYER_LOGIN, and Lib's Conflicts.lua (v1.79.0) for what
--- another AddOn such as Leatrix Plus is already doing; the retired VeritasUI_ElvUI also marked the merchant
+-- another AddOn is already doing; a retired VeritasUI module also marked the merchant
 -- features. The saved value is left alone; only whether the feature runs this session changes.
 local function OptionUnavailable(key)
     return VUI.OptionUnavailable and VUI.OptionUnavailable(ADDON_NAME, key) or nil
@@ -409,7 +409,7 @@ VUI.QoL_JunkBagIgnored = function(bag)
     return ok and v == true
 end
 
--- What Auto Sell Junk sells (v1.80.0 Junk Lists; the idea from Leatrix Plus, none of its code). A grey with a sell
+-- What Auto Sell Junk sells (v1.80.0 Junk Lists). A grey with a sell
 -- price, as before, unless it is on Never Sell or, with Keep Unbound Grey Gear, it is a weapon or armor that is not
 -- bound (ContainerItemInfo.isBound; equip location from C_Item.GetItemInfoInstant, ContainerDocumentation /
 -- ItemDocumentation both games). An item on Always Sell is sold too, whatever its quality, unless it can still be
@@ -3671,7 +3671,7 @@ end)
 
 -- /note and /mapnote are registered at PLAYER_LOGIN, and only while the Map Notes option is on.
 
--- ── Fill In DELETE (v1.28.0, EllesmereUI-inspired plan phase 2) ──
+-- ── Fill In DELETE (v1.28.0, feature plan phase 2) ──
 -- Deleting a rare-or-better item opens DELETE_GOOD_ITEM / DELETE_GOOD_QUEST_ITEM, which make you
 -- type DELETE (Blizzard_Game/Mainline/EventImplementation.lua:315-329). This types it for you, so
 -- Yes is enabled and Enter confirms. Nothing is deleted without your own click or key press: the
@@ -3729,7 +3729,7 @@ local function SetupSkipCinematics()
     end
 end
 
--- ── NPC shortcuts (v1.29.0, EllesmereUI-inspired plan phase 3) ──
+-- ── NPC shortcuts (v1.29.0, feature plan phase 3) ──
 -- Three independent options, all paused while Shift is held as you talk to the NPC:
 --   pickOnlyGossip  -- an NPC with ONE dialogue option and no quests: pick it.
 --   autoAcceptQuest -- take offered quests.          (separate from turn-in: owner, 2026-10-29)
@@ -3760,7 +3760,7 @@ npcFrame.Note = function(fmt, ...)
     if #log > 12 then table.remove(log, 1) end
 end
 
--- Turn-in safety (v1.78.1; the idea from Leatrix Plus, none of its code). Auto Turn In leaves a quest for you
+-- Turn-in safety (v1.78.1). Auto Turn In leaves a quest for you
 -- when handing it in would spend what you may want to keep: any currency it asks for, an account-bound
 -- (warbound) item, or -- on a REPEATABLE quest only (reputation hand-ins) -- a crafting reagent; owner's choice
 -- 2026-11-08, so levelling quests that ask for meat or cloth still hand in. What the quest asks for is read with
@@ -4009,7 +4009,7 @@ local function SetupTrainAll()
     if ClassTrainerFrame then CreateTrainAll() else trainerLoader:RegisterEvent("ADDON_LOADED") end
 end
 
--- ── Tooltip lines: Target and Mount (v1.30.0, EllesmereUI-inspired plan phase 4) ──
+-- ── Tooltip lines: Target and Mount (v1.30.0, feature plan phase 4) ──
 -- Two independent options adding a line to unit tooltips:
 --   tooltipTarget -- who the hovered unit is targeting; "You" in green when it is you.
 --   tooltipMount  -- the mount a player is riding, with a check if you own it, a red X if not.
@@ -4239,7 +4239,7 @@ end
     end)
 end)()
 
--- ── Timestamp Every Message (v1.31.0, EllesmereUI-inspired plan phase 5) ──
+-- ── Timestamp Every Message (v1.31.0, feature plan phase 5) ──
 -- Blizzard timestamps player chat itself (Blizzard_ChatFrameBase/Mainline/ChatFrameOverrides.lua
 -- :659-663) but adds system, loot, money, currency, skill, achievement, XP/reputation and similar
 -- lines with no timestamp (:402-417). This adds Blizzard's OWN timestamp to those, in the format
@@ -4291,7 +4291,7 @@ local function SetTimestampAll(on)
     if VUI.SetPrintTimestamps then VUI.SetPrintTimestamps(stampsOn) end
 end
 
--- ── Character sheet details (v1.32.0, EllesmereUI-inspired plan phase 6) ──
+-- ── Character sheet details (v1.32.0, feature plan phase 6) ──
 -- Three independent options for the character window:
 --   charEnchants   -- ONE enchant-and-gem status icon beside each slot (check / red X; hover says
 --                     what is there or missing). Owner's redesign 2026-10-30: enchant NAMES beside

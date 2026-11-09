@@ -1,5 +1,5 @@
 -- VeritasUI_QualityOfLife / JunkLists.lua
--- Junk Lists (v1.80.0; the idea from Leatrix Plus's sell-junk exclusions, none of its code). Two lists Auto Sell
+-- Junk Lists (v1.80.0). Two lists Auto Sell
 -- Junk reads (QualityOfLife.lua VUI.QoL_IsJunk): Never Sell (greys kept) and Always Sell (anything with a sell price
 -- sold as junk), universal db.junkNeverSell / db.junkAlwaysSell, [itemID] = true. An item is put on a list by
 -- dragging it from your bags into the window -- the cursor's item (GetCursorInfo "item", itemID, CursorDocumentation

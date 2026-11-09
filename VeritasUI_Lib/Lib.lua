@@ -515,7 +515,7 @@ function VUI.HookHoverFade(target, shouldStayVisible, shouldShow, noEnterHook, f
 end
 
 ----------------------------------------------------------------
---  HookPlayerFrameFade  (ElvUI oUF_Fader-inspired)
+--  HookPlayerFrameFade
 --
 --  Single Evaluate() re-checks ALL conditions as a flat OR.
 --  Health: UnitHealth returns a Secret Value in Midnight, so
@@ -745,8 +745,8 @@ end
 -- skips that feature and shows the option greyed out with `reason` in its tooltip. The saved
 -- value is never touched, so the option comes back as it was without that addon. ⚠ IN USE:
 -- Quality of Life calls it for its own /way option when TomTom is installed (at PLAYER_LOGIN,
--- before InitializeOptions), and Conflicts.lua for options another AddOn (Leatrix Plus) is already
--- doing (v1.79.0). VeritasUI_ElvUI (retired v1.35.0) was the other caller.
+-- before InitializeOptions), and Conflicts.lua for options another AddOn is already
+-- doing (v1.79.0). A retired VeritasUI module (v1.35.0) was the other caller.
 local unavailableOptions = {}
 
 function VUI.SetOptionUnavailable(addonName, key, reason)

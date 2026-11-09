@@ -128,7 +128,7 @@ end)
 
 -- Auto Open Containers (v1.52.0, feature batch item 10). Opens bag items that say "<Right Click to Open>"
 -- (ITEM_OPENABLE in their tooltip; locked lockboxes say Locked instead) with the call a right-click makes
--- (C_Container.UseContainerItem, ContainerFrame.lua:1342). EllesmereUI ships the same call from timers, so it
+-- (C_Container.UseContainerItem, ContainerFrame.lua:1342). Called from a timer it
 -- needs no key press; this is still measured in game before release (/vui taint).
 -- ⚠ UseContainerItem SELLS at a merchant and moves items at a bank, mailbox, guild bank or trade window, so
 -- nothing is opened while one of those is open (C_PlayerInteractionManager, PlayerInteractionManagerConstants
@@ -233,7 +233,7 @@ end)
 -- VUI.QoL_Npc* (its main chunk has no room for more locals). Stored in universal db.npcOptions [id] = true.
 --   older     Skip Older-Expansion Quests: auto accept leaves a quest from an earlier expansion for you, at max
 --             level and outside Chromie Time only (levelling runs through older content). GetQuestExpansion is
---             not in Blizzard's UI source; EllesmereUI uses it -- if this client lacks it the row is not offered.
+--             not in Blizzard's UI source -- if this client lacks it the row is not offered.
 --   several   Not When an NPC Offers Several: an NPC offering more than one quest gets no auto accept at all,
 --             for the rest of that conversation, so you choose (the quest you open is not accepted for you).
 --   shift     Hold Key to Use: the shortcuts run only while the Hold Key is held, instead of pausing with it
@@ -366,7 +366,7 @@ VUI.QoL_NpcOptionsDropdown = function(category, db, addonName, TipWithReason, co
     Settings.CreateDropdown(category, setting, GetOptions, TipWithReason(tip, "npcOptions"))
 end
 
--- Hold Key (v1.80.0; the idea from Leatrix Plus's override key, none of its code). The key that pauses the NPC
+-- Hold Key (v1.80.0). The key that pauses the NPC
 -- shortcuts -- or, with Hold Key to Use, runs them -- is a choice instead of always Shift: universal db.npcHoldKey,
 -- "shift" (the default, as before), "ctrl", "alt", or on a Mac "meta" (Command). Read with Blizzard's own key
 -- tests (IsShiftKeyDown, IsControlKeyDown, IsAltKeyDown, IsMetaKeyDown; InputDocumentation.lua both games).

@@ -10,7 +10,7 @@
 ### Changed
 
 - `VeritasUI_QualityOfLife` — Accept Group Invites From replaces Accept Invites from Guildmates; pick Guild in it to keep accepting your guild's invites. Auto Accept Quests no longer accepts a quest a stranger shares (`Automation.lua`, `QualityOfLife.lua`)
-- `VeritasUI_Lib` — the new options step aside for Leatrix Plus's matching invite, duel, friend request and shared quest options (`Conflicts.lua`)
+- `VeritasUI_Lib` — the new options step aside when another AddOn is already handling invites, duels, friend requests or shared quests (`Conflicts.lua`)
 
 ## [1.80.0] - 2026-11-08
 
@@ -22,14 +22,14 @@
 
 ### Changed
 
-- `VeritasUI_Lib` — VeritasUI also steps aside for Questie in WoW Forever: Fade Objective Tracker and Zone Quests while Questie's tracker is on, and the quest shortcuts while Questie's own auto accept or auto complete is on (`Conflicts.lua`, `ZoneQuests.lua`, `Interface.lua`)
+- `VeritasUI_Lib` — VeritasUI also steps aside for another AddOn's quest tracker and quest automation in WoW Forever: Fade Objective Tracker and Zone Quests while a replacement quest tracker is on, and the quest shortcuts while that AddOn's own auto accept or auto complete is on (`Conflicts.lua`, `ZoneQuests.lua`, `Interface.lua`)
 
 
 ## [1.79.0] - 2026-11-08
 
 ### Added
 
-- `VeritasUI_Lib` — **VeritasUI steps aside where Leatrix Plus already does the job.** When one of Leatrix Plus's options that matches a VeritasUI option is on, VeritasUI's option is greyed out in Options with the reason in red at the end of its tooltip ("Leatrix Plus is doing this (…). Turn it off there and /reload to use this one."), and its feature doesn't run. Your setting is kept, so it comes back by itself once Leatrix stops doing it; remembered chat history is never deleted meanwhile. In a list of choices only the overlapping choice is greyed, such as Zone Names in Hide Top Banners when Leatrix hides the zone text. Covers merchant, quest, dialogue, resurrection, invite, trainer, cinematic, DELETE, chat history and tooltip options in Quality of Life, and chat buttons, macro names, spell fizzle, error text, top banners and holiday costumes in Interface (`Conflicts.lua`, new; `Lib.lua`, `SettingsCoverDropdown.lua`, `QualityOfLife.lua`, `Automation.lua`, `Chat.lua`, `Interface.lua`)
+- `VeritasUI_Lib` — **VeritasUI steps aside where another AddOn already does the job.** When another AddOn's option that matches a VeritasUI option is on, VeritasUI's option is greyed out in Options with the reason in red at the end of its tooltip ("Another AddOn is doing this (…). Turn it off there and /reload to use this one."), and its feature doesn't run. Your setting is kept, so it comes back by itself once the other AddOn stops doing it; remembered chat history is never deleted meanwhile. In a list of choices only the overlapping choice is greyed, such as Zone Names in Hide Top Banners when another AddOn hides the zone text. Covers merchant, quest, dialogue, resurrection, invite, trainer, cinematic, DELETE, chat history and tooltip options in Quality of Life, and chat buttons, macro names, spell fizzle, error text, top banners and holiday costumes in Interface (`Conflicts.lua`, new; `Lib.lua`, `SettingsCoverDropdown.lua`, `QualityOfLife.lua`, `Automation.lua`, `Chat.lua`, `Interface.lua`)
 
 
 ## [1.78.1] - 2026-11-08
@@ -3043,13 +3043,13 @@ Audit/robustness pass over the `VeritasUI_AuctionHouse` module (the v1.7.0 refoc
 
 ### Fixed
 - `VeritasUI_QualityOfLife` — **AFK Screen now reliably triggers on idle timeout.** Added a 5-second fallback poll (`UnitIsAFK("player")`) that detects AFK state independently of `PLAYER_FLAGS_CHANGED` event delivery. In Midnight, the event may not fire reliably for server-originated idle AFK in all contexts — the poll guarantees detection within 5 seconds regardless. The event handler remains for instant response when it does fire
-  - **Secret Value hardening:** `UnitIsAFK` is tagged `SecretInChatMessagingLockdown` in Midnight and can return opaque secret values in restricted contexts. Both the event handler and the poll now guard with `pcall` + `issecretvalue` (matching ElvUI's defensive pattern via their `oUF:NotSecretValue` wrapper). If blocked, the poll silently retries on the next tick
+  - **Secret Value hardening:** `UnitIsAFK` is tagged `SecretInChatMessagingLockdown` in Midnight and can return opaque secret values in restricted contexts. Both the event handler and the poll now guard with `pcall` + `issecretvalue`. If blocked, the poll silently retries on the next tick
   - **Dual-path architecture:** event handler (instant, when it fires) + poll (guaranteed, always running). Poll starts at `PLAYER_LOGIN` when AFK Screen is enabled; cost is one `pcall` every 5s with no allocations when state is unchanged
 
 ## [1.6.20] - 2026-05-04
 
 ### Fixed
-- `VeritasUI_QualityOfLife` — **AFK Screen not triggering on idle timeout.** When WoW's server-side idle timer sets the AFK flag, `PLAYER_FLAGS_CHANGED` can fire with `arg1 = nil` (server-originated event without an explicit unit payload). The previous guard `if arg1 ~= "player"` treated `nil` as "not player" and bailed early, preventing `AFK_Enter()` from executing. Manual `/afk` was unaffected because the client-originated event always passes `arg1 = "player"`. Fixed by changing the guard to `if arg1 and arg1 ~= "player"` — nil is now treated as "self" and falls through to the `UnitIsAFK("player")` state check. Note: ElvUI's AFK module has the same unguarded pattern as of their current `main` branch
+- `VeritasUI_QualityOfLife` — **AFK Screen not triggering on idle timeout.** When WoW's server-side idle timer sets the AFK flag, `PLAYER_FLAGS_CHANGED` can fire with `arg1 = nil` (server-originated event without an explicit unit payload). The previous guard `if arg1 ~= "player"` treated `nil` as "not player" and bailed early, preventing `AFK_Enter()` from executing. Manual `/afk` was unaffected because the client-originated event always passes `arg1 = "player"`. Fixed by changing the guard to `if arg1 and arg1 ~= "player"` — nil is now treated as "self" and falls through to the `UnitIsAFK("player")` state check
 
 ## [1.6.19] - 2026-05-03
 
@@ -3554,7 +3554,7 @@ Audit/robustness pass over the `VeritasUI_AuctionHouse` module (the v1.7.0 refoc
 
 ### Added
 
-- **VeritasUI suite created** — unified CleanSolo, PriorityRotation, and ZoneQuests under a single package with shared library, following ElvUI's multi-folder pattern
+- **VeritasUI suite created** — unified CleanSolo, PriorityRotation, and ZoneQuests under a single package with shared library, one folder per module
 - **VeritasUI\_Lib** — shared utilities: `VUI.Print()` formatter, `SmoothFade` per-frame fade manager, `HookPlayerFrameFade` with event-timing health detection, native settings panel helpers
 - **Hide Macro Names** on action bar buttons — hooks `SetText` and `Show` on button name fontstrings across all action bars
 - **Hide Error Text** — unregisters `UI_ERROR_MESSAGE` from `UIErrorsFrame`

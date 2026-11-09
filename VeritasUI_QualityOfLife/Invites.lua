@@ -1,5 +1,5 @@
 -- VeritasUI_QualityOfLife / Invites.lua
--- Social automation (v1.81.0; the ideas from Leatrix Plus, none of its code), two tick-box dropdowns under Guild and
+-- Social automation (v1.81.0), two tick-box dropdowns under Guild and
 -- Friends. Neither duplicates Blizzard's Options > Social (checked 2026-11-08, Blizzard_SettingsDefinitions_Frame/
 -- Social.lua both games: it blocks trades, guild, calendar and channel invites; "Real ID and BattleTag Friend
 -- Requests" is the showToastFriendRequest toast, not a block; Auto Accept Quick Join Requests accepts).
