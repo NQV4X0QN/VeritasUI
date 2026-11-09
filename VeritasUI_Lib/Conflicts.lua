@@ -84,6 +84,19 @@ VUI.CONFLICT_RULES = {
     L(QOL, "skipCinematics", "Faster movie skip", function() return Lea("FasterMovieSkip") end),
     L(QOL, "fillDeleteConfirm", "Easy item destroy", function() return Lea("EasyItemDestroy") end),
     L(QOL, "chatRememberLines", "Restore chat messages", function() return Lea("RestoreChatMessages") end),
+    -- v1.82.0: Use arrow keys in chat (:13333), Disable chat fade (:8528); Filter chat messages (:12407) gates its
+    -- three blocks (:12454-12518), each mapped to its Hide Chat Spam row.
+    L(QOL, "chatArrowKeys", "Use arrow keys in chat", function() return Lea("UseArrowKeysInChat") end),
+    L(QOL, "chatNeverFade", "Disable chat fade", function() return Lea("NoChatFade") end),
+    L(QOL, "chatHideSpam:spellLinks", "Block spell links during combat", function()
+        return Lea("FilterChatMessages") and Lea("BlockSpellLinks")
+    end),
+    L(QOL, "chatHideSpam:drunk", "Block drunken spam", function()
+        return Lea("FilterChatMessages") and Lea("BlockDrunkenSpam")
+    end),
+    L(QOL, "chatHideSpam:duels", "Block duel spam", function()
+        return Lea("FilterChatMessages") and Lea("BlockDuelSpam")
+    end),
     L(QOL, "tooltipClassNames", "Enhance tooltip", function() return Lea("TipModEnable") end),
     L(QOL, "tooltipGuildmates", "Enhance tooltip", function() return Lea("TipModEnable") end),
     L(QOL, "tooltipGuildRank", "Enhance tooltip", function()

@@ -664,3 +664,202 @@ typedLoader:SetScript("OnEvent", function(self, _, name)
         hooksecurefunc(box, "AddHistoryLine", function(_, text) RecordTyped(text) end)
     end
 end)
+
+-- ── Arrow Keys in Chat, Messages Never Fade (v1.82.0) ─────────
+-- Every chat window, the temporary whisper windows included: CHAT_FRAMES, filled as each window loads and when
+-- FCF_OpenTemporaryWindow makes a new one (Mainline/FloatingChatFrame.lua :66, :696-770, both games). A window
+-- it reuses keeps what was set on it; a new one is set by the post-hook below.
+--
+-- Arrow Keys in Chat (default ON). The chat box is made with ignoreArrows="true" (ChatFrameEditBoxTemplate,
+-- Mainline/ChatFrameEditBox.xml:3): the arrow keys turn your character unless Alt is held. SetAltArrowKeyMode(false)
+-- (SimpleEditBoxAPIDocumentation) lets them move the cursor and bring back earlier lines without Alt -- the call
+-- Blizzard's own AutoComplete makes while its list is open, putting the old mode back only when it was on
+-- (Blizzard_AutoComplete/AutoComplete.lua:171-174, :236-239), so ours stays. Off: each box gets back the mode it had.
+--
+-- Messages Never Fade (default OFF). ScrollingMessageFrame:SetFading(false) (Blizzard_SharedXML/
+-- ScrollingMessageFrame.lua:255, one of the methods of its secure mixin, :882) keeps lines from fading after
+-- Blizzard's 120 s (ChatFrameOverrides.lua:2). Off: each window gets back what it had. WoW Forever's gamepad focus
+-- turns fading back on when a window loses it (FloatingChatFrame.lua:200 forever), so that is followed too.
+local function ChatWindows()
+    local list = {}
+    for _, name in ipairs(type(_G.CHAT_FRAMES) == "table" and _G.CHAT_FRAMES or {}) do
+        local cf = _G[name]
+        if type(cf) == "table" then list[#list + 1] = cf end
+    end
+    return list
+end
+
+-- Off by default: only an explicit true turns one on; and not while another AddOn is doing it.
+local function LiveOptIn(key)
+    local db = DB()
+    return type(db) == "table" and db[key] == true
+        and not (VUI.OptionUnavailable and VUI.OptionUnavailable("VeritasUI_QualityOfLife", key))
+end
+
+local arrowsBefore = setmetatable({}, { __mode = "k" })
+local function ApplyArrows()
+    local on = Live("chatArrowKeys")
+    for _, cf in ipairs(ChatWindows()) do
+        local box = cf.editBox
+        if type(box) == "table" and box.SetAltArrowKeyMode then
+            if on then
+                if arrowsBefore[box] == nil then
+                    local ok, mode = pcall(box.GetAltArrowKeyMode, box)
+                    arrowsBefore[box] = not (ok and mode == false)   -- unreadable: the template's own (on)
+                end
+                pcall(box.SetAltArrowKeyMode, box, false)
+            elseif arrowsBefore[box] ~= nil then
+                pcall(box.SetAltArrowKeyMode, box, arrowsBefore[box])
+                arrowsBefore[box] = nil
+            end
+        end
+    end
+end
+
+local fadeBefore = setmetatable({}, { __mode = "k" })
+local gamepadHooked = setmetatable({}, { __mode = "k" })
+local function ApplyFading()
+    local on = LiveOptIn("chatNeverFade")
+    for _, cf in ipairs(ChatWindows()) do
+        if cf.SetFading then
+            if on then
+                if fadeBefore[cf] == nil then
+                    local ok, fading = pcall(cf.GetFading, cf)
+                    fadeBefore[cf] = not (ok and fading == false)   -- unreadable: Blizzard's own (on)
+                end
+                pcall(cf.SetFading, cf, false)
+            elseif fadeBefore[cf] ~= nil then
+                pcall(cf.SetFading, cf, fadeBefore[cf])
+                fadeBefore[cf] = nil
+            end
+        end
+        if on and cf.UnfocusGamepad and not gamepadHooked[cf] then
+            gamepadHooked[cf] = true
+            hooksecurefunc(cf, "UnfocusGamepad", function(f)
+                if LiveOptIn("chatNeverFade") then pcall(f.SetFading, f, false) end
+            end)
+        end
+    end
+end
+
+VUI.QoL_ChatArrowKeys = ApplyArrows    -- the options' callbacks, and qol_chatwindows_test
+VUI.QoL_ChatNeverFade = ApplyFading
+
+local windows = CreateFrame("Frame")
+windows:RegisterEvent("PLAYER_LOGIN")
+windows:SetScript("OnEvent", function(self)
+    self:UnregisterAllEvents()
+    ApplyArrows()
+    ApplyFading()
+    if type(_G.FCF_OpenTemporaryWindow) == "function" then
+        hooksecurefunc("FCF_OpenTemporaryWindow", function() ApplyArrows(); ApplyFading() end)
+    end
+end)
+
+-- ── Hide Chat Spam (v1.82.0) ──────────────────────────────────
+-- Three kinds, through Blizzard's message filters (as Class-Colored Names; a hidden line never reaches a filter):
+--   spellLinks  a message with a spell link in say, yell, emote, party, raid or instance chat while you are in
+--               combat: mostly other players' interrupt and cooldown announcements.
+--   drunk       another player's drunk message in the system channel: DRUNK_MESSAGE_OTHER1-4 and
+--               DRUNK_MESSAGE_ITEM_OTHER1-4 ("%s looks tipsy." ...). Yours (DRUNK_MESSAGE_SELF*) are left.
+--   duels       a duel result you were not in: DUEL_WINNER_KNOCKOUT / DUEL_WINNER_RETREAT ("%1$s has defeated %2$s
+--               in a duel"). Each message is matched against Blizzard's own string in your language
+--               (GlobalStrings, wago.tools both games, 2026-11-08).
+local function Pattern(fmt)
+    if type(fmt) ~= "string" or IsSecret(fmt) or fmt == "" then return nil end
+    local p = fmt:gsub("%%%d%$s", "\1"):gsub("%%s", "\1")
+    p = p:gsub("[%^%$%(%)%.%[%]%*%+%-%?%%]", "%%%0")
+    return "^" .. p:gsub("\1", "(.+)") .. "$"
+end
+
+local spamPatterns
+local function SpamPatterns()
+    if spamPatterns then return spamPatterns end
+    local drunk, duels = {}, {}
+    for i = 1, 4 do
+        for _, tag in ipairs({ "DRUNK_MESSAGE_OTHER", "DRUNK_MESSAGE_ITEM_OTHER" }) do
+            local p = Pattern(_G[tag .. i])
+            if p then drunk[#drunk + 1] = p end
+        end
+    end
+    for _, tag in ipairs({ "DUEL_WINNER_KNOCKOUT", "DUEL_WINNER_RETREAT" }) do
+        local p = Pattern(_G[tag])
+        if p then duels[#duels + 1] = p end
+    end
+    spamPatterns = { drunk = drunk, duels = duels }
+    return spamPatterns
+end
+VUI.QoL_ChatSpamPattern = Pattern   -- for qol_chatspam_test
+
+local function SpamRow(id)
+    local db = DB()
+    if not (type(db) == "table" and type(db.chatHideSpam) == "table" and db.chatHideSpam[id] == true) then
+        return false
+    end
+    local un = VUI.OptionUnavailable
+    return not (un and (un("VeritasUI_QualityOfLife", "chatHideSpam")
+        or un("VeritasUI_QualityOfLife", "chatHideSpam:" .. id)))
+end
+
+local function BaseName(name) return name:match("^([^%-]+)") or name end
+local function IsMe(name)
+    local ok, me = pcall(UnitName, "player")
+    if not ok or type(me) ~= "string" or IsSecret(me) or me == "" then return true end   -- cannot tell: kept
+    return name == me or BaseName(name) == me or sfind(name, me, 1, true) ~= nil
+end
+
+local SPELL_LINK_EVENTS = { CHAT_MSG_SAY = true, CHAT_MSG_YELL = true, CHAT_MSG_EMOTE = true }
+for _, ev in ipairs(GROUP) do SPELL_LINK_EVENTS[ev] = true end
+
+local function InCombat()
+    local ok, yes = pcall(UnitAffectingCombat, "player")
+    return ok and yes == true
+end
+
+local function SpamFilter(_, event, msg)
+    if type(msg) ~= "string" or IsSecret(msg) then return false end
+    if event == "CHAT_MSG_SYSTEM" then
+        local pats = SpamPatterns()
+        if SpamRow("drunk") then
+            for _, p in ipairs(pats.drunk) do
+                if sfind(msg, p) then return true end
+            end
+        end
+        if SpamRow("duels") then
+            for _, p in ipairs(pats.duels) do
+                local a, b = msg:match(p)
+                if a and b then return not (IsMe(a) or IsMe(b)) end
+            end
+        end
+        return false
+    end
+    if SPELL_LINK_EVENTS[event] and SpamRow("spellLinks") and InCombat() then
+        return sfind(msg, "|Hspell:", 1, true) ~= nil
+    end
+    return false
+end
+VUI.QoL_ChatSpamFilter = SpamFilter   -- for qol_chatspam_test
+
+if add then
+    add("CHAT_MSG_SYSTEM", SpamFilter)
+    for ev in pairs(SPELL_LINK_EVENTS) do add(ev, SpamFilter) end
+end
+
+VUI.QoL_ChatSpamDropdown = function(category, db, layout, TipWithReason)
+    if not VUI.QoL_KindsDropdown then return end
+    VUI.QoL_KindsDropdown(category, db, layout, TipWithReason, {
+        key = "chatHideSpam", name = "Hide Chat Spam",
+        setMask = function(v) db.chatHideSpamMask = v end,
+        tip = "Hides the chat messages you pick. A message the game hides from addons is always shown. "
+            .. "Applies at once.",
+        rows = {
+            { id = "spellLinks", label = "Spell Links in Combat",
+              tip = "Messages with a spell link in say, yell, emote and group chat while you are in combat, such "
+                  .. "as other players' interrupt announcements." },
+            { id = "drunk", label = "Drunk Messages",
+              tip = "Other players' drunk messages, such as \"looks tipsy\". Your own are still shown." },
+            { id = "duels", label = "Duel Results",
+              tip = "Results of duels you were not in. Your own are still shown." },
+        },
+    })
+end

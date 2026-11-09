@@ -231,6 +231,8 @@ local UNIVERSAL = {
     -- Chat.lua (owner request): [G] for [Guild], [2] for [2. Trade]. Off by default: it changes how chat looks
     -- (v1.74.0 rule, as Timestamp Every Message).
     chatShortChannels = false,
+    chatArrowKeys = true,         -- Chat.lua (v1.82.0): arrow keys move the chat box cursor without Alt
+    chatNeverFade = false,        -- Chat.lua (v1.82.0): chat lines never fade (owner: off by default)
     whisperSound = "default",     -- Chat.lua (v1.54.0): "default" = Blizzard's own, untouched
     timestampAllMessages = false,   -- off since v1.74.0
     -- The icon the next /note starts with: the last one chosen from a note's menu.
@@ -5000,8 +5002,21 @@ local function InitializeOptions()
         "Chat shows short channel names: [G] for Guild, [O] for Officer, [P] for Party, [R] for Raid, [I] "
         .. "for Instance, and the number for numbered channels, such as [2] for Trade. New lines only.")
 
+    AddCheckbox("chatArrowKeys", "Arrow Keys in Chat",
+        "While you type in the chat box, the arrow keys move the cursor and bring back the lines you typed "
+        .. "before, without holding Alt.",
+        function() if VUI.QoL_ChatArrowKeys then VUI.QoL_ChatArrowKeys() end end)
+
+    AddCheckbox("chatNeverFade", "Messages Never Fade",
+        "Chat messages stay in the chat window instead of fading away after two minutes.",
+        function() if VUI.QoL_ChatNeverFade then VUI.QoL_ChatNeverFade() end end)
+
     if VUI.QoL_HideAddonsDropdown then
         VUI.QoL_HideAddonsDropdown(category, db, ADDON_NAME, layout)
+    end
+
+    if VUI.QoL_ChatSpamDropdown then
+        VUI.QoL_ChatSpamDropdown(category, db, layout, TipWithReason)
     end
 
     if VUI.QoL_WhisperSoundDropdown then

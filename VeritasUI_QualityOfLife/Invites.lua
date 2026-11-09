@@ -226,6 +226,7 @@ local function KindsDropdown(category, db, layout, TipWithReason, spec)
     end
     Settings.CreateDropdown(category, setting, GetOptions, tip)
 end
+VUI.QoL_KindsDropdown = KindsDropdown   -- also Chat.lua's Hide Chat Spam (v1.82.0)
 
 VUI.QoL_InvitesDropdowns = function(category, db, layout, TipWithReason)
     KindsDropdown(category, db, layout, TipWithReason, {
