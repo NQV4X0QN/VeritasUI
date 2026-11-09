@@ -341,6 +341,10 @@ local function OpenPopout(c)
     popout:SetPoint("TOPLEFT", c, "BOTTOMLEFT", 0, 0)        -- Blizzard's menu anchor (DropdownButton.xml:6-9)
     popout:Fill()
     popout:EnableKeyboard(not InCombatLockdown())
+    -- Keys pass through from the start; only Escape is kept (OnKeyDown). Passing them cannot be set in combat
+    -- (landmine 52), so a frame left at "keep" -- new, or after an Escape -- would hold every key in a fight that
+    -- starts while it is open (audit 2026-11-09 L1).
+    if not InCombatLockdown() then pcall(popout.SetPropagateKeyboardInput, popout, true) end
     popout:Show()
     c.menu = popout
     PlaySound(_G.MenuVariants.GetDropdownOpenSoundKit())        -- as DropdownButtonMixin:OnMenuOpened
