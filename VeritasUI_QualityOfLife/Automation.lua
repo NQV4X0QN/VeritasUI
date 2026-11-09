@@ -252,7 +252,8 @@ end)
 --             not in Blizzard's UI source; EllesmereUI uses it -- if this client lacks it the row is not offered.
 --   several   Not When an NPC Offers Several: an NPC offering more than one quest gets no auto accept at all,
 --             for the rest of that conversation, so you choose (the quest you open is not accepted for you).
---   shift     Hold Shift to Use: the shortcuts run only while Shift is held, instead of pausing with it.
+--   shift     Hold Key to Use: the shortcuts run only while the Hold Key is held, instead of pausing with it
+--             (id kept from v1.52.0, when the key was always Shift).
 --   instances Off in Dungeons and Raids: none of the shortcuts run inside a dungeon or raid.
 local function NpcOpt(id)
     local db = DB()
@@ -269,8 +270,8 @@ VUI.QoL_NpcOptionRows = function()
     end
     rows[#rows + 1] = { id = "several",   label = "Not When an NPC Offers Several",
         tip = "An NPC offering more than one quest gets no auto accept, so you choose." }
-    rows[#rows + 1] = { id = "shift",     label = "Hold Shift to Use",
-        tip = "The shortcuts work only while you hold Shift, instead of pausing while you hold it." }
+    rows[#rows + 1] = { id = "shift",     label = "Hold Key to Use",
+        tip = "The shortcuts work only while you hold the Hold Key, instead of pausing while you hold it." }
     rows[#rows + 1] = { id = "instances", label = "Off in Dungeons and Raids",
         tip = "None of the shortcuts run inside a dungeon or raid." }
     return rows
@@ -281,9 +282,9 @@ VUI.QoL_NpcPaused = function()
         local ok, inInstance, kind = pcall(IsInInstance)
         if ok and inInstance and (kind == "party" or kind == "raid") then return true end
     end
-    local shift = IsShiftKeyDown and IsShiftKeyDown() and true or false
-    if NpcOpt("shift") then return not shift end
-    return shift
+    local held = VUI.QoL_HoldKeyDown()
+    if NpcOpt("shift") then return not held end
+    return held
 end
 
 VUI.QoL_NpcSkipOffer = function(questID)
@@ -379,4 +380,55 @@ VUI.QoL_NpcOptionsDropdown = function(category, db, addonName, TipWithReason, co
         return
     end
     Settings.CreateDropdown(category, setting, GetOptions, TipWithReason(tip, "npcOptions"))
+end
+
+-- Hold Key (v1.80.0; the idea from Leatrix Plus's override key, none of its code). The key that pauses the NPC
+-- shortcuts -- or, with Hold Key to Use, runs them -- is a choice instead of always Shift: universal db.npcHoldKey,
+-- "shift" (the default, as before), "ctrl", "alt", or on a Mac "meta" (Command). Read with Blizzard's own key
+-- tests (IsShiftKeyDown, IsControlKeyDown, IsAltKeyDown, IsMetaKeyDown; InputDocumentation.lua both games).
+local HOLD_KEYS = {
+    { id = "shift", label = "Shift",   test = "IsShiftKeyDown" },
+    { id = "ctrl",  label = "Ctrl",    test = "IsControlKeyDown" },
+    { id = "alt",   label = "Alt",     test = "IsAltKeyDown" },
+    { id = "meta",  label = "Command", test = "IsMetaKeyDown", mac = true },
+}
+local function HoldKey()
+    local db = DB()
+    local k = type(db) == "table" and db.npcHoldKey or "shift"
+    for _, h in ipairs(HOLD_KEYS) do if h.id == k then return h end end
+    return HOLD_KEYS[1]
+end
+VUI.QoL_HoldKeyDown = function()
+    local fn = _G[HoldKey().test]
+    if type(fn) ~= "function" then return false end
+    local ok, down = pcall(fn)
+    return ok and down and true or false
+end
+VUI.QoL_HoldKeyName = function() return HoldKey().label end
+
+-- The Hold Key dropdown, under Quest Options: one choice, Lib's cover dropdown (no Blizzard dropdown row on the
+-- page, v1.59.0 taint note). Command is offered on a Mac only (IsMacClient). Applies at once.
+VUI.QoL_NpcHoldKeyDropdown = function(category, db, addonName, TipWithReason, coverLayout)
+    if type(db.npcHoldKey) ~= "string" then db.npcHoldKey = "shift" end
+    local setting = Settings.RegisterAddOnSetting(category, addonName .. "_npcHoldKey", "npcHoldKey", db,
+        "string", "Hold Key", "shift")
+    setting:SetValueChangedCallback(function(_, val)
+        if type(val) == "string" then VUI.Print("Quality of Life", "Hold Key: " .. HoldKey().label) end
+    end)
+    local mac = IsMacClient and IsMacClient()
+    local function GetOptions()
+        local c = Settings.CreateControlTextContainer()
+        for _, h in ipairs(HOLD_KEYS) do
+            if mac or not h.mac then c:Add(h.id, h.label) end
+        end
+        return c:GetData()
+    end
+    local tip = "The key you hold while talking to an NPC to stop Pick Only Dialogue Option, Auto Accept Quests "
+        .. "and Auto Turn In Quests (or, with Hold Key to Use in Quest Options, to make them work). Applies at once."
+    if coverLayout and VUI.AddCoverDropdown then
+        VUI.AddCoverDropdown(coverLayout, { category = category, setting = setting, name = "Hold Key",
+            getOptions = GetOptions, tooltip = tip })
+        return
+    end
+    Settings.CreateDropdown(category, setting, GetOptions, tip)
 end

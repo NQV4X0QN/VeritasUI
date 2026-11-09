@@ -13,6 +13,7 @@ QualityOfLife.lua
 Journeys.lua
 WorldQuestUntrack.lua
 Automation.lua
+JunkLists.lua
 AutoEquip.lua
 Trainer.lua
 CharacterStats.lua

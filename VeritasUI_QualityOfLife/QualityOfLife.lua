@@ -195,6 +195,12 @@ local UNIVERSAL = {
     -- v1.52.0: Quest Options dropdown (Automation.lua), [id] = true. TABLE-typed, PAIRED with npcOptionsMask
     -- (derived). Default none: the shortcuts behave as before.
     npcOptions        = {},
+    npcHoldKey        = "shift", -- v1.80.0 Hold Key (Automation.lua): the key that pauses the NPC shortcuts
+    -- v1.80.0 Junk Lists (JunkLists.lua): [itemID] = true. TABLE-typed. Never Sell keeps a grey; Always Sell sells an
+    -- item as junk. Keep Unbound Grey Gear: grey gear that is not bound is kept (off: sold as before).
+    junkNeverSell       = {},
+    junkAlwaysSell      = {},
+    junkKeepUnboundGear = false,
     trainAllButton    = true,    -- Train All button on the trainer window
     -- Phase 4 (v1.30.0): extra unit tooltip lines, independent; on since v1.37.0.
     tooltipTarget     = true,    -- "Target: <name>", green "You" when it is you
@@ -400,6 +406,44 @@ VUI.QoL_JunkBagIgnored = function(bag)
     return ok and v == true
 end
 
+-- What Auto Sell Junk sells (v1.80.0 Junk Lists; the idea from Leatrix Plus, none of its code). A grey with a sell
+-- price, as before, unless it is on Never Sell or, with Keep Unbound Grey Gear, it is a weapon or armor that is not
+-- bound (ContainerItemInfo.isBound; equip location from C_Item.GetItemInfoInstant, ContainerDocumentation /
+-- ItemDocumentation both games). An item on Always Sell is sold too, whatever its quality, unless it can still be
+-- refunded (C_Container.GetContainerItemPurchaseInfo refundSeconds, the check ContainerFrame.lua:1425-1431 makes)
+-- or traded with the group that looted it (its tooltip carries BIND_TRADE_TIME_REMAINING). Values the game hides
+-- error out of the comparisons; every caller pcalls this, so such an item counts as not junk.
+-- A field, not a local: this chunk is at Lua's 200-locals limit.
+VUI.QoL_IsJunk = function(bag, slot, info)
+    if info.hasNoValue then return false end
+    local id = info.itemID
+    local never = db and type(db.junkNeverSell) == "table" and db.junkNeverSell
+    local always = db and type(db.junkAlwaysSell) == "table" and db.junkAlwaysSell
+    if info.quality == 0 then
+        if never and never[id] then return false end
+        if db and db.junkKeepUnboundGear and not info.isBound and C_Item.GetItemInfoInstant then
+            local _, _, _, equipLoc = C_Item.GetItemInfoInstant(id)
+            if type(equipLoc) == "string" and equipLoc ~= "" and equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE" then
+                return false
+            end
+        end
+        return true
+    end
+    if not (always and always[id]) then return false end
+    if C_Container.GetContainerItemPurchaseInfo then
+        local okR, p = pcall(C_Container.GetContainerItemPurchaseInfo, bag, slot, false)
+        if okR and type(p) == "table" and (p.refundSeconds or 0) > 0 then return false end
+    end
+    local fmt = _G.BIND_TRADE_TIME_REMAINING
+    local head = type(fmt) == "string" and fmt:match("^(.-)%%s")
+    local ti = _G.C_TooltipInfo
+    local tip = head and head ~= "" and ti and ti.GetBagItem and ti.GetBagItem(bag, slot)
+    for _, line in ipairs(tip and tip.lines or {}) do
+        if type(line.leftText) == "string" and line.leftText:find(head, 1, true) then return false end
+    end
+    return true
+end
+
 local function ScanJunk()
     local total, count = 0, 0
     for bag = 0, (NUM_BAG_SLOTS or 4) do
@@ -411,9 +455,7 @@ local function ScanJunk()
                 -- raid encounters; guard the comparison.  Items that fail
                 -- the check are skipped (treated as not-junk).  Mirrors the
                 -- defensive pattern in IsEquippableGear, below.
-                local okJ, isJunk = pcall(function()
-                    return info.quality == 0 and not info.hasNoValue
-                end)
+                local okJ, isJunk = pcall(VUI.QoL_IsJunk, bag, slot, info)
                 if okJ and isJunk then
                     local okP, _, _, _, _, _, _, _, _, _, _, price =
                         pcall(C_Item.GetItemInfo, info.itemID)
@@ -496,9 +538,7 @@ local function SellNextBatch()
                 -- Items that fail the check are skipped (treated as not-
                 -- sellable).  Mirrors IsEquippableGear, below.
                 local okJ, isSellable = pcall(function()
-                    return info.quality == 0
-                        and not info.hasNoValue
-                        and not info.isLocked
+                    return VUI.QoL_IsJunk(bag, slot, info) and not info.isLocked
                 end)
                 if okJ and isSellable then
                     local okP, _, _, _, _, _, _, _, _, _, _, price =
@@ -4674,8 +4714,16 @@ local function InitializeOptions()
 
     AddCheckbox("autoSellJunk", "Auto Sell Junk",
         "Sells your grey items when you visit a merchant. Bags you set to ignore junk selling in their "
-        .. "bag menu are left alone.",
+        .. "bag menu are left alone. Pick items to keep or to sell anyway in Junk Lists.",
         EnsureMerchantEvents)
+    -- v1.80.0 (JunkLists.lua): a sub-option and the Junk Lists window's Open button (Blizzard's own button row,
+    -- CreateSettingsButtonInitializer, as Advanced Options' page). No new locals: this function is long.
+    if VUI.QoL_JunkOptions then
+        VUI.QoL_JunkOptions(layout, AddCheckbox(
+            "junkKeepUnboundGear", "Keep Unbound Grey Gear",
+            "Grey weapons and armor that are not bound to you are kept, so you can sell them on the Auction "
+            .. "House instead. Other greys are still sold."))
+    end
 
     AddCheckbox("autoRepair", "Auto Repair",
         "Repairs your gear at repair vendors. Choose who pays under Repair Funding.",
@@ -4722,23 +4770,26 @@ local function InitializeOptions()
 
     Header("Quests and Dialogue")
     AddCheckbox("pickOnlyGossip", "Pick Only Dialogue Option",
-        "When an NPC has just one dialogue option and no quests, it is picked for you. Hold Shift "
-        .. "while talking to the NPC to see the dialogue instead.",
+        "When an NPC has just one dialogue option and no quests, it is picked for you. Hold the Hold "
+        .. "Key (Shift unless you change it below) while talking to the NPC to see the dialogue instead.",
         UpdateNpcEvents)
 
     AddCheckbox("autoAcceptQuest", "Auto Accept Quests",
         "Accepts quests when an NPC offers them. Grey (trivial) quests and PvP quests are left for "
-        .. "you. Hold Shift while talking to the NPC to choose yourself.",
+        .. "you. Hold the Hold Key while talking to the NPC to choose yourself.",
         UpdateNpcEvents)
 
     AddCheckbox("autoTurnInQuest", "Auto Turn In Quests",
         "Hands in completed quests. If you have to choose a reward, the quest costs gold, or handing "
         .. "it in would spend currency, an account-bound item or, on a repeatable quest, crafting "
-        .. "reagents, you still choose. Hold Shift while talking to the NPC to do it yourself.",
+        .. "reagents, you still choose. Hold the Hold Key while talking to the NPC to do it yourself.",
         UpdateNpcEvents)
 
     if VUI.QoL_NpcOptionsDropdown then
         VUI.QoL_NpcOptionsDropdown(category, db, ADDON_NAME, TipWithReason, layout)
+    end
+    if VUI.QoL_NpcHoldKeyDropdown then   -- v1.80.0 (Automation.lua)
+        VUI.QoL_NpcHoldKeyDropdown(category, db, ADDON_NAME, TipWithReason, layout)
     end
 
     -- Not in WoW Forever: no world quests there (owner, 2026-11-06; its published feature list has none).
@@ -5343,6 +5394,10 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
     if arg:lower() == "trainer" then   -- the trainer list window (WoW Forever; owner, 2026-11-05)
         if VUI.QoL_TrainerWindowToggle then VUI.QoL_TrainerWindowToggle()
         else VUI.Print("Quality of Life", "The trainer list is for WoW Forever.") end
+        return
+    end
+    if arg:lower() == "junk" then      -- the Junk Lists window (v1.80.0, JunkLists.lua)
+        if VUI.QoL_JunkListsToggle then VUI.QoL_JunkListsToggle() end
         return
     end
     if arg:lower() == "npc" then

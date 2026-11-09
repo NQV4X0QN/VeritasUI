@@ -61,7 +61,7 @@ local db  = nil  -- ACCOUNT-wide table; assigned at ADDON_LOADED
 local cdb = nil  -- PER-CHARACTER table (enabled, untrackedBeforeFilter); nil until PLAYER_LOGIN
 
 local function Enabled() return cdb ~= nil and cdb.enabled == true end
--- v1.79.1 (graceful conflicts, VeritasUI_Lib/Conflicts.lua): another AddOn's tracker that keeps its own quest list
+-- v1.80.0 (graceful conflicts, VeritasUI_Lib/Conflicts.lua): another AddOn's tracker that keeps its own quest list
 -- (Questie's, in WoW Forever) cannot be filtered, so the filtering steps aside while it is on. The setting and the
 -- record of your own tracking (untrackedBeforeFilter) are left as they are; Enabled() still reads the setting.
 local function TakenOver()
