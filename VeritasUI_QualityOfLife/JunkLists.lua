@@ -295,9 +295,8 @@ local function AddBagMenuEntry(owner, root)
         if not (okB and type(id) == "number" and id >= first and id <= (NUM_TOTAL_BAG_FRAMES or 5)) then return end
     end
     root:CreateDivider()
-    local button = root:CreateButton("Junk Lists", function()
-        if not (win and win:IsShown()) then ToggleWindow() end
-    end)
+    -- A toggle (owner, 2026-11-08): click again to close the window.
+    local button = root:CreateButton("Junk Lists", function() ToggleWindow() end)
     if button and button.SetTooltip then
         button:SetTooltip(function(tooltip)
             GameTooltip_SetTitle(tooltip, "Junk Lists")
