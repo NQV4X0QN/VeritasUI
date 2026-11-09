@@ -99,7 +99,10 @@ local UNIVERSAL = {
     -- these remove game content (story popups, zone names, boss loot), so nobody gets them unasked.
     hideTalkingHead     = false,
     muteTalkingHead     = false,
-    muteSpellFizzle     = false,
+    -- v1.84.0: Mute Sounds dropdown, [groupId] = true (SOUND_GROUPS). TABLE-typed, PAIRED with muteSoundsMask
+    -- (derived). Default none. Replaces the Mute Spell Fizzle checkbox (muteSpellFizzle, deleted at login; no
+    -- carry-over, owner's one-user rule).
+    muteSounds          = {},
     -- v1.48.0: Hide Top Banners is a dropdown. [groupId] = true for each kind hidden (TOP_BANNER_GROUPS).
     -- TABLE-typed. PAIRED: hideTopBannersMask (the dropdown's tick-box value) is derived from it, like
     -- hideErrorTypesMask. Replaces the hideTopBanners checkbox; a saved "on" becomes every row ticked.
@@ -918,18 +921,83 @@ local function SetupTalkingHead()
     end
 end
 
--- ── Feature: Mute Spell Fizzle (owner's request, 2026-11-06) ──
--- The fizzle a spell makes when it fails to cast is an engine sound, not a Blizzard UI one (Error Speech in
--- Options > Audio is only the voice lines, Blizzard_SettingsDefinitions_Shared/Audio.lua:503-508). The game's
--- own MuteSoundFile / UnmuteSoundFile mute a sound file by its ID until the client closes (both games:
--- warcraft.wiki.gg API MuteSoundFile, "standard 8.2.5, forever 1.60.1"), so it is applied at every login.
--- File IDs from the wowdev community listfile: sound/spells/fizzle/fizzle{holy,fire,nature,frost,shadow}a.ogg.
--- ⚠ That these five are the sound the owner hears is UNMEASURED (no Lua event reports a sound playing).
-local FIZZLE_SOUNDS = { 569772, 569773, 569774, 569775, 569776 }
-local function SetMuteSpellFizzle(on)
-    local apply = on and _G.MuteSoundFile or _G.UnmuteSoundFile
-    if type(apply) ~= "function" then return end
-    for _, id in ipairs(FIZZLE_SOUNDS) do pcall(apply, id) end
+-- ── Feature: Mute Sounds (v1.84.0; Mute Spell Fizzle since 2026-11-06) ──
+-- These are engine sounds, not Blizzard UI ones (Error Speech in Options > Audio is only the voice lines,
+-- Blizzard_SettingsDefinitions_Shared/Audio.lua:503-508). The game's own MuteSoundFile / UnmuteSoundFile mute a
+-- sound file by its ID until the client closes (both games: warcraft.wiki.gg API MuteSoundFile, "standard 8.2.5,
+-- forever 1.60.1"), so every ticked group is muted at each login. A group is only unmuted when it is unticked after
+-- we muted it, so a sound some other AddOn muted is never unmuted by a login. A file a game does not have is a
+-- harmless no-op, so one list serves both games. File IDs (2026-11-08):
+--   fizzle    community listfile sound/spells/fizzle/fizzle{holy,fire,nature,frost,shadow}a.ogg
+--   chimes    the cities' hourly bells: sound/doodad/belltoll{alliance,horde,nightelf,tribal}, kharazahnbelltoll,
+--             dwarfhorn (Ironforge's)
+--   ready     SOUNDKIT.READY_CHECK (8960, SoundKitConstants.lua) = levelup2.ogg live, readycheck.ogg forever
+--             (wago.tools SoundKitEntry, both products). Blizzard plays that kit for ready checks, role polls and
+--             queue pops too (ReadyCheck.lua:71, RolePoll.lua:17, LFGReadyCheck.lua:26, PVPHelper.lua :107-259).
+--   trains    the /train emote, every race and sex: EmotesText TRAIN (264) -> EmotesTextSound kits -> files
+--             (wago.tools, both products: 69 live + 2 forever-only Skyborn Elf)
+--   vault     the mechanical guild vault's idle sound (Booty Bay, Winterspring): sound/doodad/guildvault_goblin_01stand
+--   airships  sound/creature/{allianceairship,hordezeppelin}, sound/vehicles/{alliance,horde}gunship, and the
+--             transport zeppelin's sound/doodad/zeppelinhelium{a-d}, zeppelinhorn, go_fx_zeppelin_propeller_blades_loop
+--   steps     horse mounts sound/creature/horse/mfootstepshorse*, mechanical mounts goblinshredder
+--             footstep_goblinshreddermount_general_*, gnomespidertank footstep{a-d}
+--   striders  sound/creature/mechastrider/* (the mechanostrider mount's every sound)
+--   yawns     sound/creature/tiger/mtigerstand2a.ogg (the big-cat idle yawn, hunter pets included)
+-- ⚠ That each group is exactly what a player hears is UNMEASURED: no Lua event reports a sound playing.
+local SOUND_GROUPS = {
+    { id = "fizzle", label = "Spell Fizzle", tip = "The fizzle a spell makes when it fails to cast. The red error "
+        .. "message still shows unless Hide Error Text hides it.",
+      files = { 569772, 569773, 569774, 569775, 569776 } },
+    { id = "chimes", label = "Clock Chimes", tip = "The bells and horns that ring the hour in cities.",
+      files = { 565853, 566027, 566064, 566254, 566558, 566564 } },
+    { id = "ready", label = "Ready Check", tip = "The ready check sound. The game plays the same sound for role "
+        .. "checks and when a dungeon or battleground queue is ready, so those are silent too.",
+      files = { 567409, 567478 } },
+    { id = "trains", label = "Trains", tip = "The train whistle of the /train emote, every race.",
+      files = { 539203, 539219, 539516, 539730, 539802, 539881, 540271, 540275, 540535, 540734, 540870, 540947,
+        541157, 541239, 541463, 541601, 541769, 542017, 542035, 542206, 542526, 542600, 542818, 542896, 543085,
+        543093, 630296, 630298, 636621, 1304872, 1306531, 1313588, 1316209, 1730534, 1730908, 1731282, 1731656,
+        1732030, 1732405, 1732785, 1733163, 1902030, 1902543, 1903049, 1903522, 1951457, 1951458, 2491898,
+        2531204, 3106252, 3106717, 3107182, 3107651, 4737561, 4738601, 4739531, 4741007, 6021052, 6021067,
+        7652669, 7652671, 7652673, 7652679, 7652681, 7652995, 7652997, 7681676, 7681678, 7681680, 7744513,
+        7744921 } },
+    { id = "vault", label = "Guild Vault", tip = "The idle clanking of the mechanical guild vaults, such as the ones "
+        .. "in Booty Bay and Winterspring.",
+      files = { 566289 } },
+    { id = "airships", label = "Airships and Zeppelins", tip = "Engines, propellers and horns of airships and "
+        .. "zeppelins, the mounts and the ones you travel on.",
+      files = { 565623, 566258, 566604, 566719, 567042, 603149, 603224, 652796, 1659491, 1659492, 1659493,
+        1659494, 1659495, 1659496, 1659497, 1659498, 1659499, 1659500, 1659501, 1659502, 1659503, 1659504,
+        1659505, 1659506, 1659507, 1659508, 1659509, 1659510, 1659511, 1659512, 1659513, 1659514, 1659515,
+        1659516, 1659517, 1659518, 1659519, 1659520, 1659521, 1659522, 1659523, 1659524, 1659525, 1659526,
+        1659527, 1659528, 1659529, 1659530, 1685499, 1686533, 1686534, 1686535, 1686536, 1686537, 1686538,
+        1686539, 1686540, 1686541 } },
+    { id = "steps", label = "Mount Footsteps", tip = "Footsteps of horse mounts and of mechanical mounts.",
+      files = { 550500, 550501, 550507, 550514, 552058, 552060, 552062, 552063, 552065, 552066, 552068, 552070,
+        552071, 552072, 552073, 552075, 552076, 552077, 552078, 552079, 552081, 552082, 552083, 552084, 552085,
+        552086, 552087, 552089, 552090, 893935, 893937, 893939, 893941, 893943, 893945, 893947, 893949 } },
+    { id = "striders", label = "Mechanostriders", tip = "The whirring and clanking of mechanostrider mounts.",
+      files = { 555123, 555124, 555125, 555126, 555127, 555128, 555129, 555130, 555131, 555132, 555133 } },
+    { id = "yawns", label = "Cat Yawns", tip = "The yawn of big cats, hunter pets included.",
+      files = { 562388 } },
+}
+local soundsMuted = {}   -- [group id] = true once this session muted it
+local function SetMuteSounds()
+    local mute, unmute = _G.MuteSoundFile, _G.UnmuteSoundFile
+    if type(mute) ~= "function" or type(unmute) ~= "function" or not db then return end
+    local truth = type(db.muteSounds) == "table" and db.muteSounds or {}
+    for _, g in ipairs(SOUND_GROUPS) do
+        local takenOver = VUI.OptionUnavailable and VUI.OptionUnavailable(ADDON_NAME, "muteSounds:" .. g.id)
+        if not takenOver then
+            if truth[g.id] and not soundsMuted[g.id] then
+                for _, id in ipairs(g.files) do pcall(mute, id) end
+                soundsMuted[g.id] = true
+            elseif not truth[g.id] and soundsMuted[g.id] then
+                for _, id in ipairs(g.files) do pcall(unmute, id) end
+                soundsMuted[g.id] = nil
+            end
+        end
+    end
 end
 
 -- ── Feature: Hide Top Banners (v1.26.0) ─────────────────────
@@ -2646,6 +2714,7 @@ local function InitializeOptions()
     }
     local BuildTopBannersDropdown   -- defined below, called from AddCheckboxes
     local BuildTransformsDropdown   -- likewise
+    local BuildMuteSoundsDropdown   -- likewise
     local HIDE_OPTIONS = {
         { key = "hideSocialButton",    name = "Hide Social Button",
           tip = "Hides the Quick Join / Communities toast button. Left shown, it fades with the "
@@ -2679,10 +2748,8 @@ local function InitializeOptions()
         { key = "muteTalkingHead",     name = "Mute Talking Head Voice", retailOnly = true,
           tip = "Silences the voice line that plays with the talking head popup. The popup itself "
              .. "still shows unless Hide Talking Head is on. Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
-        { key = "muteSpellFizzle",     name = "Mute Spell Fizzle",
-          tip = "Silences the fizzle sound a spell makes when it fails to cast. The red error message still "
-             .. "shows unless Hide Error Text hides it. Applies at once.",
-          apply = function(value) SetMuteSpellFizzle(value) end },
+        -- v1.84.0: Mute Sounds, a tick-box dropdown (BuildMuteSoundsDropdown below); was Mute Spell Fizzle.
+        { key = "muteSounds", build = function() BuildMuteSoundsDropdown() end },
         -- v1.48.0: a tick-box dropdown, built where the checkbox was (BuildTopBannersDropdown below).
         { key = "hideTopBanners", build = function() BuildTopBannersDropdown() end },
         -- v1.49.0: Hide Transforms, a tick-box dropdown (BuildTransformsDropdown below).
@@ -3155,6 +3222,21 @@ local function InitializeOptions()
         })
     end
 
+    -- ── Mute Sounds — tick-box dropdown (v1.84.0), UNIVERSAL: muteSounds + its derived mask on `db`.
+    function BuildMuteSoundsDropdown()
+        if type(db.muteSounds) ~= "table" then db.muteSounds = {} end
+        KindsDropdown({
+            setting = ADDON_NAME .. "_muteSounds", maskKey = "muteSoundsMask",
+            owner = db,              -- UNIVERSAL: paired with muteSounds
+            setMask = function(v) db.muteSoundsMask = v end,
+            name = "Mute Sounds", items = SOUND_GROUPS, truth = db.muteSounds,
+            defaultIds = {},
+            unavailableKey = "muteSounds",
+            tip = "Pick the game sounds to silence. Applies at once.",
+            onChanged = SetMuteSounds,
+        })
+    end
+
     -- ── Hide Error Text — tick-box dropdown (see the Options Panel note above). UNIVERSAL:
     -- hideErrorText, hideErrorTypes and the mask all live on `db`.
     --
@@ -3288,7 +3370,7 @@ local function InitializeOptions()
                                    "fadeObjectiveTrackerRaid",
                                    "fadeStatusBars", "fadeStatusBarsOnGain", "fadeDamageMeter" } },
         { "Messages and Popups", { "hideErrorText", "hideTopBanners", "hideTalkingHead", "muteTalkingHead",
-                                   "muteSpellFizzle" } },
+                                   "muteSounds" } },
     }
     for _, section in ipairs(SECTIONS) do
         Header(section[1])
@@ -3426,7 +3508,8 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         if db.outOfRangeIcons and not Unavailable("outOfRangeIcons") then ActionBarExtras.SetOutOfRangeIcons(true) end
         if not VUI.IS_FOREVER and ((db.hideTalkingHead and not Unavailable("hideTalkingHead"))
             or (db.muteTalkingHead and not Unavailable("muteTalkingHead"))) then SetupTalkingHead() end
-        if db.muteSpellFizzle and not Unavailable("muteSpellFizzle") then SetMuteSpellFizzle(true) end
+        db.muteSpellFizzle = nil   -- RETIRED v1.84.0: Mute Spell Fizzle is the Mute Sounds row Spell Fizzle
+        SetMuteSounds()            -- every ticked group another AddOn is not muting
         if next(db.hideTopBannerTypes) ~= nil and not Unavailable("hideTopBanners") then HideTopBanners() end
         if not Unavailable("hideProfessionGear") then SetHideTransforms() end
         if not Unavailable("hideErrorText") then             -- another AddOn hides errors (v1.79.0)

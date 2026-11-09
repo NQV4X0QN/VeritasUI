@@ -115,8 +115,34 @@ VUI.CONFLICT_RULES = {
     L(IFACE, "hideMacroNames", "Hide macro text", function() return Lea("HideMacroText") end),
     L(IFACE, "hideKeybindText", "Hide keybind text", function() return Lea("HideKeybindText") end),   -- v1.82.0
     L(IFACE, "outOfRangeIcons", "Show range coloring", function() return Lea("ShowRangeColoring") end),
-    L(IFACE, "muteSpellFizzle", "Mute game sounds", function()
+    -- v1.84.0: Mute Sounds rows. Mute game sounds (:5046-5073) and Mute mount sounds (:4933-4952) each gate their own
+    -- picks; a row steps aside when the matching pick is live.
+    L(IFACE, "muteSounds:fizzle", "Mute game sounds, Fizzle", function()
         return Lea("MuteGameSounds") and Lea("MuteFizzle")
+    end),
+    L(IFACE, "muteSounds:chimes", "Mute game sounds, Chimes", function()
+        return Lea("MuteGameSounds") and Lea("MuteChimes")
+    end),
+    L(IFACE, "muteSounds:ready", "Mute game sounds, Ready", function()
+        return Lea("MuteGameSounds") and Lea("MuteReady")
+    end),
+    L(IFACE, "muteSounds:trains", "Mute game sounds, Trains", function()
+        return Lea("MuteGameSounds") and Lea("MuteTrains")
+    end),
+    L(IFACE, "muteSounds:vault", "Mute game sounds, Vaults", function()
+        return Lea("MuteGameSounds") and Lea("MuteVaults")
+    end),
+    L(IFACE, "muteSounds:yawns", "Mute game sounds, Yawns", function()
+        return Lea("MuteGameSounds") and Lea("MuteYawns")
+    end),
+    L(IFACE, "muteSounds:airships", "Mute mount sounds, Airships and Zeppelins", function()
+        return Lea("MuteMountSounds") and (Lea("MuteAirships") or Lea("MuteZeppelins"))
+    end),
+    L(IFACE, "muteSounds:steps", "Mute mount sounds, Horsesteps and Mechsteps", function()
+        return Lea("MuteMountSounds") and (Lea("MuteHorsesteps") or Lea("MuteMechSteps"))
+    end),
+    L(IFACE, "muteSounds:striders", "Mute mount sounds, Mechstriders", function()
+        return Lea("MuteMountSounds") and Lea("MuteStriders")
     end),
     L(IFACE, "hideErrorText", "Hide error messages", function() return Lea("HideErrorMessages") end),
     L(IFACE, "hideTopBanners:zone", "Hide zone text", function() return Lea("HideZoneText") end),
