@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.84.0] - 2026-11-08
+
+### Changed
+
+- `VeritasUI_Interface` — **Mute Sounds** replaces Mute Spell Fizzle, under Messages and Popups, none until you pick: a dropdown of game sounds to silence — Spell Fizzle, Clock Chimes, Ready Check, Trains (the /train emote), Guild Vault, Airships and Zeppelins, Mount Footsteps (horses and mechanical mounts), Mechanostriders and Cat Yawns. Ready Check also silences role checks and queue pops, which the game plays with the same sound. Applies at once. If you had Mute Spell Fizzle on, tick Spell Fizzle (`Interface.lua`)
+- `VeritasUI_Lib` — each Mute Sounds row steps aside when another AddOn is already muting that sound (`Conflicts.lua`)
+
 ## [1.83.0] - 2026-11-08
 
 ### Added

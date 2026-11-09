@@ -41,7 +41,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.83.0"
+VUI.VERSION = "1.84.0"
 -- WoW Forever (game type camelot): one codebase serves both games, and a module drops what Forever lacks.
 -- MEASURED in Forever 1.60.1.70790 (owner's /vui forever probe, 2026-11-04): WOW_PROJECT_ID = 18 =
 -- WOW_PROJECT_CAMELOT (Blizzard_ProjectConstants/Camelot/ProjectConstants.lua:1-2). Retail defines only
