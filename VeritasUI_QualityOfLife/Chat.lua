@@ -672,9 +672,12 @@ end)
 --
 -- Arrow Keys in Chat (default ON). The chat box is made with ignoreArrows="true" (ChatFrameEditBoxTemplate,
 -- Mainline/ChatFrameEditBox.xml:3): the arrow keys turn your character unless Alt is held. SetAltArrowKeyMode(false)
--- (SimpleEditBoxAPIDocumentation) lets them move the cursor and bring back earlier lines without Alt -- the call
+-- (SimpleEditBoxAPIDocumentation) lets Left and Right move the cursor without Alt -- the call
 -- Blizzard's own AutoComplete makes while its list is open, putting the old mode back only when it was on
 -- (Blizzard_AutoComplete/AutoComplete.lua:171-174, :236-239), so ours stays. Off: each box gets back the mode it had.
+-- Up and Down still need Alt to bring back earlier lines (owner, measured 2026-11-08): the box's history is the
+-- game's own, and addons have no way to read it (SimpleEditBoxAPIDocumentation: AddHistoryLine,
+-- ClearHistory and Get/SetHistoryLines, the count, only).
 --
 -- Messages Never Fade (default OFF). ScrollingMessageFrame:SetFading(false) (Blizzard_SharedXML/
 -- ScrollingMessageFrame.lua:255, one of the methods of its secure mixin, :882) keeps lines from fading after

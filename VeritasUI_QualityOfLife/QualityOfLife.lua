@@ -5003,8 +5003,8 @@ local function InitializeOptions()
         .. "for Instance, and the number for numbered channels, such as [2] for Trade. New lines only.")
 
     AddCheckbox("chatArrowKeys", "Arrow Keys in Chat",
-        "While you type in the chat box, the arrow keys move the cursor and bring back the lines you typed "
-        .. "before, without holding Alt.",
+        "While you type in the chat box, the Left and Right arrow keys move the cursor instead of turning your "
+        .. "character, without holding Alt. Alt+Up and Alt+Down still bring back the lines you typed before.",
         function() if VUI.QoL_ChatArrowKeys then VUI.QoL_ChatArrowKeys() end end)
 
     AddCheckbox("chatNeverFade", "Messages Never Fade",
