@@ -113,6 +113,8 @@ VUI.CONFLICT_RULES = {
         return Lea("NoChatButtons") and not Lea("ShowVoiceButtons")
     end),
     L(IFACE, "hideMacroNames", "Hide macro text", function() return Lea("HideMacroText") end),
+    L(IFACE, "hideKeybindText", "Hide keybind text", function() return Lea("HideKeybindText") end),   -- v1.82.0
+    L(IFACE, "outOfRangeIcons", "Show range coloring", function() return Lea("ShowRangeColoring") end),
     L(IFACE, "muteSpellFizzle", "Mute game sounds", function()
         return Lea("MuteGameSounds") and Lea("MuteFizzle")
     end),

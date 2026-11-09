@@ -84,6 +84,8 @@ local UNIVERSAL = {
     -- Buttons replaces Hide Bag Buttons (hideBagButtons, a saved "off" carries over as off).
     fadeBagButtons      = false,
     hideMacroNames      = false,
+    hideKeybindText     = false,  -- v1.82.0 (owner: off by default; it carries Blizzard's only range cue)
+    outOfRangeIcons     = true,   -- v1.82.0: the icon turns red while the target is out of range
     hideErrorText       = false,  -- the "All" row of the Hide Error Text dropdown (was its own checkbox)
     -- [groupId] = true. TABLE-typed. Overridden while hideErrorText ("All") is on.
     -- PAIRED: hideErrorTypesMask (the dropdown's tick-box value) is derived from this and
@@ -756,6 +758,143 @@ local function HideMacroNames()
     ScanAll()
     C_Timer.After(1, ScanAll)
     C_Timer.After(3, ScanAll)
+end
+
+-- ── Feature: Hide Keybind Text, Out of Range on Icons (v1.82.0) ──
+-- Sourced from Blizzard_ActionBar/Shared/ActionButton.lua (live 12.1.5 and forever 1.60.1, same code):
+-- A button's HotKey shows its key binding, or RANGE_INDICATOR ("●") when unbound (UpdateHotkeys :491-507). It is
+-- Blizzard's only range cue: ActionButton_UpdateRangeIndicator (:1242-1261 live) colours it RED_FONT_COLOR when the
+-- target is out of range, called from each button's ACTION_RANGE_CHECK_UPDATE (:1027-1029) and from the pet bar's
+-- range timer (PetActionBar.lua :104-115). Blizzard never sets the HotKey's alpha, so ours is free to own.
+--   Hide Keybind Text (default OFF): the HotKey's alpha 0, kept there through SetText / Show (as Hide Macro Names),
+--   and 1 again when turned off.
+--   Out of Range on Icons (default ON): a post-hook on ActionButton_UpdateRangeIndicator colours the icon when its
+--   action checks range and the target is out of range. Back in range, the icon gets the colour Blizzard's own
+--   UpdateUsable gives it (:679-692: usable white, lacking resources 0.5/0.5/1, else 0.4 grey; the pet bar's
+--   :155-161: usable white, else 0.4). UpdateUsable runs again on its own (ACTION_USABLE_CHANGED), so a post-hook
+--   on each button's UpdateUsable puts the range colour back on. Only buttons whose colour can be put back are
+--   touched: an action button (a numeric .action) or a pet bar button.
+local ActionBarExtras = {}
+do
+    -- Defined later in this file; these are needed first.
+    local function TakenOver(key) return VUI.OptionUnavailable and VUI.OptionUnavailable(ADDON_NAME, key) or nil end
+    local function Secret(v) return issecretvalue and issecretvalue(v) or false end
+    local HOTKEY_BUTTONS = { "StanceButton" }
+    for _, prefix in ipairs(BAR_PREFIXES) do HOTKEY_BUTTONS[#HOTKEY_BUTTONS + 1] = prefix end
+
+    local function KeybindsHidden() return db and db.hideKeybindText and not TakenOver("hideKeybindText") end
+    local hotkeyHooked = {}
+    local function KeybindAlpha(fs) fs:SetAlpha(KeybindsHidden() and 0 or 1) end
+    local function OnHotkey(btn)
+        local fs = btn and btn.HotKey
+        if type(fs) ~= "table" or not fs.SetAlpha then return end
+        if not hotkeyHooked[fs] then
+            hotkeyHooked[fs] = true
+            hooksecurefunc(fs, "SetText", KeybindAlpha)
+            hooksecurefunc(fs, "Show", KeybindAlpha)
+        end
+        KeybindAlpha(fs)
+    end
+    local function ScanHotkeys()
+        for _, prefix in ipairs(HOTKEY_BUTTONS) do
+            for i = 1, 12 do OnHotkey(_G[prefix .. i]) end
+        end
+        for i = 1, 10 do OnHotkey(_G["PetActionButton" .. i]) end
+    end
+    -- Only scanned once it has been on: with it off from login, nothing of Blizzard's is hooked.
+    function ActionBarExtras.SetHideKeybindText(on)
+        if not on and next(hotkeyHooked) == nil then return end
+        ScanHotkeys()
+        if on then
+            C_Timer.After(1, ScanHotkeys)
+            C_Timer.After(3, ScanHotkeys)
+        end
+    end
+
+    -- TEST BUILD ONLY (removed before release): `/interface rangecolor` switches between Blizzard's RED_FONT_COLOR
+    -- as it is and halfway to white (the rule Blizzard's lacking-resources blue 0.5/0.5/1 follows), for the owner.
+    ActionBarExtras.soft = false
+    local function RangeRGB()
+        local r, g, b = 1, 0.1, 0.1
+        if RED_FONT_COLOR and RED_FONT_COLOR.GetRGB then r, g, b = RED_FONT_COLOR:GetRGB() end
+        if ActionBarExtras.soft then r, g, b = (r + 1) / 2, (g + 1) / 2, (b + 1) / 2 end
+        return r, g, b
+    end
+
+    local function RangeOn() return db and db.outOfRangeIcons and not TakenOver("outOfRangeIcons") end
+    local outOfRange = setmetatable({}, { __mode = "k" })
+    local usableHooked = setmetatable({}, { __mode = "k" })
+
+    local function Kind(btn)
+        if type(btn) ~= "table" or type(btn.icon) ~= "table" or not btn.icon.SetVertexColor then return nil end
+        if type(btn.action) == "number" then return "action" end
+        local ok, name = pcall(btn.GetName, btn)
+        if ok and type(name) == "string" and name:match("^PetActionButton%d+$") then return "pet" end
+        return nil
+    end
+
+    -- Blizzard's own colour for the button, as UpdateUsable / PetActionBar:Update would set it.
+    local function UsableColor(btn, kind)
+        local ok, usable, lacking
+        if kind == "action" then
+            ok, usable, lacking = pcall(C_ActionBar.IsUsableAction, btn.action)
+        else
+            ok, usable = pcall(GetPetActionSlotUsable, btn:GetID())
+        end
+        if not ok or Secret(usable) or Secret(lacking) then return 1, 1, 1 end
+        if usable then return 1, 1, 1 end
+        if lacking and kind == "action" then return 0.5, 0.5, 1 end
+        return 0.4, 0.4, 0.4
+    end
+
+    local function Paint(btn, kind)
+        if outOfRange[btn] and RangeOn() then
+            btn.icon:SetVertexColor(RangeRGB())
+        else
+            btn.icon:SetVertexColor(UsableColor(btn, kind))
+        end
+    end
+
+    local function OnRange(btn, checksRange, inRange)
+        local kind = Kind(btn)
+        if not kind then return end
+        if Secret(checksRange) or Secret(inRange) then checksRange = false end
+        local was = outOfRange[btn] or false
+        local now = (checksRange and not inRange) and true or false
+        outOfRange[btn] = now or nil
+        if kind == "action" and not usableHooked[btn] and btn.UpdateUsable then
+            usableHooked[btn] = true
+            hooksecurefunc(btn, "UpdateUsable", function(self)
+                if outOfRange[self] and RangeOn() then self.icon:SetVertexColor(RangeRGB()) end
+            end)
+        end
+        if now ~= was or now then
+            if RangeOn() or was then Paint(btn, kind) end
+        end
+    end
+
+    local rangeHooked = false
+    function ActionBarExtras.SetOutOfRangeIcons(on)
+        if on and not rangeHooked and type(_G.ActionButton_UpdateRangeIndicator) == "function" then
+            rangeHooked = true
+            hooksecurefunc("ActionButton_UpdateRangeIndicator", OnRange)
+        end
+        -- At once, both ways: every button already marked gets its colour now; on, the action buttons are asked
+        -- (C_ActionBar.IsActionInRange: nil = cannot tell, left alone) so the change shows before the next event.
+        for btn in pairs(outOfRange) do local kind = Kind(btn); if kind then Paint(btn, kind) end end
+        if on and C_ActionBar and C_ActionBar.IsActionInRange then
+            for _, prefix in ipairs(BAR_PREFIXES) do
+                for i = 1, 12 do
+                    local btn = _G[prefix .. i]
+                    if Kind(btn) == "action" then
+                        local ok, inRange = pcall(C_ActionBar.IsActionInRange, btn.action)
+                        if ok and inRange ~= nil and not Secret(inRange) then OnRange(btn, true, inRange) end
+                    end
+                end
+            end
+        end
+    end
+    VUI.Interface_ActionBarExtras = ActionBarExtras   -- for interface_actionbars_test
 end
 
 -- ── Feature: Hide Talking Head / Mute Talking Head Voice (v1.26.0) ──
@@ -2528,6 +2667,15 @@ local function InitializeOptions()
         { key = "hideMacroNames",      name = "Hide Macro Names",
           tip = "Hides the macro name text displayed on action bar buttons. "
              .. "Requires " .. VUI.COL.YELLOW .. "/reload|r to apply." },
+        { key = "hideKeybindText",     name = "Hide Keybind Text",
+          tip = "Hides the key binding text on action bar buttons. That text is also how Blizzard shows that "
+             .. "your target is out of range: it turns red. Out of Range on Icons shows it on the icon instead. "
+             .. "Applies at once.",
+          apply = function(value) ActionBarExtras.SetHideKeybindText(value) end },
+        { key = "outOfRangeIcons",     name = "Out of Range on Icons",
+          tip = "An action bar button's icon turns red while your target is out of range for it, as Blizzard "
+             .. "colours the key binding text. Applies at once.",
+          apply = function(value) ActionBarExtras.SetOutOfRangeIcons(value) end },
         { key = "hideTalkingHead",     name = "Hide Talking Head", retailOnly = true,
           tip = "Hides the NPC portrait that pops up with story dialogue in quests and dungeons. "
              .. "The voice still plays unless Mute Talking Head Voice is on. Still shown in Edit "
@@ -3132,7 +3280,7 @@ local function InitializeOptions()
     local SECTIONS = {
         { "All Fades",           { "fadeDelay", "fadeOpacityBaseline", "fadeTogether" } },
         { "Action Bars",         { "fadeMainActionBar", "fadeMainActionBarShowFlying", "fadeActionBars",
-                                   "hideMacroNames" } },
+                                   "hideMacroNames", "hideKeybindText", "outOfRangeIcons" } },
         { "Micro Menu and Bags", { "fadeMicroMenu", "fadeBagButtons" } },
         { "Player",              { "fadePlayerFrame", "fadePlayerFramePower", "fadePlayerFramePet", "fadeAuras",
                                    "fadeAurasShowExpiring",
@@ -3278,6 +3426,8 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         if cdb.fadePlayerFrame and not Unavailable("fadePlayerFrame")  then SetupPlayerFrameFade() end
         if db.fadeBagButtons and not Unavailable("fadeBagButtons") then SetupBagButtonsFade() end
         if db.hideMacroNames and not Unavailable("hideMacroNames") then HideMacroNames() end
+        if db.hideKeybindText and not Unavailable("hideKeybindText") then ActionBarExtras.SetHideKeybindText(true) end
+        if db.outOfRangeIcons and not Unavailable("outOfRangeIcons") then ActionBarExtras.SetOutOfRangeIcons(true) end
         if not VUI.IS_FOREVER and ((db.hideTalkingHead and not Unavailable("hideTalkingHead"))
             or (db.muteTalkingHead and not Unavailable("muteTalkingHead"))) then SetupTalkingHead() end
         if db.muteSpellFizzle and not Unavailable("muteSpellFizzle") then SetMuteSpellFizzle(true) end
@@ -3348,6 +3498,13 @@ end)
 SLASH_VERITASUI_INTERFACE1 = "/interface"
 SlashCmdList["VERITASUI_INTERFACE"] = function(msg)
     if strtrim(msg or ""):lower() == "gear" then PrintGearDiag(); return end
+    if strtrim(msg or ""):lower() == "rangecolor" then   -- TEST BUILD ONLY: removed before release
+        ActionBarExtras.soft = not ActionBarExtras.soft
+        ActionBarExtras.SetOutOfRangeIcons(db.outOfRangeIcons and true or false)
+        VUI.Print("Interface", "Out of range colour: " .. (ActionBarExtras.soft and "B (halfway to white)"
+            or "A (Blizzard's red)"))
+        return
+    end
     if strtrim(msg or ""):lower() == "tracker" then
         -- Which tracker sections are shown, and their alpha: if an event's objective still fades,
         -- this names the section it is in, so it can be added to OT_EVENT_MODULES.
