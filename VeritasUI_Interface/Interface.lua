@@ -811,14 +811,10 @@ do
         end
     end
 
-    -- TEST BUILD ONLY (removed before release): `/interface rangecolor` switches between Blizzard's RED_FONT_COLOR
-    -- as it is and halfway to white (the rule Blizzard's lacking-resources blue 0.5/0.5/1 follows), for the owner.
-    ActionBarExtras.soft = false
+    -- Blizzard's own RED_FONT_COLOR, as its key text uses (owner picked it over a lighter red in game, 2026-11-08).
     local function RangeRGB()
-        local r, g, b = 1, 0.1, 0.1
-        if RED_FONT_COLOR and RED_FONT_COLOR.GetRGB then r, g, b = RED_FONT_COLOR:GetRGB() end
-        if ActionBarExtras.soft then r, g, b = (r + 1) / 2, (g + 1) / 2, (b + 1) / 2 end
-        return r, g, b
+        if RED_FONT_COLOR and RED_FONT_COLOR.GetRGB then return RED_FONT_COLOR:GetRGB() end
+        return 1, 0.1, 0.1
     end
 
     local function RangeOn() return db and db.outOfRangeIcons and not TakenOver("outOfRangeIcons") end
@@ -3498,13 +3494,6 @@ end)
 SLASH_VERITASUI_INTERFACE1 = "/interface"
 SlashCmdList["VERITASUI_INTERFACE"] = function(msg)
     if strtrim(msg or ""):lower() == "gear" then PrintGearDiag(); return end
-    if strtrim(msg or ""):lower() == "rangecolor" then   -- TEST BUILD ONLY: removed before release
-        ActionBarExtras.soft = not ActionBarExtras.soft
-        ActionBarExtras.SetOutOfRangeIcons(db.outOfRangeIcons and true or false)
-        VUI.Print("Interface", "Out of range colour: " .. (ActionBarExtras.soft and "B (halfway to white)"
-            or "A (Blizzard's red)"))
-        return
-    end
     if strtrim(msg or ""):lower() == "tracker" then
         -- Which tracker sections are shown, and their alpha: if an event's objective still fades,
         -- this names the section it is in, so it can be added to OT_EVENT_MODULES.
