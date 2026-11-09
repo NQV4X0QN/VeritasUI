@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.80.0] - 2026-11-08
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Junk Lists**: a window, opened from the Open button under Auto Sell Junk, the Junk Lists entry in your bag's portrait menu, or `/qol junk`, with two lists Auto Sell Junk follows. **Never Sell** keeps a grey; **Always Sell** sells an item that isn't grey, never while it can still be refunded or traded to your group. Drag items from your bags onto a list and right-click one to take it off. Your bags open with the window and close with it (`JunkLists.lua`, new; `QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Keep Unbound Grey Gear**, under Auto Sell Junk, off until you turn it on: grey weapons and armor that aren't bound are kept for the Auction House (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Hold Key**, under Quest Options: the key that pauses Pick Only Dialogue Option, Auto Accept Quests and Auto Turn In Quests — Shift as before, Ctrl, Alt, or Command on a Mac. Quest Options' Hold Shift to Use is now Hold Key to Use (`Automation.lua`)
+
+### Changed
+
+- `VeritasUI_Lib` — VeritasUI also steps aside for Questie in WoW Forever: Fade Objective Tracker and Zone Quests while Questie's tracker is on, and the quest shortcuts while Questie's own auto accept or auto complete is on (`Conflicts.lua`, `ZoneQuests.lua`, `Interface.lua`)
+
+
 ## [1.79.0] - 2026-11-08
 
 ### Added
