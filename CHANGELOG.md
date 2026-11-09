@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.83.0] - 2026-11-08
+
+### Added
+
+- `VeritasUI_Interface` — **Out of Range on Icons**, under Action Bars, on by default: an action button's icon turns red while your target is out of range for it, in the red Blizzard uses for the key binding text, on every action bar and the pet bar. Back in range, the icon has Blizzard's own colour again: blue when you lack the resources, grey when it can't be used. Applies at once (`Interface.lua`)
+- `VeritasUI_Interface` — **Hide Keybind Text**, under Action Bars, off until you turn it on: hides the key binding text on action and pet bar buttons. That text is also Blizzard's out-of-range warning; Out of Range on Icons shows it on the icon instead. Applies at once (`Interface.lua`)
+
+### Changed
+
+- `VeritasUI_Lib` — both step aside when another AddOn is already doing the same thing (`Conflicts.lua`)
+
 ## [1.82.0] - 2026-11-08
 
 ### Added
