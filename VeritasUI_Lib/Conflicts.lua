@@ -71,9 +71,15 @@ VUI.CONFLICT_RULES = {
     end),
     L(QOL, "pickOnlyGossip", "Automate gossip", function() return Lea("AutomateGossip") end),
     L(QOL, "autoAcceptRes", "Accept resurrection", function() return Lea("AutoAcceptRes") end),
-    L(QOL, "autoAcceptGuildInvites", "Party from friends", function()
-        return Lea("AcceptPartyFriends") and Lea("FriendlyGuild", "On")
-    end),
+    -- v1.81.0: Accept Group Invites From (Invites.lua) replaces Accept Invites from Guildmates; Leatrix's Party from
+    -- friends accepts friends' invites always and guild members' with FriendlyGuild (:4724, :19872), so the whole
+    -- dropdown steps aside. Its Block options (:4462-4801, :9526) map to Decline From Strangers' rows.
+    L(QOL, "acceptInvitesFrom", "Party from friends", function() return Lea("AcceptPartyFriends") end),
+    L(QOL, "declineStrangers:duels", "Block duels", function() return Lea("NoDuelRequests") end),
+    L(QOL, "declineStrangers:invites", "Block party invites", function() return Lea("NoPartyInvites") end),
+    L(QOL, "declineStrangers:joins", "Block requested invites", function() return Lea("NoRequestedInvites") end),
+    L(QOL, "declineStrangers:bnet", "Block friend requests", function() return Lea("NoFriendRequests") end),
+    L(QOL, "declineStrangers:quests", "Block shared quests", function() return Lea("NoSharedQuests") end),
     L(QOL, "trainAllButton", "Show train all button", function() return Lea("ShowTrainAllButton") end),
     L(QOL, "skipCinematics", "Faster movie skip", function() return Lea("FasterMovieSkip") end),
     L(QOL, "fillDeleteConfirm", "Easy item destroy", function() return Lea("EasyItemDestroy") end),

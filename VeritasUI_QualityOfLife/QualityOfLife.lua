@@ -168,8 +168,11 @@ local UNIVERSAL = {
     autoAcceptRes       = true,
     autoAcceptResCombat = false,
     autoUnwrapCollections = false,  -- Automation.lua (v1.52.0): new mounts, pets and toys unwrapped; off since v1.74.0
-    -- Automation.lua (owner's request): group invites from your guild. Off by default: it acts for you (v1.74.0 rule).
-    autoAcceptGuildInvites = false,
+    -- Invites.lua (v1.81.0): Accept Group Invites From (friends, guild) and Decline From Strangers (duels, invites,
+    -- joins, bnet, quests), [rowId] = true. TABLE-typed, each PAIRED with its derived <key>Mask. Default none: they act
+    -- for you (v1.74.0 rule). acceptInvitesFrom replaces autoAcceptGuildInvites (v1.72.0; deleted at login).
+    acceptInvitesFrom = {},
+    declineStrangers  = {},
     -- AutoEquip.lua (v1.67.0, owner's request): off until turned on; then Poor and Common count, the rest opt-in.
     autoEquip = false,
     autoEquipPoor = true,
@@ -3873,6 +3876,10 @@ npcFrame:SetScript("OnEvent", function(_, event)
         OnQuestGreeting()
     elseif event == "QUEST_DETAIL" then
         if not VUI.QoL_Live("autoAcceptQuest") then return end
+        -- v1.81.0: a quest a stranger shares is declined by Decline From Strangers (Invites.lua), never accepted here.
+        if VUI.QoL_StrangerShare and VUI.QoL_StrangerShare() then
+            npcFrame.Note("detail -> shared by a stranger, declined"); return
+        end
         if QuestFlagsPVP and QuestFlagsPVP() then return end
         -- An NPC with one quest opens it straight away (QuestFrame.lua:37-63), skipping the
         -- gossip/greeting lists that filter grey quests, so check here too (audit Q1).
@@ -4907,8 +4914,9 @@ local function InitializeOptions()
 
     -- v1.72.0 (owner's request, joining a guild): one place for the guild options.
     Header("Guild and Friends")
-    AddCheckbox("autoAcceptGuildInvites", "Accept Invites from Guildmates",
-        "Accepts a group invite from someone in your guild. Invites from anyone else still ask.")
+    if VUI.QoL_InvitesDropdowns then   -- v1.81.0 (Invites.lua): replaces Accept Invites from Guildmates
+        VUI.QoL_InvitesDropdowns(category, db, layout, TipWithReason)
+    end
 
     AddCheckbox("tooltipGuildRank", "Show Guild Rank in Tooltips",
         "A player's guild line in their tooltip names their rank too, such as Officer of <Your Guild>.",
@@ -5088,6 +5096,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         db.delveCountCenterX1 = nil
         db.delveTintAlpha     = nil
         db.charLabelClassColor = nil   -- v1.69.0: the Class-Colored Labels option is gone (owner)
+        db.autoAcceptGuildInvites = nil   -- v1.81.0: replaced by Accept Group Invites From (Invites.lua)
         if _G.TomTom or (IsAddOnLoaded and IsAddOnLoaded("TomTom")) then
             VUI.SetOptionUnavailable(ADDON_NAME, "wayCommand", "TomTom is installed and handles /way.")
         end

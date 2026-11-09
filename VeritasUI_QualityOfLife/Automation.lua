@@ -58,23 +58,7 @@ resFrame:SetScript("OnEvent", function(_, _, caster)
     if delay > 0 then C_Timer.After(delay + 0.1, Accept) else Accept() end
 end)
 
--- Accept Invites from Guildmates (v1.72.0, owner's request). On PARTY_INVITE_REQUEST (payload: name, the role flags,
--- isNativeRealm, allowMultipleRoles, inviterGUID; PartyInfoDocumentation.lua:765-777, both games) from someone
--- IsGuildMember says is in your guild (the check Blizzard's SocialQueue.lua makes), this makes the call
--- Blizzard's own Accept button makes (AcceptGroup, GameDialogDefs.lua PARTY_INVITE OnAccept). As for resurrections,
--- Blizzard's popup is NOT closed from here (the v1.12.5 lesson: our code running a popup's OnHide taints the shared
--- popup frames). Whether the game takes the popup down on its own once you are in the group is measured in game.
--- Anyone else's invite is left to you. A secret or unreadable inviter counts as not a guildmate.
-local inviteFrame = CreateFrame("Frame")
-inviteFrame:RegisterEvent("PARTY_INVITE_REQUEST")
-inviteFrame:SetScript("OnEvent", function(_, _, _, _, _, _, _, _, inviterGUID)
-    if not On("autoAcceptGuildInvites") then return end
-    if type(inviterGUID) ~= "string" or IsSecret(inviterGUID) or inviterGUID == "" then return end
-    if not (IsGuildMember and AcceptGroup) then return end
-    local ok, member = pcall(IsGuildMember, inviterGUID)
-    if not ok or IsSecret(member) or not member then return end
-    pcall(AcceptGroup)
-end)
+-- Group invites (accept from friends or guild, decline from strangers) moved to Invites.lua in v1.81.0.
 
 -- Auto Unwrap Collections (v1.52.0, feature batch item 9). A new mount, pet or toy waits in the Collections
 -- journal as a wrapped gift until you click it; Blizzard's click ends with the same C call this makes
