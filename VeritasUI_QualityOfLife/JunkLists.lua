@@ -246,6 +246,27 @@ local function BuildWindow()
     end
 
     win:SetScript("OnShow", Refresh)
+    -- Your bags open with the window and close with it, as the Auction House and bank do (owner, 2026-11-08):
+    -- you drag from them. Only bags this window opened are closed, and only when none was open before.
+    -- ⛔ OpenAllBags is called WITHOUT a frame and CloseAllBags never: both write ContainerFrame.lua's
+    -- FRAME_THAT_OPENED_BAGS upvalue when given a frame (OpenAllBags :1916 live) or always (CloseAllBags), and a
+    -- tainted write there poisons the next bank visit -> every bag click blocked (the v1.17.4 bankType chain,
+    -- taint-investigation-bankType.md steps 2-4). OpenAllBags(nil) and CloseBag / CloseBackpack touch no upvalue
+    -- (ContainerFrame.lua :313-390, :2141-2170 forever). UNMEASURED: that opening the bag windows from our code
+    -- leaves bag clicks working -- the test build is checked with /vui taint before release.
+    win:HookScript("OnShow", function()
+        local okA, any = pcall(IsAnyBagOpen)
+        if okA and not any and OpenAllBags then
+            win.openedBags = true
+            pcall(OpenAllBags)
+        end
+    end)
+    win:HookScript("OnHide", function()
+        if not win.openedBags then return end
+        win.openedBags = nil
+        for i = (NUM_TOTAL_BAG_FRAMES or 5), 1, -1 do if CloseBag then pcall(CloseBag, i) end end
+        if CloseBackpack then pcall(CloseBackpack) end
+    end)
     if VUI.AddWindowSounds and SOUNDKIT then
         VUI.AddWindowSounds(win, SOUNDKIT.IG_CHARACTER_INFO_OPEN, SOUNDKIT.IG_CHARACTER_INFO_CLOSE)
     end
@@ -256,6 +277,40 @@ local function ToggleWindow()
     if win:IsShown() then VUI.CloseManagedPanel(win) else VUI.OpenManagedPanel(win) end
 end
 VUI.QoL_JunkListsToggle = ToggleWindow
+
+-- "Junk Lists" in the bag window's portrait menu, single bags and the combined bag (owner, 2026-11-08), through
+-- Blizzard's own hook for addons: Menu.ModifyMenu on the menus' tags MENU_CONTAINER_FRAME and
+-- MENU_CONTAINER_FRAME_COMBINED (ContainerFrame.lua :766 / :2830 forever, :670 / :2539 live), which Blizzard runs
+-- through securecallfunction so an addon's entries impart no taint (Blizzard_Menu/Menu.lua :2751-2787, and its
+-- 11_0_0_MenuImplementationGuide "Addon Menu Customization"). A divider, then a plain button, as Blizzard's own
+-- Convert to ... bag row. Only on your own bags (backpack and bags, Blizzard's held-bag range, ContainerFrame.lua
+-- :79-81), not bank tabs or the keyring, and only while Auto Sell Junk is on (the lists do nothing otherwise).
+local function AddBagMenuEntry(owner, root)
+    if not (root and root.CreateButton) then return end
+    if not (VUI.QoL_Live and VUI.QoL_Live("autoSellJunk")) then return end
+    local cf = owner and owner.GetParent and owner:GetParent()
+    if cf and cf.IsCombinedBagContainer and not cf:IsCombinedBagContainer() and cf.GetBagID then
+        local okB, id = pcall(cf.GetBagID, cf)
+        local first = Enum and Enum.BagIndex and Enum.BagIndex.Backpack or 0
+        if not (okB and type(id) == "number" and id >= first and id <= (NUM_TOTAL_BAG_FRAMES or 5)) then return end
+    end
+    root:CreateDivider()
+    local button = root:CreateButton("Junk Lists", function()
+        if not (win and win:IsShown()) then ToggleWindow() end
+    end)
+    if button and button.SetTooltip then
+        button:SetTooltip(function(tooltip)
+            GameTooltip_SetTitle(tooltip, "Junk Lists")
+            GameTooltip_AddNormalLine(tooltip, "Items Auto Sell Junk keeps although they are grey, and items it sells "
+                .. "although they are not.")
+        end)
+    end
+end
+if Menu and Menu.ModifyMenu then
+    Menu.ModifyMenu("MENU_CONTAINER_FRAME", AddBagMenuEntry)
+    Menu.ModifyMenu("MENU_CONTAINER_FRAME_COMBINED", AddBagMenuEntry)
+end
+VUI.QoL_JunkBagMenuEntry = AddBagMenuEntry   -- for qol_junklists_test
 
 -- The options page: Keep Unbound Grey Gear indented under Auto Sell Junk, then the Open button.
 VUI.QoL_JunkOptions = function(layout, keepInit)
