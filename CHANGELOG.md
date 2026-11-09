@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.81.0] - 2026-11-08
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Accept Group Invites From**, under Guild and Friends, none until you pick: accepts group invites from your friends, your guild or both, never when accepting would take you out of a queue (`Invites.lua`, new)
+- `VeritasUI_QualityOfLife` — **Decline From Strangers**, under Guild and Friends, none until you pick: declines duels, group invites, requests to join your group, Battle.net friend requests and shared quests from anyone who isn't your friend, Battle.net friend or guild member. Quick Join requests are left to the game's own setting in Options → Social (`Invites.lua`; `QualityOfLife.lua`)
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — Accept Group Invites From replaces Accept Invites from Guildmates; pick Guild in it to keep accepting your guild's invites. Auto Accept Quests no longer accepts a quest a stranger shares (`Automation.lua`, `QualityOfLife.lua`)
+- `VeritasUI_Lib` — the new options step aside for Leatrix Plus's matching invite, duel, friend request and shared quest options (`Conflicts.lua`)
+
 ## [1.80.0] - 2026-11-08
 
 ### Added
