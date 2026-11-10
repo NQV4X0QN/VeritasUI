@@ -4685,11 +4685,14 @@ local function InitializeOptions()
 
     -- AutoEquip.lua (v1.67.0, owner's request): one checkbox to turn it on, then one per quality under it.
     local equipInit = AddCheckbox("autoEquip", "Auto Equip Upgrades",
-        "Puts on gear from your bags that beats what you're wearing in that slot, or fills an empty slot: "
-        .. "higher item level, or heavier armor your class can wear at the same item level, never a lighter "
-        .. "armor type. Only gear you can use, never gear that would bind when equipped or has the wrong main "
-        .. "stat for you. Trinkets are left alone, and weapons only replace one of the same kind. Not in "
-        .. "combat. Each swap is named in chat. Choose which qualities count below.",
+        "Puts on gear from your bags that beats what you're wearing in that slot, or fills an empty slot. "
+        .. "Stats come first: a piece with at least as much of every stat and more of one wins, and one with less "
+        .. "never replaces, whatever the item level. Otherwise a higher item level wins, or heavier armor your class "
+        .. "can wear at the same item level, never a lighter armor type. Only gear you can use, never gear that "
+        .. "would bind when equipped. A piece with the wrong main stat for you replaces gear with your main stat only "
+        .. "when it is at least 5 item levels or 25% higher, whichever is more. Trinkets are left alone, and weapons "
+        .. "only replace one of the same kind. Not in combat. Each swap is named in chat. Choose which qualities "
+        .. "count below.",
         function(value) if value and VUI.QoL_AutoEquipRun then VUI.QoL_AutoEquipRun() end end)
     local QUALITY_ROWS = {
         { "autoEquipPoor",      "Poor (Grey)" },
