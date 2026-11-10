@@ -397,9 +397,8 @@ local function Finish()
     if skipped > 0 then
         VUI.Print(AH.TAG, format(
             "  coverage: %d priced, %d skipped (%d nothing-for-sale, %d no-buyout, "
-            .. "|cFF%s%d unkeyable|r)",
-            seenCount, skipped, skipNoQty, skipNoPrice,
-            skipNoKey > 0 and "FF4444" or "808080", skipNoKey))
+            .. (skipNoKey > 0 and VUI.COL.RED or VUI.COL.GRAY) .. "%d unkeyable|r)",
+            seenCount, skipped, skipNoQty, skipNoPrice, skipNoKey))
     end
     if skipNoKey > 0 then
         -- Loud on purpose: an unkeyable result IS lost data, and this is the number that

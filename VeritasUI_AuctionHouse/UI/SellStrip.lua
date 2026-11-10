@@ -115,12 +115,13 @@ local function ShowButtonTooltip(button)
     GameTooltip:AddLine(" ")
     -- Only promise the load when it can happen: it forwards to the item's button in Blizzard's
     -- bag window, which exists only while that bag is open (see WireSecureClicks).
+    local COL, white = VUI.COL, HIGHLIGHT_FONT_COLOR
     if button.canLoad then
-        GameTooltip:AddLine("|cFF00FF00Right-click|r to load into the Sell form.", 1, 1, 1)
+        GameTooltip:AddLine(COL.GREEN .. "Right-click|r to load into the Sell form.", white:GetRGB())
     else
-        GameTooltip:AddLine("|cFFFF8800Open your bags|r to load this item.", 1, 1, 1)
+        GameTooltip:AddLine(COL.ORANGE .. "Open your bags|r to load this item.", white:GetRGB())
     end
-    GameTooltip:AddLine("|cFFFF8800Shift-Left-click|r to hide from this strip.", 1, 1, 1)
+    GameTooltip:AddLine(COL.ORANGE .. "Shift-Left-click|r to hide from this strip.", white:GetRGB())
     GameTooltip:Show()
 end
 
@@ -611,7 +612,7 @@ local function MakeButton(parent, index)
         AH.db.sellBlocklist = AH.db.sellBlocklist or {}
         AH.db.sellBlocklist[data.itemID] = true
         VUI.Print(AH.TAG, "Hidden from the sell strip: " .. data.link
-            .. "  |cFF888888(/ah blocked to manage)|r")
+            .. "  " .. VUI.COL.GRAY .. "(/ah blocked to manage)|r")
         Refresh()
     end)
     -- A restyling addon may change b.icon and b.border (textures only). The button's secure
@@ -828,7 +829,7 @@ end
 ----------------------------------------------------------------
 function AH.SellStrip.Diag()
     local P = function(s) VUI.Print(AH.TAG, s) end
-    local function yn(v) return v and "|cFF00FF00Y|r" or "|cFFFF4444N|r" end
+    local function yn(v) return v and VUI.COL.GREEN .. "Y|r" or VUI.COL.RED .. "N|r" end
     local function nm(f)
         if not f then return "none" end
         local ok, n = pcall(f.GetName, f)
@@ -924,9 +925,9 @@ function AH.SellStrip.ListBlocked()
     VUI.Print(AH.TAG, "Sell-strip blocklist:")
     for itemID in pairs(block) do
         local name = C_Item.GetItemNameByID and C_Item.GetItemNameByID(itemID)
-        VUI.Print(AH.TAG, ("  |cFFFFFF00%s|r (id %d)"):format(name or "item", itemID))
+        VUI.Print(AH.TAG, ("  " .. VUI.COL.YELLOW .. "%s|r (id %d)"):format(name or "item", itemID))
     end
-    VUI.Print(AH.TAG, "  |cFF888888/ah blocked clear|r to empty the list.")
+    VUI.Print(AH.TAG, "  " .. VUI.COL.GRAY .. "/ah blocked clear|r to empty the list.")
 end
 
 function AH.SellStrip.ClearBlocked()

@@ -69,7 +69,7 @@ local LABEL          = "Reagents Value:"
 -- across them would have been false precision. This is THE knob for the vertical
 -- position (see the single-point anchor in Build); nothing else affects it.
 local LINE_GAP_Y     = 4
-local UNPRICED_COLOR = "|cFFFF8800"   -- the orange used for restart/warning hints
+local UNPRICED_COLOR = VUI.COL.ORANGE   -- Blizzard's orange, for the warning hint
 -- The holder uses GameFontNormal, which is Blizzard's GOLD label font -- correct for
 -- the "Reagents Value:" label, wrong for the amount: every other currency figure in
 -- the UI (and our own tooltip price) renders WHITE. So the label inherits the font
@@ -80,10 +80,8 @@ local UNPRICED_COLOR = "|cFFFF8800"   -- the orange used for restart/warning hin
 -- the same thing (it wraps GetMoneyString's texture output in WHITE_FONT_COLOR), and
 -- its coins render in their natural colours.
 --
--- A literal rather than Blizzard's WHITE_FONT_COLOR:WrapTextInColorCode(): one less
--- global to depend on, matches UNPRICED_COLOR directly above, and keeps the headless
--- suite from needing a colour-mixin stub to assert on the output.
-local AMOUNT_COLOR   = "|cFFFFFFFF"
+-- Blizzard's white (HIGHLIGHT_FONT_COLOR via Lib's VUI.COL, the owner's named-colours standard).
+local AMOUNT_COLOR   = VUI.COL.HIGHLIGHT
 
 local panel            -- our fontstring holder, created once
 local elapsed   = 0
