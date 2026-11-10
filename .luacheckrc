@@ -108,6 +108,8 @@ read_globals = {
     -- v1.72.0 guild and friends (Automation.lua, Social.lua)
     "IsGuildMember", "AcceptGroup", "C_ChatInfo", "C_PartyInfo", "C_GuildInfo", "Ambiguate", "GUILD",
     "C_BattleNet", "C_CreatureInfo", "C_FriendList",
+    -- Trainer.lua's pet-trainer title fallback (GlobalStrings PET)
+    "PET",
     "BattlePetTooltip", "FloatingBattlePetTooltip", "BattlePetToolTip_Show",
     "FloatingBattlePet_Toggle",
     -- Item / container / inventory
