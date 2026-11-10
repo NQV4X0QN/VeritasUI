@@ -1201,8 +1201,11 @@ local TRANSFORM_KINDS = ForThisGame({
     } },
     -- Owner, 2026-11-01: groups, not one row per item, so a new costume or toy is one more ID in
     -- its group rather than one more row.
+    -- WoW Forever (audit 2026-11-09, wago.tools SpellName build 1.60.1.70862): of these auras it has only the
+    -- Hallowed Wand costumes and Noggenfogger Elixir, so those rows name only them there, and Toys (0 of 8) goes.
     { id = "holiday", label = "Holiday Costumes",
-      tip = "Hallowed Wand, Weighted Jack-o'-Lantern, Noblegarden Bunny and Pilgrim's Turkey.", ids = {
+      tip = "Hallowed Wand, Weighted Jack-o'-Lantern, Noblegarden Bunny and Pilgrim's Turkey.",
+      forever = { tip = "Hallowed Wand." }, ids = {
         44212,                               -- Weighted Jack-o'-Lantern
         172010, 218132, 191703, 24732, 191210, 172015, 24735, 24736, 191698, 191700,   -- Hallowed Wand
         172008, 24712, 24713, 191701, 191211, 24710, 24711, 191686, 191688, 24708,
@@ -1211,7 +1214,7 @@ local TRANSFORM_KINDS = ForThisGame({
         61781,                               -- Pilgrim's Turkey
     } },
     { id = "toys", label = "Toys", tip = "Aqir Egg Cluster, Atomic Recalibrator and Regoblinator, Detoxified "
-      .. "Blight Grenade, Lucille's Sewing Needle and Spraybots.", ids = {
+      .. "Blight Grenade, Lucille's Sewing Needle and Spraybots.", retailOnly = true, ids = {
         318452,                              -- Aqir Egg Cluster
         399502,                              -- Atomic Recalibrator
         1215363,                             -- Atomic Regoblinator
@@ -1220,6 +1223,7 @@ local TRANSFORM_KINDS = ForThisGame({
         301892, 301893, 301894,              -- Spraybots
     } },
     { id = "consumables", label = "Consumables", tip = "Cursed Pickaxe, Noggenfogger Elixir and Reflecting Prism.",
+      forever = { tip = "Noggenfogger Elixir." },
       ids = {
         454405,                              -- Cursed Pickaxe
         16593, 1223630, 16595, 1223629, 1223631,   -- Noggenfogger Elixir
