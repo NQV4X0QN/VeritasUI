@@ -184,15 +184,31 @@ end
 local SLOTS = { "Head", "Neck", "Shoulder", "Back", "Chest", "Wrist", "Hands", "Waist", "Legs", "Feet",
     "Finger0", "Finger1", "Trinket0", "Trinket1", "MainHand", "SecondaryHand" }
 local lit = {}
+local litFor   -- the stat frame whose tooltip lit them
+
+-- Cleared once the tooltip is no longer up for that stat (the mouse left it, the window closed): a frame of
+-- ours checks each frame while anything is lit. ⚠ Not a HookScript on GameTooltip (audit 2026-11-09 Q7): a
+-- script hook on a shared Blizzard frame runs our code inside Blizzard's own calls (landmine 2: a GameTooltip
+-- hook once blocked using bag items until /reload).
+local watcher = CreateFrame("Frame")
+watcher:Hide()
 
 local function Unlight()
     for button in pairs(lit) do
         pcall(button.UnlockHighlight, button)
         lit[button] = nil
     end
+    litFor = nil
+    watcher:Hide()
 end
 
-local function Light(stat)
+watcher:SetScript("OnUpdate", function()
+    local tip = GameTooltip
+    local up = tip and litFor and tip:IsShown() and tip:IsOwned(litFor)
+    if not up then Unlight() end
+end)
+
+local function Light(stat, owner)
     Unlight()
     if not On("charStatHighlight") or not (C_Item and C_Item.GetItemStats) then return end
     for _, name in ipairs(SLOTS) do
@@ -207,13 +223,17 @@ local function Light(stat)
             end
         end
     end
+    if next(lit) then
+        litFor = owner
+        watcher:Show()
+    end
 end
 
 local function OnStatTooltip(frame)
     if not (GameTooltip and GameTooltip:IsOwned(frame)) then return end
     local stat = StatFor(frame)
     if not stat then return end
-    if frame.unit ~= "pet" then Light(stat) end
+    if frame.unit ~= "pet" then Light(stat, frame) end
     if AddDiminishing(stat) then GameTooltip:Show() end
 end
 
@@ -223,7 +243,7 @@ local hookedFrames = setmetatable({}, { __mode = "k" })
 local function OnStatEnter(frame)
     if not (GameTooltip and GameTooltip:IsOwned(frame)) or frame.unit == "pet" then return end
     local stat = StatFor(frame)
-    if stat then Light(stat) end
+    if stat then Light(stat, frame) end
 end
 local function OnLabelSet(frame)
     if type(frame) ~= "table" or hookedFrames[frame] or not frame.HookScript then return end
@@ -251,4 +271,3 @@ if not Install() then
     waiter:RegisterEvent("ADDON_LOADED")
     waiter:SetScript("OnEvent", function(self) if Install() then self:UnregisterAllEvents() end end)
 end
-if GameTooltip then GameTooltip:HookScript("OnHide", function() if next(lit) then Unlight() end end) end
