@@ -133,6 +133,9 @@ end
 
 local NORMAL = function() return (NORMAL_FONT_COLOR or { r = 1, g = 0.82, b = 0 }) end
 local GREY = function() return (GRAY_FONT_COLOR or { r = 0.5, g = 0.5, b = 0.5 }) end
+-- The zone on the right of each row: Blizzard's white, as the guild roster's zone column (ZoneText inherits
+-- GameFontHighlight, Blizzard_Communities/GuildRoster.xml:25 live; audit 2026-11-09 Q2).
+local ZONE = function() return (HIGHLIGHT_FONT_COLOR or { r = 1, g = 1, b = 1 }) end
 
 local function StatusTag(afk, dnd)
     if afk then return " " .. (_G.CHAT_FLAG_AFK or "<Away>") end
@@ -172,8 +175,9 @@ local function GuildLines()
                     if notes and Plain(note) and type(note) == "string" and note ~= "" then
                         left = left .. format(" %s(%s)|r", Hex(grey), note)
                     end
+                    local z = ZONE()
                     members[#members + 1] = { left = left, right = Plain(zone) and zone or "", lr = r, lg = g, lb = b,
-                        rr = 0.8, rg = 0.8, rb = 0.8, name = name }
+                        rr = z.r, rg = z.g, rb = z.b, name = name }
                 end
             end
         end
@@ -195,7 +199,7 @@ local function GuildLines()
 end
 
 local function FriendLines()
-    local gold, grey = NORMAL(), GREY()
+    local gold, grey, zone = NORMAL(), GREY(), ZONE()
     local lines, people, more = {}, {}, 0
     local function Add(p) if #people >= MAX_ROWS then more = more + 1 else people[#people + 1] = p end end
     -- Battle.net friends playing WoW.
@@ -219,7 +223,7 @@ local function FriendLines()
             Add({ left = acc.accountName .. who .. StatusTag(acc.isAFK == true or ga.isGameAFK == true,
                 acc.isDND == true or ga.isGameBusy == true),
                 right = Plain(ga.areaName) and ga.areaName or "", lr = fb.r, lg = fb.g, lb = fb.b,
-                rr = 0.8, rg = 0.8, rb = 0.8, bnet = acc.accountName,
+                rr = zone.r, rg = zone.g, rb = zone.b, bnet = acc.accountName,
                 name = char and (Plain(ga.realmName) and ga.realmName and ga.realmName ~= ""
                     and (char .. "-" .. ga.realmName) or char) })
         end
@@ -233,7 +237,7 @@ local function FriendLines()
             local r, g, b = ClassRGB(ClassFileFromName(fi.className))
             local level = Plain(fi.level) and fi.level and format(" %s%d|r", Hex(grey), fi.level) or ""
             Add({ left = fi.name .. level .. StatusTag(fi.afk == true, fi.dnd == true),
-                right = Plain(fi.area) and fi.area or "", lr = r, lg = g, lb = b, rr = 0.8, rg = 0.8, rb = 0.8,
+                right = Plain(fi.area) and fi.area or "", lr = r, lg = g, lb = b, rr = zone.r, rg = zone.g, rb = zone.b,
                 name = fi.name })
         end
     end

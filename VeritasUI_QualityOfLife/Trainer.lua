@@ -647,11 +647,8 @@ local function ShowTip(self)
     elseif now and #now > 0 then
         GameTooltip_SetTitle(GameTooltip, "New Skills at Your Trainer")
         for _, e in ipairs(now) do
-            -- Skills in tooltip green (GREEN_FONT_COLOR, the green of Blizzard's tooltip instruction lines). The
-            -- font colours come from the client's colour table, not Lua, so the fallback is its value.
-            local green = GREEN_FONT_COLOR
-            if green then GameTooltip:AddLine(SkillName(e), green:GetRGB())
-            else GameTooltip:AddLine(SkillName(e), 0.1, 1, 0.1) end
+            -- Skills in tooltip green (GREEN_FONT_COLOR, the green of Blizzard's tooltip instruction lines).
+            GameTooltip:AddLine(SkillName(e), GREEN_FONT_COLOR:GetRGB())
         end
     else
         -- Only the next level's skills, in the trainer's order, in Blizzard's grey for "not ready yet", with

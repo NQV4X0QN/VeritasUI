@@ -445,7 +445,7 @@ local function RenderCoinLine(tooltip, price)
     if not name then return false end
 
     -- Friz label line (matches native "Sell Price:" label font). Reserves the row.
-    tooltip:AddLine(PRICE_PREFIX, 1, 1, 1)
+    tooltip:AddLine(PRICE_PREFIX, HIGHLIGHT_FONT_COLOR:GetRGB())
 
     -- NumLines is only correct once the label row exists, so this one cannot be hoisted.
     -- Returning true here is deliberate, not a copy of the bug fixed above: the label row is
@@ -505,7 +505,7 @@ local function AppendPriceForKey(tooltip, key)
     if not RenderCoinLine(tooltip, price) then
         -- Self-render path unavailable (no tooltip name/anchor) → plain text-coin line.
         local coins = AH.Money.Format(price) or tostring(price)
-        tooltip:AddLine(PRICE_PREFIX .. "  " .. coins, 1, 1, 1)
+        tooltip:AddLine(PRICE_PREFIX .. "  " .. coins, HIGHLIGHT_FONT_COLOR:GetRGB())
     end
     if extras then tooltip:AddLine(extras) end
 end
@@ -714,7 +714,7 @@ local function AppendPetPrice(petTooltip, speciesID)
     -- It won't be pixel-identical to a GameTooltip money frame, but BattlePetTooltip
     -- has no native money line to match against anyway.
     local coins = AH.Money.Format(price) or tostring(price)
-    petTooltip:AddLine("Auction:  " .. coins, 1, 1, 1)
+    petTooltip:AddLine("Auction:  " .. coins, HIGHLIGHT_FONT_COLOR:GetRGB())
     if extras then petTooltip:AddLine(extras) end
 end
 

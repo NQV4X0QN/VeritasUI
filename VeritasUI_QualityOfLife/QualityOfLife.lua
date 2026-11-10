@@ -4065,12 +4065,12 @@ local function TargetLine(tooltip, unit)
     local t = unit .. "target"
     if not Read(UnitExists, t) then return end
     if Read(UnitIsUnit, t, "player") then
-        tooltip:AddLine((TARGET or "Target") .. ": You", 0.1, 1, 0.1)
+        tooltip:AddLine((TARGET or "Target") .. ": You", GREEN_FONT_COLOR:GetRGB())
         return
     end
     local name = Read(UnitName, t)
     if not name then return end
-    local r, g, b = 1, 1, 1
+    local r, g, b = HIGHLIGHT_FONT_COLOR:GetRGB()
     if Read(UnitIsPlayer, t) then
         local _, class = Read(UnitClass, t)
         local c = class and C_ClassColor and C_ClassColor.GetClassColor and Read(C_ClassColor.GetClassColor, class)
