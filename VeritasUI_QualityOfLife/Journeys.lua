@@ -396,8 +396,8 @@ local function OpenWatchedFactionPage(bar)
     OpenFactionPage(factionID)
 end
 -- Since FU-1 this no longer opens a CLOSED Character Info (see OpenReputationPane); only the overlay's secure
--- click does. The retired ElvUI bar was its only other caller.
-VUI.OpenWatchedFactionPage = function(bar)   -- also ElvUI's reputation bar (VeritasUI_ElvUI)
+-- click does. A retired VeritasUI bar module was its only other caller.
+VUI.OpenWatchedFactionPage = function(bar)   -- also that retired module's reputation bar
     if Enabled() then OpenWatchedFactionPage(bar) end
 end
 

@@ -23,10 +23,10 @@ local C_Navigation  = C_Navigation
 local C_SuperTrack  = C_SuperTrack
 -- Midnight moved IsAddOnLoaded under C_AddOns; shim to the modern path with a
 -- legacy-global fallback (mirrors VeritasUI_AuctionHouse/UI/SellStrip.lua). Used
--- by the /way TomTom-conflict check at PLAYER_LOGIN. Without the shim, a future
--- build that drops the global would make the check silently conclude "TomTom
--- absent" and re-register /way, re-creating the slash-command clash the v1.6.28
--- TomTom detection exists to prevent.
+-- by the /way conflict check at PLAYER_LOGIN. Without the shim, a future
+-- build that drops the global would make the check silently conclude "the other
+-- AddOn is absent" and re-register /way, re-creating the slash-command clash the
+-- v1.6.28 detection exists to prevent.
 local IsAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
 
 ----------------------------------------------------------------
@@ -279,7 +279,7 @@ local db   -- ACCOUNT-wide table
 local cdb  -- PER-CHARACTER table; nil before PLAYER_LOGIN
 
 -- Options another addon has taken over (VUI.SetOptionUnavailable, set before InitializeOptions).
--- Callers: this file's own TomTom check for /way at PLAYER_LOGIN, and Lib's Conflicts.lua (v1.79.0) for what
+-- Callers: this file's own /way conflict check at PLAYER_LOGIN, and Lib's Conflicts.lua (v1.79.0) for what
 -- another AddOn is already doing; a retired VeritasUI module also marked the merchant
 -- features. The saved value is left alone; only whether the feature runs this session changes.
 local function OptionUnavailable(key)
@@ -341,8 +341,8 @@ end
 -- SELL_BATCH grey items, then waits for BAG_UPDATE_DELAYED (or
 -- the SELL_RETRY_SEC fallback) to re-enter and continue.
 --
--- Gold accounting uses summed item sell prices (the same pattern
--- as Scrap, jaliborc/Scrap addons/merchant/button.lua).  At sell
+-- Gold accounting uses summed item sell prices (the pattern another
+-- junk-selling AddOn's merchant button uses).  At sell
 -- start we snapshot saleTotal = sum of every grey item's
 -- sellPrice * stackCount.  On each call we recompute the remaining
 -- junk value (excluding locked items mid-sale); the delta
@@ -390,7 +390,7 @@ end
 -- has actually removed (or rejected) anything.  Counting locked items
 -- means we only declare the sale complete when items are physically gone
 -- from the bag, which is the only signal that proves the server accepted
--- the request.  Scrap's GetReport excludes locked items and would have
+-- the request.  A report that excludes locked items would have
 -- the same premature-print risk at any merchant that rejects a sell.
 -- Blizzard's bag menu "Ignore this bag" for junk selling (SELL_ALL_JUNK_ITEMS_EXCLUDE_FLAG): the backpack keeps it
 -- in C_Container.GetBackpackSellJunkDisabled, every other bag in Enum.BagSlotFlags.ExcludeJunkSell
@@ -4600,8 +4600,8 @@ local function InitializeOptions()
         end
     end
 
-    -- An option another addon has taken over (VUI.SetOptionUnavailable; today only /way, when
-    -- TomTom is installed -- the retired VeritasUI_ElvUI also used it for repair and grey-selling):
+    -- An option another addon has taken over (VUI.SetOptionUnavailable; /way when another AddOn
+    -- handles it, and Lib's Conflicts.lua -- a retired VeritasUI module also used it for repair and grey-selling):
     -- greyed, with the reason added to the tooltip. The runtime gates are SellJunkOn / RepairOn.
     local function TipWithReason(tip, key)
         local reason = OptionUnavailable(key)
@@ -5113,7 +5113,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         db.charLabelClassColor = nil   -- v1.69.0: the Class-Colored Labels option is gone (owner)
         db.autoAcceptGuildInvites = nil   -- v1.81.0: replaced by Accept Group Invites From (Invites.lua)
         if _G.TomTom or (IsAddOnLoaded and IsAddOnLoaded("TomTom")) then
-            VUI.SetOptionUnavailable(ADDON_NAME, "wayCommand", "TomTom is installed and handles /way.")
+            VUI.SetOptionUnavailable(ADDON_NAME, "wayCommand", "Another AddOn is installed that handles /way.")
         end
         InitializeOptions()
         -- Belt-and-suspenders: if we crashed or disconnected while the AFK
@@ -5160,10 +5160,10 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         if db.timestampAllMessages then SetTimestampAll(true) end
         if db.charEnchants or db.charDurability or db.charMythicRating then SetupCharacterSheet() end
 
-        -- /way: registered only while the option is on and TomTom is absent (both addons claim it).
+        -- /way: registered only while the option is on and the other /way AddOn is absent (both claim it).
         if OptionUnavailable("wayCommand") then
             VUI.Print("Quality of Life",
-                "TomTom detected — " .. VUI.COL.YELLOW .. "/way|r is handled by TomTom.")
+                VUI.COL.YELLOW .. "/way|r is handled by another AddOn you have installed.")
         elseif db.wayCommand then
             SetWayCommand(true)
         end
@@ -5188,8 +5188,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- depends on the other.  This matters at repair-only vendors
         -- such as Delver's Supplies crates in Delves, where Blizzard
         -- disables item sales entirely; AutoRepair must still fire.
-        -- Same pattern as Scrap (Button:OnMerchant in
-        -- jaliborc/Scrap addons/merchant/button.lua).
+        -- Same pattern as another junk-selling AddOn's merchant
+        -- handler.
         --
         -- GET_ITEM_INFO_RECEIVED is registered only for the merchant visit:
         -- it fires far too often to listen to globally, and it's only needed
@@ -5611,9 +5611,9 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
     end
 end
 
--- ── /way — TomTom-compatible waypoint command ────────────────
--- Registered at PLAYER_LOGIN to detect TomTom conflicts; see PLAYER_LOGIN handler.
--- Supported formats (mirrors TomTom syntax):
+-- ── /way — waypoint command in the common guide format ──────
+-- Registered at PLAYER_LOGIN, after the conflict check; see PLAYER_LOGIN handler.
+-- Supported formats (the syntax guides use):
 --   /way #2351 45.2 56.3              -- explicit map ID
 --   /way #2351 45.2 56.3 Some Label   -- with optional label
 --   /way 45.2 56.3                    -- current zone
