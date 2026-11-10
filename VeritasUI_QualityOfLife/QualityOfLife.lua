@@ -4942,7 +4942,8 @@ local function InitializeOptions()
 
     Header("General")
     AddCheckbox("afkScreen", "AFK Screen",
-        "When you go AFK, hides the UI and slowly circles the camera, showing your name, level, item level and zone. Also helps prevent screen burn-in.",
+        "When you go AFK, hides the UI and slowly circles the camera, showing your name, level, "
+            .. (VUI.IS_FOREVER and "guild rank" or "item level") .. " and zone. Also helps prevent screen burn-in.",
         function(value)
             if value then AFK_StartPoll() end
         end)
