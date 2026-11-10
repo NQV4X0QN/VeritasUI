@@ -4820,6 +4820,14 @@ local function InitializeOptions()
             if value then RepFollowStart() else RepFollowStop() end
         end)
 
+    -- WoW Forever: the bar clicks of Journeys Shortcuts work there (owner uses them), but there is no Journeys
+    -- window, so the same option is offered as Bar Shortcuts (audit 2026-11-09 Q5, owner). Retail's row is below.
+    if VUI.IS_FOREVER then
+        AddCheckbox("journeysShortcuts", "Bar Shortcuts",
+            "Click the experience bar to open Character Info, the reputation bar to open that faction's page, "
+            .. "or the honor bar to open the PvP window.")
+    end
+
     -- WoW Forever only: Retail characters learn their class spells without a trainer. Under Progress (it is
     -- about your level), which in Forever would otherwise hold Track Latest Reputation alone (v1.70.0).
     if VUI.IS_FOREVER then
