@@ -11,7 +11,7 @@
 -- ⚠ v1.8.0 believed that synchronous fire was WHY manual scanning worked: that the
 -- hardware-event execution context (propagated through synchronous calls, lost
 -- across C_Timer / coroutine / OnEvent boundaries) was what let ReplicateItems()
--- through, following Auctionator's click-fired model. v1.9.5 FALSIFIED this from a
+-- through, as other auction AddOns fire their scans. v1.9.5 FALSIFIED this from a
 -- live repro: the server silently drops EVERY ReplicateItems() request for ~12
 -- minutes after a long-idle login and then recovers on its own, regardless of how
 -- the call was fired. The fire path is not a workaround for anything. It stays

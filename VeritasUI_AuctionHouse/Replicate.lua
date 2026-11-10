@@ -13,14 +13,13 @@
 --                                        pagination enumerates the whole AH as per-item
 --                                        summaries (minPrice + totalQuantity).
 --
--- Auctionator ships BOTH scans and defaults to the browse one: Source/Config/Main.lua has
--- REPLICATE_SCAN = false, its single Full Scan button branches on that option
--- (Tabs/Auctionator/Mixins/ScanButton.lua), and replicate is opt-in via an Advanced
--- checkbox (Config/Mixins/Advanced.lua). The replicate code is maintained, not dead — it
+-- Another auction AddOn ships BOTH scans and defaults to the browse one: its single Full
+-- Scan button branches on an option that is off by default, and replicate is opt-in via an
+-- advanced checkbox. Its replicate code is maintained, not dead — it
 -- buys per-auction detail a summary cannot — but it is not what their users run.
 --
 -- MEASURED, owner's PC: with our replicate scan freshly failed ("request was lost", zero
--- event pulses), Auctionator's browse scan succeeded seconds later on the same character,
+-- event pulses), another auction AddOn's browse scan succeeded seconds later on the same character,
 -- realm and session — 20,056 items, comparable to our usual 19-25k. So the browse path
 -- works at the exact moment this one is dead. That is the strongest lead we have ever had
 -- on the first-scan-of-the-day hang, and it is an ENDPOINT difference, not a timing,
@@ -128,8 +127,8 @@ local LINK_RETRY_BUDGET     = 120       -- hard cap (seconds) on the whole retry
                                         -- loop. We request at deferral time (see the
                                         -- RequestLoadItemDataByID call beside `requestedIDs`) AND
                                         -- re-request every pass for any row still cold (see the
-                                        -- `elseif ent.id` branch in the retry loop). Auctionator's
-                                        -- LoadItemData does the same thing on a 0.4s ticker; we do it
+                                        -- `elseif ent.id` branch in the retry loop). Another auction
+                                        -- AddOn's item-data loader does the same thing on a 0.4s ticker; we do it
                                         -- on a LINK_RETRY_WAIT ticker. The mechanism claimed missing
                                         -- is present in both places.
                                         --
@@ -177,7 +176,7 @@ local LINK_RETRY_BUDGET     = 120       -- hard cap (seconds) on the whole retry
 --
 --  KEPT, and as of v1.12.7 it has a real future use rather than just a null baseline:
 --  the browse-query scan path (see the FINDING block at the top of this file) DOES run
---  inside the throttled-message system — Auctionator routes every SendBrowseQuery and
+--  inside the throttled-message system — another auction AddOn routes every SendBrowseQuery and
 --  RequestMoreBrowseResults through a queue for exactly that reason. So these events go
 --  from inert to load-bearing the moment that path lands. Until then, the null baseline
 --  still makes a NON-blank log decisive where it was previously ambiguous.
@@ -279,7 +278,7 @@ local mainCommit            -- { kept, rows } once the phase-1 commit lands (set
 --  discarded scans whose data arrived a few seconds later, which is what made
 --  scanning fail roughly half the time.
 --
---  The proven model (what Auctionator does) is: NO timeout. Fire the request,
+--  The proven model (what other auction AddOns do) is: NO timeout. Fire the request,
 --  wait for the event however long it takes, process it when it lands.
 --
 --  The only real risk — `scanning` left stuck true if the event genuinely never
@@ -918,7 +917,7 @@ end
 --  readiness signal distinguishes a doomed request from a good one. v1.8.0
 --  removed auto-scan-on-open (the failing context) entirely; every scan is now
 --  user-initiated and fires DIRECTLY and SYNCHRONOUSLY from its trigger —
---  the Scan button's OnClick (hardware-event stack, Auctionator's model) or
+--  the Scan button's OnClick (hardware-event stack, as other auction AddOns fire it) or
 --  /ah scan. Do not reintroduce a deferred/gated fire path.
 ----------------------------------------------------------------
 local function CancelStallDetector()
@@ -1031,18 +1030,18 @@ local function DoFire()
     -- ⚠ DO NOT stamp the scan floor here. v1.12.6 did, and it was REVERTED in
     -- v1.12.7 after the premise collapsed.
     --
-    -- The idea was Auctionator parity: its FullScan stamps TimeOfLastReplicateScan
+    -- The idea was parity with another auction AddOn: its full scan stamps its last-scan time
     -- on every ATTEMPT, before the call, so it can never re-ask inside 15 minutes.
     -- The reasoning was that a lost request means the server is rate-limiting us and
     -- we were hammering it.
     --
     -- WHAT KILLED IT (measured 2026-08-03, owner's PC): with our replicate scan
-    -- freshly failed, Auctionator's full scan succeeded seconds later — 20,056 items.
-    -- But it ran in "summary mode", i.e. IncrementalScan, which does NOT call
+    -- freshly failed, that AddOn's full scan succeeded seconds later — 20,056 items.
+    -- But it ran in "summary mode", which does NOT call
     -- ReplicateItems at all: it sends an empty SendBrowseQuery and paginates. So the
     -- comparison never tested this endpoint, and the floor was copied from the half
-    -- of the reference implementation Auctionator ships DISABLED
-    -- (Source/Config/Main.lua: REPLICATE_SCAN = false, opt-in under Advanced).
+    -- of the reference implementation that AddOn ships DISABLED (opt-in under its
+    -- advanced options).
     --
     -- With no evidence of an account-level replicate quota, a 15-minute lockout after
     -- a failure cost the user a quarter of an hour and bought nothing. The evidence
@@ -1073,7 +1072,7 @@ end
 --
 --  Fires DIRECTLY and SYNCHRONOUSLY from whatever called it. From the Scan
 --  button's OnClick that preserves the hardware-event execution context all the
---  way to ReplicateItems() (Auctionator's model — its click-fired scan never
+--  way to ReplicateItems() (as other auction AddOns fire it — their click-fired scan never
 --  exhibited the first-open hang). /ah scan takes the identical path.
 --
 --  The 15-min floor is ALWAYS honored (no force override — bypassing it fires

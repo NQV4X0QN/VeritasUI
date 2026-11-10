@@ -6,7 +6,7 @@
 -- and works away from an auctioneer — same contract as Tooltip.lua. Nothing here
 -- touches the scan engine.
 --
--- ── Blizzard surface (verified against Auctionator's Source_Mainline/CraftingInfo,
+-- ── Blizzard surface (verified against another auction AddOn's crafting-info code,
 --    which does the same job; API shapes taken from there rather than guessed) ──
 --   * Frame is LoadOnDemand (Blizzard_ProfessionsCustomerOrders), so it does not
 --     exist at PLAYER_LOGIN. The hook point is
@@ -23,14 +23,14 @@
 --     still required. That is why the screenshot case (every slot 0/N) still shows
 --     a number: it is the cheapest-quality cost of filling the whole recipe.
 --
--- ⚠ DELIBERATE DIVERGENCE FROM AUCTIONATOR: it prices each reagent as
+-- ⚠ DELIBERATE DIVERGENCE FROM THAT ADDON: it prices each reagent as
 --    `vendorPrice or auctionPrice`, preferring a vendor. We have no vendor-price
 --    cache, so this is AUCTION-ONLY. That is also what was actually asked for
 --    ("how much each item sells for on the auction house"), so it is a feature
 --    boundary rather than a gap — but do not read our number as "cheapest way to
 --    source these", because for vendor-stocked reagents it can be much higher.
 --
--- ⚠ UNPRICED REAGENTS ARE COUNTED AND SHOWN. Auctionator contributes 0 for a
+-- ⚠ UNPRICED REAGENTS ARE COUNTED AND SHOWN. That AddOn contributes 0 for a
 --    reagent it has no price for, silently, which makes a half-known recipe look
 --    cheap rather than unknown. Since the owner uses the price-age line to decide
 --    when to rescan, a silently-low total would actively mislead: we append
@@ -54,7 +54,7 @@ local CreateFrame = CreateFrame
 
 AH.CraftingOrder = {}
 
--- 0.1s matches Lib's HOVER_FADE_POLL_RATE. Auctionator recomputes every frame;
+-- 0.1s matches Lib's HOVER_FADE_POLL_RATE. That AddOn recomputes every frame;
 -- reagent allocation only changes on a click, so 10 Hz is imperceptible and does
 -- ~6x less work at 60fps. Not a per-frame OnUpdate, deliberately.
 local REFRESH_RATE   = 0.1
@@ -76,7 +76,7 @@ local UNPRICED_COLOR = "|cFFFF8800"   -- the orange used for restart/warning hin
 -- and only the amount is wrapped.
 --
 -- Safe to wrap the whole coin string even though it contains |A:coin-*| atlas
--- markup: inline textures are not tinted by |c| colour codes. Auctionator relies on
+-- markup: inline textures are not tinted by |c| colour codes. That AddOn relies on
 -- the same thing (it wraps GetMoneyString's texture output in WHITE_FONT_COLOR), and
 -- its coins render in their natural colours.
 --
@@ -278,7 +278,7 @@ local function Build()
     panel = CreateFrame("Frame", nil, form)
     panel:SetSize(400, 16)
     -- Under the reagent list, matching where the native layout leaves a gap.
-    -- ONE point, deliberately. Auctionator anchors this with two
+    -- ONE point, deliberately. That AddOn anchors this with two
     -- (LEFT..reagents,LEFT,0,-10 plus TOP..reagents,BOTTOM), which sets the
     -- vertical position twice with different values -- the -10 on the LEFT point
     -- fights the 0 on the TOP point. A single TOPLEFT fully determines a

@@ -690,7 +690,7 @@ end
 ----------------------------------------------------------------
 --  Battle-pet tooltips
 --
---  VERIFIED (against Auctionator's clean-room reference + Blizzard API usage):
+--  VERIFIED (against another auction AddOn's clean-room reference + Blizzard API usage):
 --  battle-pet tooltips do NOT flow through TooltipDataProcessor /
 --  Enum.TooltipDataType.BattlePet. The correct hook is the global function
 --  BattlePetToolTip_Show(speciesID, ...) — Blizzard hands us the speciesID as

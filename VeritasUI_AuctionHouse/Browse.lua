@@ -8,11 +8,11 @@
 -- falsified (see ArmStallDetector and the SKILL landmines).
 --
 -- MEASURED 2026-08-03, owner's PC: with our replicate scan freshly failed (zero event
--- pulses, no data), Auctionator's full scan returned 20,056 items seconds later on the
--- same character, realm and session. Its chat line read "summary mode" — that is its
--- IncrementalScan, which never calls ReplicateItems: it sends an EMPTY SendBrowseQuery
--- and paginates. Auctionator ships replicate DISABLED (Source/Config/Main.lua:
--- REPLICATE_SCAN = false, opt-in under Advanced), so its users are on this path.
+-- pulses, no data), another auction AddOn's full scan returned 20,056 items seconds later on the
+-- same character, realm and session. Its chat line read "summary mode" — a scan that
+-- never calls ReplicateItems: it sends an EMPTY SendBrowseQuery
+-- and paginates. That AddOn ships replicate DISABLED (opt-in under its advanced
+-- options), so its users are on this path.
 --
 -- So the hang is an ENDPOINT difference. This file is that endpoint.
 --
@@ -36,7 +36,7 @@
 --
 -- ── ⚠ OPEN QUESTION, DO NOT ASSUME SETTLED ──
 -- Whether browse's `minPrice` is buyout-only or can reflect a BID. Replicate skips
--- bid-only auctions deliberately. Auctionator reads `bidAmount` as a separate field,
+-- bid-only auctions deliberately. Another auction AddOn reads `bidAmount` as a separate field,
 -- which SUGGESTS minPrice is buyout — but that is inference from field naming, not a
 -- measurement, and this project has been burned by exactly that (see the MenuUtil
 -- naming-pattern note in SKILL.md). `/ah compare` exists to settle it against real
@@ -118,7 +118,7 @@ AH.Browse = {}
 -- Blizzard streams browse results in pages. A results table at or below this size is
 -- treated as the START of a fresh set rather than an incremental update: the UPDATED
 -- event also fires for the item-specific searches Blizzard's own UI runs, and those
--- return small sets. Auctionator uses 500 for the same discrimination.
+-- return small sets. Another auction AddOn uses 500 for the same discrimination.
 local BATCH_SIZE = 500
 
 local scanning   = false   -- a browse scan is in progress
@@ -142,7 +142,7 @@ local startedAt
 --
 --  Browse queries DO run inside Blizzard's throttled-message system — unlike
 --  ReplicateItems, which was measured to produce no throttled-family events at all
---  (PROBE_LIBRARY §5). Auctionator routes every SendBrowseQuery and
+--  (PROBE_LIBRARY §5). Another auction AddOn routes every SendBrowseQuery and
 --  RequestMoreBrowseResults through a queue for exactly this reason, and our own
 --  AUCTIONHOUSE_DESIGN.md §"Phase 1" specified this queue before it was deleted at
 --  v1.7.0 as Shopping-tab collateral. This is that queue, restored for the path that
@@ -321,8 +321,8 @@ local function AddPrices(results)
             local _watch = AH.Browse._WatchResult
             if not (type(qty) == "number" and qty > 0) then
                 if _watch then _watch(r, AH.DB.MakeKeyFromItemKey(r.itemKey), "SKIPPED: nothing for sale") end
-                -- Legitimate: a listing with nothing actually available. Auctionator
-                -- skips these too.
+                -- Legitimate: a listing with nothing actually available. Other auction AddOns
+                -- skip these too.
                 skipNoQty = skipNoQty + 1
             elseif not (type(unit) == "number" and unit > 0) then
                 if _watch then _watch(r, AH.DB.MakeKeyFromItemKey(r.itemKey), "SKIPPED: no buyout price") end

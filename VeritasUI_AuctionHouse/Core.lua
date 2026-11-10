@@ -305,7 +305,7 @@ end
 --  buyout-only, or does it include BIDS? Replicate deliberately skips bid-only
 --  auctions, so if browse were pricing bids it would read systematically LOWER.
 --
---  Auctionator reading `bidAmount` as a separate field suggests minPrice is buyout, but
+--  Another auction AddOn reading `bidAmount` as a separate field suggests minPrice is buyout, but
 --  that is a naming pattern, not a measurement — the same class of reasoning this
 --  project has already been burned by. Hence this.
 --
@@ -841,7 +841,7 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
                 AH.Scan and AH.Scan.EngineIsPinned() and "pinned" or "default"))
             VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "replicate|r — per-auction rows; fails the first scan most days.")
             VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "browse|r — "
-                .. "per-item summaries; the endpoint Auctionator defaults to.")
+                .. "per-item summaries; the default.")
             VUI.Print(AH.TAG, "  " .. COL.GRAY .. "A pin persists and overrides future default changes; "
                 .. "/ah engine default clears it.|r")
         elseif want == "default" then
