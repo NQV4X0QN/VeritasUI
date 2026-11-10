@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.85.0] - 2026-11-09
+
+A full audit of every module, in Retail and in WoW Forever.
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Bar Shortcuts** in WoW Forever, under Progress, on unless you turn it off: clicking the experience bar opens Character Info, the reputation bar that faction's page, the honor bar the PvP window. These clicks already worked there; now they can be turned off. It is the same choice as Journeys Shortcuts in Retail (`QualityOfLife.lua`)
+
+### Changed
+
+- `VeritasUI_PriorityRotation` — in WoW Forever the Settings tab no longer shows Switch Specialization (one specialization per class there) or Reset to Spec Defaults (a new list starts empty there, so it did what Clear All Spells does); Clear All Spells takes the whole row (`Settings.lua`)
+- `VeritasUI_Interface` — in WoW Forever, Hide Transforms no longer offers Toys (none of them exist there), and Holiday Costumes and Consumables name only what Forever has: the Hallowed Wand and Noggenfogger Elixir (`Interface.lua`)
+- `VeritasUI_QualityOfLife` — the zone in the guild and friends lists is Blizzard's white, as in Blizzard's guild roster, and a few tooltip lines use Blizzard's own green; three Auction House price lines use Blizzard's white by name (`Social.lua`, `QualityOfLife.lua`, `Trainer.lua`, `Tooltip.lua`)
+- `VeritasUI_AuctionHouse` — the sell strip's tooltip hints, its chat lines, the crafting order's unpriced note and the scan's coverage line use Blizzard's named colours (`SellStrip.lua`, `CraftingOrder.lua`, `Browse.lua`)
+- All modules — the "by NQV4X0QN" in the AddOns list is Blizzard's grey; no other AddOn is named in what VeritasUI shows or ships
+
+### Fixed
+
+- `VeritasUI_Lib` — with an Options dropdown list open, combat no longer stops your keys working (`SettingsCoverDropdown.lua`)
+- `VeritasUI_QualityOfLife` — Highlight Gear for Stats no longer hooks Blizzard's main tooltip to clear the highlight (the kind of hook that once blocked using bag items until a /reload); the highlight still clears when you move off the stat (`CharacterStats.lua`)
+- `VeritasUI_QualityOfLife` — the AFK Screen option says it shows your guild rank in WoW Forever, where it does, not your item level (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — the Auto Equip Upgrades tooltip states the rules it follows: stats first, and gear with the wrong main stat only when it is well above what you wear (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — with another `/way` AddOn installed, the greyed /way option and its login line say "another AddOn" instead of naming it (`QualityOfLife.lua`)
+
 ## [1.84.0] - 2026-11-08
 
 ### Changed
