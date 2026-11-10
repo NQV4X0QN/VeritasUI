@@ -18,9 +18,11 @@
 --   wall is empty on every tab AND sits BELOW the sell-form overlay's y-range, which
 --   is exactly why the money frame is never occluded. We mount in that band, aligned
 --   to the money frame's height, so the bar is safe on all three tabs.
---   Primary anchor: LEFT -> MoneyFrameBorder's RIGHT (auto y-alignment, tracks Bliz
---   moving it). Fallback (global absent): BOTTOMLEFT of AuctionHouseFrame at the
---   offset computed from the verified rect (money right edge +gap; +6 y).
+--   Anchor: BOTTOMLEFT of AuctionHouseFrame at the offset computed from the verified rect
+--   (money right edge +gap; +6 y). ⚠ The `_G.MoneyFrameBorder` branch in Build never runs:
+--   Blizzard names the money frame only by parentKey (Blizzard_AuctionHouseFrame.xml:17, in
+--   both games), so no such global exists. The fixed offset is the position the owner
+--   approved; it does NOT follow Blizzard moving the money frame (audit 2026-11-09 A3).
 --
 -- FRAME LEVEL — the SKILL.md "Frame-level lesson" landmine
 --   Absolute SetFrameLevel does NOT stick on a child of AuctionHouseFrame (set 50,
@@ -378,9 +380,9 @@ local function Build()
     local barH = BarHeight()
     f:SetSize(W, labelAbove and (barH + LABEL_ABOVE_H) or barH)
 
-    -- Anchor to the money frame's RIGHT if the global exists; else fall back to the
-    -- verified BOTTOMLEFT offset. (MoneyFrameBorder is the name used by the verified
-    -- geometry probe in SellStrip.lua:14.)
+    -- ⚠ `_G.MoneyFrameBorder` is always nil (see the ANCHOR header), so this always takes the
+    -- BOTTOMLEFT offset below -- the approved position. Not "fixed": switching to the parentKey
+    -- would move the bar.
     local money = _G.MoneyFrameBorder
     if money then
         f:SetPoint("LEFT", money, "RIGHT", GAP_X, NUDGE_Y)

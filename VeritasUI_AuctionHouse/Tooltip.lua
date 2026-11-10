@@ -168,7 +168,8 @@ local AGE_COLOR = VUI.COL.GRAY   -- grey, for the secondary "N seen · X days" l
 -- Compute the raw price + optional extras line for a DB key. Returns
 --   price (int copper), extrasLine (string|nil)   — or nil if no price/disabled.
 -- The CALLER renders the price: the GameTooltip path draws an OWNED coin
--- fontstring (inline |A| atlas coins + NumberFontNormalRight) — it NEVER calls
+-- fontstring (inline |A| atlas coins in the tooltip body font, copied from our label
+-- line) — it NEVER calls
 -- Blizzard money code (see the "WHY NOT MoneyFrame_Update" block below / LM-7).
 -- The battle-pet path uses a text coin string (its custom frame has no
 -- money-frame support).
@@ -227,7 +228,8 @@ end
 --   * The coin fontstring is created once per tooltip frame and PARENTED TO THE
 --     TOOLTIP (an earlier UIParent-parented overlay attempt rendered invisible —
 --     see the RenderCoinLine block below), anchored to our label line, and hidden
---     on OnTooltipCleared so it never leaks onto non-item tooltips.
+--     by OnAnyTooltip + WatchCoins (below; the OnTooltipCleared hook was removed in
+--     v1.12.18) so it never leaks onto non-item tooltips.
 local PRICE_PREFIX = "Auction:"
 
 -- Where the coin block starts: the x-offset (px, from the line's LEFT edge) at which our
@@ -301,7 +303,7 @@ local function CoinMarkup(copper)
 end
 AH.Tooltip.CoinMarkup = CoinMarkup
 
--- Render the price as: a Friz "Auction:" label line + an ARIALN coin fontstring WE OWN.
+-- Render the price as: a Friz "Auction:" label line + a coin fontstring WE OWN (body font, see FONT below).
 --
 -- WHY A FONTSTRING WE OWN (not AddDoubleLine's right column):
 --   AddDoubleLine's right column is POSITION-MANAGED by Blizzard's tooltip layout. We

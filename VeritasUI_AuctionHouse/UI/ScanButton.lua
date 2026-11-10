@@ -45,9 +45,10 @@
 --   of Blizzard's own controls and made them unclickable. The button now lives in the
 --   SAME verified-empty bottom band as the scan-progress bar (probe ref §2: the strip
 --   right of MoneyFrameBorder x41 y534 w158 h19 is empty on ALL AH tabs and below the
---   sell-form overlay's y-range). Anchored to MoneyFrameBorder's RIGHT, offset past
---   the progress bar's span (GAP 8 + bar W 170 + 12), with the same BOTTOMLEFT
---   fallback scheme ScanProgress uses if the global is absent.
+--   sell-form overlay's y-range). Placed at a fixed BOTTOMLEFT offset from AuctionHouseFrame
+--   (FB_X/FB_Y below). The `_G.MoneyFrameBorder` branch in Build never runs: no such global
+--   exists in either game (Blizzard names it only by parentKey), so the button does not
+--   follow the money frame (audit 2026-11-09 A3).
 --
 -- ENABLED-DURING-HANG (v2, in-game finding): the original label logic disabled the
 --   button whenever IsScanning() was true — which INCLUDED the dropped-request state
@@ -225,8 +226,8 @@ local function Build()
 
     local btn = CreateFrame("Button", "VUIAHScanButton", parent, "UIPanelButtonTemplate")
     btn:SetSize(BTN_W, BTN_H)
-    -- Bottom-band anchor (ScanProgress pattern): money frame's RIGHT edge if the
-    -- global exists, else the verified BOTTOMLEFT fallback offsets.
+    -- Bottom-band anchor: always the BOTTOMLEFT offsets (`_G.MoneyFrameBorder` is never a
+    -- global; see the header).
     local money = _G.MoneyFrameBorder
     if money then
         btn:SetPoint("LEFT", money, "RIGHT", BAND_X, NUDGE_Y)
