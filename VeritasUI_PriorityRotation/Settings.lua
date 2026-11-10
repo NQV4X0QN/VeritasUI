@@ -341,19 +341,29 @@ local function BuildMainWindow()
             SlashCmdList["VERITASUI_PR"]("scan")
         end)
 
-        local resetBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")
-        resetBtn:SetSize(HALF, 24)
-        resetBtn:SetPoint("TOPLEFT", macroBtn, "BOTTOMLEFT", 0, -14)
-        resetBtn:SetText("Reset to Spec Defaults")
-        resetBtn:SetScript("OnClick", function()
-            PR:ResetCurrentProfileToDefault()
-            PR:CompileSequence()
-            PR:RefreshUI()
-        end)
+        -- WoW Forever: a new profile starts empty there (Profiles.lua BuildDefaultProfile), so Reset to Spec
+        -- Defaults did exactly what Clear All Spells does; only Clear is offered, full width (audit 2026-11-09).
+        local resetBtn
+        if not VUI.IS_FOREVER then
+            resetBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")
+            resetBtn:SetSize(HALF, 24)
+            resetBtn:SetPoint("TOPLEFT", macroBtn, "BOTTOMLEFT", 0, -14)
+            resetBtn:SetText("Reset to Spec Defaults")
+            resetBtn:SetScript("OnClick", function()
+                PR:ResetCurrentProfileToDefault()
+                PR:CompileSequence()
+                PR:RefreshUI()
+            end)
+        end
 
         local clearBtn = CreateFrame("Button", nil, cont, "MagicButtonTemplate")
-        clearBtn:SetSize(HALF, 24)
-        clearBtn:SetPoint("LEFT", resetBtn, "RIGHT", 8, 0)
+        if resetBtn then
+            clearBtn:SetSize(HALF, 24)
+            clearBtn:SetPoint("LEFT", resetBtn, "RIGHT", 8, 0)
+        else
+            clearBtn:SetSize(CW, 24)
+            clearBtn:SetPoint("TOPLEFT", macroBtn, "BOTTOMLEFT", 0, -14)
+        end
         clearBtn:SetText("Clear All Spells")
         clearBtn:SetScript("OnClick", function()
             PR:CurrentProfile().spells = {}
@@ -371,19 +381,22 @@ local function BuildMainWindow()
         -- (the LEFT half of the previous row) so the header lands at the
         -- left edge of `cont`. Anchoring off clearBtn (the right half)
         -- would place the header in the middle of the panel, pushing
-        -- every chained child off the right edge.
-        local divTools = Section(resetBtn, "BOTTOMLEFT", -14, "Tools")
+        -- every chained child off the right edge. (In Forever, clearBtn is
+        -- the whole row, so it is the left edge.)
+        local divTools = Section(resetBtn or clearBtn, "BOTTOMLEFT", -14, "Tools")
 
         -- Spec switcher — uses the modern WowStyle1DropdownTemplate
         -- (`DropdownButton` widget that replaced legacy UIDropDownMenu in
         -- Dragonflight). SetupMenu re-runs each time the dropdown opens so
         -- the radio state always reflects the live spec, even mid-cast.
+        -- Only with two or more specs (as the AddOns-menu flyout, Core.lua): WoW Forever has one per class, so
+        -- there is nothing to switch to (audit 2026-11-09).
         --
         -- Defensive: wrap creation in pcall — if the template isn't
         -- available on this client (e.g. some private-server build),
         -- fall back gracefully without breaking the rest of the panel.
         local specDD
-        local okDD = pcall(function()
+        local okDD = (GetNumSpecializations and GetNumSpecializations() or 0) >= 2 and pcall(function()
             specDD = CreateFrame("DropdownButton", nil, cont, "WowStyle1DropdownTemplate")
         end)
         if okDD and specDD then
@@ -421,7 +434,7 @@ local function BuildMainWindow()
                 -- than auto-shrinking to the longest radio label. Any
                 -- positive integer defuses the taint; CW just looks right.
                 --
-                -- Credit: Meorawr (Total-RP-3 PR #1242). Remove this call
+                -- Credit: Meorawr's fix for WoWUIBugs #783. Remove this call
                 -- when WoWUIBugs #783 is resolved by Blizzard.
                 -- ──────────────────────────────────────────────────────────
                 root:SetMinimumWidth(CW)
