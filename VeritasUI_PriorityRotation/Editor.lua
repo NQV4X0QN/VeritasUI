@@ -347,7 +347,7 @@ function PR:BuildEditor(parent, contentWidth)
         dropMark:SetPoint("BOTTOMRIGHT", block, "BOTTOMRIGHT", 0, 0)
         dropMark:Hide()
         row.dropMark = dropMark
-        -- Kept for a restyling addon (VeritasUI_ElvUI), which swaps the card for its own panel.
+        -- Kept for a restyling module (a retired VeritasUI one), which swapped the card for its own panel.
         row.cardArt = { block }
 
         -- Drag a filled slot by its block or its icon to move it (owner's request, v1.35.11;

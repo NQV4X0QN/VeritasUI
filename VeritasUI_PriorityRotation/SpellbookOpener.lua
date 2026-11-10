@@ -6,7 +6,7 @@
 -- ⚠ WHY THIS EXISTS (v1.22.1). PR used to open the spellbook itself, calling
 -- PlayerSpellsUtil.OpenToSpellBookTab() from its own click handler. The spellbook then set itself
 -- up as addon code, and a spell clicked in it reached CastSpellBookItem() tainted:
--- ADDON_ACTION_FORBIDDEN blamed on VeritasUI_PriorityRotation. Owner A/B, 2026-10-28, ElvUI off:
+-- ADDON_ACTION_FORBIDDEN blamed on VeritasUI_PriorityRotation. Owner A/B, 2026-10-28, his UI-restyling AddOn off:
 -- opened from an empty PR slot -> blocked; opened from the menu bar -> the same spell cast clean.
 --
 -- THE FIX, same shape as the sell strip's (v1.17.4): Priority Rotation never opens it. An invisible
