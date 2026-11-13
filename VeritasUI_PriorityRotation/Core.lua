@@ -152,7 +152,8 @@ rotBtn:Show()
 -- a click arrives before the first InjectSequence call.
 PR.AFTER_PRESSES = 4
 rotBtn:Execute("macros = newtable(); macros[1] = ''; links = newtable(); armed = newtable(); nextLink = 0;"
-    .. " followerTurn = true; skip = newtable(); armPresses = " .. PR.AFTER_PRESSES)
+    .. " followerTurn = true; skip = newtable(); armPresses = " .. PR.AFTER_PRESSES
+    .. "; cap = newtable(); capUsed = newtable(); capN = 0")
 
 -- PARITY BUG (found 2026-07-11, latent since inception): the keybind path
 -- (SetOverrideBindingClick) delivers TWO clicks per physical press — key-down
@@ -245,6 +246,23 @@ rotBtn:WrapScript(rotBtn, "OnClick", [=[
             guard = guard - 1
         end
     end
+    -- Long buffs (PR.BUFF_FIGHT_TURNS): in combat, cap[step] names a long-buff spell, and once its turns this fight
+    -- reach capN its steps are passed over. capUsed is emptied out of combat after each fight (PLAYER_REGEN_DISABLED
+    -- queues it) and at every compile. Turns, not casts: this code cannot see whether the cast landed.
+    if capN > 0 and SecureCmdOptionParse('[combat] 1') then
+        local guard = #macros
+        while cap[step] and (capUsed[cap[step]] or 0) >= capN and guard > 0 do
+            step = step % #macros + 1
+            guard = guard - 1
+        end
+        if cap[step] then
+            if (capUsed[cap[step]] or 0) >= capN then
+                self:SetAttribute('macrotext', '')   -- every step is a spent long buff
+                return
+            end
+            capUsed[cap[step]] = (capUsed[cap[step]] or 0) + 1
+        end
+    end
     self:SetAttribute('macrotext', macros[step] or '')
     step = step % #macros + 1
     self:SetAttribute('step', step)
@@ -261,6 +279,65 @@ function PR:ScheduleCompile()
         self._compileTimer = nil
         self:CompileSequence()
     end)
+end
+
+----------------------------------------------------------------
+--  Skip a buff you already have (owner, 2026-11-12: a Warrior's shouts cost rage every time they recast).
+--
+--  The press snippet cannot read auras (no aura function in RestrictedEnvironment.lua, forever + live) and the
+--  compiled list cannot change in combat, so this is decided OUT OF COMBAT, at compile: a spell entry whose buff
+--  is on you -- an aura of the same NAME, so any rank counts, from anyone -- with more than BUFF_SKIP_LEFT seconds
+--  left (or no end) is left out of the rotation. With BUFF_SKIP_LEFT or less it is back in, so a fight that starts
+--  then can refresh it. Re-decided on the player's UNIT_AURA out of combat (only when the answer changes), by a
+--  timer at the BUFF_SKIP_LEFT mark, and once after combat if auras changed during it. A buff that falls off
+--  mid-fight comes back only after the fight. C_UnitAuras.GetAuraDataBySpellName (UnitAuraDocumentation.lua, both
+--  games); an unreadable or secret answer counts as "not on you", so the spell stays in.
+----------------------------------------------------------------
+PR.BUFF_SKIP_LEFT = 30
+-- In combat a long buff's step gets this many TURNS per fight (owner chose this experiment, 2026-11-12: the shout
+-- recast at every turn with rage in a fight that started without it). Tuned from his in-game results. A long buff =
+-- one seen on you out of combat lasting PR.BUFF_LONG seconds or more, or with no end (e.long, saved on the entry), so
+-- short self-buff cooldowns (Avatar-like, seconds long) are never capped.
+PR.BUFF_FIGHT_TURNS = 3
+PR.BUFF_LONG = 60
+
+function PR:BuffUp(spellName)
+    local api = C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName
+    if not api or type(spellName) ~= "string" or InCombatLockdown() then return false end
+    local ok, aura = pcall(api, "player", spellName, "HELPFUL")
+    if not ok or type(aura) ~= "table" then return false end
+    local exp, dur = aura.expirationTime, aura.duration
+    if issecretvalue and (issecretvalue(exp) or issecretvalue(dur)) then return false end
+    local long = type(dur) == "number" and (dur == 0 or dur >= self.BUFF_LONG)
+    if type(exp) ~= "number" or exp == 0 then return true, nil, long end
+    return exp - GetTime() > self.BUFF_SKIP_LEFT, exp, long
+end
+
+-- The spell entries skipped right now and when their buffs end, as one string, to tell whether a recompile would
+-- change anything (the end time is in it so a refreshed buff moves the wake-up timer too).
+function PR:BuffSkipSignature()
+    local profile = self.db and self:CurrentProfile()
+    local up = {}
+    for _, e in ipairs(profile and profile.spells or {}) do
+        if e and e.spellName and not e.macroName and not e.itemID then
+            local isUp, ends, long = self:BuffUp(e.spellName)
+            if long and not e.long then e.long = true; up[#up + 1] = "new long buff" end
+            if isUp then up[#up + 1] = e.spellName .. ":" .. tostring(ends or 0) end
+        end
+    end
+    return tconcat(up, "\n")
+end
+
+function PR:OnPlayerAura()
+    if not self._lastProfileKey then return end   -- before PLAYER_LOGIN's first compile
+    if InCombatLockdown() then
+        if not self._auraQueued then
+            self._auraQueued = true
+            VUI.CombatQueue.Add(function() PR._auraQueued = false; PR:OnPlayerAura() end)
+        end
+        return
+    end
+    if self:BuffSkipSignature() ~= (self._buffSig or "") then self:ScheduleCompile() end
 end
 
 ----------------------------------------------------------------
@@ -332,6 +409,8 @@ function PR:CompileSequence()
 
     self:MarkChannelEntries()   -- a spell dropped or a spec switched to since the channel was seen
     local seq, names, links = {}, {}, {}
+    local skippedBuffs, buffSig, wakeAt = {}, {}, nil   -- spell entries left out because their buff is on you
+    local capText = {}   -- macrotext -> long-buff spell name (capped per fight)
     local profile = self:CurrentProfile()
     -- Reacquire prefix — prepended to spell steps only when the profile
     -- opts in. `/cleartarget [dead]` drops a corpse; `/targetenemy
@@ -389,7 +468,14 @@ function PR:CompileSequence()
                         local info = C_Spell.GetSpellInfo(e.spellID)
                         if info == nil then stale = true end
                     end
-                    if not stale then
+                    local buffUp, buffEnds, buffLong = false, nil, false
+                    if not stale then buffUp, buffEnds, buffLong = self:BuffUp(e.spellName) end
+                    if buffLong then e.long = true end
+                    if buffUp and buffEnds and (not wakeAt or buffEnds < wakeAt) then wakeAt = buffEnds end
+                    if buffUp then
+                        skippedBuffs[#skippedBuffs + 1] = e.spellName   -- on you already (BuffUp above)
+                        buffSig[#buffSig + 1] = e.spellName .. ":" .. tostring(buffEnds or 0)
+                    elseif not stale then
                         -- CHANNEL PROTECTION (2026-07-11, verified in-game): a press
                         -- landing mid-channel CLIPS the channel tail at GCD-end —
                         -- one unprotected Throw Glaive macro cost every Eye Beam its
@@ -438,6 +524,7 @@ function PR:CompileSequence()
                         follows  = e.follows,
                         only     = e.followOnly and true or false,
                         chanName = chanName,
+                        capName  = e.long and e.spellName and not e.macroName and not e.itemID and e.spellName or nil,
                         current  = 0,   -- smooth-WRR accumulator
                     }
                 end
@@ -450,6 +537,7 @@ function PR:CompileSequence()
         local byKey = {}
         for _, it in ipairs(entries) do
             if it.key and not byKey[it.key] then byKey[it.key] = it end
+            if it.capName then capText[it.text] = it.capName end
         end
         -- Only After links first: this window is a held ability's only chance, while an Also
         -- After one still has its normal slots.
@@ -512,13 +600,28 @@ function PR:CompileSequence()
     self.compiledSequence = seq
     self.compiledNames    = names
     self.compiledLinks    = links
+    self.skippedBuffs     = skippedBuffs
+    self._buffSig         = tconcat(buffSig, "\n")
+    -- Back in at the BUFF_SKIP_LEFT mark of the first skipped buff that ends.
+    if self._buffTimer then self._buffTimer:Cancel(); self._buffTimer = nil end
+    if wakeAt then
+        local delay = wakeAt - self.BUFF_SKIP_LEFT - GetTime()
+        self._buffTimer = C_Timer.NewTimer(delay > 0 and delay + 0.1 or 0.1, function()
+            PR._buffTimer = nil
+            PR:OnPlayerAura()
+        end)
+    end
     -- Steps the window skips (see the press snippet): a target's own step is on cooldown right
     -- after its channel, and a follower's own step is already being tried by the window.
     local skipText = {}
     for _, l in ipairs(links) do skipText[l.text] = true; skipText[l.targetText] = true end
     local skip = {}
     for i, t in ipairs(seq) do if skipText[t] then skip[#skip + 1] = i end end
-    self:InjectSequence(seq, links, skip)
+    -- Long-buff steps capped per fight (see the press snippet): step index -> spell name.
+    local cap = {}
+    for i, t in ipairs(seq) do if capText[t] then cap[i] = capText[t] end end
+    self.compiledCaps = cap
+    self:InjectSequence(seq, links, skip, cap)
     self:ScheduleScan(0.5)
     -- The editor redraws the instant a change is made, but the compile it triggers is debounced
     -- (ScheduleCompile, 0.3 s), so without this the preview showed the PREVIOUS sequence until
@@ -539,10 +642,11 @@ local function SafeQuote(s)
     return "[" .. eq .. "[" .. s .. "]" .. eq .. "]"
 end
 
-function PR:InjectSequence(seq, links, skip)
+function PR:InjectSequence(seq, links, skip, cap)
     if InCombatLockdown() then return end
     local lines = { "macros = newtable()", "links = newtable()", "armed = newtable()", "nextLink = 0",
-                    "followerTurn = true", "skip = newtable()" }
+                    "followerTurn = true", "skip = newtable()", "cap = newtable()", "capUsed = newtable()",
+                    "capN = " .. tostring(tonumber(self.BUFF_FIGHT_TURNS) or 0) }
     if #seq > 0 then
         for i, macro in ipairs(seq) do
             lines[#lines + 1] = "macros[" .. i .. "] = " .. SafeQuote(macro)
@@ -555,6 +659,7 @@ function PR:InjectSequence(seq, links, skip)
             .. SafeQuote(l.text) .. ")"
     end
     for _, i in ipairs(skip or {}) do lines[#lines + 1] = "skip[" .. i .. "] = true" end
+    for i, name in pairs(cap or {}) do lines[#lines + 1] = "cap[" .. i .. "] = " .. SafeQuote(name) end
     rotBtn:Execute(tconcat(lines, "\n"))
     rotBtn:SetAttribute("macrotext", seq[1] or "")
     rotBtn:SetAttribute("step", 1)
@@ -891,10 +996,19 @@ ef:RegisterEvent("UPDATE_MACROS")
 -- the event's spellID does, and is secret only where spell casts are restricted:
 -- UnitDocumentation.lua UnitSpellcastChannelStart, SecretWhenUnitSpellCastRestricted).
 ef:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "player")
+ef:RegisterUnitEvent("UNIT_AURA", "player")   -- skip a buff you already have (PR:OnPlayerAura)
+-- A fight began: its long-buff turn counts (press snippet capUsed) are emptied when it ends, out of combat.
+ef:RegisterEvent("PLAYER_REGEN_DISABLED")
 
 ef:SetScript("OnEvent", function(_, event, arg1, _, arg3)
     if event == "UNIT_SPELLCAST_CHANNEL_START" then
         PR:LearnChannel(arg3)
+
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        VUI.CombatQueue.Add(function() rotBtn:Execute("capUsed = newtable()") end)
+
+    elseif event == "UNIT_AURA" then
+        if arg1 == "player" then PR:OnPlayerAura() end
 
     elseif event == "ADDON_LOADED" then
         if arg1 ~= ADDON_NAME then return end

@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.88.0] - 2026-11-12
+
+### Added
+
+- Priority Rotation — **long buffs are no longer recast over and over**: a spell whose buff is on you with more than 30 seconds left is left out of the rotation between fights, and comes back at 30 seconds so the next press refreshes it
+- Priority Rotation — **in a fight, a long buff gets three turns**, so a shout you start a fight without is cast about once instead of every time you have the rage. Counts buffs that last a minute or more, once Priority Rotation has seen them on you
+
+
 ## [1.87.0] - 2026-11-12
 
 Fishing in WoW Forever, made easier: Fishing puts your pole on, the same key reels in, and the rotation key puts your weapons back.

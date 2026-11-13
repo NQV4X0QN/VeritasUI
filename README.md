@@ -91,6 +91,8 @@ To set it up, open `/pr`, click **Create / Update Macro**, drag the `Attack` mac
 
 To switch specialization quickly, hover **VeritasUI — Priority Rotation** in the AddOns menu by the minimap and pick a spec from the list that opens.
 
+Long buffs such as a Warrior's shouts don't waste your resources: while one is on you with more than 30 seconds left, it's left out of the rotation between fights, and in a fight it gets only a few turns, so it's cast about once. A buff counts once Priority Rotation has seen it on you, lasting a minute or more.
+
 In WoW Forever, if you're holding a fishing pole when a fight starts, your first press of the rotation key puts back the weapon and shield you were using before, and the next press starts the rotation.
 
 Settings: `/pr` (the rotation editor), or **Options → AddOns → VeritasUI → Priority Rotation**, which has an on/off switch and an **Open** button for the editor.
