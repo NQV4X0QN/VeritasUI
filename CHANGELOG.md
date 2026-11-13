@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.86.1] - 2026-11-12
+
+### Fixed
+
+- Auction House — hovering an item in a merchant's buyback row no longer causes a Lua error; the item shows its Auction price
+
+
 ## [1.86.0] - 2026-11-12
 
 Map Notes, rebuilt around the World Map: leave a note anywhere with a name, an icon and your own notes, see it on the minimap, and follow it as your waypoint.

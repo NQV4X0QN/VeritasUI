@@ -542,7 +542,12 @@ local function IsBoundInstance(data, tooltip)
     if not guid then return false end
     local okL, loc = pcall(C.GetItemLocation, guid)
     if not (okL and loc) then return false end
-    if loc.IsValid and not loc:IsValid() then return false end
+    -- A merchant buyback item's GUID yields a location that is neither bag/slot nor equipment
+    -- slot, and IsValid (C_Item.DoesItemExist, ItemLocation.lua:69) then throws "bad argument"
+    -- (owner, 2026-11-12, hovering a buyback slot). Only a bag or equipment location is checked.
+    if loc.HasAnyLocation and not loc:HasAnyLocation() then return false end
+    local okV, valid = pcall(loc.IsValid, loc)
+    if not (okV and valid) then return false end
     local okB, bound = pcall(C.IsBound, loc)
     return okB and bound == true
 end
