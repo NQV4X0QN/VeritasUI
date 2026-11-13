@@ -116,7 +116,7 @@ read_globals = {
     "FloatingBattlePet_Toggle",
     -- Item / container / inventory
     "C_Item", "C_Container", "ItemLocation", "Item", "GetInventoryItemLink", "GetInventoryItemQuality", "REPUTATION_STATUS_BAR_LABEL_ACCOUNT_WIDE",
-    "GetItemInfoInstant", "GetDetailedItemLevelInfo",
+    "GetItemInfoInstant", "GetDetailedItemLevelInfo", "GetInventoryItemID",
     "ITEM_QUALITY_COLORS", "BAG_ITEM_QUALITY_COLORS", "ColorManager", "NUM_BAG_SLOTS",
     "C_TradeSkillUI", "C_Texture",
     -- Map / navigation / quests
@@ -133,7 +133,7 @@ read_globals = {
     "GetSpecializationInfo", "GetNumSpecializations", "SetSpecialization",
     "GetActionInfo", "GetMacroInfo", "GetMacroBody", "GetMacroIndexByName",
     "GetNumMacros", "CreateMacro", "EditMacro", "MAX_ACCOUNT_MACROS",
-    "GetCursorInfo", "ClearCursor", "GetBindingKey", "SetOverrideBindingClick",
+    "GetCursorInfo", "ClearCursor", "GetBindingKey", "SetOverrideBindingClick", "SetOverrideBinding",
     "ClearOverrideBindings", "C_CVar", "C_ActionBar", "C_Secrets",
     "C_RestrictedActions", "PlayerSpellsFrame", "PlayerSpellsUtil",
     "ToggleSpellBook", "BOOKTYPE_SPELL", "MacroFrame", "ShowMacroFrame",

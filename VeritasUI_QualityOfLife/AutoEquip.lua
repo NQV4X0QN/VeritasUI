@@ -278,6 +278,9 @@ local function Decide(bag, slot, info, specStat)
             local worn = WornLink(s)
             if worn and Info(worn) == equipLoc then
                 local _, wClass, wSub = Info(worn)
+                -- A Fishing Pole is only ever worn on purpose (to fish), so it is never swapped out here:
+                -- Priority Rotation puts the weapons back on the next rotation press (its Reequip.lua).
+                if wClass == 2 and wSub == 20 then return nil, "weapon: you are fishing" end
                 if IsTool(wClass, wSub) then return s, "weapon: replaces a profession tool" end
                 local keeps, why = KeepsYours(worn)
                 if keeps then return nil, "weapon: " .. why end
@@ -408,5 +411,146 @@ f:SetScript("OnEvent", function(_, event)
         C_Timer.After(2, Run)
     else
         Run()
+    end
+end)
+
+-- ── Fishing puts on your fishing pole (WoW Forever, owner 2026-11-12; always on, not tied to Auto Equip) ──
+-- Pressing Fishing without a pole: the game refuses the cast and fires UNIT_SPELLCAST_FAILED for the player with
+-- spell 7620 "Fishing" while the main hand holds no pole (measured, owner's Forever probe 2026-11-12: FAILED +
+-- UI_ERROR_MESSAGE 278 ERR_SPELL_FAILED_EQUIPPED_ITEM_CLASS_S "Must have a Fishing Pole equipped", from an action
+-- bar press). Out of combat we then equip the best usable pole from the bags (highest item level), so the next
+-- press fishes. Matched by the spell's NAME so a higher Fishing rank counts too. Never in combat (fishing is not
+-- possible then and equipping is the game's to refuse), while dead, or with something on the cursor. Priority
+-- Rotation's rotation key puts the weapons back (its Reequip.lua). Retail fishes from the profession tool slot and
+-- never sees this failure for a missing pole.
+local FISHING_SPELL = 7620
+local fishName, lastPoleTry = nil, 0
+
+local function IsPole(link)
+    local _, classID, subclassID = Info(link)
+    return classID == 2 and subclassID == 20
+end
+
+local function BestPole()
+    local best, bestLevel
+    ForEachBagItem(function(bag, slot, info)
+        local link = info.hyperlink
+        if not (link and IsPole(link)) then return end
+        local red, readable = RedLines(bag, slot)
+        if readable and red and #red > 0 then return end   -- a pole you can't use yet
+        local lvl = ItemLevel(link)
+        if not bestLevel or lvl > bestLevel then best, bestLevel = link, lvl end
+    end)
+    return best
+end
+
+local fishFrame = CreateFrame("Frame")
+fishFrame:RegisterEvent("UNIT_SPELLCAST_FAILED")
+fishFrame:SetScript("OnEvent", function(_, _, unit, _, spellID)
+    if unit ~= "player" or type(spellID) ~= "number" or Secret(spellID) then return end
+    if not fishName then
+        local ok, n = pcall(C_Spell.GetSpellName, FISHING_SPELL)
+        fishName = ok and type(n) == "string" and n ~= "" and n or nil
+        if not fishName then return end
+    end
+    if spellID ~= FISHING_SPELL then
+        local ok, n = pcall(C_Spell.GetSpellName, spellID)
+        if not (ok and n == fishName) then return end
+    end
+    if InCombatLockdown() then return end
+    local worn = WornLink(16)
+    if worn and IsPole(worn) then return end   -- refused for another reason (no water, moving)
+    local okD, dead = pcall(_G.UnitIsDeadOrGhost, "player")
+    if okD and dead then return end
+    local okC, cursor = pcall(GetCursorInfo)
+    if okC and cursor then return end
+    local now = GetTime()
+    if now - lastPoleTry < 1 then return end
+    local pole = BestPole()
+    if not pole then return end
+    lastPoleTry = now
+    pcall(C_Item.EquipItemByName, pole, 16)
+end)
+
+-- ── Your Fishing key reels in (WoW Forever, owner 2026-11-12) ──
+-- While the Fishing channel runs, every key bound to an action button holding Fishing (or bound to the spell itself)
+-- is pointed at Blizzard's Interact Key binding, INTERACTTARGET = C_PlayerInteractionManager.InteractUnit
+-- ("anyinteract") (forever Bindings_Camelot.xml:1140-1142); the soft target picks up the bobber (owner-tested with
+-- Blizzard's own Interact Key, 2026-11-12). The keys go back when the channel ends. Only while Options > Controls >
+-- Enable Interact Key is on: Blizzard's check, softTargetInteract == Enum.SoftTargetEnableFlags.Any (forever
+-- Camelot/ControlsOverrides.lua:75); without it the key would do nothing during the cast. Override bindings are the
+-- game's to refuse in combat, so they are set only out of combat and cleared through VUI.CombatQueue. A mouse click
+-- on the Fishing button is unchanged (Blizzard's button is never touched).
+local REEL_BINDS = {   -- action slot -> binding name, the bars' own (PriorityRotation Core.lua BIND_DEFS)
+    { base = 0, bind = "ACTIONBUTTON" }, { base = 24, bind = "MULTIACTIONBAR3BUTTON" },
+    { base = 36, bind = "MULTIACTIONBAR4BUTTON" }, { base = 48, bind = "MULTIACTIONBAR2BUTTON" },
+    { base = 60, bind = "MULTIACTIONBAR1BUTTON" }, { base = 144, bind = "MULTIACTIONBAR5BUTTON" },
+    { base = 156, bind = "MULTIACTIONBAR6BUTTON" }, { base = 168, bind = "MULTIACTIONBAR7BUTTON" },
+}
+local reelOwner = CreateFrame("Frame")
+local reeling = false
+
+local function IsFishing(spellID)
+    if type(spellID) ~= "number" or Secret(spellID) then return false end
+    if spellID == FISHING_SPELL then return true end
+    if not fishName then
+        local ok, n = pcall(C_Spell.GetSpellName, FISHING_SPELL)
+        fishName = ok and type(n) == "string" and n ~= "" and n or nil
+    end
+    local ok, n = pcall(C_Spell.GetSpellName, spellID)
+    return fishName ~= nil and ok and n == fishName
+end
+
+local function InteractKeyOn()
+    local flags = _G.Enum and _G.Enum.SoftTargetEnableFlags
+    local ok, v = pcall(GetCVar, "softTargetInteract")
+    return flags and flags.Any and ok and tonumber(v) == flags.Any
+end
+
+-- Every key that casts Fishing now: its action buttons' bindings, and a binding to the spell itself.
+local function FishingKeys()
+    local keys, seen = {}, {}
+    local function add(cmd)
+        local okK, k1, k2 = pcall(GetBindingKey, cmd)
+        if not okK then return end
+        for _, k in ipairs({ k1, k2 }) do
+            if type(k) == "string" and not seen[k] then seen[k] = true; keys[#keys + 1] = k end
+        end
+    end
+    for _, def in ipairs(REEL_BINDS) do
+        for i = 1, 12 do
+            local okA, kind, id = pcall(GetActionInfo, def.base + i)
+            if okA and kind == "spell" and IsFishing(id) then add(def.bind .. i) end
+        end
+    end
+    if fishName then add("SPELL " .. fishName) end
+    return keys
+end
+
+local function StopReel()
+    if not reeling then return end
+    if InCombatLockdown() then VUI.CombatQueue.Add(StopReel); return end
+    pcall(ClearOverrideBindings, reelOwner)
+    reeling = false
+end
+
+local function StartReel()
+    if InCombatLockdown() or not InteractKeyOn() then return end
+    local keys = FishingKeys()
+    if #keys == 0 then return end
+    pcall(ClearOverrideBindings, reelOwner)
+    for _, k in ipairs(keys) do pcall(SetOverrideBinding, reelOwner, true, k, "INTERACTTARGET") end
+    reeling = true
+end
+
+local reelFrame = CreateFrame("Frame")
+reelFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
+reelFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
+reelFrame:SetScript("OnEvent", function(_, event, unit, _, spellID)
+    if unit ~= "player" then return end
+    if event == "UNIT_SPELLCAST_CHANNEL_START" then
+        if IsFishing(spellID) then StartReel() end
+    else
+        StopReel()
     end
 end)

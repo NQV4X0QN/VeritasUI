@@ -194,8 +194,14 @@ rotBtn:Execute("macros = newtable(); macros[1] = ''; links = newtable(); armed =
 -- SecureCmdOptionParse is allowed in this environment (RestrictedEnvironment.lua:82); the
 -- 2026-10-31 probe measured [channeling:Eye Beam] true on every press during 6 channels and false
 -- on all 1302 outside.
+-- Re-equip (Reequip.lua): while a Fishing Pole is in the main hand, a press puts the remembered weapons back
+-- instead of stepping; reequipCond/reequipText are set out of combat by Reequip.lua, nil when nothing is armed.
 rotBtn:WrapScript(rotBtn, "OnClick", [=[
     if down then return end
+    if reequipCond and reequipText and SecureCmdOptionParse(reequipCond) then
+        self:SetAttribute('macrotext', reequipText)
+        return
+    end
     local inWindow = false
     if links and #links > 0 then
         local channeling, open = false, false

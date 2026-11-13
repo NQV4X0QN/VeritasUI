@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.87.0] - 2026-11-12
+
+Fishing in WoW Forever, made easier: Fishing puts your pole on, the same key reels in, and the rotation key puts your weapons back.
+
+### Added
+
+- Quality of Life — **pressing Fishing puts on your fishing pole** (WoW Forever): when the game says you need a pole, the best one in your bags goes on, and the next press fishes. Out of combat only
+- Quality of Life — **your Fishing key reels in** (WoW Forever): with Enable Interact Key on (Options → Controls), press your Fishing key again after the splash instead of clicking the bobber. Once the line is in, the key casts Fishing again
+- Priority Rotation — **your weapons go back on with the rotation key after fishing** (WoW Forever): while you hold a fishing pole, a press puts back the weapon and shield you wore before, in or out of combat, and the next press starts the rotation
+
+### Changed
+
+- Quality of Life — Auto Equip Upgrades no longer swaps a two-handed weapon in while you're holding a fishing pole
+
+
 ## [1.86.1] - 2026-11-12
 
 ### Fixed

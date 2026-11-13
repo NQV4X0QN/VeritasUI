@@ -1,13 +1,14 @@
 ## Interface: 120105, 16001
 ## Title: VeritasUI — Priority Rotation
 ## Notes: One-button rotation: step through a spell list you build, per specialization. |cFF808080by NQV4X0QN|r
-## Version: 1.86.1
+## Version: 1.87.0
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
 ## SavedVariables: VeritasUI_PriorityRotationDB
 ## AddonCompartmentFunc: VeritasUI_PriorityRotation_OnAddonCompartmentClick
 
 Core.lua
+Reequip.lua
 Profiles.lua
 SpellbookOpener.lua
 Editor.lua
