@@ -26,4 +26,170 @@
 			</Layer>
 		</Layers>
 	</Frame>
+
+	<!-- The note window. Blizzard's dialog look: StaticPopupBaseTemplate's BG frame (GameDialog.xml:54-62, both
+	     games), its art set in MapNotesUI.lua exactly as GameDialogBaseMixin:OnLoad does (GameDialog.lua:24-28).
+	     ⚠ Not inherited: Forever's StaticPopupBaseTemplate OnLoad also wires a GamepadSequence that only the full
+	     StaticPopupTemplate has, so an addon frame on the base template errors at creation (owner, 2026-11-12). -->
+	<Frame name="VeritasUI_MapNoteWindowTemplate" toplevel="true" enableMouse="true" virtual="true">
+		<Size x="420" y="190"/>
+		<Frames>
+			<Frame parentKey="BG" useParentLevel="true" setAllPoints="true">
+				<Layers>
+					<Layer level="BACKGROUND" textureSubLevel="-7">
+						<Texture parentKey="Bottom"/>
+					</Layer>
+					<Layer level="BACKGROUND" textureSubLevel="-4">
+						<Texture parentKey="Top"/>
+					</Layer>
+				</Layers>
+			</Frame>
+		</Frames>
+	</Frame>
+
+	<!-- The note window's pin (MapNotesUI.lua): where the note being made or edited will go. Same icon layer
+	     as the note pin; no mouse, so it never takes a click from the map or the pins under it. -->
+	<Frame name="VeritasUI_MapNoteDraftPinTemplate" enableMouse="false" mixin="VeritasUI_MapNoteDraftPinMixin" virtual="true">
+		<Size x="30" y="30"/>
+		<Layers>
+			<Layer level="ARTWORK">
+				<Texture parentKey="Icon">
+					<Anchors>
+						<Anchor point="CENTER" x="0" y="0"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+		</Layers>
+	</Frame>
+
+	<!-- An icon choice in the note window. The look of Blizzard's SelectorButtonTemplate (the macro and
+	     equipment-set icon pickers, Blizzard_SharedXML/Shared/Selector/Blizzard_SelectorUI.xml:3-28, both
+	     games): empty-slot backing, CheckButtonHilight when selected, ButtonHilight-Square on hover. The icon is
+	     an atlas, sized in code to keep its shape. -->
+	<Button name="VeritasUI_MapNoteIconButtonTemplate" virtual="true">
+		<Size x="36" y="36"/>
+		<Layers>
+			<Layer level="BACKGROUND">
+				<Texture file="Interface\Buttons\UI-EmptySlot-Disabled">
+					<Size x="45" y="45"/>
+					<Anchors>
+						<Anchor point="CENTER" x="0" y="-1"/>
+					</Anchors>
+					<TexCoords left="0.140625" right="0.84375" top="0.140625" bottom="0.84375"/>
+				</Texture>
+			</Layer>
+			<Layer level="ARTWORK">
+				<Texture parentKey="Icon">
+					<Anchors>
+						<Anchor point="CENTER" x="0" y="-1"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+			<Layer level="OVERLAY">
+				<Texture parentKey="SelectedTexture" alphaMode="ADD" file="Interface\Buttons\CheckButtonHilight" hidden="true"/>
+			</Layer>
+		</Layers>
+		<HighlightTexture parentKey="Highlight" alphaMode="ADD" file="Interface\Buttons\ButtonHilight-Square"/>
+	</Button>
+
+	<!-- The note window's buttons: the art and fonts of StaticPopupButtonTemplate
+	     (Blizzard_StaticPopup_Game/GameDialog.xml:3-49, same in both games), without its dialog mixin. -->
+	<Button name="VeritasUI_MapNoteDialogButtonTemplate" registerForClicks="LeftButtonUp" virtual="true">
+		<Size x="128" y="21"/>
+		<ButtonText parentKey="Text">
+			<Anchors>
+				<Anchor point="CENTER">
+					<Offset x="0" y="1"/>
+				</Anchor>
+			</Anchors>
+		</ButtonText>
+		<NormalTexture file="Interface\Buttons\UI-DialogBox-Button-Up">
+			<TexCoords left="0.0" right="1.0" top="0.0" bottom="0.71875"/>
+		</NormalTexture>
+		<PushedTexture file="Interface\Buttons\UI-DialogBox-Button-Down">
+			<TexCoords left="0.0" right="1.0" top="0.0" bottom="0.71875"/>
+		</PushedTexture>
+		<DisabledTexture file="Interface\Buttons\UI-DialogBox-Button-Disabled">
+			<TexCoords left="0.0" right="1.0" top="0.0" bottom="0.71875"/>
+		</DisabledTexture>
+		<HighlightTexture file="Interface\Buttons\UI-DialogBox-Button-Highlight" alphaMode="ADD">
+			<TexCoords left="0.0" right="1.0" top="0.0" bottom="0.71875"/>
+		</HighlightTexture>
+		<NormalFont style="GameFontNormal"/>
+		<DisabledFont style="GameFontDisable"/>
+		<HighlightFont style="GameFontHighlight"/>
+	</Button>
+
+	<!-- The note window's notes box (owner, 2026-11-12: "a snippet, 256 characters or less, like a macro"). Blizzard's
+	     own multi-line box with its remaining-characters count (InputScrollFrameTemplate,
+	     Blizzard_SharedXML/Shared/InputBox/InputBoxTemplates.xml:72, same in both games); its OnLoad
+	     (InputBoxTemplates.lua:82-95) reads only these key values and its own children, so it needs the size here. -->
+	<ScrollFrame name="VeritasUI_MapNoteTextTemplate" inherits="InputScrollFrameTemplate" virtual="true">
+		<Size x="252" y="84"/>
+		<KeyValues>
+			<KeyValue key="maxLetters" value="256" type="number"/>
+			<KeyValue key="instructions" value="Notes (optional)" type="string"/>
+		</KeyValues>
+	</ScrollFrame>
+
+	<!-- The World Map's Notes button, under Blizzard's Map Pin button: that button's look exactly
+	     (WorldMapTrackingPinButtonTemplate, Blizzard_WorldMap/Blizzard_WorldMapTemplates.xml:89-150 live, :6-67
+	     forever), without its mixin; the behaviour is ours (MapNotesUI.lua). -->
+	<!-- ⚠ No double hyphen anywhere inside an XML comment: it makes the whole file not well-formed and nothing in it
+	     loads (owner's Lua warning, 2026-11-12). xmllint finds it; the suite runs it (qol_mapnotes_ui_test). -->
+	<Button name="VeritasUI_MapNoteMapButtonTemplate" frameStrata="HIGH" motionScriptsWhileDisabled="true" virtual="true">
+		<Size x="32" y="32"/>
+		<Layers>
+			<Layer level="BACKGROUND" textureSubLevel="-1">
+				<Texture atlas="MapCornerShadow-Right" useAtlasSize="true" hidden="true">
+					<Anchors>
+						<Anchor point="TOPRIGHT" x="4" y="1"/>
+					</Anchors>
+					<TexCoords left="0" right="1" top="1" bottom="0"/>
+				</Texture>
+			</Layer>
+			<Layer level="BACKGROUND">
+				<Texture parentKey="Background" file="Interface\Minimap\UI-Minimap-Background">
+					<Size x="25" y="25"/>
+					<Anchors>
+						<Anchor point="TOPLEFT" x="3" y="-4"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+			<Layer level="ARTWORK">
+				<Texture parentKey="Icon">
+					<Size x="20" y="20"/>
+					<Anchors>
+						<Anchor point="TOPLEFT" x="7" y="-6"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+			<Layer level="OVERLAY">
+				<Texture parentKey="IconOverlay" hidden="true">
+					<Anchors>
+						<Anchor point="TOPLEFT" relativeKey="$parent.Icon"/>
+						<Anchor point="BOTTOMRIGHT" relativeKey="$parent.Icon"/>
+					</Anchors>
+					<Color r="0.0" g="0.0" b="0.0" a="0.3"/>
+				</Texture>
+			</Layer>
+			<Layer level="OVERLAY" textureSubLevel="1">
+				<Texture parentKey="Border" file="Interface\Minimap\MiniMap-TrackingBorder">
+					<Size x="54" y="54"/>
+					<Anchors>
+						<Anchor point="TOPLEFT"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+			<Layer level="OVERLAY" textureSubLevel="2">
+				<Texture parentKey="ActiveTexture" file="Interface\Minimap\UI-Minimap-ZoomButton-Toggle" alphaMode="ADD" hidden="true">
+					<Size x="37" y="37"/>
+					<Anchors>
+						<Anchor point="TOPLEFT" relativeKey="$parent.Border" x="-2" y="1"/>
+					</Anchors>
+				</Texture>
+			</Layer>
+		</Layers>
+		<HighlightTexture alphaMode="ADD" file="Interface\Minimap\UI-Minimap-ZoomButton-Highlight"/>
+	</Button>
 </Ui>

@@ -375,7 +375,14 @@ local function OpenReputationPane(factionID)
             break
         end
     end
-    return _G.CharacterFrame ~= nil and _G.CharacterFrame:IsShown()
+    local cf = _G.CharacterFrame
+    if not (cf and cf:IsShown()) then return false end
+    -- Open on another tab (Character, after the experience bar): switch to Reputation. A sub-frame switch on an
+    -- open window, the same call the secure path's PostClick makes; onlyShow so it never closes.
+    if not (_G.ReputationFrame and _G.ReputationFrame:IsShown()) and _G.ToggleCharacter then
+        pcall(_G.ToggleCharacter, "ReputationFrame", true)
+    end
+    return true
 end
 
 local function OpenFactionPage(factionID)

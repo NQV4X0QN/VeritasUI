@@ -162,6 +162,7 @@ local UNIVERSAL = {
     -- player can see and switch). ON by default, unlike the options above, so nobody loses it.
     wayCommand        = true,
     mapNotesEnabled   = true,     -- /note and the notes' map pins; same reason, on by default (v1.34.4)
+    mapNotesMinimap   = true,     -- sub-option: notes' icons on the minimap within its view (MapNotesUI.lua)
     untrackWorldQuestsOnUnfocus = false,  -- WorldQuestUntrack.lua (v1.51.0, owner's request); off since v1.74.0
     -- Automation.lua (v1.52.0, feature batch Phase 3): accepting a resurrection someone cast on you.
     -- A battle res (caster in combat) only with the sub-option, off by default.
@@ -1579,11 +1580,15 @@ end
     -- MEASURED (owner's /qol afkprobe, Forever, 2026-11-07): such a tooltip is owned by UIParent while no frame is
     -- under the mouse (GetMouseFoci()[1] nil); hovering the hidden player frame or a hidden bar has that frame under
     -- the mouse and as the owner, so those stay hidden as before.
+    -- ⚠ RE-MEASURED (owner's /qol afkprobe, Forever 1.60.1.70888, 2026-11-12): over the world GetMouseFoci()[1] is now
+    -- WorldFrame, not nil, so every world tooltip stayed hidden. WorldFrame is the 3D world itself, so it counts as
+    -- "no frame". Owner still UIParent for NPCs, players and objects.
     local function WorldTip(tip)
         local ok, owner = pcall(tip.GetOwner, tip)
         if not (ok and owner == UIParent) then return false end
         local foci = GetMouseFoci and GetMouseFoci()
-        return not (foci and foci[1])
+        local over = foci and foci[1]
+        return over == nil or over == _G.WorldFrame
     end
 
     -- Returns true when any tooltip changed, so the caller can resync the overlay strata.
@@ -3411,7 +3416,10 @@ end)()
 -- MEASURED (owner, 2026-10-25): the World Map and WoW's coordinates work inside a Labyrinth,
 -- i.e. the player has a map position there.
 local MAP_NOTE_TEMPLATE = "VeritasUI_MapNotePinTemplate"
-local MAP_NOTE_MAX_TEXT = 120
+-- Shared with MapNotesUI.lua (the Shift-click window and the minimap icons) as NS.MapNotes, filled in below.
+-- It also holds the text cap, so the table costs no extra file-level local: this file is at Lua's 200-locals
+-- limit (locals_headroom_test).
+local MapNotesAPI = { MAX_TEXT = 120 }
 local mapNotesProvider
 
 -- The icons a note can use, chosen from its menu. Every atlas except the first was READ OFF A
@@ -3423,6 +3431,11 @@ local mapNotesProvider
 -- atlas name to this list without a /qol mappins (or GetAtlasInfo) measurement behind it.
 -- WoW Forever has no Labyrinths or Delves (owner, 2026-11-06): their icons are not offered there. A note
 -- saved with one would still draw it if the client has the atlas, else the default.
+-- The four skulls (owner's request 2026-11-12, all four to judge in game) were measured in the game DATA instead:
+-- UiTextureAtlasMember in both games (wago.tools, live + wowf 1.60.1.70888), all in the map-icon atlas 647 with
+-- VignetteLoot. VignetteKill / VignetteKillElite are the map's own rare and elite-rare markers (64x64 art drawn
+-- at its OverrideWidth 32, as Blizzard's vignette pins do, VignetteDataProvider.lua ApplyTextures);
+-- DungeonSkull and QuestSkull are 32x32.
 local MAP_NOTE_ICONS = (function(list)
     if not VUI.IS_FOREVER then return list end
     local kept = {}
@@ -3433,12 +3446,21 @@ end)({
     { atlas = "labyrinth-locked-64x64",    label = "Locked Door", retailOnly = true },
     { atlas = "labyrinth-active-64x64",    label = "Open Door",   retailOnly = true },
     { atlas = "VignetteLoot",              label = "Treasure" },
-    { atlas = "QuestNormal",               label = "Quest" },
+    -- size: drawn this many px square on the World Map instead of the atlas's own size, for the two whose art fills
+    -- its frame while the others show ~21-25 px (owner, 2026-11-12: "a bit bigger" / "too large"). MEASURED from
+    -- the art (atlas 647, FileDataID 1121272, alpha > 64), aiming at Monster's 22.5 px: QuestNormal's "!" is 29 of
+    -- 32 px, so 25 px; DungeonSkull is 28 of 32 px, so 26 px (22.8). The other icons keep Blizzard's own sizes.
+    { atlas = "QuestNormal",               label = "Quest", size = 25 },
     { atlas = "Dungeon",                   label = "Dungeon" },
     { atlas = "delves-regular",            label = "Delve",       retailOnly = true },
     { atlas = "Quartermaster",             label = "Vendor" },
     { atlas = "TaxiNode_Neutral",          label = "Flight Point" },
     { atlas = "poi-hub",                   label = "Quest Hub" },
+    { atlas = "VignetteKill",              label = "Monster" },
+    { atlas = "VignetteKillElite",         label = "Elite Monster" },
+    { atlas = "DungeonSkull",              label = "Skull", size = 26 },
+    -- The atlas is named QuestSkull but draws a plain gold disc (owner, 2026-11-12), so it is named for its look.
+    { atlas = "QuestSkull",                label = "Gold Marker" },
 })
 local MAP_NOTE_DEFAULT_ICON = MAP_NOTE_ICONS[1].atlas
 
@@ -3447,6 +3469,14 @@ local function MapNoteAtlas(note)
     local a = note and note.icon
     if a and DelveAtlasExists(a) then return a end
     return MAP_NOTE_DEFAULT_ICON
+end
+
+-- The World Map size for an icon given one in MAP_NOTE_ICONS (QuestNormal), else nil: Blizzard's own size.
+function MapNotesAPI.DrawSize(atlas)
+    for _, icon in ipairs(MAP_NOTE_ICONS) do
+        if icon.atlas == atlas then return icon.size end
+    end
+    return nil
 end
 
 local function MapNotesRefresh()
@@ -3464,6 +3494,8 @@ end
 local function RemoveMapNote(note)
     local list = cdb and cdb.mapNotes
     if not list then return end
+    -- A note that is the waypoint takes Blizzard's map pin with it (MapNotesUI.lua owns the waypoint).
+    if MapNotesAPI.IsWaypoint and MapNotesAPI.IsWaypoint(note) then MapNotesAPI.ClearWaypoint() end
     for i = #list, 1, -1 do
         if list[i] == note then table.remove(list, i) end
     end
@@ -3510,6 +3542,78 @@ local function DumpMapNotes()
     for _, line in ipairs(pruneLog) do print("  prune " .. line) end
 end
 
+-- MapNotesAPI (declared with the text cap above) is what MapNotesUI.lua gets as NS.MapNotes.
+function MapNotesAPI.Enabled() return (db and db.mapNotesEnabled) and true or false end
+function MapNotesAPI.MinimapEnabled() return MapNotesAPI.Enabled() and db.mapNotesMinimap and true or false end
+function MapNotesAPI.Notes() return (cdb and cdb.mapNotes) or {} end
+MapNotesAPI.Icons       = MAP_NOTE_ICONS
+MapNotesAPI.AtlasExists = DelveAtlasExists
+MapNotesAPI.NoteAtlas   = MapNoteAtlas
+MapNotesAPI.Refresh     = MapNotesRefresh
+MapNotesAPI.Remove      = RemoveMapNote
+-- The icon a new note starts with: the last one chosen, so a run of door notes needs one pick.
+function MapNotesAPI.LastIcon() return MapNoteAtlas({ icon = db and db.mapNoteIcon }) end
+-- "|" starts an escape sequence in a tooltip; doubling it shows it literally. Undone for the edit box.
+function MapNotesAPI.EscapeText(text) return (text:sub(1, MapNotesAPI.MAX_TEXT):gsub("|", "||")) end
+function MapNotesAPI.UnescapeText(text) return (text:gsub("||", "|")) end
+-- The optional notes under a note's name (owner, 2026-11-12: "256 characters or less, like a macro"). Stored
+-- escaped as the name is; nil when empty.
+MapNotesAPI.DESC_MAX = 256
+function MapNotesAPI.EscapeDesc(text)
+    text = text and strtrim(text) or ""
+    if text == "" then return nil end
+    return (text:sub(1, MapNotesAPI.DESC_MAX):gsub("|", "||"))
+end
+
+-- The instance a note at this spot belongs to, or nil (kept for good). Owner's rule (2026-11-12): only a note
+-- inside the instance you are in -- your own map, or any map of that instance (another floor): such a map's
+-- world position is on the instance's own map ID, which is the instance ID GetInstanceInfo reports.
+-- ⚠ That last equality is UNMEASURED; /qol notes prints each note's instance tag to check it.
+function MapNotesAPI.InstanceFor(mapID, x, y)
+    local here = CurrentInstanceID()
+    if not here then return nil end
+    if mapID == C_Map.GetBestMapForUnit("player") then return here end
+    if C_Map.GetWorldPosFromMapPos and CreateVector2D then
+        local ok, cont = pcall(C_Map.GetWorldPosFromMapPos, mapID, CreateVector2D(x, y))
+        if ok and cont == here then return here end
+    end
+    return nil
+end
+
+function MapNotesAPI.Add(mapID, x, y, text, icon, desc)
+    if not cdb then return nil end
+    cdb.mapNotes = cdb.mapNotes or {}
+    local note = { mapID = mapID, x = x, y = y, text = MapNotesAPI.EscapeText(text),
+                   icon = icon or MAP_NOTE_DEFAULT_ICON, instance = MapNotesAPI.InstanceFor(mapID, x, y),
+                   desc = MapNotesAPI.EscapeDesc(desc) }
+    table.insert(cdb.mapNotes, note)
+    if db and icon then db.mapNoteIcon = icon end
+    MapNotesRefresh()
+    return note
+end
+
+-- Saves the window's edit of a note. A note pruned while its window was open is added back.
+function MapNotesAPI.Update(note, mapID, x, y, text, icon, desc)
+    local list = cdb and cdb.mapNotes
+    if not list then return nil end
+    local found = false
+    for _, n in ipairs(list) do if n == note then found = true break end end
+    if not found then return MapNotesAPI.Add(mapID, x, y, text, icon, desc) end
+    if note.mapID ~= mapID or note.x ~= x or note.y ~= y then
+        -- A note that is the waypoint takes it along when moved.
+        local wasWaypoint = MapNotesAPI.IsWaypoint and MapNotesAPI.IsWaypoint(note)
+        note.mapID, note.x, note.y = mapID, x, y
+        note.instance = MapNotesAPI.InstanceFor(mapID, x, y)
+        if wasWaypoint then MapNotesAPI.SetWaypoint(note) end
+    end
+    note.text = MapNotesAPI.EscapeText(text)
+    note.icon = icon or note.icon
+    note.desc = MapNotesAPI.EscapeDesc(desc)
+    if db and icon then db.mapNoteIcon = icon end
+    MapNotesRefresh()
+    return note
+end
+
 local function AddMapNote(text)
     if not cdb then
         VUI.Print("Quality of Life", "Still loading — try again in a moment.")
@@ -3523,15 +3627,8 @@ local function AddMapNote(text)
         VUI.Print("Quality of Life", "Can't read your position here, so no note was added.")
         return
     end
-    -- "|" starts an escape sequence in a tooltip; doubling it shows it literally.
-    text = text:sub(1, MAP_NOTE_MAX_TEXT):gsub("|", "||")
-    cdb.mapNotes = cdb.mapNotes or {}
-    -- A new note starts with the icon last chosen, so a run of door notes needs one pick.
-    table.insert(cdb.mapNotes, { mapID = mapID, x = x, y = y, text = text,
-                                 icon = (db and db.mapNoteIcon) or MAP_NOTE_DEFAULT_ICON,
-                                 instance = CurrentInstanceID() })
-    VUI.Print("Quality of Life", "Map note added: " .. text)
-    MapNotesRefresh()
+    local note = MapNotesAPI.Add(mapID, x, y, text, (db and db.mapNoteIcon) or MAP_NOTE_DEFAULT_ICON)
+    VUI.Print("Quality of Life", "Map note added: " .. note.text)
 end
 
 local function MapNoteCommand(msg)
@@ -3544,7 +3641,9 @@ local function MapNoteCommand(msg)
     local text = strtrim(msg or "")
     if text == "" then
         VUI.Print("Quality of Life", VUI.COL.YELLOW .. "/note <text>|r leaves a note on the map where you're "
-            .. "standing. Click a note on the map to change its icon or remove it. "
+            .. "standing, and Shift-clicking the World Map leaves one anywhere, with a name and an icon. "
+            .. "Click a note on the map to edit it, change its icon or remove it, and Shift-right-click the map "
+            .. "to remove the notes on it, or all of them. "
             .. VUI.COL.YELLOW .. "/note clear|r removes "
             .. "the notes on your current map.")
         return
@@ -3577,13 +3676,18 @@ end
 
 function VeritasUI_MapNotePinMixin:OnAcquired(note)
     self.note = note
-    self:UseFrameLevelType("PIN_FRAME_LEVEL_WAYPOINT_LOCATION")
+    -- The waypoint note is drawn one layer above Blizzard's map pin (PIN_FRAME_LEVEL_WAYPOINT_LOCATION, then
+    -- PIN_FRAME_LEVEL_GROUP_MEMBER, Blizzard_WorldMap.lua:283-284), so it is the one seen, hovered and clicked.
+    local isWaypoint = MapNotesAPI.IsWaypoint and MapNotesAPI.IsWaypoint(note)
+    self:UseFrameLevelType(isWaypoint and "PIN_FRAME_LEVEL_GROUP_MEMBER" or "PIN_FRAME_LEVEL_WAYPOINT_LOCATION")
     -- Exactly VignettePinBaseMixin:ApplyTextures (VignetteDataProvider.lua:280-290): the atlas
     -- at its native size on both textures, the pin sized to it, and the highlight desaturated
     -- .75 as their in-view vignettes are (:381).
     local atlas = MapNoteAtlas(note)
     self.Icon:SetAtlas(atlas, true)
     self.HighlightTexture:SetAtlas(atlas, true)
+    local size = MapNotesAPI.DrawSize(atlas)   -- our one exception to the atlas size (QuestNormal)
+    if size then self.Icon:SetSize(size, size) end
     local w, h = self.Icon:GetSize()
     self.HighlightTexture:SetSize(w, h)
     self:SetSize(w, h)
@@ -3594,8 +3698,26 @@ function VeritasUI_MapNotePinMixin:OnMouseEnter()
     if not self.note then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT", -16, -4)
     GameTooltip_SetTitle(GameTooltip, self.note.text)
-    GameTooltip_AddColoredLine(GameTooltip, "Click to change its icon or remove it.", GREEN_FONT_COLOR)
+    -- The note's own notes, in gold and wrapped as Blizzard's descriptions are (Settings.InitTooltip style).
+    if self.note.desc then GameTooltip_AddNormalLine(GameTooltip, self.note.desc, true) end
+    GameTooltip_AddColoredLine(GameTooltip, "Click to edit it, change its icon or remove it.", GREEN_FONT_COLOR)
+    GameTooltip_AddColoredLine(GameTooltip, "Shift-click the map to add another note.", GREEN_FONT_COLOR)
     GameTooltip:Show()
+end
+
+-- ⚠ SetPassThroughButtons is a PROTECTED function (SimpleScriptRegionAPIDocumentation.lua:617-621,
+-- IsProtectedFunction), and the map calls it through CheckMouseButtonPassthrough on every AcquirePin
+-- (Blizzard_MapCanvas.lua AcquirePin; MapCanvas_DataProviderBase.lua:288-301). Our pins are acquired from our
+-- code, so in combat that call would be blocked. A pin keeps its passthrough between uses, so it is set once,
+-- out of combat; a pin first made in combat lets right-click (the map's zoom-out) through from its next use
+-- out of combat.
+function VeritasUI_MapNotePinMixin:CheckMouseButtonPassthrough(...)
+    if self.vuiPassThroughSet or InCombatLockdown() then return end
+    local base = _G.MapCanvasPinMixin and _G.MapCanvasPinMixin.CheckMouseButtonPassthrough
+    if base then
+        self.vuiPassThroughSet = true
+        base(self, ...)
+    end
 end
 
 function VeritasUI_MapNotePinMixin:OnMouseLeave()
@@ -3608,6 +3730,20 @@ function VeritasUI_MapNotePinMixin:OnMouseClickAction(button)
     MenuUtil.CreateContextMenu(self, function(_, root)
         root:SetMinimumWidth(1)
         root:CreateTitle(note.text)
+        -- Edit Note (owner, 2026-11-12): the Shift-click window, filled in, to rename, re-icon or move it.
+        if MapNotesAPI.OpenEditor then
+            root:CreateButton("Edit Note", function() MapNotesAPI.OpenEditor(note) end)
+        end
+        -- Set as Waypoint (owner, 2026-11-12): Blizzard's own map pin + super-tracking (its minimap arrow and
+        -- on-screen marker), not an arrow of ours. Greyed where Blizzard refuses map pins (instances, Labyrinths).
+        if MapNotesAPI.IsWaypoint then
+            if MapNotesAPI.IsWaypoint(note) then
+                root:CreateButton("Clear Waypoint", function() MapNotesAPI.ClearWaypoint() end)
+            else
+                local wp = root:CreateButton("Set as Waypoint", function() MapNotesAPI.SetWaypoint(note) end)
+                if wp and wp.SetEnabled and not MapNotesAPI.CanWaypoint(note) then wp:SetEnabled(false) end
+            end
+        end
         local icons = root:CreateButton("Change Icon")
         icons:SetMinimumWidth(1)   -- an addon-built submenu, same WoWUIBugs #783 defence
         for _, choice in ipairs(MAP_NOTE_ICONS) do
@@ -3644,7 +3780,8 @@ local function MapNotesInstall()
         if not list then return end
         local mapID = self:GetMap():GetMapID()
         for _, note in ipairs(list) do
-            if note.mapID == mapID then
+            -- The note open in the window is drawn by the window's own pin (MapNotesUI.lua), where it is going.
+            if note.mapID == mapID and note ~= MapNotesAPI.editing then
                 local pin = self:GetMap():AcquirePin(MAP_NOTE_TEMPLATE, note)
                 pin:SetPosition(note.x, note.y)
             end
@@ -3672,6 +3809,12 @@ mapNotesFrame:SetScript("OnEvent", function(_, event)
 end)
 
 -- /note and /mapnote are registered at PLAYER_LOGIN, and only while the Map Notes option is on.
+
+-- MapNotesUI.lua (loaded after this file) adds OpenEditor, CloseEditor and MinimapRefresh to this table.
+do
+    local ns = select(2, ...)
+    if type(ns) == "table" then ns.MapNotes = MapNotesAPI end
+end
 
 -- ── Fill In DELETE (v1.28.0, feature plan phase 2) ──
 -- Deleting a rare-or-better item opens DELETE_GOOD_ITEM / DELETE_GOOD_QUEST_ITEM, which make you
@@ -4885,17 +5028,31 @@ local function InitializeOptions()
         .. "/way clear to remove it.",
         SetWayCommand)
 
-    AddCheckbox("mapNotesEnabled", "Map Notes",
-        "Type /note and a few words to leave a note on the map where you're standing. Click a note "
-        .. "on the map to change its icon or remove it, and type /note clear to remove the notes on "
-        .. "your current map. Turning this off hides your notes until you turn it back on.",
+    local notesOptInit = AddCheckbox("mapNotesEnabled", "Map Notes",
+        "Leave notes on the World Map with a name, an icon and your own notes: click the Notes button under the "
+        .. "map's Map Pin button and then the map, or Shift-click the map, or type /note and a few words to leave "
+        .. "one where you're standing. Click a note to edit it, set it as your waypoint or remove it, and "
+        .. "Shift-right-click the map to remove the notes on it, or all of them. Turning this off hides your notes "
+        .. "until you turn it back on.",
         function(value)
             if value then
                 SLASH_VERITASUI_MAPNOTE1, SLASH_VERITASUI_MAPNOTE2 = "/note", "/mapnote"
                 SlashCmdList["VERITASUI_MAPNOTE"] = MapNoteCommand
+            elseif MapNotesAPI.CloseEditor then
+                MapNotesAPI.CloseEditor()
             end
             MapNotesRefresh()
+            if MapNotesAPI.MinimapRefresh then MapNotesAPI.MinimapRefresh() end
+            if MapNotesAPI.RefreshMapButton then MapNotesAPI.RefreshMapButton() end
         end)
+    local notesMinimapInit = AddCheckbox("mapNotesMinimap", "Show Map Notes on Minimap",
+        "Shows your notes' icons on the minimap while they are close enough to be in its view. Hover one to "
+        .. "see its name and notes.",
+        function() if MapNotesAPI.MinimapRefresh then MapNotesAPI.MinimapRefresh() end end)
+    if notesMinimapInit and notesOptInit and VUI.SettingsSubOption then
+        VUI.SettingsSubOption(notesMinimapInit, ADDON_NAME .. "_mapNotesEnabled",
+            function() return db.mapNotesEnabled end)
+    end
 
     Header("Tooltips")
     AddCheckbox("tooltipTarget", "Show Target in Tooltips",

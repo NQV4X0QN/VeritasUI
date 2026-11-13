@@ -53,6 +53,8 @@ globals = {
     "SLASH_VERITASUI_PR1", "SLASH_VERITASUI_PR2",
     "SLASH_VERITASUI_QOL1", "SLASH_VERITASUI_QOL2", "SLASH_VERITASUI_WAY1",
     "SLASH_VERITASUI_MAPNOTE1", "SLASH_VERITASUI_MAPNOTE2", "VeritasUI_MapNotePinMixin",
+    "VeritasUI_MapNoteDraftPinMixin", "ChatFontNormal", "OKAY", "IsControlKeyDown", "GetCVar", "C_Minimap",
+    "GetPlayerFacing", "YES", "NO", "C_GameRules", "GameTooltip_AddBlankLineToTooltip",
     "SLASH_VERITASUI_ZONEQUESTS1", "SLASH_VERITASUI_ZONEQUESTS2",
     "SlashCmdList",
     -- Addon-compartment callbacks (WoW calls these by global name from the TOC)

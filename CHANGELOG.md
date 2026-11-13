@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.86.0] - 2026-11-12
+
+Map Notes, rebuilt around the World Map: leave a note anywhere with a name, an icon and your own notes, see it on the minimap, and follow it as your waypoint.
+
+### Added
+
+- `VeritasUI_QualityOfLife` — **Notes button on the World Map**, under Blizzard's Map Pin button in Retail and WoW Forever: click it, then click anywhere on the map to leave a note there. Shift-clicking the map does the same (`MapNotesUI.lua`, new, `MapNotes.xml`)
+- `VeritasUI_QualityOfLife` — **New Map Note window**: a name, optional notes of up to 256 characters, and an icon. My Location moves the note to where you're standing; Shift-click the map again to move it anywhere else, on any map. Enter saves, Escape cancels (`MapNotesUI.lua`, `MapNotes.xml`)
+- `VeritasUI_QualityOfLife` — **Edit Note** in a note's menu opens the same window, filled in, to rename it, change its icon or notes, or move it (`MapNotesUI.lua`, `QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Set as Waypoint** in a note's menu: Blizzard's own map pin, minimap arrow and on-screen marker lead you to the note, and on the World Map you still see your note's icon. Clear Waypoint removes it. Not offered where the game doesn't allow map pins, such as instances (`MapNotesUI.lua`, `QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Show Map Notes on Minimap**, under Maps, on by default: your notes' icons show on the minimap while they are in range and disappear where the minimap's own icons do. They turn with Rotate Minimap; hover one to see its name and notes (`MapNotesUI.lua`, `QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — **Remove Zone Notes and Remove All Notes**: Shift-right-click the World Map. Remove All Notes asks first (`MapNotesUI.lua`)
+- `VeritasUI_QualityOfLife` — **four more note icons**: Monster, Elite Monster, Skull and Gold Marker, all art the map already uses (`QualityOfLife.lua`)
+
+### Changed
+
+- `VeritasUI_QualityOfLife` — a note's tooltip shows its notes. A note you place inside your current instance is removed when you leave it, as with /note (`QualityOfLife.lua`)
+
+### Fixed
+
+- `VeritasUI_QualityOfLife` — opening the World Map in combat with notes on it is no longer blocked by the game (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — clicking the reputation bar while Character Info is open on another tab now switches to the Reputation tab (`Journeys.lua`)
+- `VeritasUI_QualityOfLife` — the AFK Screen shows tooltips for players, NPCs and objects again; a recent WoW Forever update had hidden them (`QualityOfLife.lua`)
+- `VeritasUI_QualityOfLife` — the Junk Lists window no longer shows a tooltip that follows the mouse over the list (`JunkLists.lua`)
+- `VeritasUI_Lib` — Copy From... and Reload UI show only on VeritasUI's own options pages, no longer on Blizzard's Game > Interface page (`Lib.lua`)
+
+
 ## [1.85.0] - 2026-11-09
 
 A full audit of every module, in Retail and in WoW Forever.

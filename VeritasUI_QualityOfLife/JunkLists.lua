@@ -28,10 +28,9 @@ local BLOCK_X = ICON_X + ICON_SZ + 4
 local function DB() return _G.VeritasUI_QualityOfLifeDB end
 local LISTS = {
     { key = "junkNeverSell",  title = "Never Sell",  icon = "Interface\\Icons\\INV_Misc_Bag_10",
-      empty = "Drag a grey item here to keep it.", tip = "Greys you keep: Auto Sell Junk leaves them in your bags." },
+      empty = "Drag a grey item here to keep it." },
     { key = "junkAlwaysSell", title = "Always Sell", icon = "Interface\\Icons\\INV_Misc_Coin_02",
-      empty = "Drag an item here to sell it as junk.",
-      tip = "Items Auto Sell Junk sells like greys, unless you could still get a refund or trade it to your group." },
+      empty = "Drag an item here to sell it as junk." },
 }
 local cur = 1
 
@@ -196,14 +195,8 @@ local function BuildWindow()
     drop:RegisterForClicks("LeftButtonUp")
     drop:SetScript("OnReceiveDrag", TakeCursorItem)
     drop:SetScript("OnClick", TakeCursorItem)
-    drop:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
-        GameTooltip:AddLine(LISTS[cur].title, HIGHLIGHT_FONT_COLOR:GetRGB())
-        GameTooltip:AddLine(LISTS[cur].tip, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-        GameTooltip:AddLine("Drag an item from your bags here", LIGHTBLUE_FONT_COLOR:GetRGB())
-        GameTooltip:Show()
-    end)
-    drop:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- No tooltip on the list area (owner, 2026-11-12): it followed the mouse over the whole list, and the empty
+    -- list's own text already says what to do.
 
     local box = CreateFrame("Frame", nil, drop, "WowScrollBoxList")
     box:SetPoint("TOPLEFT", drop, "TOPLEFT", 0, -2)

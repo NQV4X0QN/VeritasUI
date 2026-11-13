@@ -41,7 +41,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.85.0"
+VUI.VERSION = "1.86.0"
 -- WoW Forever (game type camelot): one codebase serves both games, and a module drops what Forever lacks.
 -- MEASURED in Forever 1.60.1.70790 (owner's /vui forever probe, 2026-11-04): WOW_PROJECT_ID = 18 =
 -- WOW_PROJECT_CAMELOT (Blizzard_ProjectConstants/Camelot/ProjectConstants.lua:1-2). Retail defines only
@@ -1169,7 +1169,17 @@ end
 
 -- Every module registers its options page through this instead of
 -- Settings.RegisterVerticalLayoutCategory; returns the same (category, layout) pair.
+-- Each category made here is remembered (VUI._settingsCategories): the Reload / Copy From... / Open buttons go
+-- on THESE pages only. They were matched by name alone until 2026-11-12, so Blizzard's own Game > Interface page
+-- (same name as ours) showed them too (owner's screenshot).
+VUI._settingsCategories = {}
 function VUI.RegisterSettingsCategory(name)
+    local category, layout = VUI._RegisterSettingsCategory(name)
+    if category then VUI._settingsCategories[category] = true end
+    return category, layout
+end
+
+function VUI._RegisterSettingsCategory(name)
     local sub = Settings.RegisterVerticalLayoutSubcategory
     if not sub or not Settings.RegisterCanvasLayoutCategory then
         return Settings.RegisterVerticalLayoutCategory(name)
@@ -1359,7 +1369,8 @@ function VUI._InitReloadButton()
             category = ok and cur or nil
         end
         local info
-        if category and category.GetName then
+        -- Ours only: a page Lib made (VUI.RegisterSettingsCategory), not any page that shares a module's name.
+        if category and VUI._settingsCategories[category] and category.GetName then
             local ok, name = pcall(category.GetName, category)
             info = ok and name and VUI._settingsLabels[name] or nil
         end
