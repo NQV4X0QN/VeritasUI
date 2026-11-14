@@ -417,6 +417,11 @@ local function ScheduleSync()
         debounceTimer = nil
         -- Skip if a direct sync ran recently (zone change)
         if (GetTime() - lastDirectSync) > SYNC_COOLDOWN then
+            -- Judge against the markers the game shows NOW (v1.88.2). A set kept from the last zone change
+            -- went stale while standing still: "Stalk With The Earthmother" (Forever, owner 2026-11-14) had its
+            -- turn-in marker on Thunder Bluff (POI mapID 1456 = best map, /zq mapscan) yet stayed untracked
+            -- until a /reload rebuilt the set. One rebuild per debounced burst, not per event.
+            cachedQuestSet = nil
             SyncTracking(false)
         end
     end)
@@ -520,11 +525,12 @@ ef:RegisterEvent("SUPER_TRACKING_CHANGED")
 -- auto-watch) until the next zone transition rebuilt the cache. This handler
 -- only invalidates the cache and routes through the existing cancellable
 -- debounce — NOT the stacked C_Timer.After the v1.6.27 removal eliminated.
--- Deliberately NOT invalidating on QUEST_LOG_UPDATE itself: that fires on
--- every objective tick (each kill credit), and rebuilding the map query per
--- burst is the exact cost the cache exists to avoid; stale IDs for quests
--- no longer in the log are dead keys the sync loop never consults.
+-- Since v1.88.2 every debounced sync rebuilds the set (ScheduleSync): the debounce, not the
+-- cache, keeps the map query to one per burst of objective ticks.
 ef:RegisterEvent("QUEST_ACCEPTED")
+-- A quest's map markers moved (objectives done -> turn-in marker, v1.88.2). Forever lists it
+-- (Blizzard_APIDocumentationGenerated/QuestLogDocumentation.lua:1377-1381); pcall in case a client lacks it.
+pcall(ef.RegisterEvent, ef, "QUEST_POI_UPDATE")
 
 ef:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
@@ -610,7 +616,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         -- quest appears/disappears from the tracker promptly.
         ScheduleSync()
 
-    elseif event == "QUEST_LOG_UPDATE" then
+    elseif event == "QUEST_LOG_UPDATE" or event == "QUEST_POI_UPDATE" then
         FinishPendingRestore()
         ScheduleSync()
     end

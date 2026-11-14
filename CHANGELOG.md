@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.88.2] - 2026-11-14
+
+### Fixed
+
+- Zone Quests — **a quest whose turn-in is in your zone now shows in the Objective Tracker**: when a quest's marker moved into your zone after you arrived, it stayed hidden until you changed zones or reloaded
+
+
 ## [1.88.1] - 2026-11-13
 
 ### Fixed
