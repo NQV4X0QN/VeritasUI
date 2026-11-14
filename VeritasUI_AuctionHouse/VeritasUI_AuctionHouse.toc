@@ -1,7 +1,7 @@
 ## Interface: 120105, 16001
 ## Title: VeritasUI — Auction House
 ## Notes: Auction House price database, tooltip prices, and a sellable-items strip on the native Sell tab. |cFF808080by NQV4X0QN|r
-## Version: 1.88.0
+## Version: 1.88.1
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
 ## SavedVariables: VeritasUI_AuctionHouseDB

@@ -20,6 +20,7 @@ local DRAFT_TEMPLATE  = "VeritasUI_MapNoteDraftPinTemplate"
 local CLICK_PRIORITY  = 80     -- under Blizzard's Ctrl-click map pin (90, WaypointLocationDataProvider.lua:10)
 local ICON_BOX        = 24     -- an icon choice's art, fitted inside the 36 box (SelectorButtonTemplate size)
 local MINIMAP_ICON    = 16
+local WAYPOINT_HOVER_PAD = 10   -- px added round a minimap icon while the waypoint is on its note (see MinimapUpdate)
 
 local function Readable(...)
     for i = 1, select("#", ...) do
@@ -748,29 +749,32 @@ local function WorldPos(mapID, x, y)
     return cont, wx, wy
 end
 
+-- ⚠ Only a successful read is kept. Both caches once kept a failed read too, so one empty answer hid that map's
+-- or note's icons until /reload (owner, Forever, 2026-11-13: no minimap icon in Thunder Bluff, back after a
+-- /reload with nothing else changed). Which read failed, and when, is UNMEASURED; a failed one is retried.
 local function MapAxes(mapID)
     local a = axesCache[mapID]
-    if a ~= nil then return a or nil end
+    if a then return a end
     local c0, x0, y0 = WorldPos(mapID, 0, 0)
     local c1, x1, y1 = WorldPos(mapID, 1, 0)
     local c2, x2, y2 = WorldPos(mapID, 0, 1)
-    a = false
-    if c0 and c1 and c2 then
-        local ex, ey, sx, sy = x1 - x0, y1 - y0, x2 - x0, y2 - y0
-        local le, ls = math_sqrt(ex * ex + ey * ey), math_sqrt(sx * sx + sy * sy)
-        if le > 0 and ls > 0 then a = { ex / le, ey / le, sx / ls, sy / ls } end
-    end
+    if not (c0 and c1 and c2) then return nil end
+    local ex, ey, sx, sy = x1 - x0, y1 - y0, x2 - x0, y2 - y0
+    local le, ls = math_sqrt(ex * ex + ey * ey), math_sqrt(sx * sx + sy * sy)
+    if not (le > 0 and ls > 0) then return nil end
+    a = { ex / le, ey / le, sx / ls, sy / ls }
     axesCache[mapID] = a
-    return a or nil
+    return a
 end
 
 local function NoteWorld(note)
     local c = worldCache[note]
-    if c and c.mapID == note.mapID and c.x == note.x and c.y == note.y then return c.cont and c end
+    if c and c.mapID == note.mapID and c.x == note.x and c.y == note.y then return c end
     local cont, wx, wy = WorldPos(note.mapID, note.x, note.y)
+    if not cont then return nil end
     c = { mapID = note.mapID, x = note.x, y = note.y, cont = cont, wx = wx, wy = wy }
     worldCache[note] = c
-    return cont and c
+    return c
 end
 
 local function HideFrom(i)
@@ -811,10 +815,15 @@ end
 local function MinimapUpdate()
     local minimap = _G.Minimap
     if not (mm and minimap) then return end
+    -- The minimap's own visibility is read here, every frame, not on the 0.5 s poll: polled, our icons came back up
+    -- to half a second after the minimap did, showing the game's Map Pin alone meanwhile (owner, Forever,
+    -- 2026-11-13, leaving the AFK screen).
+    if not minimap:IsVisible() then HideFrom(1); return end
     local scale = UIParent:GetEffectiveScale()
     if scale and scale > 0 then mm:SetScale(minimap:GetEffectiveScale() / scale) end
     local pa = UIParent:GetEffectiveAlpha()
     mm:SetAlpha((pa and pa > 0) and math.min(1, minimap:GetEffectiveAlpha() / pa) or 1)
+    mm:Raise()   -- back over MinimapCluster each time the game raises it (see MinimapRefresh)
 
     local pm = C_Map.GetBestMapForUnit("player")
     local axes = pm and MapAxes(pm)
@@ -851,6 +860,15 @@ local function MinimapUpdate()
                     FitAtlas(p.Icon, p.atlas, MINIMAP_ICON)
                 end
                 p.note = note
+                -- While the waypoint is on this note, the game draws its own Map Pin under our icon with a wider
+                -- hover area; its tooltip is the game's, and its text is SECRET to addons (MEASURED, owner, Forever,
+                -- 2026-11-13: GetMinimapMouseover line 1 secret), so it cannot be rewritten. Our icon's hover area
+                -- grows to cover it instead. WAYPOINT_HOVER_PAD is UNMEASURED against the game's hover area.
+                local pad = API.IsWaypoint(note) and WAYPOINT_HOVER_PAD or 0
+                if p.pad ~= pad then
+                    p.pad = pad
+                    p:SetHitRectInsets(-pad, -pad, -pad, -pad)
+                end
                 p:ClearAllPoints()
                 p:SetPoint("CENTER", mm, "CENTER", ox, oy)
                 p:Show()
@@ -863,11 +881,18 @@ end
 local function MinimapRefresh()
     local minimap = _G.Minimap
     if not minimap then return end
-    local want = API.MinimapEnabled() and #API.Notes() > 0 and minimap:IsVisible() or false
+    -- The minimap being hidden (the AFK screen, or anything else) is MinimapUpdate's to follow, per frame.
+    local want = API.MinimapEnabled() and #API.Notes() > 0 or false
     if want and not mm then
         mm = CreateFrame("Frame", nil, UIParent)
         mm:SetPoint("CENTER", minimap, "CENTER")
         mm:SetSize(1, 1)
+        -- MinimapCluster is toplevel (Blizzard_Minimap/Mainline/Minimap.xml:3), so the game raises it over every
+        -- other LOW frame whenever it is shown or clicked -- whatever the frame levels say. MEASURED (owner, Forever,
+        -- 2026-11-13): after the AFK screen re-showed it, the overlay (level 8 over the Minimap's 3) was neither
+        -- drawn nor under the mouse; Raise() alone did nothing, SetToplevel(true) + Raise() brought it back.
+        -- So the overlay is toplevel too and is raised every frame it draws (MinimapUpdate).
+        mm:SetToplevel(true)
         mm:SetScript("OnUpdate", MinimapUpdate)
         mm:Hide()
     end

@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.88.1] - 2026-11-13
+
+### Fixed
+
+- Quality of Life — **a Map Note set as your waypoint shows its own name on the minimap**: the game's Map Pin sits under the note's icon with a wider hover area, so hovering just beside the icon said "Map Pin"
+- Quality of Life — **Map Notes stay on the minimap after the AFK screen**: they were hidden behind the minimap until a /reload, and now come back with it at once
+- Quality of Life — a Map Note whose position the game couldn't give for a moment is tried again, instead of staying off the minimap until a /reload
+
+
 ## [1.88.0] - 2026-11-12
 
 ### Added
