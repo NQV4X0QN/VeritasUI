@@ -254,7 +254,7 @@ local MIGRATE_UNIVERSAL = {}
 for k, v in pairs(UNIVERSAL)         do MIGRATE_UNIVERSAL[k] = v    end
 for k    in pairs(RETIRED_UNIVERSAL) do MIGRATE_UNIVERSAL[k] = true end
 
--- ⚠ PER-CHARACTER -- exactly three keys, for two different reasons.
+-- ⚠ PER-CHARACTER -- exactly four keys, for two different reasons.
 local PERCHAR = {
     -- A genuine per-character CHOICE: guild membership differs, and whether guild funds should be
     -- spent on repairs is a decision you may want to make differently on an alt.
@@ -270,12 +270,18 @@ local PERCHAR = {
     -- instance belongs to that character's run and is deleted when that character leaves it, so
     -- sharing the list would let an alt's login wipe a run still in progress on another.
     mapNotes       = {},
+
+    -- A technical CONSTRAINT, not a preference (freshness review 2026-11-14, Q3, owner-confirmed bug): the
+    -- waypoint VeritasUI is watching for arrival ({ m = uiMapID, x, y }; false = none). The game keeps the waypoint
+    -- through a /reload while our watch was lost, so it never cleared. Per-character: the waypoint is.
+    wayWatch       = false,
 }
 
 
 local db   -- ACCOUNT-wide table
--- ⚠ Declared here, above every reader. `cdb` is the PER-CHARACTER table (the three PERCHAR keys:
--- repairFunding, afkUIDirty, mapNotes) and is nil until PLAYER_LOGIN: VUI.BindScopedDB deliberately does not fall
+-- ⚠ Declared here, above every reader. `cdb` is the PER-CHARACTER table (the four PERCHAR keys:
+-- repairFunding, afkUIDirty, mapNotes, wayWatch) and is nil until PLAYER_LOGIN: VUI.BindScopedDB deliberately
+-- does not fall
 -- back to the account root.
 local cdb  -- PER-CHARACTER table; nil before PLAYER_LOGIN
 
@@ -319,14 +325,45 @@ end
 
 local function StopWaypointTracking()
     if wayTicker then wayTicker:Cancel(); wayTicker = nil end
+    if cdb then cdb.wayWatch = false end
 end
 
-local function StartWaypointTracking()
-    StopWaypointTracking()
+-- Watches the waypoint the game has NOW (/way's, or a map note's) and clears it within WAY_ARRIVAL_YARDS.
+-- resume (PLAYER_LOGIN): only when the game still has the waypoint we were watching -- it survives a /reload,
+-- our ticker does not (owner, 2026-11-14) -- so a map pin you placed yourself is never cleared by us. A waypoint
+-- replaced by one of yours ends the watch, and the distance is read only while the waypoint is super-tracked
+-- (C_Navigation.GetDistance is to whatever is super-tracked, InGameNavigationDocumentation both games).
+local function StartWaypointTracking(resume)
+    local function Current()
+        if not (C_Map and C_Map.GetUserWaypoint) then return nil end
+        local ok, wp = pcall(C_Map.GetUserWaypoint)
+        local pos = ok and type(wp) == "table" and wp.position
+        if not (pos and type(pos.x) == "number" and type(pos.y) == "number") then return nil end
+        if issecretvalue and (issecretvalue(pos.x) or issecretvalue(pos.y) or issecretvalue(wp.uiMapID)) then
+            return nil
+        end
+        return { m = wp.uiMapID, x = pos.x, y = pos.y }
+    end
+    local function Same(a, b)
+        return type(a) == "table" and type(b) == "table" and a.m == b.m
+            and math.abs(a.x - b.x) < 0.0005 and math.abs(a.y - b.y) < 0.0005
+    end
+    local now = Current()
+    if resume then
+        -- No waypoint readable yet (whether the game has it at login is unmeasured): keep the record, and
+        -- USER_WAYPOINT_UPDATED tries again when it arrives. A different waypoint: not ours, forget the record.
+        if not now then return end
+        if not Same(cdb and cdb.wayWatch, now) then StopWaypointTracking(); return end
+    end
+    if wayTicker then wayTicker:Cancel(); wayTicker = nil end
+    if not now then StopWaypointTracking(); return end
+    if cdb then cdb.wayWatch = now end
     wayTicker = C_Timer.NewTicker(1, function()
-        if not C_Map.HasUserWaypoint() then
+        if not C_Map.HasUserWaypoint() or not Same(now, Current()) then
             StopWaypointTracking(); return
         end
+        local st = C_SuperTrack.IsSuperTrackingUserWaypoint
+        if st and not st() then return end
         local dist = C_Navigation.GetDistance()
         if dist and dist <= WAY_ARRIVAL_YARDS then
             C_Map.ClearUserWaypoint()
@@ -5368,6 +5405,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             SLASH_VERITASUI_MAPNOTE1, SLASH_VERITASUI_MAPNOTE2 = "/note", "/mapnote"
             SlashCmdList["VERITASUI_MAPNOTE"] = MapNoteCommand
         end
+        -- The waypoint we were watching before a /reload or relog (Q3): watch it again.
+        if C_Map and C_Map.GetUserWaypoint then StartWaypointTracking(true) end
 
         self:UnregisterEvent("PLAYER_LOGIN")
         -- Login line removed (suite-wide audit S2): Lib prints the one "VeritasUI vX loaded" line.
@@ -5454,6 +5493,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- Fired when the waypoint is cleared externally (e.g. map right-click UI).
         if not C_Map.HasUserWaypoint() then
             StopWaypointTracking()
+        elseif not wayTicker and cdb and type(cdb.wayWatch) == "table" then
+            StartWaypointTracking(true)   -- the remembered waypoint arrived after login
         end
     end
 end)
