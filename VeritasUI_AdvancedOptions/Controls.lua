@@ -134,15 +134,19 @@ local function CreateResetButton(parent, cvarName, onReset)
 
     local isList = type(cvarName) == "table"
     btn:SetScript("OnEnter", function(self)
+        -- Blizzard's tooltip colours: title white, text gold, and a name inside the gold text white, as its
+        -- dropdown tooltips write each option's label (Settings.CreateOptionsInitTooltip,
+        -- Blizzard_Settings.lua:442, :451). Was yellow on gold until v1.89.0 (owner: hard to tell apart).
+        local name = not isList and (VUI.COL.HIGHLIGHT .. cvarName .. "|r") or nil
         if self:IsEnabled() then
             hover:Show()
             ShowTooltip(self, "Reset to Default", isList
                 and "Restore every choice in this list to its default."
-                or "Restore " .. VUI.COL.YELLOW .. cvarName .. "|r to its default value.")
+                or "Restore " .. name .. " to its default value.")
         else
             ShowTooltip(self, "Reset to Default", isList
                 and "Every choice in this list is already at its default."
-                or VUI.COL.YELLOW .. cvarName .. "|r is already at its default value.")
+                or name .. " is already at its default value.")
         end
     end)
     btn:SetScript("OnLeave", function()
