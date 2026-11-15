@@ -411,19 +411,21 @@ end
 
 -- ── Debounce ──────────────────────────────────────────────────────
 local debounceTimer = nil
-local function ScheduleSync()
+local function ScheduleSync(delay)
     if debounceTimer then debounceTimer:Cancel() end
-    debounceTimer = C_Timer.NewTimer(0.3, function()
+    debounceTimer = C_Timer.NewTimer(delay or 0.3, function()
         debounceTimer = nil
-        -- Skip if a direct sync ran recently (zone change)
-        if (GetTime() - lastDirectSync) > SYNC_COOLDOWN then
-            -- Judge against the markers the game shows NOW (v1.88.2). A set kept from the last zone change
-            -- went stale while standing still: "Stalk With The Earthmother" (Forever, owner 2026-11-14) had its
-            -- turn-in marker on Thunder Bluff (POI mapID 1456 = best map, /zq mapscan) yet stayed untracked
-            -- until a /reload rebuilt the set. One rebuild per debounced burst, not per event.
-            cachedQuestSet = nil
-            SyncTracking(false)
-        end
+        -- Inside a zone change's cooldown: look again when it ends, never drop it (freshness review
+        -- 2026-11-14, Z1). Dropped, a marker update arriving just after the zone change left that zone's quest
+        -- untracked until the next quest event or /reload.
+        local wait = SYNC_COOLDOWN - (GetTime() - lastDirectSync)
+        if wait > 0 then ScheduleSync(wait + 0.01); return end
+        -- Judge against the markers the game shows NOW (v1.88.2). A set kept from the last zone change
+        -- went stale while standing still: "Stalk With The Earthmother" (Forever, owner 2026-11-14) had its
+        -- turn-in marker on Thunder Bluff (POI mapID 1456 = best map, /zq mapscan) yet stayed untracked
+        -- until a /reload rebuilt the set. One rebuild per debounced burst, not per event.
+        cachedQuestSet = nil
+        SyncTracking(false)
     end)
 end
 

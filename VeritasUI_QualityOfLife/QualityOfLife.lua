@@ -3551,6 +3551,8 @@ MapNotesAPI.AtlasExists = DelveAtlasExists
 MapNotesAPI.NoteAtlas   = MapNoteAtlas
 MapNotesAPI.Refresh     = MapNotesRefresh
 MapNotesAPI.Remove      = RemoveMapNote
+-- A note's Set as Waypoint clears on arrival as /way's does (owner, 2026-11-14: a note waypoint never cleared).
+MapNotesAPI.StartArrivalWatch = StartWaypointTracking
 -- The icon a new note starts with: the last one chosen, so a run of door notes needs one pick.
 function MapNotesAPI.LastIcon() return MapNoteAtlas({ icon = db and db.mapNoteIcon }) end
 -- "|" starts an escape sequence in a tooltip; doubling it shows it literally. Undone for the edit box.
@@ -5578,6 +5580,10 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
     if arg:lower() == "notes" then DumpMapNotes(); return end
     if arg:lower() == "equipcheck" then
         if VUI.QoL_EquipCheck then VUI.QoL_EquipCheck() end
+        return
+    end
+    if arg:lower() == "openprobe" then   -- TEMPORARY (freshness review Q1), removed before release
+        if VUI.QoL_OpenProbe then VUI.QoL_OpenProbe() end
         return
     end
     if arg:lower() == "trainable" then

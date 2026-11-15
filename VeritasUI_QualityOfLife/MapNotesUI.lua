@@ -455,6 +455,8 @@ function API.SetWaypoint(note)
     if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
         pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
     end
+    -- Cleared with "Waypoint reached" within 10 yards, the /way rule (QualityOfLife.lua StartWaypointTracking).
+    if API.StartArrivalWatch then API.StartArrivalWatch() end
     if SOUNDKIT and SOUNDKIT.UI_MAP_WAYPOINT_SUPER_TRACK_ON then PlaySound(SOUNDKIT.UI_MAP_WAYPOINT_SUPER_TRACK_ON) end
     API.Refresh()
     return true
