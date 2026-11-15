@@ -215,38 +215,6 @@ function Scan()
     end
 end
 
--- TEMPORARY probe (freshness review 2026-11-14, Q1; removed before release): `/qol openprobe` prints, for each bag
--- item that either answer calls openable, the game's own ContainerItemInfo.hasLoot (ContainerDocumentation.lua:775,
--- both games; Blizzard's "can be opened" test) beside our tooltip answer and what we remember. If the two agree on
--- every item, Openable can read hasLoot instead of the tooltip.
-VUI.QoL_OpenProbe = function()
-    local last = NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4
-    local n, differ = 0, 0
-    for bag = 0, last do
-        for slot = 1, (C_Container.GetContainerNumSlots(bag) or 0) do
-            local info = C_Container.GetContainerItemInfo(bag, slot)
-            local id = info and info.itemID
-            if id then
-                local tipSays = false
-                local tip = C_TooltipInfo and C_TooltipInfo.GetBagItem and C_TooltipInfo.GetBagItem(bag, slot)
-                for _, line in ipairs(tip and tip.lines or {}) do
-                    if line.leftText == ITEM_OPENABLE then tipSays = true end
-                end
-                local flag = info.hasLoot
-                if flag or tipSays or openable[id] ~= nil then
-                    n = n + 1
-                    if (flag == true) ~= tipSays then differ = differ + 1 end
-                    VUI.Print("Quality of Life", ("  %s  game flag=%s  tooltip=%s  remembered=%s  locked=%s"):format(
-                        tostring(info.hyperlink), tostring(flag), tostring(tipSays), tostring(openable[id]),
-                        tostring(info.isLocked)))
-                end
-            end
-        end
-    end
-    VUI.Print("Quality of Life", ("Open probe: %d item(s), %d where the game flag and the tooltip disagree."):format(
-        n, differ))
-end
-
 local openFrame = CreateFrame("Frame")
 for _, ev in ipairs({ "PLAYER_LOGIN", "BAG_UPDATE_DELAYED", "LOOT_OPENED", "LOOT_CLOSED", "PLAYER_REGEN_ENABLED",
                       "PLAYER_INTERACTION_MANAGER_FRAME_HIDE", "MERCHANT_CLOSED" }) do

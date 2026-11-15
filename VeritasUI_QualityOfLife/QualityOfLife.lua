@@ -5649,10 +5649,6 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
         if VUI.QoL_EquipCheck then VUI.QoL_EquipCheck() end
         return
     end
-    if arg:lower() == "openprobe" then   -- TEMPORARY (freshness review Q1), removed before release
-        if VUI.QoL_OpenProbe then VUI.QoL_OpenProbe() end
-        return
-    end
     if arg:lower() == "trainable" then
         if VUI.QoL_TrainableProbe then VUI.QoL_TrainableProbe() end
         return
