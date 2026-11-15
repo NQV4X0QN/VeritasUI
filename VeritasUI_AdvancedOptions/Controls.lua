@@ -79,10 +79,13 @@ end
 --  (Reset Position), character customization (Reset Camera), transmog and housing use:
 --  `common-icon-undo` (CooldownViewerSettings.lua:1216, ModelSceneControlFrame.lua:253,
 --  Blizzard_CustomizationUI.xml:21). While the setting is at its default the button is disabled and its
---  icon greyed, as Blizzard's own icon buttons do it: same atlas, desaturated
---  (IconButtonMixin:SetEnabledState, Blizzard_SharedXML/Shared/Button/IconButtonTemplate.lua:48-51), and the
---  icon steps 1,-1 while pressed (:30-38). ⚠ v1.89.0 test builds swapped to `common-icon-undo-disable`
---  (named in CooldownViewerSettings.lua:1216) without measuring it: in game it stayed gold (owner, 2026-11-14).
+--  icon greyed: desaturated, as Blizzard's own icon buttons do (IconButtonMixin:SetEnabledState,
+--  Blizzard_SharedXML/Shared/Button/IconButtonTemplate.lua:48-51), and at half alpha, as its dropdown menus
+--  grey a check they cannot use (UIDropDownMenu.lua:654-657). Desaturated alone read light, almost white
+--  (owner, 2026-11-14). The icon steps 1,-1 while pressed (IconButtonTemplate.lua:30-38).
+--  ⚠ MEASURED (owner, 2026-11-14): `common-icon-undo-disable`, the Cooldown Manager's disabled Revert art
+--  (CooldownViewerSettings.lua:1216), is GOLD like the enabled one; Blizzard greys that button's frame and text,
+--  not its icon. So it cannot mark our icon-only button, and is not used.
 --  Hover: the same atlas added over it at 0.4, as housing's reset does
 --  (HousingBlueprintCollection.xml:71). Until v1.89.0 this was `transmog-icon-revert` (no Blizzard
 --  code in 12.1.5 uses it) tinted grey with a gold hover of our own.
@@ -132,6 +135,7 @@ local function CreateResetButton(parent, cvarName, onReset, label)
         local changed = AnyChanged(names)
         self:SetEnabled(changed)
         icon:SetDesaturated(not changed)
+        icon:SetAlpha(changed and 1 or 0.5)
         if not changed then hover:Hide() end
     end
     btn:SetScript("OnMouseDown", function(self)
