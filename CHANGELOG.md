@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.89.0] - 2026-11-14
+
+### Added
+
+- Advanced Options — **UI Replacements**, a new section at the bottom of the Featured tab: Reset Changes puts the settings ElvUI or EllesmereUI changes back to Blizzard's defaults, for when you have stopped using them. It asks first, says how many settings differ, and Review lists them on the All CVars tab so you can keep any you chose yourself. You can also type /ao elvui or /ao ellesmereui. Nothing is offered unless you ask, since many of these are settings players change themselves
+
+### Changed
+
+- Advanced Options — **Changed by ElvUI no longer appears on the All CVars tab on its own**: resetting what ElvUI changed is now in UI Replacements, and the reminder after you turn ElvUI off points there
+- Advanced Options — **the Featured tab's reset buttons use Blizzard's own reset icon**, greyed out while a setting is already at its default, so you can see at a glance which settings you have changed
+- Advanced Options — **settings that need a reload say Requires Reload** in red once you change them, as Blizzard's AddOn List does, instead of always showing an orange !. Their tooltips end with the same red line
+- Advanced Options — **tooltips on the Featured tab work like Blizzard's Options**: hover a setting's name or its control and the row lights up with its tooltip. Blank space no longer shows one
+- Advanced Options — **reset tooltips name the setting as it reads on screen**, in white as Blizzard's own tooltips do, with the setting's internal name underneath
+
+### Fixed
+
+- Advanced Options — **reset tooltips are no longer cut short on settings with long internal names**: on the camera and combat text rows, the tooltip ended partway through the name
+- Advanced Options — **only settings the game locks are marked locked** in the All CVars tooltip: settings the game saves for each character were marked "Locked by graphics engine"
+
+
 ## [1.88.3] - 2026-11-14
 
 ### Fixed
