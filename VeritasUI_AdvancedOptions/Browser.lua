@@ -366,9 +366,11 @@ end
 -- elvuiOnly: the "Changed by ElvUI" checkbox -- only CVars ElvUI sets that currently differ from
 -- Blizzard's default. Values are re-read first so a row reset a moment ago drops out.
 -- changedOnly: the "Changed" checkbox -- every indexed CVar that differs from its default, whoever
--- changed it. The two are exclusive (the checkbox handlers clear each other).
+-- changed it. ellesmereOnly: "Changed by EllesmereUI", as elvuiOnly for EllesmereUI's list
+-- (EllesmereUIChanges.lua). The three are exclusive (the checkbox handlers clear each other).
 local elvuiOnly = false
 local changedOnly = false
+local ellesmereOnly = false
 
 local function ApplyFilter(searchText)
     filteredList = {}
@@ -379,8 +381,10 @@ local function ApplyFilter(searchText)
 
     for _, entry in ipairs(cvarList) do
         local match = (query == "") or strfind(strlower(entry.name), query, 1, true)
-        if match and elvuiOnly then
-            if AO:IsElvUICVar(entry.name) then
+        local suiteOnly = (elvuiOnly and AO.IsElvUICVar and AO:IsElvUICVar(entry.name))
+            or (ellesmereOnly and AO.IsEllesmereUICVar and AO:IsEllesmereUICVar(entry.name))
+        if match and (elvuiOnly or ellesmereOnly) then
+            if suiteOnly then
                 RefreshEntry(entry)
                 match = entry.value ~= entry.default
             else
@@ -568,7 +572,7 @@ function AO:BuildBrowserContent(parent, buttonBar)
     elvuiCheck:SetPoint("RIGHT", parent, "TOPRIGHT", -INSET - elvuiTextW - 4, -INSET - 11)
     elvuiCheck:Hide()
 
-    -- "Changed" filter: always offered. Sits left of the ElvUI checkbox when that is shown,
+    -- "Changed" filter: always offered. Sits left of the suite checkboxes that are shown,
     -- otherwise at the right edge; the search box ends at its left edge.
     local changedCheck = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     changedCheck:SetSize(24, 24)
@@ -576,12 +580,36 @@ function AO:BuildBrowserContent(parent, buttonBar)
     if changedLabel then changedLabel:SetText("Changed") end
     local changedTextW = (changedLabel and tonumber(changedLabel:GetStringWidth())) or 60
 
+    -- "Changed by EllesmereUI" filter, offered while EllesmereUI runs or any CVar it sets differs from
+    -- its default (EllesmereUIChanges.lua header: no per-character record). Left of the ElvUI one.
+    -- Created after the other two: ao_changed_test finds those by creation order.
+    local ellesmereCheck = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    ellesmereCheck:SetSize(24, 24)
+    local ellesmereLabel = ellesmereCheck.Text or ellesmereCheck.text
+    if ellesmereLabel then ellesmereLabel:SetText("Changed by EllesmereUI") end
+    local ellesmereTextW = (ellesmereLabel and tonumber(ellesmereLabel:GetStringWidth())) or 130
+    ellesmereCheck:Hide()
+
     local function LayoutTop()
-        local offer = AO.elvuiRelevant and true or false
-        elvuiCheck:SetShown(offer)
+        local offerElv = AO.elvuiRelevant and true or false
+        -- Kept while ticked, so resetting the last row does not take the checkbox out from under it.
+        local offerEll = ellesmereOnly
+            or (AO.EllesmereUIRelevant and AO:EllesmereUIRelevant()) and true or false
+        elvuiCheck:SetShown(offerElv)
+        ellesmereCheck:SetShown(offerEll)
+        ellesmereCheck:ClearAllPoints()
+        local left = offerElv and elvuiCheck or nil
+        if offerEll then
+            if left then
+                ellesmereCheck:SetPoint("RIGHT", left, "LEFT", -ellesmereTextW - 12, 0)
+            else
+                ellesmereCheck:SetPoint("RIGHT", parent, "TOPRIGHT", -INSET - ellesmereTextW - 4, -INSET - 11)
+            end
+            left = ellesmereCheck
+        end
         changedCheck:ClearAllPoints()
-        if offer then
-            changedCheck:SetPoint("RIGHT", elvuiCheck, "LEFT", -changedTextW - 12, 0)
+        if left then
+            changedCheck:SetPoint("RIGHT", left, "LEFT", -changedTextW - 12, 0)
         else
             changedCheck:SetPoint("RIGHT", parent, "TOPRIGHT", -INSET - changedTextW - 4, -INSET - 11)
         end
@@ -676,6 +704,11 @@ function AO:BuildBrowserContent(parent, buttonBar)
                 end
                 return
             end
+            if ellesmereOnly then
+                local n = #AO:EllesmereUIChangedCVars()
+                if n > 0 then StaticPopup_Show("VERITASUI_AO_RESET_ELLESMEREUI", n, n == 1 and "" or "s") end
+                return
+            end
             local n = #AO:ElvUIChangedCVars()
             if n > 0 then StaticPopup_Show("VERITASUI_AO_RESET_ELVUI", n, n == 1 and "" or "s") end
         end)
@@ -723,10 +756,10 @@ function AO:BuildBrowserContent(parent, buttonBar)
     end
 
     local function UpdateFooter(shown)
-        local on = elvuiOnly or changedOnly
+        local on = elvuiOnly or changedOnly or ellesmereOnly
         footer:SetShown(on)
         -- Changed mode, nothing searched: Reset Everything (shown even when the list is empty -- it
-        -- reaches CVars this list can't). Anything searched, or the ElvUI filter: Reset All.
+        -- reaches CVars this list can't). Anything searched, or a suite filter: Reset All.
         local searched = strtrim(searchBox:GetText() or "") ~= ""
         local everything = changedOnly and not searched
         resetEverythingBtn:SetShown(on and everything)
@@ -750,6 +783,18 @@ function AO:BuildBrowserContent(parent, buttonBar)
             else
                 lead = "These differ from Blizzard's defaults, including changes you made yourself. "
                     .. "Reset All to Default resets only the rows listed."
+            end
+        elseif ellesmereOnly then
+            -- No per-character record (EllesmereUIChanges.lua), and EllesmereUI shares many of these
+            -- with Blizzard's own options, so the list can hold the player's own choices too.
+            if AO.EllesmereUILoaded() then
+                lead = VUI.COL.RED .. "EllesmereUI is running|r and sets some of these again when it loads. "
+                    .. "Turn it off in the AddOns list before resetting."
+            elseif shown == 0 then
+                lead = "Everything EllesmereUI changes is back at Blizzard's defaults."
+            else
+                lead = "EllesmereUI changes these, and they differ from Blizzard's defaults. Some may be your "
+                    .. "own choices: right-click a row to reset just that one."
             end
         elseif AO.ElvUILoaded() then
             lead = VUI.COL.RED .. "ElvUI is running|r and sets its nameplate settings again at every login. "
@@ -1021,24 +1066,32 @@ function AO:BuildBrowserContent(parent, buttonBar)
         FullRefresh()
     end
 
+    -- Exactly one filter at a time: ticking one clears the other two.
+    local function OnlyFilter(which)
+        elvuiOnly, changedOnly, ellesmereOnly = which == "elvui", which == "changed", which == "ellesmere"
+        elvuiCheck:SetChecked(elvuiOnly)
+        changedCheck:SetChecked(changedOnly)
+        ellesmereCheck:SetChecked(ellesmereOnly)
+    end
+
     elvuiCheck:SetScript("OnClick", function(self)
-        elvuiOnly = self:GetChecked() and true or false
-        if elvuiOnly then changedOnly = false; changedCheck:SetChecked(false) end
+        OnlyFilter(self:GetChecked() and "elvui" or nil)
         AO:RefreshBrowser()
     end)
 
     changedCheck:SetScript("OnClick", function(self)
-        changedOnly = self:GetChecked() and true or false
-        if changedOnly then elvuiOnly = false; elvuiCheck:SetChecked(false) end
+        OnlyFilter(self:GetChecked() and "changed" or nil)
+        AO:RefreshBrowser()
+    end)
+
+    ellesmereCheck:SetScript("OnClick", function(self)
+        OnlyFilter(self:GetChecked() and "ellesmere" or nil)
         AO:RefreshBrowser()
     end)
 
     -- /ao changed: the All CVars tab with the "Changed" filter on.
     function AO:ShowChangedCVars()
-        changedCheck:SetChecked(true)
-        changedOnly = true
-        elvuiCheck:SetChecked(false)
-        elvuiOnly = false
+        OnlyFilter("changed")
         if AO.MainWindow then AO.MainWindow:ShowTab("browser") end
         AO:RefreshBrowser()
     end
@@ -1049,10 +1102,19 @@ function AO:BuildBrowserContent(parent, buttonBar)
             VUI.Print("Advanced Options", "ElvUI has not run on this character, so there is nothing to undo.")
             return
         end
-        elvuiCheck:SetChecked(true)
-        elvuiOnly = true
-        changedCheck:SetChecked(false)
-        changedOnly = false
+        OnlyFilter("elvui")
+        if AO.MainWindow then AO.MainWindow:ShowTab("browser") end
+        AO:RefreshBrowser()
+    end
+
+    -- /ao ellesmereui: the All CVars tab with its filter on.
+    function AO:ShowEllesmereUIChanges()
+        if not AO:EllesmereUIRelevant() then
+            VUI.Print("Advanced Options", "Every setting EllesmereUI changes is at Blizzard's default, so there is "
+                .. "nothing to undo.")
+            return
+        end
+        OnlyFilter("ellesmere")
         if AO.MainWindow then AO.MainWindow:ShowTab("browser") end
         AO:RefreshBrowser()
     end
