@@ -37,6 +37,7 @@ AO.CONTROL_HEIGHTS = {
     slider      = ROW_HEIGHT + 8,    -- 34
     dropdown    = ROW_HEIGHT + 4,    -- 30
     multiselect = ROW_HEIGHT + 4,    -- 30, same dropdown
+    button      = ROW_HEIGHT + 4,    -- 30, a 22 px panel button
 }
 
 ----------------------------------------------------------------
@@ -645,4 +646,59 @@ function AO:CreateMultiSelect(parent, cfg)
     Refresh()
 
     return FinishRow(row, cfg, Refresh, nil, names)
+end
+
+----------------------------------------------------------------
+--  5. BUTTON — an action, not a setting (UI Replacements)
+--
+--  cfg = { label = "ElvUI", buttonText = "Reset Changes", tooltip = "...", suite = "elvui" }
+--  Blizzard's action row: the name on the left, a panel button on the right (SettingsButtonControlTemplate
+--  via CreateSettingsButtonInitializer, Blizzard_SettingsDefinitions_Frame/AdvancedOptions.lua:333-342).
+--  Disabled while there is nothing to do or the suite is still running (AO:SuiteState, Browser.lua); the
+--  tooltip then ends with the reason as a red error line, as Blizzard gives a disabled option's reason
+--  (GameTooltip_AddErrorLine, Blizzard_Settings.lua:459). No reset button: there is no value to reset.
+----------------------------------------------------------------
+function AO:CreateButtonRow(parent, cfg)
+    local row = CreateRow(parent, AO.CONTROL_HEIGHTS.button)
+
+    local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("LEFT", row, "LEFT", 0, 0)
+    label:SetWidth(LABEL_WIDTH)
+    label:SetJustifyH("LEFT")
+    label:SetText(cfg.label)
+
+    local btn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    btn:SetSize(140, 22)
+    btn:SetPoint("RIGHT", row, "RIGHT", 8, 0)
+    btn:SetText(cfg.buttonText)
+    btn:SetMotionScriptsWhileDisabled(true)   -- a disabled one still explains why (see CreateResetButton)
+
+    local reason
+    local function Refresh()
+        local ok, info = true, nil
+        if AO.SuiteState then ok, info = AO:SuiteState(cfg.suite) end
+        btn:SetEnabled(ok and true or false)
+        reason = (not ok) and info or nil
+    end
+
+    local function Tip(owner)
+        ShowTooltip(owner, cfg.label, cfg.tooltip)
+        if reason then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine(reason, RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b, true)
+            GameTooltip:Show()
+        end
+    end
+    btn:SetScript("OnEnter", function(self) Refresh(); Tip(self) end)
+    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    btn:SetScript("OnClick", function()
+        if AO.AskSuiteReset then AO:AskSuiteReset(cfg.suite) end
+    end)
+    row:EnableMouse(true)
+    row:SetScript("OnEnter", function(self) Refresh(); Tip(self) end)
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    Refresh()
+    row.Refresh = Refresh
+    return row
 end

@@ -36,6 +36,7 @@ globals = {
     "StaticPopupDialogs.VERITASUI_UNDO_COPY",
     "StaticPopupDialogs.VERITASUI_AO_RESET_ELVUI",   -- AdvancedOptions/ElvUIChanges.lua
     "StaticPopupDialogs.VERITASUI_AO_RESET_ELLESMEREUI", -- AdvancedOptions/EllesmereUIChanges.lua
+    "StaticPopupDialogs.VERITASUI_AO_SUITE_RESET",   -- AdvancedOptions/Browser.lua (UI Replacements confirm)
     "StaticPopupDialogs.VERITASUI_AO_RESET_SHOWN",   -- AdvancedOptions/Browser.lua ("Changed" filter)
     "StaticPopupDialogs.VERITASUI_AO_RESET_EVERYTHING", -- AdvancedOptions/Browser.lua (cvar_default)
     -- SavedVariables (declared in each .toc; WoW injects/reads these as globals)

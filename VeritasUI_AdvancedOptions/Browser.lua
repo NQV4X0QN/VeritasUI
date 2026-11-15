@@ -525,6 +525,73 @@ StaticPopupDialogs["VERITASUI_AO_RESET_EVERYTHING"] = {
 }
 
 ----------------------------------------------------------------
+--  UI Replacements (owner's design, 2026-11-14): the Featured tab has one button per UI suite; the player
+--  starts the cleanup, nothing is offered on its own (see the review checkboxes in BuildBrowserContent).
+--  A suite's list holds settings players also change themselves, so the confirm says so and offers Review.
+--  /ao elvui and /ao ellesmereui open the same confirm.
+----------------------------------------------------------------
+AO.SUITES = {
+    elvui = {
+        name    = "ElvUI",
+        changed = function() return AO:ElvUIChangedCVars() end,
+        loaded  = function() return AO.ElvUILoaded and AO.ElvUILoaded() end,
+        reset   = function() AO:ResetElvUIChanges() end,
+    },
+    ellesmere = {
+        name    = "EllesmereUI",
+        changed = function() return AO:EllesmereUIChangedCVars() end,
+        loaded  = function() return AO.EllesmereUILoaded and AO.EllesmereUILoaded() end,
+        reset   = function() AO:ResetEllesmereUIChanges() end,
+    },
+}
+
+-- enabled, then either the number of settings to reset or the reason it cannot be pressed.
+function AO:SuiteState(key)
+    local s = AO.SUITES[key]
+    if not s then return false, "" end
+    if s.loaded() then
+        return false, format("%s is running and sets these again when it loads. Turn it off in the AddOns list "
+            .. "first.", s.name)
+    end
+    local n = #s.changed()
+    if n == 0 then
+        return false, format("Everything %s changes is already at Blizzard's defaults.", s.name)
+    end
+    return true, n
+end
+
+function AO:AskSuiteReset(key)
+    local s = AO.SUITES[key]
+    if not s then return end
+    local ok, info = AO:SuiteState(key)
+    if not ok then
+        VUI.Print("Advanced Options", info)
+        return
+    end
+    local detail = format("%d setting%s differ%s from the default. Some may be choices you made yourself: "
+        .. "Review lists them so you can keep any.", info, info == 1 and "" or "s", info == 1 and "s" or "")
+    StaticPopup_Show("VERITASUI_AO_SUITE_RESET", s.name, detail, key)
+end
+
+-- Three buttons, each with its own callback (selectCallbackByIndex; StaticPopup.lua:687-706, both games):
+-- 1 Reset All, 2 Cancel, 3 Review.
+StaticPopupDialogs["VERITASUI_AO_SUITE_RESET"] = {
+    text = "Reset the settings %s changes to Blizzard's defaults?\n\n%s",
+    button1 = "Reset All",
+    button2 = CANCEL or "Cancel",
+    button3 = "Review",
+    selectCallbackByIndex = true,
+    timeout = 0, whileDead = 1, hideOnEscape = 1,
+    OnButton1 = function(_, key)
+        local s = AO.SUITES[key]
+        if s then s.reset() end
+    end,
+    OnButton3 = function(_, key)
+        if AO.ReviewSuite then AO:ReviewSuite(key) end
+    end,
+}
+
+----------------------------------------------------------------
 --  Browser UI — Blizzard ScrollBox + MinimalScrollBar
 --
 --  Layout:
@@ -561,9 +628,11 @@ function AO:BuildBrowserContent(parent, buttonBar)
     searchBox:SetHeight(22)
     searchBox:SetPoint("TOPLEFT",  parent, "TOPLEFT",  INSET, -INSET)
 
-    -- "Changed by ElvUI" filter, offered once ElvUI has run on this character (ElvUIChanges.lua).
-    -- Sits to the right of the search box, which then ends at its left edge. Built always and shown
-    -- per refresh (LayoutTop), so it does not depend on which login handler ran first.
+    -- "Changed by ElvUI" / "Changed by EllesmereUI": shown ONLY while the player is reviewing that suite from
+    -- the Featured tab's UI Replacements (AO:ReviewSuite). Never offered on its own: a suite's list includes
+    -- settings players change themselves, so a checkbox appearing by itself named an addon the player may
+    -- never have installed (owner, 2026-11-14). Unticking it ends the review and hides it again.
+    -- Sits to the right of the search box, which then ends at its left edge.
     local elvuiCheck = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     elvuiCheck:SetSize(24, 24)
     local elvuiLabel = elvuiCheck.Text or elvuiCheck.text
@@ -572,7 +641,7 @@ function AO:BuildBrowserContent(parent, buttonBar)
     elvuiCheck:SetPoint("RIGHT", parent, "TOPRIGHT", -INSET - elvuiTextW - 4, -INSET - 11)
     elvuiCheck:Hide()
 
-    -- "Changed" filter: always offered. Sits left of the suite checkboxes that are shown,
+    -- "Changed" filter: always offered. Sits left of a review checkbox when one is shown,
     -- otherwise at the right edge; the search box ends at its left edge.
     local changedCheck = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     changedCheck:SetSize(24, 24)
@@ -580,8 +649,6 @@ function AO:BuildBrowserContent(parent, buttonBar)
     if changedLabel then changedLabel:SetText("Changed") end
     local changedTextW = (changedLabel and tonumber(changedLabel:GetStringWidth())) or 60
 
-    -- "Changed by EllesmereUI" filter, offered while EllesmereUI runs or any CVar it sets differs from
-    -- its default (EllesmereUIChanges.lua header: no per-character record). Left of the ElvUI one.
     -- Created after the other two: ao_changed_test finds those by creation order.
     local ellesmereCheck = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     ellesmereCheck:SetSize(24, 24)
@@ -591,10 +658,8 @@ function AO:BuildBrowserContent(parent, buttonBar)
     ellesmereCheck:Hide()
 
     local function LayoutTop()
-        local offerElv = AO.elvuiRelevant and true or false
-        -- Kept while ticked, so resetting the last row does not take the checkbox out from under it.
+        local offerElv = elvuiOnly
         local offerEll = ellesmereOnly
-            or (AO.EllesmereUIRelevant and AO:EllesmereUIRelevant()) and true or false
         elvuiCheck:SetShown(offerElv)
         ellesmereCheck:SetShown(offerEll)
         ellesmereCheck:ClearAllPoints()
@@ -1097,25 +1162,9 @@ function AO:BuildBrowserContent(parent, buttonBar)
         AO:RefreshBrowser()
     end
 
-    -- /ao elvui: the All CVars tab with the filter on.
-    function AO:ShowElvUIChanges()
-        if not AO.elvuiRelevant then
-            VUI.Print("Advanced Options", "ElvUI has not run on this character, so there is nothing to undo.")
-            return
-        end
-        OnlyFilter("elvui")
-        if AO.MainWindow then AO.MainWindow:ShowTab("browser") end
-        AO:RefreshBrowser()
-    end
-
-    -- /ao ellesmereui: the All CVars tab with its filter on.
-    function AO:ShowEllesmereUIChanges()
-        if not AO:EllesmereUIRelevant() then
-            VUI.Print("Advanced Options", "Every setting EllesmereUI changes is at Blizzard's default, so there is "
-                .. "nothing to undo.")
-            return
-        end
-        OnlyFilter("ellesmere")
+    -- Review from UI Replacements (AO:ReviewSuite): the All CVars tab showing just that suite's changed settings.
+    function AO:ReviewSuite(key)
+        OnlyFilter(key == "elvui" and "elvui" or "ellesmere")
         if AO.MainWindow then AO.MainWindow:ShowTab("browser") end
         AO:RefreshBrowser()
     end

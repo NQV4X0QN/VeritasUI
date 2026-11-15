@@ -30,7 +30,7 @@ local InCombatLockdown = InCombatLockdown
 --  display title, and an ordered list of controls.  Each control
 --  is a table consumed by the matching factory in Controls.lua.
 --
---  type = "checkbox" | "slider" | "dropdown" | "multiselect"
+--  type = "checkbox" | "slider" | "dropdown" | "multiselect" | "button"
 --  (plus any fields the factory expects — see Controls.lua)
 ----------------------------------------------------------------
 -- Soft-target CVars take Enum.SoftTargetEnableFlags: None 0 / Gamepad 1 / Kbm 2 / Any 3
@@ -453,6 +453,32 @@ AO.FEATURED_CATEGORIES = {
             },
         },
     },
+    -- UI Replacements (owner's design, 2026-11-14): put back what a UI suite changed, only when the player asks.
+    -- One button per suite, Blizzard's button-row style for an action (CreateSettingsButtonInitializer,
+    -- Blizzard_SettingsDefinitions_Frame/AdvancedOptions.lua:333-342). The confirm and the suites: Browser.lua
+    -- AO.SUITES / AO:AskSuiteReset.
+    {
+        key   = "uireplacements",
+        title = "UI Replacements",
+        controls = {
+            {
+                type       = "button",
+                suite      = "elvui",
+                label      = "ElvUI",
+                buttonText = "Reset Changes",
+                tooltip    = "Puts the settings ElvUI changes back to Blizzard's defaults, for when you have stopped "
+                          .. "using it. Asks first, and Review lists them so you can keep any.",
+            },
+            {
+                type       = "button",
+                suite      = "ellesmere",
+                label      = "EllesmereUI",
+                buttonText = "Reset Changes",
+                tooltip    = "Puts the settings EllesmereUI changes back to Blizzard's defaults, for when you have "
+                          .. "stopped using it. Asks first, and Review lists them so you can keep any.",
+            },
+        },
+    },
 }
 
 ----------------------------------------------------------------
@@ -623,6 +649,8 @@ function AO:BuildFeaturedContent(parent, buttonBar)
             if ctrl.Refresh then ctrl.Refresh() end
         end
     end
+    -- After a UI Replacements reset (ElvUIChanges.lua / EllesmereUIChanges.lua): the rows it touched follow.
+    function AO:RefreshFeaturedValues() RefreshValues() end
 
     -- ── View setup ──────────────────────────────────────────
     local view = CreateScrollBoxListLinearView()
@@ -751,6 +779,8 @@ function AO:BuildFeaturedContent(parent, buttonBar)
                     ctrl = self:CreateDropdown(parent, cfg)
                 elseif cfg.type == "multiselect" then
                     ctrl = self:CreateMultiSelect(parent, cfg)
+                elseif cfg.type == "button" then
+                    ctrl = self:CreateButtonRow(parent, cfg)
                 end
                 if ctrl then
                     controlCache[key] = ctrl

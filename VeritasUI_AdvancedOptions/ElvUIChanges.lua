@@ -76,25 +76,26 @@ local function ElvUILoaded()
 end
 AO.ElvUILoaded = ElvUILoaded
 
--- PLAYER_LOGIN, after the per-character table exists (Core.lua). Both keys are PER-CHARACTER:
--- ElvUI can be enabled for some characters and not others, and the notice belongs to the
--- character that turned it off.
---   elvuiSeen      -- ElvUI has run on this character: the All CVars filter is offered from then on
+-- PLAYER_LOGIN, after the per-character table exists (Core.lua). PER-CHARACTER: ElvUI can be enabled for
+-- some characters and not others, and the notice belongs to the character that turned it off.
 --   elvuiNoticeDue -- ElvUI ran last time; tell the player once, on the first login without it
+-- The cleanup itself is the Featured tab's UI Replacements section, which the player starts (owner, 2026-11-14:
+-- a filter that appeared on its own read as "an addon changed my settings"). `elvuiSeen` gated the old All CVars
+-- checkbox and is gone with it.
 function AO:ElvUI_OnLogin(cdb)
     if not cdb then return end
+    cdb.elvuiSeen = nil   -- RETIRED v1.89.0 (see above)
     if ElvUILoaded() then
-        cdb.elvuiSeen = true
         cdb.elvuiNoticeDue = true
     elseif cdb.elvuiNoticeDue then
         cdb.elvuiNoticeDue = false
         local n = #AO:ElvUIChangedCVars()
         if n > 0 then
             VUI.Print("Advanced Options", format("ElvUI is off. %d setting%s it changed can go back "
-                .. "to Blizzard's defaults: " .. VUI.COL.YELLOW .. "/ao elvui|r", n, n == 1 and "" or "s"))
+                .. "to Blizzard's defaults: Advanced Options, UI Replacements, or " .. VUI.COL.YELLOW
+                .. "/ao elvui|r", n, n == 1 and "" or "s"))
         end
     end
-    AO.elvuiRelevant = cdb.elvuiSeen and true or false
 end
 
 -- Reset every listed CVar that still differs from its default. AO:ResetCVar defers to the end of
@@ -105,6 +106,7 @@ function AO:ResetElvUIChanges()
     VUI.Print("Advanced Options", format("Reset %d setting%s ElvUI changed to Blizzard's defaults.",
         #changed, #changed == 1 and "" or "s"))
     if AO.RefreshBrowser then AO:RefreshBrowser() end
+    if AO.RefreshFeaturedValues then AO:RefreshFeaturedValues() end
 end
 
 StaticPopupDialogs["VERITASUI_AO_RESET_ELVUI"] = {

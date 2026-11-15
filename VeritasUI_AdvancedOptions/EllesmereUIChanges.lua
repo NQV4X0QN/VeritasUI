@@ -1,13 +1,14 @@
 -- VeritasUI_AdvancedOptions / EllesmereUIChanges.lua
--- "Changed by EllesmereUI": the CVars EllesmereUI sets, so the All CVars tab indexes them and a
--- player can put the ones still away from Blizzard's default back (filter checkbox + Reset button,
--- Browser.lua), as for ElvUI.
+-- The CVars EllesmereUI sets, so the All CVars tab indexes them and the Featured tab's UI Replacements
+-- section can put the ones still away from Blizzard's default back, as for ElvUI (Browser.lua AO.SUITES).
 --
--- ⚠ NOT gated on EllesmereUI having run on this character, unlike ElvUI's filter. The game can keep
--- a CVar on the account server (C_CVar.GetCVarInfo's isStoredServerAccount, Blizzard_APIDocumentation
--- Generated/CVarDocumentation.lua:95), so EllesmereUI run on another computer changes it here too
--- (owner, 2026-11-14: run on the Mac, PC settings changed, EllesmereUI never installed there). The
--- filter is offered while EllesmereUI is running or any CVar below differs from its default.
+-- ⚠ ONLY WHEN THE PLAYER ASKS (owner, 2026-11-14). A v1.89.0 test build offered a "Changed by EllesmereUI"
+-- checkbox whenever any CVar below differed from its default. Many are ordinary settings players change
+-- themselves (camera distance, brightness), so someone who never installed EllesmereUI saw an addon named
+-- as having changed their settings. There is no record to gate on instead: the game can keep a CVar on the
+-- account server (C_CVar.GetCVarInfo's isStoredServerAccount, Blizzard_APIDocumentationGenerated/
+-- CVarDocumentation.lua:95), so EllesmereUI run on another computer changes it here too (owner: run on
+-- the Mac, PC settings changed, EllesmereUI never installed there).
 --
 -- Read from EllesmereUI v9.6.9 source, 2026-10-29. Its own Uninstall (EllesmereUI_Uninstall.lua
 -- :1-62) only puts a setting back while it still holds EllesmereUI's value, and its graphics and
@@ -79,11 +80,6 @@ local function EllesmereUILoaded()
 end
 AO.EllesmereUILoaded = EllesmereUILoaded
 
--- Whether the All CVars tab offers the filter (see the header: no per-character record).
-function AO:EllesmereUIRelevant()
-    return EllesmereUILoaded() or #AO:EllesmereUIChangedCVars() > 0
-end
-
 -- Reset every listed CVar that still differs from its default. AO:ResetCVar defers to the end of
 -- combat and reports that itself, so this works at any time.
 function AO:ResetEllesmereUIChanges()
@@ -92,6 +88,7 @@ function AO:ResetEllesmereUIChanges()
     VUI.Print("Advanced Options", format("Reset %d setting%s EllesmereUI changes to Blizzard's defaults.",
         #changed, #changed == 1 and "" or "s"))
     if AO.RefreshBrowser then AO:RefreshBrowser() end
+    if AO.RefreshFeaturedValues then AO:RefreshFeaturedValues() end
 end
 
 StaticPopupDialogs["VERITASUI_AO_RESET_ELLESMEREUI"] = {

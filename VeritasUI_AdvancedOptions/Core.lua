@@ -68,9 +68,8 @@ local PERCHAR = {
     cacheVersion = 0,         -- AO.VERSION the cache was last built for. Previously UNDECLARED,
                               -- which is how the scope map missed it on the first pass: it is a
                               -- live saved key that never appeared in a defaults table.
-    -- "Changed by ElvUI" (ElvUIChanges.lua). Per-character because ElvUI's own enable state is:
-    -- the AddOns list can enable it for one character and not another.
-    elvuiSeen      = false,   -- ElvUI has run on this character; offer the All CVars filter
+    -- ElvUI's "it is off now" notice (ElvUIChanges.lua). Per-character because ElvUI's own enable state is:
+    -- the AddOns list can enable it for one character and not another. (elvuiSeen retired v1.89.0.)
     elvuiNoticeDue = false,   -- ElvUI ran last login; tell the player once when it is gone
 }
 
@@ -333,21 +332,16 @@ SlashCmdList["VERITASUI_AO"] = function(msg)
         VUI.Print("Advanced Options", "Commands:")
         VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao|r           — toggle window")
         VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao help|r      — show this help")
-        VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao elvui|r     — settings ElvUI changed")
-        VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao ellesmereui|r — settings EllesmereUI changes")
+        VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao elvui|r     — reset the settings ElvUI changes")
+        VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao ellesmereui|r — reset the settings "
+            .. "EllesmereUI changes")
         VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao changed|r   — every setting not at "
             .. "Blizzard's default")
 
-    elseif cmd == "elvui" then
-        if AO.ShowElvUIChanges then
-            AO:ShowElvUIChanges()
-        else
-            VUI.Print("Advanced Options", VUI.COL.RED .. "Window failed to load. Try /reload|r")
-        end
-
-    elseif cmd == "ellesmereui" or cmd == "ellesmere" then
-        if AO.ShowEllesmereUIChanges then
-            AO:ShowEllesmereUIChanges()
+    elseif cmd == "elvui" or cmd == "ellesmereui" or cmd == "ellesmere" then
+        -- The same confirm as the Featured tab's UI Replacements buttons (Browser.lua AO:AskSuiteReset).
+        if AO.AskSuiteReset then
+            AO:AskSuiteReset(cmd == "elvui" and "elvui" or "ellesmere")
         else
             VUI.Print("Advanced Options", VUI.COL.RED .. "Window failed to load. Try /reload|r")
         end
