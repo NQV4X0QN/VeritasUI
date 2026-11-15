@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.88.3] - 2026-11-14
+
+### Fixed
+
+- Quality of Life — **a Map Note set as your waypoint clears when you get there**, as a /way waypoint does: it stayed on the map and minimap after you arrived
+- Quality of Life — **Map Notes show on every map that holds their spot**, as the game's own map pin does: a note placed on a zone map was missing from the city map inside it
+- Quality of Life — **/way and Map Note waypoints still clear on arrival after a /reload**, and a Map Pin you place yourself afterwards is left alone
+- Zone Quests — **quests are checked again once the wait after a zone change ends**: a quest update that came in during that wait was dropped until the next one
+- Priority Rotation — **the rotation key follows its bar slot when you rebind keys or move the macro**, with no Scan & Bind needed
+
+
 ## [1.88.2] - 2026-11-14
 
 ### Fixed
