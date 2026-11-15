@@ -98,7 +98,7 @@ local function AnyChanged(names)
     return false
 end
 
-local function CreateResetButton(parent, cvarName, onReset)
+local function CreateResetButton(parent, cvarName, onReset, label)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(RESET_SIZE + 4, RESET_SIZE + 4)
     -- ⚠ A disabled Button runs no OnEnter/OnLeave unless told to: motionScriptsWhileDisabled defaults to
@@ -137,16 +137,25 @@ local function CreateResetButton(parent, cvarName, onReset)
         -- Blizzard's tooltip colours: title white, text gold, and a name inside the gold text white, as its
         -- dropdown tooltips write each option's label (Settings.CreateOptionsInitTooltip,
         -- Blizzard_Settings.lua:442, :451). Was yellow on gold until v1.89.0 (owner: hard to tell apart).
-        local name = not isList and (VUI.COL.HIGHLIGHT .. cvarName .. "|r") or nil
+        -- The name is the row's own label, the one on screen. The CVar name used to sit in the sentence; a long
+        -- one (floatingCombatTextCombatHealing_v2) is one word the tooltip cannot wrap, so the sentence was
+        -- cut to that word and an ellipsis (owner, 2026-11-14). It now has a grey line of its own, unwrapped,
+        -- the colour Blizzard gives secondary lines (GameTooltip_AddDisabledLine, Blizzard_Settings.lua:453).
+        local name = VUI.COL.HIGHLIGHT .. (label or (isList and "this list") or cvarName) .. "|r"
+        local body
         if self:IsEnabled() then
             hover:Show()
-            ShowTooltip(self, "Reset to Default", isList
-                and "Restore every choice in this list to its default."
-                or "Restore " .. name .. " to its default value.")
+            body = isList and ("Restore every choice in " .. name .. " to its default value.")
+                or ("Restore " .. name .. " to its default value.")
         else
-            ShowTooltip(self, "Reset to Default", isList
-                and "Every choice in this list is already at its default."
-                or name .. " is already at its default value.")
+            body = isList and ("Every choice in " .. name .. " is already at its default value.")
+                or (name .. " is already at its default value.")
+        end
+        ShowTooltip(self, "Reset to Default", body)
+        if not isList then
+            local grey = DISABLED_FONT_COLOR or GRAY_FONT_COLOR or { r = 0.5, g = 0.5, b = 0.5 }
+            GameTooltip:AddLine(cvarName, grey.r, grey.g, grey.b, false)
+            GameTooltip:Show()
         end
     end)
     btn:SetScript("OnLeave", function()
@@ -209,7 +218,7 @@ end
 -- resetNames: the multi-select's list of CVars, reset together; other rows reset cfg.cvar.
 local SLIDER_RESET_RAISE = 9   -- owner, 2026-10-30: tuned in game (4, 8, 10, then 9)
 local function FinishRow(row, cfg, Refresh, resetY, resetNames)
-    local resetBtn = CreateResetButton(row, resetNames or cfg.cvar, function() Changed(cfg); Refresh() end)
+    local resetBtn = CreateResetButton(row, resetNames or cfg.cvar, function() Changed(cfg); Refresh() end, cfg.label)
     resetBtn:SetPoint("RIGHT", row, "RIGHT", 8, resetY or 0)
 
     local names = NamesOf(resetNames or cfg.cvar)
