@@ -48,8 +48,8 @@ AO.CONTROL_HEIGHTS = {
 -- the description was grey. `reload`: Blizzard's restart line, a blank line then a red error line
 -- (Blizzard_Settings.lua:475-477, GameTooltip_AddErrorLine).
 local REQUIRES_RELOAD_TEXT = _G.REQUIRES_RELOAD or "Requires Reload"
-local function ShowTooltip(owner, title, body, reload)
-    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+local function ShowTooltip(owner, title, body, reload, xOffset)
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT", xOffset or 0, 0)
     GameTooltip:SetText(title, HIGHLIGHT_FONT_COLOR:GetRGB())
     if body then
         GameTooltip:AddLine(body, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
@@ -220,8 +220,40 @@ local function CreateRow(parent, height)
     return row
 end
 
+-- Blizzard's Options row hover (SettingsListElementTemplate, Blizzard_SettingControls.xml:50-64), the owner's pick
+-- (2026-11-14) after a tooltip came up over blank space: the row's own tooltip area runs from its left edge to 80 px
+-- short of its middle; while the mouse is there a white 10% band lights the whole row (HoverBackgroundTemplate,
+-- :5-11, x -10 / -5) and the tooltip sits ANCHOR_RIGHT of that area at -10 (DefaultTooltipMixin,
+-- Blizzard_SettingControls.lua:15-38). Each control shows the same tooltip on itself. The rest of the row shows none.
+-- Until v1.89.0 the whole row, edge to edge, carried the tooltip, with no band.
+-- The row keeps the mouse and its hit rect is cut to the area (re-cut on every resize: Featured.lua re-anchors rows);
+-- `zone` only marks the area and owns the tooltip, it takes no mouse.
+local function AttachRowTooltip(row, showTip, controls)
+    local zone = CreateFrame("Frame", nil, row)
+    zone:SetPoint("TOPLEFT", row, "TOPLEFT")
+    zone:SetPoint("BOTTOMRIGHT", row, "BOTTOM", -80, 0)
+    local band = row:CreateTexture(nil, "BACKGROUND")
+    band:SetPoint("TOPLEFT", row, "TOPLEFT", -10, 0)
+    band:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -5, 0)
+    band:SetColorTexture(1, 1, 1, 0.1)
+    band:Hide()
+    local function Fit(self, w)
+        w = tonumber(w) or tonumber((self:GetWidth())) or 0
+        self:SetHitRectInsets(0, math_max(0, w / 2 + 80), 0, 0)
+    end
+    row:EnableMouse(true)
+    Fit(row)
+    row:SetScript("OnSizeChanged", Fit)
+    row:SetScript("OnEnter", function() band:Show(); showTip(zone, -10) end)
+    row:SetScript("OnLeave", function() band:Hide(); GameTooltip:Hide() end)
+    for _, c in ipairs(controls or {}) do
+        c:HookScript("OnEnter", function(self) showTip(self, 0) end)
+        c:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+end
+
 -- Trailing furniture shared by all three factories: reset button on the far
--- right, "Requires Reload" to its left on a reload row, optional whole-row tooltip,
+-- right, "Requires Reload" to its left on a reload row, Blizzard's row tooltip (AttachRowTooltip),
 -- and the row.Refresh handle Featured.lua's tab-show refresh reads.
 --
 -- ⚠ Deliberately NOT used by the dropdown's pcall fallback path: that path has
@@ -257,13 +289,12 @@ local function FinishRow(row, cfg, Refresh, resetY, resetNames)
     cfg._rowUpdate = RowUpdate
     RowUpdate()
 
-    if cfg.tooltip then
-        row:EnableMouse(true)
-        row:SetScript("OnEnter", function(self)
-            ShowTooltip(self, cfg.label, cfg.tooltip, cfg.restart)
-        end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- Every control the factory made (checkbox, slider, dropdown): the same tooltip on itself.
+    local controls = {}
+    for _, child in ipairs({ row:GetChildren() }) do
+        if child ~= resetBtn and child.HookScript then controls[#controls + 1] = child end
     end
+    AttachRowTooltip(row, function(owner, x) ShowTooltip(owner, cfg.label, cfg.tooltip, cfg.restart, x) end, controls)
 
     row.Refresh = function(...)
         Refresh(...)
@@ -681,8 +712,8 @@ function AO:CreateButtonRow(parent, cfg)
         reason = (not ok) and info or nil
     end
 
-    local function Tip(owner)
-        ShowTooltip(owner, cfg.label, cfg.tooltip)
+    local function Tip(owner, x)
+        ShowTooltip(owner, cfg.label, cfg.tooltip, nil, x)
         if reason then
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine(reason, RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b, true)
@@ -694,9 +725,7 @@ function AO:CreateButtonRow(parent, cfg)
     btn:SetScript("OnClick", function()
         if AO.AskSuiteReset then AO:AskSuiteReset(cfg.suite) end
     end)
-    row:EnableMouse(true)
-    row:SetScript("OnEnter", function(self) Refresh(); Tip(self) end)
-    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    AttachRowTooltip(row, function(owner, x) Refresh(); Tip(owner, x) end)
 
     Refresh()
     row.Refresh = Refresh
