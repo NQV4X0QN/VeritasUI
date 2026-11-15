@@ -998,7 +998,8 @@ function AO:BuildBrowserContent(parent, buttonBar)
                         GameTooltip:AddLine(e.help, gold.r, gold.g, gold.b, true)
                     end
                     if e.locked then
-                        GameTooltip:AddLine("Locked by graphics engine", RED_FONT_COLOR:GetRGB())
+                        -- isLockedFromUser (CVarDocumentation.lua:97): the game, not a graphics setting.
+                        GameTooltip:AddLine("Locked: the game doesn't let you change this", RED_FONT_COLOR:GetRGB())
                     end
                     GameTooltip:Show()
                 end

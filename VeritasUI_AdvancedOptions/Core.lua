@@ -161,10 +161,13 @@ function AO:GetCVarDefault(name)
     return nil
 end
 
---- Full CVar info. Returns (value, default, serverStored, lockedByGx) or nils.
+--- Full CVar info. Returns (value, default, serverStored, locked) or nils.
+-- C_CVar.GetCVarInfo returns value, defaultValue, isStoredServerAccount, isStoredServerCharacter,
+-- isLockedFromUser, ... (CVarDocumentation.lua:91-100, Retail and Forever). The 4th return used to
+-- be read as "locked", so per-character server CVars showed as locked in the row tooltip.
 function AO:GetCVarInfo(name)
-    local ok, val, def, server, locked = pcall(C_CVar.GetCVarInfo, name)
-    if ok then return val, def, server, locked end
+    local ok, val, def, account, character, locked = pcall(C_CVar.GetCVarInfo, name)
+    if ok then return val, def, (account or character) and true or false, locked end
     return nil, nil, nil, nil
 end
 
