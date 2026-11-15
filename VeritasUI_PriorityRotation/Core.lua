@@ -125,7 +125,13 @@ function PR:ScheduleScan(delay)
     if self._scanTimer then self._scanTimer:Cancel() end
     self._scanTimer = C_Timer.NewTimer(delay, function()
         self._scanTimer = nil
-        if not InCombatLockdown() then self:ScanAndOverrideBarButton() end
+        if not InCombatLockdown() then
+            self:ScanAndOverrideBarButton()
+        elseif not self._scanQueued then
+            -- A bar or key change during combat (freshness review 2026-11-14): scan once it ends.
+            self._scanQueued = true
+            VUI.CombatQueue.Add(function() PR._scanQueued = false; PR:ScanAndOverrideBarButton() end)
+        end
     end)
 end
 
@@ -829,8 +835,6 @@ function PR:ScanAndOverrideBarButton(macroName, verbose)
         return
     end
 
-    self:ClearOverride(macroName)
-
     -- Midnight Secret Values: GetActionInfo can return secret values in
     -- raid/M+ zones; pcall each slot and count failures. Verbose callers
     -- (user-initiated /pr scan and "Scan & Bind" button) surface the
@@ -852,6 +856,8 @@ function PR:ScanAndOverrideBarButton(macroName, verbose)
     end
 
     if not foundSlot then
+        -- Off every bar now: the key it had is the player's again.
+        if self.overrides[macroName] then self:ClearOverride(macroName) end
         if verbose and unreadableSlots > 0 then
             VUI.Print("Priority Rotation",
                 format(VUI.COL.ORANGE .. "Scan incomplete:|r %d slot(s) unreadable "
@@ -872,6 +878,14 @@ function PR:ScanAndOverrideBarButton(macroName, verbose)
         if k1 then boundKeys[#boundKeys + 1] = k1 end
         if k2 then boundKeys[#boundKeys + 1] = k2 end
     end
+
+    -- Unchanged since the last scan: leave the binding as it is. Setting it again would fire UPDATE_BINDINGS,
+    -- which itself starts a scan (event handler below), so a same-answer scan must be a no-op.
+    local cur = self.overrides[macroName]
+    if cur and cur.slot == foundSlot and tconcat(cur.keys or {}, "\n") == tconcat(boundKeys, "\n") then
+        return
+    end
+    self:ClearOverride(macroName)
 
     self.overrides[macroName] = {
         slot = foundSlot,
@@ -999,10 +1013,21 @@ ef:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "player")
 ef:RegisterUnitEvent("UNIT_AURA", "player")   -- skip a buff you already have (PR:OnPlayerAura)
 -- A fight began: its long-buff turn counts (press snippet capUsed) are emptied when it ends, out of combat.
 ef:RegisterEvent("PLAYER_REGEN_DISABLED")
+-- The rotation's key is the key of the bar slot holding the Attack macro, read at a scan. A key rebound or the
+-- macro moved or taken off its bar changes that; Blizzard's own action buttons redraw on the same two events
+-- (Blizzard_ActionBar/Shared/ActionButton.lua:206-207 live, :216-217 forever). Without them the old key kept
+-- firing the rotation until the next compile or /reload (freshness review 2026-11-14).
+ef:RegisterEvent("UPDATE_BINDINGS")
+ef:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
 
 ef:SetScript("OnEvent", function(_, event, arg1, _, arg3)
     if event == "UNIT_SPELLCAST_CHANNEL_START" then
         PR:LearnChannel(arg3)
+
+    elseif event == "UPDATE_BINDINGS" or event == "ACTIONBAR_SLOT_CHANGED" then
+        -- Only once logged in and while the rotation is on. A scan already coming reads the new state when it
+        -- runs, so it is not moved (the login one waits 4 s on purpose).
+        if PR._lastProfileKey and PR:IsEnabled() and not PR._scanTimer then PR:ScheduleScan(0.5) end
 
     elseif event == "PLAYER_REGEN_DISABLED" then
         VUI.CombatQueue.Add(function() rotBtn:Execute("capUsed = newtable()") end)
