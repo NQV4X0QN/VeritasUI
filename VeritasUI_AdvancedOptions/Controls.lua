@@ -233,11 +233,15 @@ end
 -- raise the reset button gets (a slider row's line sits above its centre, SLIDER_RESET_RAISE) -- and runs to the
 -- reset button's right edge, the scroll box's own edge (Featured.lua: rows inset PAD_X 8, the button at +8), which
 -- also keeps it off the scroll bar. The tooltip area takes the same height.
+-- ⚠ Owner, 2026-11-14 (second look): every word of the name must bring the highlight up. Our window is narrower than
+-- Blizzard's Options, so "middle - 80" (~140 px here) cut through long names ("Enable Floating Combat Text" lost it
+-- between the "b" and the "a"). The area now reaches the end of the name plus LABEL_PAD, whichever is further, and
+-- never past the label's own box (`row._label` / `row._labelX`, set by each factory), so it stops short of the control.
+-- Re-measured on show: a name's width is only reliable once its font has loaded.
+local LABEL_PAD = 8
 local function AttachRowTooltip(row, showTip, controls, lineY)
     lineY = lineY or 0
     local zone = CreateFrame("Frame", nil, row)
-    zone:SetPoint("LEFT", row, "LEFT", 0, lineY)
-    zone:SetPoint("RIGHT", row, "CENTER", -80, lineY)
     zone:SetHeight(ROW_HEIGHT)
     local band = row:CreateTexture(nil, "BACKGROUND")
     band:SetPoint("LEFT", row, "LEFT", -10, lineY)
@@ -245,16 +249,32 @@ local function AttachRowTooltip(row, showTip, controls, lineY)
     band:SetHeight(ROW_HEIGHT)
     band:SetColorTexture(1, 1, 1, 0.1)
     band:Hide()
+    local function AreaWidth(w)
+        local area = w / 2 - 80
+        local label, x = row._label, row._labelX or 0
+        if label then
+            local textW = tonumber((label:GetStringWidth())) or 0
+            local boxW = tonumber((label:GetWidth())) or LABEL_WIDTH
+            area = math_max(area, x + textW + LABEL_PAD)
+            area = math_min(area, x + boxW)
+        end
+        return math_max(0, math_min(area, w))
+    end
     local function Fit(self, w, h)
         w = tonumber(w) or tonumber((self:GetWidth())) or 0
         h = tonumber(h) or tonumber((self:GetHeight())) or ROW_HEIGHT
+        local area = AreaWidth(w)
+        zone:ClearAllPoints()
+        zone:SetPoint("LEFT", row, "LEFT", 0, lineY)
+        zone:SetWidth(math_max(1, area))
         local spare = math_max(0, (h - ROW_HEIGHT) / 2)
-        self:SetHitRectInsets(0, math_max(0, w / 2 + 80), math_max(0, spare - lineY), math_max(0, spare + lineY))
+        self:SetHitRectInsets(0, math_max(0, w - area), math_max(0, spare - lineY), math_max(0, spare + lineY))
     end
     row:EnableMouse(true)
     Fit(row)
     row:SetScript("OnSizeChanged", Fit)
-    row:SetScript("OnEnter", function() band:Show(); showTip(zone, -10) end)
+    row:HookScript("OnShow", function(self) Fit(self) end)
+    row:SetScript("OnEnter", function(self) Fit(self); band:Show(); showTip(zone, -10) end)
     row:SetScript("OnLeave", function() band:Hide(); GameTooltip:Hide() end)
     for _, c in ipairs(controls or {}) do
         c:HookScript("OnEnter", function(self) showTip(self, 0) end)
@@ -336,6 +356,7 @@ function AO:CreateCheckbox(parent, cfg)
     local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("LEFT", cb, "RIGHT", 4, 0)
     label:SetWidth(LABEL_WIDTH)
+    row._label, row._labelX = label, 26   -- after the 22 px box + 4 (AttachRowTooltip)
     label:SetJustifyH("LEFT")
     label:SetText(cfg.label)
 
@@ -388,6 +409,7 @@ function AO:CreateSlider(parent, cfg)
     local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
     label:SetWidth(LABEL_WIDTH)
+    row._label, row._labelX = label, 0
     label:SetJustifyH("LEFT")
     label:SetText(cfg.label)
 
@@ -487,6 +509,7 @@ function AO:CreateDropdown(parent, cfg)
     local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("LEFT", row, "LEFT", 0, 0)
     label:SetWidth(LABEL_WIDTH)
+    row._label, row._labelX = label, 0
     label:SetJustifyH("LEFT")
     label:SetText(cfg.label)
 
@@ -599,6 +622,7 @@ function AO:CreateMultiSelect(parent, cfg)
     local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("LEFT", master, "RIGHT", 4, 0)
     label:SetWidth(LABEL_WIDTH - 26)
+    row._label, row._labelX = label, 26
     label:SetJustifyH("LEFT")
     label:SetText(cfg.label)
 
@@ -706,6 +730,7 @@ function AO:CreateButtonRow(parent, cfg)
     local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("LEFT", row, "LEFT", 0, 0)
     label:SetWidth(LABEL_WIDTH)
+    row._label, row._labelX = label, 0
     label:SetJustifyH("LEFT")
     label:SetText(cfg.label)
 
