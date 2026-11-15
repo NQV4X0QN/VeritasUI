@@ -222,24 +222,34 @@ end
 
 -- Blizzard's Options row hover (SettingsListElementTemplate, Blizzard_SettingControls.xml:50-64), the owner's pick
 -- (2026-11-14) after a tooltip came up over blank space: the row's own tooltip area runs from its left edge to 80 px
--- short of its middle; while the mouse is there a white 10% band lights the whole row (HoverBackgroundTemplate,
--- :5-11, x -10 / -5) and the tooltip sits ANCHOR_RIGHT of that area at -10 (DefaultTooltipMixin,
+-- short of its middle; while the mouse is there a white 10% band lights the row (HoverBackgroundTemplate,
+-- :5-11) and the tooltip sits ANCHOR_RIGHT of that area at -10 (DefaultTooltipMixin,
 -- Blizzard_SettingControls.lua:15-38). Each control shows the same tooltip on itself. The rest of the row shows none.
 -- Until v1.89.0 the whole row, edge to edge, carried the tooltip, with no band.
 -- The row keeps the mouse and its hit rect is cut to the area (re-cut on every resize: Featured.lua re-anchors rows);
 -- `zone` only marks the area and owns the tooltip, it takes no mouse.
-local function AttachRowTooltip(row, showTip, controls)
+-- ⚠ Owner, 2026-11-14 (first in-game look): the band must be ONE height on every row, as Blizzard's is, and must
+-- not stop inside the reset button. So it is ROW_HEIGHT tall, centred on the row's line -- `lineY` is the same
+-- raise the reset button gets (a slider row's line sits above its centre, SLIDER_RESET_RAISE) -- and runs to the
+-- reset button's right edge, the scroll box's own edge (Featured.lua: rows inset PAD_X 8, the button at +8), which
+-- also keeps it off the scroll bar. The tooltip area takes the same height.
+local function AttachRowTooltip(row, showTip, controls, lineY)
+    lineY = lineY or 0
     local zone = CreateFrame("Frame", nil, row)
-    zone:SetPoint("TOPLEFT", row, "TOPLEFT")
-    zone:SetPoint("BOTTOMRIGHT", row, "BOTTOM", -80, 0)
+    zone:SetPoint("LEFT", row, "LEFT", 0, lineY)
+    zone:SetPoint("RIGHT", row, "CENTER", -80, lineY)
+    zone:SetHeight(ROW_HEIGHT)
     local band = row:CreateTexture(nil, "BACKGROUND")
-    band:SetPoint("TOPLEFT", row, "TOPLEFT", -10, 0)
-    band:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -5, 0)
+    band:SetPoint("LEFT", row, "LEFT", -10, lineY)
+    band:SetPoint("RIGHT", row, "RIGHT", 8, lineY)
+    band:SetHeight(ROW_HEIGHT)
     band:SetColorTexture(1, 1, 1, 0.1)
     band:Hide()
-    local function Fit(self, w)
+    local function Fit(self, w, h)
         w = tonumber(w) or tonumber((self:GetWidth())) or 0
-        self:SetHitRectInsets(0, math_max(0, w / 2 + 80), 0, 0)
+        h = tonumber(h) or tonumber((self:GetHeight())) or ROW_HEIGHT
+        local spare = math_max(0, (h - ROW_HEIGHT) / 2)
+        self:SetHitRectInsets(0, math_max(0, w / 2 + 80), math_max(0, spare - lineY), math_max(0, spare + lineY))
     end
     row:EnableMouse(true)
     Fit(row)
@@ -294,7 +304,8 @@ local function FinishRow(row, cfg, Refresh, resetY, resetNames)
     for _, child in ipairs({ row:GetChildren() }) do
         if child ~= resetBtn and child.HookScript then controls[#controls + 1] = child end
     end
-    AttachRowTooltip(row, function(owner, x) ShowTooltip(owner, cfg.label, cfg.tooltip, cfg.restart, x) end, controls)
+    AttachRowTooltip(row, function(owner, x) ShowTooltip(owner, cfg.label, cfg.tooltip, cfg.restart, x) end, controls,
+        resetY)
 
     row.Refresh = function(...)
         Refresh(...)
