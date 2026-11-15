@@ -494,7 +494,7 @@ local function SyncBlizzardPin()
     local map = _G.WorldMapFrame
     if not (map and map.EnumeratePinsByTemplate) then return end
     local note = API.Enabled() and WaypointNote()
-    local hide = note ~= nil and note.mapID == map:GetMapID()
+    local hide = note ~= nil and API.PosOnMap(note, map:GetMapID()) ~= nil
     for pin in map:EnumeratePinsByTemplate(BLIZZARD_PIN_TEMPLATE) do
         if hide then
             if pin:GetAlpha() ~= 0 then pin:SetAlpha(0) end

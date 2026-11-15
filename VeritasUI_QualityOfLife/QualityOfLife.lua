@@ -3582,6 +3582,30 @@ function MapNotesAPI.InstanceFor(mapID, x, y)
     return nil
 end
 
+-- Where a note sits on the map shown, or nil when it is not on it. A note is drawn on every map that holds its
+-- spot, as Blizzard draws its own map pin (WaypointLocationDataProvider.lua RefreshAllData:
+-- C_Map.GetUserWaypointPositionForMap for the displayed map). Owner, Retail 2026-11-14: a note filed on
+-- Thaldraszus (2025) was missing from the Valdrakken map (2112) while the minimap and Blizzard's pin showed it.
+-- Same world position on the shown map (GetWorldPosFromMapPos -> GetMapPosFromWorldPos, MapDocumentation both
+-- games), only when the shown map is on the same continent and the spot falls inside it.
+function MapNotesAPI.PosOnMap(note, mapID)
+    if not (note and mapID) then return nil end
+    if note.mapID == mapID then return note.x, note.y end
+    if not (C_Map.GetWorldPosFromMapPos and C_Map.GetMapPosFromWorldPos and CreateVector2D) then return nil end
+    local ok, cont, world = pcall(C_Map.GetWorldPosFromMapPos, note.mapID, CreateVector2D(note.x, note.y))
+    if not (ok and cont and world) then return nil end
+    local okM, mapCont = pcall(C_Map.GetWorldPosFromMapPos, mapID, CreateVector2D(0.5, 0.5))
+    if not (okM and mapCont == cont) then return nil end
+    local okP, _, pos = pcall(C_Map.GetMapPosFromWorldPos, cont, world, mapID)
+    if not (okP and pos and pos.GetXY) then return nil end
+    local x, y = pos:GetXY()
+    if type(x) ~= "number" or type(y) ~= "number" or (issecretvalue and (issecretvalue(x) or issecretvalue(y))) then
+        return nil
+    end
+    if x < 0 or x > 1 or y < 0 or y > 1 then return nil end
+    return x, y
+end
+
 function MapNotesAPI.Add(mapID, x, y, text, icon, desc)
     if not cdb then return nil end
     cdb.mapNotes = cdb.mapNotes or {}
@@ -3783,9 +3807,11 @@ local function MapNotesInstall()
         local mapID = self:GetMap():GetMapID()
         for _, note in ipairs(list) do
             -- The note open in the window is drawn by the window's own pin (MapNotesUI.lua), where it is going.
-            if note.mapID == mapID and note ~= MapNotesAPI.editing then
+            local x, y = nil, nil
+            if note ~= MapNotesAPI.editing then x, y = MapNotesAPI.PosOnMap(note, mapID) end
+            if x then
                 local pin = self:GetMap():AcquirePin(MAP_NOTE_TEMPLATE, note)
-                pin:SetPosition(note.x, note.y)
+                pin:SetPosition(x, y)
             end
         end
     end
