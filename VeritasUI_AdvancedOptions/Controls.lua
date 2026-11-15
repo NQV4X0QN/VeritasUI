@@ -28,7 +28,7 @@ local InCombatLockdown = InCombatLockdown
 ----------------------------------------------------------------
 local ROW_HEIGHT     = 26
 local LABEL_WIDTH    = 260
-local RESET_SIZE     = 14
+local RESET_SIZE     = 16
 
 -- Exported for Featured.lua's extent calculator.
 -- GAP between controls is a layout concern (Featured.lua) and is not included here.
@@ -44,31 +44,60 @@ AO.CONTROL_HEIGHTS = {
 ----------------------------------------------------------------
 -- Blizzard's settings tooltip: the name in white, the description in gold (Settings.InitTooltip,
 -- Blizzard_Settings.lua: GameTooltip_AddHighlightLine + GameTooltip_AddNormalLine). Owner, 2026-11-01:
--- the description was grey.
-local function ShowTooltip(owner, title, body)
+-- the description was grey. `reload`: Blizzard's restart line, a blank line then a red error line
+-- (Blizzard_Settings.lua:475-477, GameTooltip_AddErrorLine).
+local REQUIRES_RELOAD_TEXT = _G.REQUIRES_RELOAD or "Requires Reload"
+local function ShowTooltip(owner, title, body, reload)
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
     GameTooltip:SetText(title, HIGHLIGHT_FONT_COLOR:GetRGB())
     if body then
         GameTooltip:AddLine(body, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
     end
+    if reload then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(REQUIRES_RELOAD_TEXT, RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b, true)
+    end
     GameTooltip:Show()
 end
 
--- A row marked `restart` was changed: Featured.lua shows its Reload UI button (owner's request,
--- 2026-11-01). Every write path below calls this; rows without `restart` do nothing.
+-- A row's CVars as they were when this session first built the row: a reload row shows "Requires
+-- Reload" only while it differs from that (Blizzard's AddOn List, AddonList.lua:307-329).
+local sessionStart = {}
+
+-- A row was changed: Featured.lua shows its Reload UI button for a `restart` row (owner's request,
+-- 2026-11-01), and the row's reset button and reload text follow the new value. Every write path
+-- below calls this.
 local function Changed(cfg)
     if cfg.restart and AO.ReloadNeeded then AO:ReloadNeeded() end
+    if cfg._rowUpdate then cfg._rowUpdate() end
 end
 
 ----------------------------------------------------------------
 --  Reset-to-default button (shared across control types)
 --
---  Small revert icon that resets a single CVar to its default.
---  Uses a texture atlas for the icon (no Unicode dependency).
---  The onReset callback lets the owning control refresh its
---  visual state after the reset.
+--  Blizzard's undo icon, the one its Cooldown Manager settings ("Revert Changes"), model viewer
+--  (Reset Position), character customization (Reset Camera), transmog and housing use:
+--  `common-icon-undo` (CooldownViewerSettings.lua:1216, ModelSceneControlFrame.lua:253,
+--  Blizzard_CustomizationUI.xml:21). While the setting is at its default the button is disabled and
+--  shows `common-icon-undo-disable`, as the Cooldown Manager's does (CooldownViewerSettings.lua:1216).
+--  Hover: the same atlas added over it at 0.4, as housing's reset does
+--  (HousingBlueprintCollection.xml:71). Until v1.89.0 this was `transmog-icon-revert` (no Blizzard
+--  code in 12.1.5 uses it) tinted grey with a gold hover of our own.
+--  The onReset callback lets the owning control refresh its visual state after the reset.
 ----------------------------------------------------------------
 -- cvarName may be a list (a multi-select row): every CVar in it is reset.
+local function NamesOf(cvarName)
+    return type(cvarName) == "table" and cvarName or { cvarName }
+end
+local function AnyChanged(names)
+    if not AO.GetCVarInfo then return true end   -- unknown: keep the button usable
+    for _, name in ipairs(names) do
+        local val, def = AO:GetCVarInfo(name)
+        if val ~= nil and def ~= nil and val ~= def then return true end
+    end
+    return false
+end
+
 local function CreateResetButton(parent, cvarName, onReset)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(RESET_SIZE + 4, RESET_SIZE + 4)
@@ -76,47 +105,56 @@ local function CreateResetButton(parent, cvarName, onReset)
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetSize(RESET_SIZE, RESET_SIZE)
     icon:SetPoint("CENTER")
-    icon:SetAtlas("transmog-icon-revert")
-    icon:SetVertexColor(0.55, 0.55, 0.55)
+    icon:SetAtlas("common-icon-undo")
     btn._icon = icon
+
+    local hover = btn:CreateTexture(nil, "OVERLAY")
+    hover:SetAllPoints(icon)
+    hover:SetAtlas("common-icon-undo")
+    hover:SetBlendMode("ADD")
+    hover:SetAlpha(0.4)
+    hover:Hide()
+
+    local names = NamesOf(cvarName)
+    function btn:UpdateState()
+        local changed = AnyChanged(names)
+        icon:SetAtlas(changed and "common-icon-undo" or "common-icon-undo-disable")
+        self:SetEnabled(changed)
+        if not changed then hover:Hide() end
+    end
 
     local isList = type(cvarName) == "table"
     btn:SetScript("OnEnter", function(self)
-        self._icon:SetVertexColor(1, 0.82, 0)
+        if self:IsEnabled() then hover:Show() end
         ShowTooltip(self, "Reset to Default", isList
             and "Restore every choice in this list to its default."
             or "Restore " .. VUI.COL.YELLOW .. cvarName .. "|r to its default value.")
     end)
-    btn:SetScript("OnLeave", function(self)
-        self._icon:SetVertexColor(0.55, 0.55, 0.55)
+    btn:SetScript("OnLeave", function()
+        hover:Hide()
         GameTooltip:Hide()
     end)
     btn:SetScript("OnClick", function()
-        if isList then
-            for _, name in ipairs(cvarName) do AO:ResetCVar(name) end
-        else
-            AO:ResetCVar(cvarName)
-        end
+        for _, name in ipairs(names) do AO:ResetCVar(name) end
         if onReset then onReset() end
     end)
+    btn:UpdateState()
     return btn
 end
 
 ----------------------------------------------------------------
---  Restart / reload indicator
+--  "Requires Reload" (rows whose CVar applies only after a /reload)
 --
---  A small warning icon next to controls whose CVar requires
---  a /reload or GX restart to take effect.
---  Uses "!" text (orange); atlas approach conflicted with pool-frame
---  reparenting and was abandoned.
---
---  Called only from inside FinishRow's `if cfg.restart` branch, so it always
---  creates the fontstring and never returns nil — the caller must not test it.
+--  Blizzard's AddOn List marks a row it cannot apply until a reload with red "Requires Reload"
+--  text, REQUIRES_RELOAD in GameFontRed (AddonList.xml:64), shown only while that row differs from
+--  what is loaded (AddonList_SetStatus, AddonList.lua:307-329). Blizzard's Options pages show no row
+--  marker; the tooltip carries the red line (ShowTooltip above). Until v1.89.0 this was an orange
+--  "!" shown all the time, our own.
 ----------------------------------------------------------------
-local function CreateRestartIndicator(parent)
-    local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetText("!")
-    fs:SetTextColor(ORANGE_FONT_COLOR:GetRGB())
+local function CreateReloadText(parent)
+    local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontRed")
+    fs:SetText(REQUIRES_RELOAD_TEXT)
+    fs:Hide()
     return fs
 end
 
@@ -141,11 +179,11 @@ local function CreateRow(parent, height)
 end
 
 -- Trailing furniture shared by all three factories: reset button on the far
--- right, optional restart indicator to its left, optional whole-row tooltip,
+-- right, "Requires Reload" to its left on a reload row, optional whole-row tooltip,
 -- and the row.Refresh handle Featured.lua's tab-show refresh reads.
 --
 -- ⚠ Deliberately NOT used by the dropdown's pcall fallback path: that path has
--- no reset button, no indicator and no tooltip, and returns early by design.
+-- no reset button, no reload text and no tooltip, and returns early by design.
 -- resetY: raises the reset button off the row's centre. A slider row is taller than its slider
 -- (room under the bar), so a centred button sat below the slider (owner, 2026-10-30); sliders
 -- pass SLIDER_RESET_RAISE.
@@ -155,21 +193,40 @@ local function FinishRow(row, cfg, Refresh, resetY, resetNames)
     local resetBtn = CreateResetButton(row, resetNames or cfg.cvar, function() Changed(cfg); Refresh() end)
     resetBtn:SetPoint("RIGHT", row, "RIGHT", 8, resetY or 0)
 
+    local names = NamesOf(resetNames or cfg.cvar)
+    local reloadText
     if cfg.restart then
-        local indicator = CreateRestartIndicator(row)
-        indicator:SetPoint("RIGHT", resetBtn, "LEFT", -4, 0)
+        reloadText = CreateReloadText(row)
+        reloadText:SetPoint("RIGHT", resetBtn, "LEFT", -4, 0)
+        for _, name in ipairs(names) do
+            if sessionStart[name] == nil then sessionStart[name] = AO:GetCVar(name) or false end
+        end
     end
+    local function RowUpdate()
+        resetBtn:UpdateState()
+        if reloadText then
+            local differs = false
+            for _, name in ipairs(names) do
+                if (AO:GetCVar(name) or false) ~= sessionStart[name] then differs = true end
+            end
+            reloadText:SetShown(differs)
+        end
+    end
+    cfg._rowUpdate = RowUpdate
+    RowUpdate()
 
     if cfg.tooltip then
         row:EnableMouse(true)
         row:SetScript("OnEnter", function(self)
-            ShowTooltip(self, cfg.label, cfg.tooltip
-                .. (cfg.restart and "\n\n" .. VUI.COL.ORANGE .. "Requires /reload to take effect.|r" or ""))
+            ShowTooltip(self, cfg.label, cfg.tooltip, cfg.restart)
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
 
-    row.Refresh = Refresh
+    row.Refresh = function(...)
+        Refresh(...)
+        RowUpdate()
+    end
     return row
 end
 
