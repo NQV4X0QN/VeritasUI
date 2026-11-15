@@ -101,6 +101,15 @@ end
 local function CreateResetButton(parent, cvarName, onReset)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(RESET_SIZE + 4, RESET_SIZE + 4)
+    -- ⚠ A disabled Button runs no OnEnter/OnLeave unless told to: motionScriptsWhileDisabled defaults to
+    -- false (Blizzard_SharedXML/UI.xsd:934). With the button disabled at default (most rows), hovering it
+    -- showed nothing and the row's own tooltip flickered off and on at its edge (owner, 2026-11-14).
+    -- Blizzard's buttons with a disabled tooltip set it (DisabledTooltipButtonTemplate,
+    -- SharedTooltipTemplates.xml:135; UIButtonTemplate.lua:157).
+    btn:SetMotionScriptsWhileDisabled(true)
+    -- A 20 px target was "like threading a needle" (owner): the clickable area reaches 6 px past the art on
+    -- the left, top and bottom. Not right: the scroll bar sits there.
+    btn:SetHitRectInsets(-6, 0, -6, -6)
 
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetSize(RESET_SIZE, RESET_SIZE)
@@ -125,10 +134,16 @@ local function CreateResetButton(parent, cvarName, onReset)
 
     local isList = type(cvarName) == "table"
     btn:SetScript("OnEnter", function(self)
-        if self:IsEnabled() then hover:Show() end
-        ShowTooltip(self, "Reset to Default", isList
-            and "Restore every choice in this list to its default."
-            or "Restore " .. VUI.COL.YELLOW .. cvarName .. "|r to its default value.")
+        if self:IsEnabled() then
+            hover:Show()
+            ShowTooltip(self, "Reset to Default", isList
+                and "Restore every choice in this list to its default."
+                or "Restore " .. VUI.COL.YELLOW .. cvarName .. "|r to its default value.")
+        else
+            ShowTooltip(self, "Reset to Default", isList
+                and "Every choice in this list is already at its default."
+                or VUI.COL.YELLOW .. cvarName .. "|r is already at its default value.")
+        end
     end)
     btn:SetScript("OnLeave", function()
         hover:Hide()
