@@ -284,6 +284,22 @@ VUI.QoL_TrainableProbe = function()
         .. "filters available %s, unavailable %s, known %s.", Level(), tostring(cache.trainer),
         tostring(cache.level), #(cache.list or {}), tostring(f.available), tostring(f.unavailable), tostring(f.used)))
     VUI.Print("Quality of Life", format("  %d to learn now, %d at later levels.", #now, #later))
+    -- PROBE (2026-11-15): do the class trainer's skill lines match your spellbook's tabs? If they do, a list can be
+    -- recognised as your class trainer's for every class, without knowing each class's other trainers.
+    local lines, seen = {}, {}
+    for _, e in ipairs(cache.list or {}) do
+        local l = tostring(e.line)
+        if not seen[l] then seen[l] = true; lines[#lines + 1] = l end
+    end
+    VUI.Print("Quality of Life", "  Skill lines in this list: " .. table.concat(lines, ", "))
+    local tabs, sb = {}, _G.C_SpellBook
+    local okN, n = false, 0
+    if sb and sb.GetNumSpellBookSkillLines then okN, n = pcall(sb.GetNumSpellBookSkillLines) end
+    for i = 1, (okN and n or 0) do
+        local okL, info = pcall(sb.GetSpellBookSkillLineInfo, i)
+        if okL and type(info) == "table" then tabs[#tabs + 1] = tostring(info.name) end
+    end
+    VUI.Print("Quality of Life", "  Your spellbook tabs: " .. table.concat(tabs, ", "))
     for _, e in ipairs(now) do VUI.Print("Quality of Life", Line("NOW", e)) end
     for i, e in ipairs(later) do
         if i > 8 then VUI.Print("Quality of Life", format("  ... and %d more later", #later - 8)); break end
