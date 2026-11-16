@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.89.1] - 2026-11-15
+
+After a scan, the items in your bags are now priced from what is actually on sale at that moment.
+
+### Changed
+
+- Auction House — **a scan now prices the items in your bags one by one**, the same way the Auction House prices an item you open, so their tooltips show what is on sale right now. It runs on its own while the Buy tab's list is showing and waits while you post
+- Auction House — **the Auction price on a stack is for the whole stack**, as Sell Price is: a stack of 20 showed the price of one beside the Sell Price of all 20
+
+### Fixed
+
+- Auction House — **"1 day old" no longer appears minutes after a scan**: the age counted calendar days, so a scan late in the day could read a day old soon after
+- Auction House — **opening an item on the Auction House saves its current price**: the tooltip could keep the old price until you posted the item
+- Auction House — **long Auction prices stay inside the tooltip**: a price in silver and copper could run past the right border
+
+
 ## [1.89.0] - 2026-11-14
 
 ### Added

@@ -475,6 +475,19 @@ local function RenderCoinLine(tooltip, price)
     local column = MeasureNativePrefix(lf, ls, lflags) or COIN_COLUMN_FALLBACK
     fs:SetPoint("LEFT", left, "LEFT", column + COIN_COLUMN_NUDGE, 0)
     fs:Show()
+    -- Our coins are not a tooltip line, so the tooltip does not size for them and a long
+    -- price ran past the right border (owner, 2026-11-15: "Auction: 3s 56c" on Earthroot).
+    -- Reserve the width the way Blizzard's own tooltip money frame does: SetTooltipMoney
+    -- anchors its frame LEFT to the line and raises the tooltip's minimum width to the
+    -- frame's width, only ever upward (Blizzard_MoneyFrame/Shared/MoneyFrame.lua:645-656).
+    -- Ours starts `column` px in, so that offset counts too.
+    pcall(function()
+        local need = math.ceil(column + COIN_COLUMN_NUDGE + fs:GetStringWidth())
+        if tooltip.GetMinimumWidth and tooltip.SetMinimumWidth
+                and (tooltip:GetMinimumWidth() or 0) < need then
+            tooltip:SetMinimumWidth(need)
+        end
+    end)
     WatchCoins()
     return true
 end
@@ -496,10 +509,15 @@ AH.Tooltip._BuildPriceData = BuildPriceData
 local lastRender = {}
 AH.Tooltip._LastRender = function() return lastRender end
 
-local function AppendPriceForKey(tooltip, key)
+-- `count` = items in the hovered stack (1 for links and single items); the stored price is
+-- per item, the line shows the stack's worth like the game's Sell Price line does.
+local function AppendPriceForKey(tooltip, key, count)
     local price, extras = BuildPriceData(key)
+    count = count or 1
+    if price and count > 1 then price = price * count end
     lastRender.key   = key
     lastRender.price = price
+    lastRender.count = count
     lastRender.frame = tooltip and tooltip.GetName and tooltip:GetName() or "?"
     if not price then return end
     if not RenderCoinLine(tooltip, price) then
@@ -511,11 +529,11 @@ local function AppendPriceForKey(tooltip, key)
 end
 
 -- Append our line(s) to a tooltip for the given item link, if we have a price.
-local function AppendPrice(tooltip, link)
+local function AppendPrice(tooltip, link, count)
     if not (AH.DB and link) then return end
     lastRender.link = link
     local key = AH.DB.MakeKey(link)
-    if key then AppendPriceForKey(tooltip, key) end
+    if key then AppendPriceForKey(tooltip, key, count) end
 end
 
 ----------------------------------------------------------------
@@ -531,25 +549,53 @@ end
 -- cursor (TooltipUtil.lua:9-21 resolves it first); C_Item.GetItemLocation(guid) turns it into a
 -- location and C_Item.IsBound reads its bound state (ItemDocumentation.lua forever). No GUID, no
 -- location, or any error -> not bound, so the price still shows.
-local function IsBoundInstance(data, tooltip)
+-- The bag or equipment location of the item under the cursor, or nil (a link, a merchant
+-- slot, any error). Shared by the bound check and the stack count below.
+local function HeldItemLocation(data, tooltip)
     local C = C_Item
-    if not (C and C.GetItemLocation and C.IsBound) then return false end
+    if not (C and C.GetItemLocation) then return nil end
     local guid = data and data.guid
     if not guid and tooltip and tooltip.GetPrimaryTooltipData then
         local okP, td = pcall(tooltip.GetPrimaryTooltipData, tooltip)
         if okP and type(td) == "table" then guid = td.guid end
     end
-    if not guid then return false end
+    if not guid then return nil end
     local okL, loc = pcall(C.GetItemLocation, guid)
-    if not (okL and loc) then return false end
+    if not (okL and loc) then return nil end
     -- A merchant buyback item's GUID yields a location that is neither bag/slot nor equipment
     -- slot, and IsValid (C_Item.DoesItemExist, ItemLocation.lua:69) then throws "bad argument"
     -- (owner, 2026-11-12, hovering a buyback slot). Only a bag or equipment location is checked.
-    if loc.HasAnyLocation and not loc:HasAnyLocation() then return false end
+    if loc.HasAnyLocation and not loc:HasAnyLocation() then return nil end
     local okV, valid = pcall(loc.IsValid, loc)
-    if not (okV and valid) then return false end
+    if not (okV and valid) then return nil end
+    return loc
+end
+
+local function IsBoundInstance(data, tooltip)
+    local C = C_Item
+    if not (C and C.IsBound) then return false end
+    local loc = HeldItemLocation(data, tooltip)
+    if not loc then return false end
     local okB, bound = pcall(C.IsBound, loc)
     return okB and bound == true
+end
+
+-- How many items the hovered stack holds; 1 when it is not a held stack. The game's own Sell
+-- Price line is the price of the WHOLE stack (owner, 2026-11-15: 20 Linen Cloth read 2s 60c
+-- beside an Auction line of 15c, the price of one), so the Auction line multiplies by this to
+-- compare like with like. C_Item.GetStackCount(itemLocation) is what the AH's own commodity
+-- sell form reads for the same stack (Blizzard_AuctionHouseCommoditiesSellFrame.lua:173).
+local function HeldStackCount(data, tooltip)
+    local C = C_Item
+    if not (C and C.GetStackCount) then return 1 end
+    local loc = HeldItemLocation(data, tooltip)
+    if not loc then return 1 end
+    local ok, n = pcall(function()
+        local c = C.GetStackCount(loc)
+        if type(c) == "number" and c > 1 then return c end
+        return 1
+    end)
+    return (ok and n) or 1
 end
 
 local function OnItemTooltip(tooltip, data)
@@ -568,7 +614,7 @@ local function OnItemTooltip(tooltip, data)
     -- disagree), so /ah ttprobe would report a price that is not on screen -- and a test
     -- asserting "nothing rendered" would read the stale value and fail on correct code, which
     -- is exactly how this was found.
-    lastRender.key, lastRender.price, lastRender.used = nil, nil, nil
+    lastRender.key, lastRender.price, lastRender.used, lastRender.count = nil, nil, nil, nil
 
     -- SOURCE CAPTURE for /ah ttprobe. All FOUR candidate identities are recorded before one
     -- is chosen, because a compound tooltip (this pattern teaches a decor item) can make them
@@ -672,16 +718,19 @@ local function OnItemTooltip(tooltip, data)
         return
     end
 
+    -- Pets are one per cage; everything else prices the whole held stack.
+    local count = IsPetLink(link) and 1 or HeldStackCount(data, tooltip)
+
     if keyFromID then
         local k = AH.DB and AH.DB.MakeKeyFromItemID(keyFromID)
         lastRender.link = "id:" .. keyFromID
-        if k then pcall(AppendPriceForKey, tooltip, k) end
+        if k then pcall(AppendPriceForKey, tooltip, k, count) end
         return
     end
     if not link then return end
 
     -- Read-only DB lookup; pcall-guarded so a malformed link never errors a tooltip.
-    pcall(AppendPrice, tooltip, link)
+    pcall(AppendPrice, tooltip, link, count)
 end
 
 -- AllTypes tooltip post-call: hide our coins on EVERY data-pipeline tooltip build, whatever

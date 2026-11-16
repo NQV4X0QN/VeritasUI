@@ -965,8 +965,9 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             VUI.Print(AH.TAG, format("  itemID: " .. COL.YELLOW .. "%s|r",
                 tostring(lr.link:match("|Hitem:(%d+)") or lr.link:match("|Hbattlepet:(%d+)"))))
             VUI.Print(AH.TAG, format("  key:    " .. COL.YELLOW .. "%s|r", tostring(lr.key)))
-            VUI.Print(AH.TAG, format("  price:  " .. COL.YELLOW .. "%s|r  (raw %s)",
-                lr.price and AH.Money.FormatText(lr.price) or "none", tostring(lr.price)))
+            VUI.Print(AH.TAG, format("  price:  " .. COL.YELLOW .. "%s|r  (raw %s, stack of %s)",
+                lr.price and AH.Money.FormatText(lr.price) or "none", tostring(lr.price),
+                tostring(lr.count or 1)))
             VUI.Print(AH.TAG, format("  source used: " .. COL.YELLOW .. "%s|r", tostring(lr.used)))
             -- All four candidate identities, so the correct SOURCE is chosen by measurement
             -- rather than by argument. On a compound tooltip these disagree.

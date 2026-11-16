@@ -208,6 +208,10 @@ function AH.DB.Record(key, unitPrice, qty, day)
 
     rec.market = unitPrice
     rec.seen   = day
+    -- The moment of this sighting, for GetPriceAge. `seen` is a UTC calendar day, so an
+    -- age read from it ticked to "1 day old" minutes after a scan whenever the scan fell
+    -- just before UTC midnight (5 pm in the owner's time zone).
+    rec.seenAt = time()
 
     local d = rec.days[day]
     if not d then
@@ -258,10 +262,17 @@ function AH.DB.GetItemCount()
     return n
 end
 
--- Days since this item's price was last seen (nil if never).
+-- Whole days since this item's price was last seen (nil if never): 0 until a full 24 hours
+-- have passed. Records written before `seenAt` existed fall back to calendar days.
 function AH.DB.GetPriceAge(key)
     local rec = AH.db and key and AH.db.prices[key]
-    if not rec or not rec.seen then return nil end
+    if not rec then return nil end
+    if type(rec.seenAt) == "number" then
+        local elapsed = time() - rec.seenAt
+        if elapsed < 0 then elapsed = 0 end
+        return floor(elapsed / 86400)
+    end
+    if not rec.seen then return nil end
     return Today() - rec.seen
 end
 
