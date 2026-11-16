@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.89.2] - 2026-11-15
+
+### Fixed
+
+- Quality of Life — **WoW Forever: visiting a Weapon Master replaced your class trainer's list** in the trainer window and the minimap button. The Weapon Master's skills now have their own tab beside your class list, saved at your last visit. Visit your class trainer once to bring your class list back
+- Quality of Life — **WoW Forever: other trainers no longer replace your class trainer's list.** The trainer window now recognises your class trainer from your own spellbook, for every class
+
+
 ## [1.89.1] - 2026-11-15
 
 After a scan, the items in your bags are now priced from what is actually on sale at that moment.

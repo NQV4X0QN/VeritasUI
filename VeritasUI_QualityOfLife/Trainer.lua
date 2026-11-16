@@ -175,7 +175,7 @@ end
 VUI.QoL_TrainerIsClassList = function(list) return IsClassList(list, ClassTabs()) end   -- for qol_trainer_test
 
 -- A pet list saved by v1.72.0 or earlier sits in the class slot: move it to the pet slot (once, at read time).
--- A weapon master's list saved there before v1.90.0 moves to the weapon slot the same way.
+-- A weapon master's list saved there before v1.89.2 moves to the weapon slot the same way.
 -- A Beast Training list (`points`, saved by v1.73.0-v1.74.0) is dropped.
 local function Refile(db, key)
     local c = db.trainerCache and db.trainerCache[key]
