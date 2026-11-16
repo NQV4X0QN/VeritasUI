@@ -132,13 +132,31 @@ local function IsPetList(list)
 end
 VUI.QoL_TrainerIsPetList = IsPetList   -- for qol_trainer_test
 
+-- THE WEAPON MASTER (owner, Forever Warrior, 2026-11-15): visiting one replaced the class list too, reporting a
+-- General trainer. MEASURED (`/qol trainable`, owner, Archibald): each weapon skill's skill line is the skill
+-- itself ("Daggers" on line "Daggers", "Polearms" on "Polearms"); a class spell's line is never its own name.
+-- A list counts as a weapon master's when every service is on its own line; kept apart in db.trainerWeaponCache.
+local function IsWeaponList(list)
+    if type(list) ~= "table" or not list[1] then return false end
+    for _, e in ipairs(list) do
+        if type(e.line) ~= "string" or e.line ~= e.name then return false end
+    end
+    return true
+end
+VUI.QoL_TrainerIsWeaponList = IsWeaponList   -- for qol_trainer_test
+
 -- A pet list saved by v1.72.0 or earlier sits in the class slot: move it to the pet slot (once, at read time).
+-- A weapon master's list saved there before v1.90.0 moves to the weapon slot the same way.
 -- A Beast Training list (`points`, saved by v1.73.0-v1.74.0) is dropped.
 local function Refile(db, key)
     local c = db.trainerCache and db.trainerCache[key]
     if c and IsPetList(c.list) then
         db.trainerPetCache = db.trainerPetCache or {}
         if not db.trainerPetCache[key] then db.trainerPetCache[key] = c end
+        db.trainerCache[key] = nil
+    elseif c and IsWeaponList(c.list) then
+        db.trainerWeaponCache = db.trainerWeaponCache or {}
+        if not db.trainerWeaponCache[key] then db.trainerWeaponCache[key] = c end
         db.trainerCache[key] = nil
     end
     local p = db.trainerPetCache and db.trainerPetCache[key]
@@ -187,8 +205,8 @@ local function Capture()
         local okF, on = pcall(GetTrainerServiceTypeFilter, f)
         filters[f] = okF and on and true or false
     end
-    local pet = IsPetList(list)
-    local slot = pet and "trainerPetCache" or "trainerCache"
+    local slot = IsPetList(list) and "trainerPetCache"
+        or IsWeaponList(list) and "trainerWeaponCache" or "trainerCache"
     local key = CharKey()
     db[slot] = db[slot] or {}
     db[slot][key] = { list = list, filters = filters, level = Level(),
@@ -226,16 +244,18 @@ local function KindLevel(kind)
     return Level()
 end
 
--- kind: "class" (default) or "pet".
+-- kind: "class" (default), "pet" or "weapon". Weapon skills are not spellbook spells: a bought one leaves the
+-- saved list at the purchase's TRAINER_UPDATE (the trainer hides "used" services by default).
+local SLOTS = { class = "trainerCache", pet = "trainerPetCache", weapon = "trainerWeaponCache" }
 local function Trainable(kind)
     local db = DB()
     if type(db) ~= "table" then return nil end
     local key = CharKey()
     Refile(db, key)
-    local slot = kind == "pet" and db.trainerPetCache or db.trainerCache
+    local slot = db[SLOTS[kind] or SLOTS.class]
     local cache = slot and slot[key]
     if not cache then return nil end
-    local known, level = kind == "pet" and {} or KnownSpells(), KindLevel(kind)
+    local known, level = (kind == "pet" or kind == "weapon") and {} or KnownSpells(), KindLevel(kind)
     local now, later, shown = {}, {}, {}
     for _, e in ipairs(cache.list or {}) do
         if e.type ~= "used" and not IsKnown(known, e) then
@@ -288,8 +308,10 @@ VUI.RegisterManagedPanel(WIN_NAME, { area = "left", pushable = 2 })
 local TRAINER_TEX = "Interface\\ClassTrainerFrame\\TrainerTextures"
 local ROW_H, LIST_W, LIST_H = 47, 302, 330
 local PET_TAB_ICON = "Interface\\Icons\\Ability_Hunter_BeastTraining"   -- file 132165 (wago listfile)
+local WEAPON_TAB_ICON = "Interface\\Icons\\INV_Sword_04"                -- file 135274 (community listfile)
+local TAB_KINDS = { "class", "pet", "weapon" }   -- side tab index -> list kind
 local win
-local curKind = "class"   -- the window's tab: "class" or "pet"
+local curKind = "class"   -- the window's tab: "class", "pet" or "weapon"
 
 local function Requirements(e)
     local level, parts = KindLevel(curKind), {}
@@ -410,26 +432,47 @@ local function InitRow(row, e)
     end
 end
 
-local function HasPetList()
+-- Which extra lists this character has saved: { pet = bool, weapon = bool, any = bool }.
+local function ExtraLists()
     local db = DB()
-    if type(db) ~= "table" then return false end
-    Refile(db, CharKey())
-    return db.trainerPetCache ~= nil and db.trainerPetCache[CharKey()] ~= nil
+    local has = { pet = false, weapon = false, any = false }
+    if type(db) ~= "table" then return has end
+    local key = CharKey()
+    Refile(db, key)
+    has.pet = db.trainerPetCache ~= nil and db.trainerPetCache[key] ~= nil
+    has.weapon = db.trainerWeaponCache ~= nil and db.trainerWeaponCache[key] ~= nil
+    has.any = has.pet or has.weapon
+    return has
 end
 
 local function RefreshWindow()
     if not (win and win:IsShown()) then return end
-    -- The pet tab exists once a pet trainer's list is saved; with none, the window is the class trainer's only.
-    local hasPet = HasPetList()
+    -- The class tab and each saved extra list's tab; with no extra list, the window is the class trainer's only.
+    -- Shown tabs are stacked again so a missing pet tab leaves no gap above the weapon tab (Lib CreateSideTabs:
+    -- first at the window's TOPRIGHT 0,-30, each next 2 below the last).
+    local lists = ExtraLists()
     if win.tabs then
-        for _, t in ipairs(win.tabs) do t:SetShown(hasPet) end
+        local prev
+        for i, t in ipairs(win.tabs) do
+            local kind = TAB_KINDS[i]
+            local show = lists.any and (kind == "class" or lists[kind]) or false
+            t:SetShown(show)
+            if show and t.ClearAllPoints then
+                t:ClearAllPoints()
+                if prev then t:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -2)
+                else t:SetPoint("TOPLEFT", win, "TOPRIGHT", 0, -30) end
+                prev = t
+            end
+        end
     end
     -- No tabs shown: no room kept for them (VUI.SetManagedPanelExtraWidth; read by the manager when it places windows).
     if VUI.SetManagedPanelExtraWidth then
-        VUI.SetManagedPanelExtraWidth(WIN_NAME, hasPet and VUI.SIDE_TAB_PANEL_PADDING or nil)
+        VUI.SetManagedPanelExtraWidth(WIN_NAME, lists.any and VUI.SIDE_TAB_PANEL_PADDING or nil)
     end
-    if not hasPet then curKind = "class" end
-    if win.selectTab then win.selectTab(curKind == "pet" and 2 or 1) end
+    if curKind ~= "class" and not lists[curKind] then curKind = "class" end
+    if win.selectTab then
+        for i, kind in ipairs(TAB_KINDS) do if kind == curKind then win.selectTab(i) end end
+    end
     local _, _, _, shown = Trainable(curKind)
     -- Titled with your character's name, not the trainer's: any of the class's trainers teaches this list
     -- (owner, 2026-11-05: naming one of them looked odd). First AND last name: Forever's UnitName returns the
@@ -493,13 +536,15 @@ local function BuildWindow()
     money:SetPoint("RIGHT", moneyBg, "RIGHT", 8, 6)
     win.money = money
 
-    -- Side tabs (owner, 2026-11-07): your class trainer's list and, once one is saved, your pet trainer's.
-    -- Lib VUI.CreateSideTabs, as Priority Rotation and Advanced Options use in Forever.
+    -- Side tabs (owner, 2026-11-07): your class trainer's list and, once one is saved, your pet trainer's and
+    -- (2026-11-15) your weapon master's. Lib VUI.CreateSideTabs, as Priority Rotation and Advanced Options use
+    -- in Forever.
     if VUI.CreateSideTabs then
         local select, tabs = VUI.CreateSideTabs(win, {
             { icon = ClassIcon(), tooltip = "Class Trainer" },
             { icon = PET_TAB_ICON, tooltip = "Pet Trainer" },
-        }, function(i) curKind = (i == 2) and "pet" or "class"; RefreshWindow() end)
+            { icon = WEAPON_TAB_ICON, tooltip = "Weapon Master" },
+        }, function(i) curKind = TAB_KINDS[i] or "class"; RefreshWindow() end)
         win.selectTab, win.tabs = select, tabs
     end
 
@@ -542,7 +587,7 @@ local function ToggleWindow()
     if not win then BuildWindow() end
     -- Before ShowUIPanel places the window: room for the tabs only when they will show.
     if VUI.SetManagedPanelExtraWidth then
-        VUI.SetManagedPanelExtraWidth(WIN_NAME, HasPetList() and VUI.SIDE_TAB_PANEL_PADDING or nil)
+        VUI.SetManagedPanelExtraWidth(WIN_NAME, ExtraLists().any and VUI.SIDE_TAB_PANEL_PADDING or nil)
     end
     if win:IsShown() then VUI.CloseManagedPanel(win) else VUI.OpenManagedPanel(win) end
 end
