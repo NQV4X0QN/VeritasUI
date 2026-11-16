@@ -134,8 +134,9 @@ VUI.QoL_TrainerIsPetList = IsPetList   -- for qol_trainer_test
 
 -- THE WEAPON MASTER (owner, Forever Warrior, 2026-11-15): visiting one replaced the class list too, reporting a
 -- General trainer. MEASURED (`/qol trainable`, owner, Archibald): each weapon skill's skill line is the skill
--- itself ("Daggers" on line "Daggers", "Polearms" on "Polearms"); a class spell's line is never its own name.
--- A list counts as a weapon master's when every service is on its own line; kept apart in db.trainerWeaponCache.
+-- itself ("Daggers" on line "Daggers", "Polearms" on "Polearms"). A class trainer has a few such services too
+-- (Dual Wield, Plate Mail, measured), never only those while it still teaches spells -- so a weapon master's list
+-- is one where EVERY service is on its own line. Kept apart in db.trainerWeaponCache.
 local function IsWeaponList(list)
     if type(list) ~= "table" or not list[1] then return false end
     for _, e in ipairs(list) do
@@ -144,6 +145,34 @@ local function IsWeaponList(list)
     return true
 end
 VUI.QoL_TrainerIsWeaponList = IsWeaponList   -- for qol_trainer_test
+
+-- YOUR CLASS TRAINER, for every class (owner, 2026-11-15: other classes must not lose their list to trainers we
+-- have not met). MEASURED (owner's Warrior, Angela Curthas): the class list's skill lines are Arms, Protection,
+-- Fury, Dual Wield, Plate Mail; the spellbook's tabs are General, Arms, Fury, Protection. A list counts as your
+-- class trainer's when any service is on one of your own spellbook tabs other than General. Any other trainer's
+-- list is not saved. Tabs unreadable (nil): every list not recognised otherwise counts as the class list, as before.
+local function ClassTabs()
+    local sb = _G.C_SpellBook
+    if not (sb and sb.GetNumSpellBookSkillLines and sb.GetSpellBookSkillLineInfo) then return nil end
+    local okN, n = pcall(sb.GetNumSpellBookSkillLines)
+    if not (okN and type(n) == "number") then return nil end
+    local tabs, general, any = {}, _G.GENERAL or "General", false
+    for i = 1, n do
+        local okL, info = pcall(sb.GetSpellBookSkillLineInfo, i)
+        if okL and type(info) == "table" and type(info.name) == "string" and not info.isGuild
+            and info.name ~= general then
+            tabs[info.name], any = true, true
+        end
+    end
+    return any and tabs or nil
+end
+
+local function IsClassList(list, tabs)
+    if not tabs then return true end
+    for _, e in ipairs(list) do if e.line and tabs[e.line] then return true end end
+    return false
+end
+VUI.QoL_TrainerIsClassList = function(list) return IsClassList(list, ClassTabs()) end   -- for qol_trainer_test
 
 -- A pet list saved by v1.72.0 or earlier sits in the class slot: move it to the pet slot (once, at read time).
 -- A weapon master's list saved there before v1.90.0 moves to the weapon slot the same way.
@@ -205,8 +234,11 @@ local function Capture()
         local okF, on = pcall(GetTrainerServiceTypeFilter, f)
         filters[f] = okF and on and true or false
     end
-    local slot = IsPetList(list) and "trainerPetCache"
-        or IsWeaponList(list) and "trainerWeaponCache" or "trainerCache"
+    local slot
+    if IsPetList(list) then slot = "trainerPetCache"
+    elseif IsWeaponList(list) then slot = "trainerWeaponCache"
+    elseif IsClassList(list, ClassTabs()) then slot = "trainerCache"
+    else return false end   -- a trainer we don't know: never replaces a saved list
     local key = CharKey()
     db[slot] = db[slot] or {}
     db[slot][key] = { list = list, filters = filters, level = Level(),
@@ -284,22 +316,6 @@ VUI.QoL_TrainableProbe = function()
         .. "filters available %s, unavailable %s, known %s.", Level(), tostring(cache.trainer),
         tostring(cache.level), #(cache.list or {}), tostring(f.available), tostring(f.unavailable), tostring(f.used)))
     VUI.Print("Quality of Life", format("  %d to learn now, %d at later levels.", #now, #later))
-    -- PROBE (2026-11-15): do the class trainer's skill lines match your spellbook's tabs? If they do, a list can be
-    -- recognised as your class trainer's for every class, without knowing each class's other trainers.
-    local lines, seen = {}, {}
-    for _, e in ipairs(cache.list or {}) do
-        local l = tostring(e.line)
-        if not seen[l] then seen[l] = true; lines[#lines + 1] = l end
-    end
-    VUI.Print("Quality of Life", "  Skill lines in this list: " .. table.concat(lines, ", "))
-    local tabs, sb = {}, _G.C_SpellBook
-    local okN, n = false, 0
-    if sb and sb.GetNumSpellBookSkillLines then okN, n = pcall(sb.GetNumSpellBookSkillLines) end
-    for i = 1, (okN and n or 0) do
-        local okL, info = pcall(sb.GetSpellBookSkillLineInfo, i)
-        if okL and type(info) == "table" then tabs[#tabs + 1] = tostring(info.name) end
-    end
-    VUI.Print("Quality of Life", "  Your spellbook tabs: " .. table.concat(tabs, ", "))
     for _, e in ipairs(now) do VUI.Print("Quality of Life", Line("NOW", e)) end
     for i, e in ipairs(later) do
         if i > 8 then VUI.Print("Quality of Life", format("  ... and %d more later", #later - 8)); break end
