@@ -275,6 +275,24 @@ local function IsAlwaysTracked(info)
     return false, nil
 end
 
+-- ── Timed quests (owner, 2026-11-17, Forever) ─────────────────────
+-- A quest with a running timer often sends you to another zone, so filtering took it out of the tracker while the
+-- game's Quest Timers box above it kept counting down with no quest name (Forever Blizzard_QuestTimer.lua: the row
+-- shows only SecondsToTime; the title is in its tooltip). A timed quest is always tracked, and is made the focused
+-- (super-tracked) quest once when its timer is first seen, so the player can still pick another afterwards.
+-- C_QuestLog.GetTimeAllowed(questID) -> total, elapsed: read the same way by Blizzard's quest tracker to draw its
+-- timer bar (Blizzard_QuestObjectiveTracker.lua:372-374, forever). QuestLogDocumentation.lua:635-650.
+local focusedTimer = {}   -- [questID] = true once focused for this run of its timer
+
+local function TimeLeft(questID)
+    if not (C_QuestLog and C_QuestLog.GetTimeAllowed) then return nil end
+    local ok, total, elapsed = pcall(C_QuestLog.GetTimeAllowed, questID)
+    if not ok or type(total) ~= "number" or type(elapsed) ~= "number" then return nil end
+    if IsSecret(total) or IsSecret(elapsed) then return nil end
+    if total <= 0 or elapsed >= total then return nil end
+    return total - elapsed
+end
+
 -- ── Core sync ─────────────────────────────────────────────────────
 -- lastDirectSync prevents duplicate work when QUEST_LOG_UPDATE fires
 -- immediately after a zone-change-triggered sync.
@@ -304,6 +322,8 @@ local function SyncTracking(verbose)
         and C_SuperTrack.GetSuperTrackedQuestID
         and C_SuperTrack.GetSuperTrackedQuestID()) or 0
 
+    local timedNow, focusID, focusLeft = {}, nil, nil
+
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
         local ok, info = pcall(C_QuestLog.GetInfo, i)
         if not ok or not info then
@@ -312,11 +332,20 @@ local function SyncTracking(verbose)
             local pinned, tag = IsAlwaysTracked(info)
             local inZone = questSet[info.questID] or false
             local superTracked = superQuestID ~= 0 and info.questID == superQuestID
+            local left = TimeLeft(info.questID)
+            if left then
+                timedNow[info.questID] = true
+                -- Several timers at once: the one with the least time left is focused first.
+                if not focusedTimer[info.questID] and (not focusLeft or left < focusLeft) then
+                    focusID, focusLeft = info.questID, left
+                end
+            end
 
-            if pinned or inZone or superTracked then
+            if pinned or inZone or superTracked or left then
                 local ok2 = pcall(C_QuestLog.AddQuestWatch, info.questID, watchType)
                 if verbose then
                     local lbl = tag and (" (" .. tag .. ")")
+                        or (left and " (timed)")
                         or (inZone == "instance" and " (instance)")
                         or (inZone and " (zone)")
                         or (superTracked and " (super-tracked)") or ""
@@ -332,6 +361,15 @@ local function SyncTracking(verbose)
             end
         end
     end
+
+    -- A timer that ended (done, failed or abandoned) may focus again if it runs again.
+    for q in pairs(focusedTimer) do if not timedNow[q] then focusedTimer[q] = nil end end
+    if focusID and focusID ~= superQuestID and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
+        pcall(C_SuperTrack.SetSuperTrackedQuestID, focusID)
+        if verbose then print("[ZQ sync] FOCUS (timed) " .. focusID) end
+    end
+    -- Every running timer counts as seen now, so a second timer never takes the focus back from the first.
+    for q in pairs(timedNow) do focusedTimer[q] = true end
 
     if verbose then print("[ZQ sync] Done. removed=" .. removed .. " added=" .. added) end
 end
@@ -456,7 +494,8 @@ local function InitializeOptions()
         end
     end)
     local enableTip = "Shows only quests for your current zone in the Objective Tracker. In a dungeon or raid, "
-        .. "quests your quest log lists under its name count too. Turning it off "
+        .. "quests your quest log lists under its name count too. A quest with a timer always shows, and "
+        .. "becomes your focused quest when its timer starts. Turning it off "
         .. "puts back the tracking you had before. Set for each character."
     local why = TakenOver()
     if type(why) == "string" then enableTip = enableTip .. "\n\n" .. VUI.COL.RED .. why .. "|r" end
