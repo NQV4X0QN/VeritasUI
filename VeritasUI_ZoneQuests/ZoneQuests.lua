@@ -293,6 +293,49 @@ local function TimeLeft(questID)
     return total - elapsed
 end
 
+-- The Quest Timers box (owner, 2026-11-17, Forever). Blizzard_QuestTimer loads in classic and camelot only (its TOC
+-- AllowLoadGameType), so none of this runs in Retail. Not tied to Enable Zone Filtering.
+--   * Always shown: QuestTimerFrame is a child of ObjectiveTrackerFrame (Mainline/Blizzard_QuestTimer.xml), and
+--     Blizzard hides the whole tracker when no section has anything in it (Blizzard_ObjectiveTrackerContainer.lua
+--     Update: no module with contents -> self:Hide()), so untracking the timed quest took its timer away. It is
+--     moved under UIParent and keeps its anchor (TOP of the tracker, -10), so it stays in the same place, shown
+--     whenever Blizzard shows it (UpdateQuestTimers: shown while any timer runs). It also leaves Interface's
+--     tracker fade, which fades only the tracker's own children.
+--   * Click to focus: Blizzard's click opens the quest (QuestTimerButtonMixin:OnClick ->
+--     QuestMapFrame_OpenToQuestDetails, Mainline/Blizzard_QuestTimerOverrides.lua); ours runs after it and makes that
+--     quest the focused one. The rows come from a pool (Blizzard_QuestTimer.lua OnLoad), so each new row is hooked
+--     when UpdateQuestTimers lays it out (frame.activeElements). Neither frame is protected.
+local timerFrameDone = false
+local function SetupQuestTimerFrame()
+    local qtf = _G.QuestTimerFrame
+    if timerFrameDone or type(qtf) ~= "table" or not qtf.SetParent then return end
+    timerFrameDone = true
+    local otf = _G.ObjectiveTrackerFrame
+    if UIParent and qtf:GetParent() ~= UIParent then
+        qtf:SetParent(UIParent)
+        if type(otf) == "table" then   -- Blizzard's own anchor, made explicit (the XML's is to its parent)
+            qtf:ClearAllPoints()
+            qtf:SetPoint("TOP", otf, "TOP", 0, -10)
+        end
+    end
+    local hooked = {}
+    local function HookRows(self)
+        for _, row in pairs(type(self.activeElements) == "table" and self.activeElements or {}) do
+            if type(row) == "table" and row.HookScript and not hooked[row] then
+                hooked[row] = true
+                row:HookScript("OnClick", function(r)
+                    local q = r.questID
+                    if type(q) == "number" and q > 0 and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
+                        pcall(C_SuperTrack.SetSuperTrackedQuestID, q)
+                    end
+                end)
+            end
+        end
+    end
+    if type(qtf.UpdateQuestTimers) == "function" then hooksecurefunc(qtf, "UpdateQuestTimers", HookRows) end
+    HookRows(qtf)
+end
+
 -- ── Core sync ─────────────────────────────────────────────────────
 -- lastDirectSync prevents duplicate work when QUEST_LOG_UPDATE fires
 -- immediately after a zone-change-triggered sync.
@@ -625,6 +668,10 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         db.manualWatched = nil
 
         InitializeOptions()
+        if _G.QuestTimerFrame then SetupQuestTimerFrame()
+        elseif EventUtil and EventUtil.ContinueOnAddOnLoaded then
+            EventUtil.ContinueOnAddOnLoaded("Blizzard_QuestTimer", SetupQuestTimerFrame)
+        end
         restorePending = not Enabled() and type(cdb and cdb.untrackedBeforeFilter) == "table"
         C_Timer.After(2.0, function()
             -- No snapshot here: the record is taken only when filtering is switched on.
