@@ -80,7 +80,7 @@ Settings: **Options → AddOns → VeritasUI → Quality of Life**, or `/qol`.
 Settings: **Options → AddOns → VeritasUI → Auction House**, or `/ah`.
 
 ### Zone Quests — a tidy quest tracker
-Shows only quests for the zone you're in, updating as you travel. In a dungeon or raid, the quests your quest log lists under that instance's name show too, even ones with no marker on the map (such as a collect-and-turn-in quest whose quest giver is outside). Campaign, important, legendary, meta and daily/weekly quests can be kept visible everywhere, and the quest you're navigating to always stays. Turning it off puts back the tracking you had chosen before. It's turned on or off for each character on its own, and starts off on a new install.
+Shows only quests for the zone you're in, updating as you travel. In a dungeon or raid, the quests your quest log lists under that instance's name show too, even ones with no marker on the map (such as a collect-and-turn-in quest whose quest giver is outside). Campaign, important, legendary, meta and daily/weekly quests can be kept visible everywhere, and the quest you're navigating to always stays. A quest with a timer always shows and becomes your focused quest when its timer starts. In WoW Forever, clicking a timer in the Quest Timers box focuses its quest, and the box stays even when the tracker is empty. Turning it off puts back the tracking you had chosen before. It's turned on or off for each character on its own, and starts off on a new install.
 
 Settings: **Options → AddOns → VeritasUI → Zone Quests**, or `/zq`.
 
@@ -91,7 +91,9 @@ To set it up, open `/pr`, click **Create / Update Macro**, drag the `Attack` mac
 
 To switch specialization quickly, hover **VeritasUI — Priority Rotation** in the AddOns menu by the minimap and pick a spec from the list that opens.
 
-Long buffs such as a Warrior's shouts don't waste your resources: while one is on you with more than 30 seconds left, it's left out of the rotation between fights, and in a fight it gets only a few turns, so it's cast about once. A buff counts once Priority Rotation has seen it on you, lasting a minute or more.
+Buffs you keep up by recasting, such as a Warrior's shouts or a Paladin's seals, don't waste your resources: while one is on you, it's left out of the rotation between fights until it is nearly over (its last 30 seconds, or the last third of a short buff such as a seal), and in a fight it gets only a few turns, so it's cast about once. A buff counts once Priority Rotation has seen it on you.
+
+Blizzard's Attack in a list only ever turns auto-attack on, so it never switches it off.
 
 In WoW Forever, if you're holding a fishing pole when a fight starts, your first press of the rotation key puts back the weapon and shield you were using before, and the next press starts the rotation.
 

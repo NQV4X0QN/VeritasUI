@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.89.3] - 2026-11-17
+
+### Fixed
+
+- Zone Quests — **a quest with a timer no longer leaves the tracker when you change zones**: it always shows, and becomes your focused quest when its timer starts. If you focus another quest, it stays your choice
+- Zone Quests — **WoW Forever: the Quest Timers box no longer disappears when the tracker has nothing in it**
+- Priority Rotation — **Attack in a rotation no longer switches auto-attack off**: it only turns it on, against a living enemy
+- Priority Rotation — **a Paladin's seals are no longer recast while they're on you**: buffs you keep up by recasting are now treated like a Warrior's shouts, left out of the rotation between fights while on you and back in near the end (the last third of a short buff such as a seal); in a fight they get only a few turns
+- Priority Rotation — **a macro in the rotation that ends in a condition, such as /startattack [harm], no longer stops the whole rotation from working**
+
+### Changed
+
+- Zone Quests — **WoW Forever: clicking a timer in the Quest Timers box also makes its quest your focused quest**, as well as opening it in your quest log
+
+
 ## [1.89.2] - 2026-11-15
 
 ### Fixed
