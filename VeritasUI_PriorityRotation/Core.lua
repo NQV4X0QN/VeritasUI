@@ -306,7 +306,37 @@ PR.BUFF_SKIP_LEFT = 30
 -- short self-buff cooldowns (Avatar-like, seconds long) are never capped.
 PR.BUFF_FIGHT_TURNS = 3
 PR.BUFF_LONG = 60
+-- Seals (owner, 2026-11-17, Forever Paladin: Seal of Righteousness lasts 30 s): a buff shorter than BUFF_LONG counts
+-- as long too when its spell is ready to cast again while the buff is on you -- a buff kept up by recasting, not a
+-- cooldown. Avatar-like buffs are on cooldown while they last, so they are still never capped. Up to the global
+-- cooldown counts as ready. C_Spell.GetSpellCooldown, SpellDocumentation.lua forever (duration 0 when inactive,
+-- SpellSharedDocumentation.lua); unreadable or secret = not ready, the old rule.
+PR.BUFF_RECAST_GCD = 1.5
+-- A short buff comes back in at a third of its length (Seal: 10 s left), not at BUFF_SKIP_LEFT, which it never has.
+PR.BUFF_SKIP_PART = 3
 
+local function ReadyWhileUp(spellName)
+    local api = C_Spell and C_Spell.GetSpellCooldown
+    if not api then return false end
+    local ok, cd = pcall(api, spellName)
+    if not ok or type(cd) ~= "table" then return false end
+    local d = cd.duration
+    if type(d) ~= "number" or (issecretvalue and issecretvalue(d)) then return false end
+    return d <= PR.BUFF_RECAST_GCD
+end
+
+-- Blizzard's Attack spell: 6603 in both games (wago.tools SpellName: wowf "Attack", wow "Auto Attack"). By ID, or by
+-- its name for an entry saved without one.
+PR.ATTACK_SPELL_ID = 6603
+function PR.IsAttackSpell(e)
+    if not e or e.macroName or e.itemID then return false end
+    if e.spellID == PR.ATTACK_SPELL_ID then return true end
+    if e.spellID or not e.spellName then return false end
+    local name = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(PR.ATTACK_SPELL_ID)
+    return name ~= nil and name == e.spellName
+end
+
+-- up, ends (nil = no end), long, and the seconds-left mark at which it comes back into the rotation.
 function PR:BuffUp(spellName)
     local api = C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName
     if not api or type(spellName) ~= "string" or InCombatLockdown() then return false end
@@ -315,8 +345,11 @@ function PR:BuffUp(spellName)
     local exp, dur = aura.expirationTime, aura.duration
     if issecretvalue and (issecretvalue(exp) or issecretvalue(dur)) then return false end
     local long = type(dur) == "number" and (dur == 0 or dur >= self.BUFF_LONG)
+    if not long and type(dur) == "number" and dur > 0 then long = ReadyWhileUp(spellName) end
     if type(exp) ~= "number" or exp == 0 then return true, nil, long end
-    return exp - GetTime() > self.BUFF_SKIP_LEFT, exp, long
+    local mark = self.BUFF_SKIP_LEFT
+    if type(dur) == "number" and dur > 0 and dur / self.BUFF_SKIP_PART < mark then mark = dur / self.BUFF_SKIP_PART end
+    return exp - GetTime() > mark, exp, long, mark
 end
 
 -- The spell entries skipped right now and when their buffs end, as one string, to tell whether a recompile would
@@ -474,10 +507,12 @@ function PR:CompileSequence()
                         local info = C_Spell.GetSpellInfo(e.spellID)
                         if info == nil then stale = true end
                     end
-                    local buffUp, buffEnds, buffLong = false, nil, false
-                    if not stale then buffUp, buffEnds, buffLong = self:BuffUp(e.spellName) end
+                    local attack = PR.IsAttackSpell(e)
+                    local buffUp, buffEnds, buffLong, buffMark = false, nil, false, nil
+                    if not stale and not attack then buffUp, buffEnds, buffLong, buffMark = self:BuffUp(e.spellName) end
                     if buffLong then e.long = true end
-                    if buffUp and buffEnds and (not wakeAt or buffEnds < wakeAt) then wakeAt = buffEnds end
+                    local wake = buffUp and buffEnds and buffEnds - (buffMark or self.BUFF_SKIP_LEFT)
+                    if wake and (not wakeAt or wake < wakeAt) then wakeAt = wake end
                     if buffUp then
                         skippedBuffs[#skippedBuffs + 1] = e.spellName   -- on you already (BuffUp above)
                         buffSig[#buffSig + 1] = e.spellName .. ":" .. tostring(buffEnds or 0)
@@ -499,9 +534,15 @@ function PR:CompileSequence()
                         -- no longer need hand-built macros at all; the entry left
                         -- unchecked is the designated opener (castable out of
                         -- combat to start the fight).
-                        macrotext = reacqPrefix .. "/cast "
-                            .. (e.combatOnly and "[combat, nochanneling] "
-                                or "[nochanneling] ") .. e.spellName
+                        local cond = e.combatOnly and "[combat, nochanneling] " or "[nochanneling] "
+                        if attack then
+                            -- Attack is a toggle: /cast Attack on every turn switched it off again
+                            -- (owner, Forever Paladin, 2026-11-17). /startattack only turns it on
+                            -- (SlashCommands.lua STARTATTACK, Shared, forever + live).
+                            macrotext = reacqPrefix .. "/startattack " .. (cond:gsub("%] $", ", harm, nodead]"))
+                        else
+                            macrotext = reacqPrefix .. "/cast " .. cond .. e.spellName
+                        end
                         entryName = e.spellName
                         if e.spellID then
                             PR._missingSpellWarned[e.spellID] = nil
@@ -608,10 +649,10 @@ function PR:CompileSequence()
     self.compiledLinks    = links
     self.skippedBuffs     = skippedBuffs
     self._buffSig         = tconcat(buffSig, "\n")
-    -- Back in at the BUFF_SKIP_LEFT mark of the first skipped buff that ends.
+    -- Back in at the mark (BuffUp) of the first skipped buff that comes back.
     if self._buffTimer then self._buffTimer:Cancel(); self._buffTimer = nil end
     if wakeAt then
-        local delay = wakeAt - self.BUFF_SKIP_LEFT - GetTime()
+        local delay = wakeAt - GetTime()
         self._buffTimer = C_Timer.NewTimer(delay > 0 and delay + 0.1 or 0.1, function()
             PR._buffTimer = nil
             PR:OnPlayerAura()
@@ -639,9 +680,11 @@ end
 -- Returns a Lua long-string literal that safely embeds any string content,
 -- including those containing ]] or ]=] sequences. Scans for the minimum
 -- nesting level whose closing delimiter does not appear in the string.
+-- A string ending in "]" is checked with one more "]" after it: "[[x]]]" closes one "]" early (an error the
+-- first time a step ended in a conditional, "/startattack [harm, nodead]", 2026-11-17).
 local function SafeQuote(s)
     local level = 0
-    while s:find("]" .. string.rep("=", level) .. "]", 1, true) do
+    while (s .. "]"):find("]" .. string.rep("=", level) .. "]", 1, true) do
         level = level + 1
     end
     local eq = string.rep("=", level)
