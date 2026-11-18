@@ -305,6 +305,14 @@ end
 --     QuestMapFrame_OpenToQuestDetails, Mainline/Blizzard_QuestTimerOverrides.lua); ours runs after it and makes that
 --     quest the focused one. The rows come from a pool (Blizzard_QuestTimer.lua OnLoad), so each new row is hooked
 --     when UpdateQuestTimers lays it out (frame.activeElements). Neither frame is protected.
+--   * ⚠ Full opacity, always (owner, 2026-11-17, test build 2: the box was invisible yet could be hovered and
+--     clicked). Unmeasured cause, most likely: before the move the box was one of the tracker's children, which
+--     Interface's tracker fade sets to the faded opacity (its "extras", Interface.lua SetupObjectiveTrackerFade);
+--     once moved, the fade stops managing it and nothing puts it back, so it stays at 0. The box's own alpha is
+--     put back to 1 whenever Blizzard updates it (every frame while a timer runs, QuestTimerMixin:OnUpdate), which
+--     also outlasts a fade still running on it (Lib SmoothFade). Its frame level is the one it had as the
+--     tracker's child (one above the tracker), in case the draw order was the cause instead.
+--     `/zq timer` prints its opacity, visibility and layer if it is ever unseen again.
 local timerFrameDone = false
 local function SetupQuestTimerFrame()
     local qtf = _G.QuestTimerFrame
@@ -316,10 +324,16 @@ local function SetupQuestTimerFrame()
         if type(otf) == "table" then   -- Blizzard's own anchor, made explicit (the XML's is to its parent)
             qtf:ClearAllPoints()
             qtf:SetPoint("TOP", otf, "TOP", 0, -10)
+            if otf.GetFrameLevel and qtf.SetFrameLevel then qtf:SetFrameLevel((otf:GetFrameLevel() or 0) + 1) end
         end
     end
+    local function FullOpacity(self)
+        if self.GetAlpha and (self:GetAlpha() or 1) < 1 then self:SetAlpha(1) end
+    end
+    FullOpacity(qtf)
     local hooked = {}
     local function HookRows(self)
+        FullOpacity(self)
         for _, row in pairs(type(self.activeElements) == "table" and self.activeElements or {}) do
             if type(row) == "table" and row.HookScript and not hooked[row] then
                 hooked[row] = true
@@ -748,6 +762,17 @@ SlashCmdList["VERITASUI_ZONEQUESTS"] = function(msg)
         cachedQuestSet = nil
         SyncTracking(false)
         VUI.Print("Zone Quests", "Refreshed — " .. ZoneName())
+
+    elseif msg == "timer" then
+        -- The Quest Timers box's state in one line (owner, 2026-11-17: a long /run cannot be typed on the PC).
+        local f = _G.QuestTimerFrame
+        if type(f) ~= "table" then VUI.Print("Zone Quests", "No Quest Timers box in this game."); return end
+        local p = f.GetParent and f:GetParent()
+        VUI.Print("Zone Quests", string.format(
+            "Quest Timers: alpha %.2f, seen %.2f, shown %s, visible %s, %s level %s, in %s",
+            f:GetAlpha() or -1, (f.GetEffectiveAlpha and f:GetEffectiveAlpha()) or -1, tostring(f:IsShown()),
+            tostring(f:IsVisible()), tostring(f:GetFrameStrata()), tostring(f:GetFrameLevel()),
+            tostring(p and p.GetName and p:GetName())))
 
     elseif msg == "synctest" then
         VUI.Print("Zone Quests", VUI.COL.YELLOW .. "Running verbose sync...|r")
