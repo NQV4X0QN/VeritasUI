@@ -4583,20 +4583,55 @@ local SetupCharacterSheet
         return ok and classID == 2   -- Enum.ItemClass.Weapon
     end
 
+    local RED = "ffff2222"
+    local function Wrap(hex, text) return "|c" .. hex .. text .. "|r" end
+    local function ColorHex(c)
+        if c and c.GenerateHexColor then return c:GenerateHexColor() end
+        if c and c.r then
+            local function B(x) return math.floor(x * 255 + 0.5) end
+            return string.format("ff%02x%02x%02x", B(c.r), B(c.g), B(c.b))
+        end
+        return "ffffffff"
+    end
+
+    -- The item tooltip's filled-socket lines (TooltipDataRules.lua:18-33: a GemSocket line with
+    -- gemIcon set is a filled socket, one without is empty), each with its own colour.
+    local GEM_LINE = Enum and Enum.TooltipDataLineType and Enum.TooltipDataLineType.GemSocket or 3
+    local function GemLines(slotID)
+        local out = {}
+        if not (C_TooltipInfo and C_TooltipInfo.GetInventoryItem) then return out end
+        local ok, data = pcall(C_TooltipInfo.GetInventoryItem, "player", slotID)
+        if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then return out end
+        for _, line in ipairs(data.lines) do
+            if line.type == GEM_LINE and line.gemIcon and type(line.leftText) == "string" and line.leftText ~= "" then
+                out[#out + 1] = { text = line.leftText, color = line.leftColor }
+            end
+        end
+        return out
+    end
+
     -- Gems the way Blizzard's own socket display reads them (PaperDollFrame.lua:2775-2780).
-    -- Returns numSockets, numFilled, gem names (for the tooltip).
+    -- Returns numSockets, numFilled, gem texts (for the tooltip): the gem's line from the item
+    -- tooltip, else its name. GetItemNameByID is nil until the gem's item data is cached, which
+    -- is how a bare "gem 240908" reached the owner (2026-11-18).
     local function GemState(slotID)
         local link = GetInventoryItemLink("player", slotID)
         if not (link and C_Item and C_Item.GetItemNumSockets) then return 0, 0, {} end
         local ok, n = pcall(C_Item.GetItemNumSockets, link)
         if not ok or type(n) ~= "number" then return 0, 0, {} end
+        local lines = GemLines(slotID)
         local filled, names = 0, {}
         for i = 1, n do
             local okG, gemID = pcall(C_Item.GetItemGemID, link, i)
             if okG and gemID then
                 filled = filled + 1
-                local okN, name = pcall(C_Item.GetItemNameByID, gemID)
-                names[#names + 1] = (okN and name) or ("gem " .. gemID)
+                local line = lines[filled]
+                if line then
+                    names[#names + 1] = line.color and Wrap(ColorHex(line.color), line.text) or line.text
+                else
+                    local okN, name = pcall(C_Item.GetItemNameByID, gemID)
+                    names[#names + 1] = (okN and type(name) == "string" and name ~= "") and name or "Gem"
+                end
             end
         end
         return n, filled, names
@@ -4638,16 +4673,6 @@ local SetupCharacterSheet
         return f
     end
 
-    local RED = "ffff2222"
-    local function Wrap(hex, text) return "|c" .. hex .. text .. "|r" end
-    local function ColorHex(c)
-        if c and c.GenerateHexColor then return c:GenerateHexColor() end
-        if c and c.r then
-            local function B(x) return math.floor(x * 255 + 0.5) end
-            return string.format("ff%02x%02x%02x", B(c.r), B(c.g), B(c.b))
-        end
-        return "ffffffff"
-    end
     local ENCHANT_GREEN = { r = 0.1, g = 1, b = 0.1 }
 
     PaintStatus = function(btn, slotID)
