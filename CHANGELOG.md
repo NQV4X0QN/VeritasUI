@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.89.4] - 2026-11-18
+
+### Fixed
+
+- Quality of Life — **the character sheet's enchant and gem tooltip shows each gem's bonus**, as the item's own tooltip does: a gem the game had not loaded yet showed as "gem" and a number
+
+
 ## [1.89.3] - 2026-11-17
 
 ### Fixed
