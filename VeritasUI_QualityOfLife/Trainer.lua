@@ -177,6 +177,12 @@ VUI.QoL_TrainerIsClassList = function(list) return IsClassList(list, ClassTabs()
 -- A weapon master's list saved there before v1.89.2 moves to the weapon slot the same way.
 -- A Beast Training list (`points`, saved by v1.73.0-v1.74.0) is dropped.
 local function Refile(db, key)
+    -- Lists saved before WoW Forever's realm change sit under the old realm name (VUI.AdoptOldCharEntry).
+    if VUI.RealmName() then
+        for _, s in ipairs({ "trainerCache", "trainerPetCache", "trainerWeaponCache" }) do
+            VUI.AdoptOldCharEntry(db[s], key)
+        end
+    end
     local c = db.trainerCache and db.trainerCache[key]
     if c and IsPetList(c.list) then
         db.trainerPetCache = db.trainerPetCache or {}

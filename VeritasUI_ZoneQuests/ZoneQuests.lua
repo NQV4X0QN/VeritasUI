@@ -495,6 +495,7 @@ local function SeedEnabledFromShared()
     local key = VUI.CharKey()
     if type(root) ~= "table" or type(root.enabled) ~= "boolean" or not key then return end
     if type(root.chars) ~= "table" then root.chars = {} end
+    VUI.AdoptOldCharEntry(root.chars, key)
     local slot = root.chars[key]
     if type(slot) ~= "table" then slot = {}; root.chars[key] = slot end
     if slot.enabled == nil then slot.enabled = root.enabled end

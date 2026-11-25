@@ -1686,7 +1686,45 @@ function VUI.CharKey()
     local realm = VUI.RealmName()
     if type(name) ~= "string" or name == "" then return nil end
     if type(realm) ~= "string" or realm == "" then return nil end
-    return realm .. "-" .. name
+    local key = realm .. "-" .. name
+    -- Forever: remember every key seen since the blank-realm fix, so VUI.AdoptOldCharEntry never
+    -- takes a live character's data for a same-named character on another realm.
+    if VUI.IS_FOREVER and type(_G.VeritasUI_LibDB) == "table" then
+        local live = _G.VeritasUI_LibDB.liveCharKeys
+        if type(live) ~= "table" then live = {}; _G.VeritasUI_LibDB.liveCharKeys = live end
+        live[key] = true
+    end
+    return key
+end
+
+-- WoW Forever renamed its realms and then left GetRealmName() blank (2026-11-24): data saved
+-- before then sits under "<old realm>-<name>" or "-<name>" (blank realm), where this character's
+-- new key no longer finds it. When `tbl` has nothing under `newKey`, MOVE the one older entry
+-- ending in "-<name><suffix>" to it. Skipped when two entries match (no way to tell which is
+-- this character) and for any key a character has used since the fix (liveCharKeys).
+-- Forever only: Retail keys never changed, and there two same-named characters on different
+-- realms are normal. Returns true when an entry was moved.
+function VUI.AdoptOldCharEntry(tbl, newKey, suffix)
+    if not VUI.IS_FOREVER or type(tbl) ~= "table" or type(newKey) ~= "string" then return false end
+    if tbl[newKey] ~= nil then return false end
+    suffix = suffix or ""
+    local charKey = newKey:sub(1, #newKey - #suffix)
+    local name = charKey:match("%-([^%-]+)$")
+    if not name or charKey .. suffix ~= newKey then return false end
+    local libdb = _G.VeritasUI_LibDB
+    local live = type(libdb) == "table" and type(libdb.liveCharKeys) == "table" and libdb.liveCharKeys or {}
+    local tail = "-" .. name .. suffix
+    local found
+    for k in pairs(tbl) do
+        if type(k) == "string" and k ~= newKey and #k >= #tail and k:sub(-#tail) == tail
+            and not live[k:sub(1, #k - #suffix)] then
+            if found then return false end      -- two candidates: leave both alone
+            found = k
+        end
+    end
+    if not found then return false end
+    tbl[newKey], tbl[found] = tbl[found], nil
+    return true
 end
 
 -- Registry of per-character saved variables, populated BY THE BINDERS THEMSELVES
@@ -1766,6 +1804,7 @@ function VUI.BindScopedDB(globalName, universalDefaults, perCharDefaults)
     local key = VUI.CharKey()
     if not key then return root, nil end          -- contract 1: nil, never the root
 
+    VUI.AdoptOldCharEntry(root.chars, key)
     local slot = root.chars[key]
     if not slot then
         slot = {}                                  -- contract 2: no root->slot copy

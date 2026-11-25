@@ -57,6 +57,10 @@ function PR:CurrentProfile()
     if not self.db then return self:BuildDefaultProfile() end
     local key = self:GetProfileKey()
     local profiles = self.db.profiles
+    -- A profile saved before WoW Forever's realm change sits under the old realm name.
+    if not profiles[key] and _G.VeritasUI.RealmName() then
+        _G.VeritasUI.AdoptOldCharEntry(profiles, key, key:match("%-%d+$"))
+    end
     if not profiles[key] then profiles[key] = self:BuildDefaultProfile() end
     return profiles[key]
 end
