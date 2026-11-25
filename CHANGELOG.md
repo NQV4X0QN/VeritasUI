@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.89.5] - 2026-11-24
+
+### Fixed
+
+- All modules — **WoW Forever: logging in no longer shows a burst of Lua errors**: the game now leaves the realm name blank, so VeritasUI could not tell your characters apart — the Interface, Quality of Life and Zone Quests options pages did not open, and settings for each character were not saved. VeritasUI now reads the realm name another way
+- All modules — **WoW Forever: your characters keep their settings across the realm name change**: each character's own settings, Priority Rotation spell lists and saved trainer lists move to the new realm name the first time it logs in. That includes characters you logged in since the change, whose Priority Rotation list came up empty. Two characters with the same name on different realms start from default settings instead
+
+
 ## [1.89.4] - 2026-11-18
 
 ### Fixed
