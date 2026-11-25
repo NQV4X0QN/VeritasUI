@@ -48,6 +48,11 @@ function PR:IsEnabled()
     return self.db and self.db.enabled ~= false
 end
 
+local adoptTried = {}
+local function IsEmptyProfile(p)
+    return type(p) ~= "table" or type(p.spells) ~= "table" or #p.spells == 0
+end
+
 function PR:CurrentProfile()
     -- Slash commands are registered at file scope, so /pr clear and /pr reset are callable
     -- in the file-load -> ADDON_LOADED window, before db exists. IsEnabled and
@@ -55,11 +60,18 @@ function PR:CurrentProfile()
     -- Returning a throwaway default keeps the "always returns a profile" contract that ~25
     -- call sites rely on; writes to it are discarded, which beats erroring at 25 sites.
     if not self.db then return self:BuildDefaultProfile() end
+    -- No realm yet (WoW Forever leaves GetRealmName blank): a list saved now would sit under a key
+    -- this character never reads again, and later tie with its real list in the carry-over below.
+    local VUI = _G.VeritasUI
+    if not VUI.RealmName() then return self:BuildDefaultProfile() end
     local key = self:GetProfileKey()
     local profiles = self.db.profiles
-    -- A profile saved before WoW Forever's realm change sits under the old realm name.
-    if not profiles[key] and _G.VeritasUI.RealmName() then
-        _G.VeritasUI.AdoptOldCharEntry(profiles, key, key:match("%-%d+$"))
+    -- A profile saved before WoW Forever's realm change sits under the old realm name. An empty
+    -- list (one v1.89.4 saved under the blank realm, or the default made here) never counts.
+    -- Once per key per session: CurrentProfile runs on every press.
+    if not adoptTried[key] then
+        adoptTried[key] = true
+        VUI.AdoptOldCharEntry(profiles, key, key:match("%-%d+$"), IsEmptyProfile)
     end
     if not profiles[key] then profiles[key] = self:BuildDefaultProfile() end
     return profiles[key]

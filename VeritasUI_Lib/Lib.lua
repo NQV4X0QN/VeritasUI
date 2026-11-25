@@ -1702,11 +1702,15 @@ end
 -- new key no longer finds it. When `tbl` has nothing under `newKey`, MOVE the one older entry
 -- ending in "-<name><suffix>" to it. Skipped when two entries match (no way to tell which is
 -- this character) and for any key a character has used since the fix (liveCharKeys).
+-- `isEmpty` (optional): an entry it calls empty is not a candidate, and an empty entry under
+-- `newKey` may be replaced. Priority Rotation needs it: while the realm was blank it saved an
+-- empty list under "-<name>-<spec>" for each character logged in, and that empty list tied
+-- with the real one (owner, 2026-11-24: lists not carried over for those characters).
 -- Forever only: Retail keys never changed, and there two same-named characters on different
 -- realms are normal. Returns true when an entry was moved.
-function VUI.AdoptOldCharEntry(tbl, newKey, suffix)
+function VUI.AdoptOldCharEntry(tbl, newKey, suffix, isEmpty)
     if not VUI.IS_FOREVER or type(tbl) ~= "table" or type(newKey) ~= "string" then return false end
-    if tbl[newKey] ~= nil then return false end
+    if tbl[newKey] ~= nil and not (isEmpty and isEmpty(tbl[newKey])) then return false end
     suffix = suffix or ""
     local charKey = newKey:sub(1, #newKey - #suffix)
     local name = charKey:match("%-([^%-]+)$")
@@ -1715,9 +1719,9 @@ function VUI.AdoptOldCharEntry(tbl, newKey, suffix)
     local live = type(libdb) == "table" and type(libdb.liveCharKeys) == "table" and libdb.liveCharKeys or {}
     local tail = "-" .. name .. suffix
     local found
-    for k in pairs(tbl) do
+    for k, v in pairs(tbl) do
         if type(k) == "string" and k ~= newKey and #k >= #tail and k:sub(-#tail) == tail
-            and not live[k:sub(1, #k - #suffix)] then
+            and not live[k:sub(1, #k - #suffix)] and not (isEmpty and isEmpty(v)) then
             if found then return false end      -- two candidates: leave both alone
             found = k
         end
