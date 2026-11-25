@@ -3448,6 +3448,7 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         -- v1.74.0: a new character's fades start as this account's newCharacterFades (see UNIVERSAL).
         ApplyNewCharacterFades()
         db, cdb = VUI.BindScopedDB("VeritasUI_InterfaceDB", UNIVERSAL, PERCHAR)
+        cdb = cdb or VUI.SessionCharDB("Interface", PERCHAR)
 
         -- ⚠ MUST run here: after the per-character table exists, and BEFORE anything reads a
         -- universal key below. Read first and every feature acts on the pre-migration value for

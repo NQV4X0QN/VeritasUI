@@ -7,7 +7,7 @@ local _, PR = ...
 -- ── Profile key ──────────────────────────────────────────────
 function PR:GetProfileKey()
     local name  = UnitName("player") or "Unknown"
-    local realm = GetRealmName()     or "Unknown"
+    local realm = _G.VeritasUI.RealmName() or "Unknown"
     -- Explicit branch, not the and/or form: GetSpecializationInfo returns many values and
     -- v1.6.25 found that form silently wrong without parentheses to truncate the call. This
     -- key names the saved profile, so a regression here strands every profile the player owns.

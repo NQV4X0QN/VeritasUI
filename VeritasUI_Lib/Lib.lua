@@ -1668,10 +1668,22 @@ function VUI.DeepCopy(t)
     return c
 end
 
+-- The player's realm name, or nil. WoW Forever (measured 2026-11-24, owner, every character):
+-- GetRealmName() and GetNormalizedRealmName() return "" / nil and GetRealmID() 0, while
+-- UnitFullName("player") still returns the realm ("Foehammer"). GetRealmName comes first so
+-- keys already saved in Retail stay the same.
+function VUI.RealmName()
+    local ok, realm = pcall(GetRealmName)
+    if ok and type(realm) == "string" and realm ~= "" then return realm end
+    local okF, _, fullRealm = pcall(UnitFullName, "player")
+    if okF and type(fullRealm) == "string" and fullRealm ~= "" then return fullRealm end
+    return nil
+end
+
 -- "Realm-Character", or nil if the player's identity is not available yet.
 function VUI.CharKey()
     local name  = UnitName and UnitName("player")
-    local realm = GetRealmName and GetRealmName()
+    local realm = VUI.RealmName()
     if type(name) ~= "string" or name == "" then return nil end
     if type(realm) ~= "string" or realm == "" then return nil end
     return realm .. "-" .. name
@@ -1764,6 +1776,16 @@ function VUI.BindScopedDB(globalName, universalDefaults, perCharDefaults)
     end
 
     return root, slot
+end
+
+-- A per-character table for THIS SESSION only, for when VUI.CharKey() is still nil at
+-- PLAYER_LOGIN. Without it every options page registered its per-character settings against
+-- nil and the login raised five Lua errors (WoW Forever, 2026-11-24: blank realm name).
+-- Changes to per-character settings are not saved this session; one chat line says so.
+function VUI.SessionCharDB(label, perCharDefaults)
+    VUI.Print(label, VUI.COL.RED .. "Could not read this character's name and realm.|r "
+        .. "Settings for this character will not be saved this session.")
+    return VUI.DeepCopy(perCharDefaults or {})
 end
 
 -- ONE-WAY scope migration, for a module moving from VUI.BindCharDB to VUI.BindScopedDB.

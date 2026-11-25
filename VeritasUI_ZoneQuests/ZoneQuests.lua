@@ -661,6 +661,7 @@ ef:SetScript("OnEvent", function(_, event, arg1)
         SeedEnabledFromShared()
         ApplyNewCharacterEnabled()
         db, cdb = VUI.BindScopedDB("VeritasUI_ZoneQuestsDB", UNIVERSAL, PERCHAR)
+        cdb = cdb or VUI.SessionCharDB("Zone Quests", PERCHAR)
 
         -- ⚠ MIGRATION MUST RUN HERE: after the char table exists, and BEFORE anything reads a
         -- universal key. Read first and the feature acts on the pre-migration value for the

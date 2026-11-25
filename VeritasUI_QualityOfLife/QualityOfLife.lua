@@ -5336,6 +5336,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- Identity is available: bind BOTH tables. `db` is account-wide, so every universal
         -- read site below is unchanged; `cdb` holds repairFunding, afkUIDirty and mapNotes.
         db, cdb = VUI.BindScopedDB("VeritasUI_QualityOfLifeDB", UNIVERSAL, PERCHAR)
+        cdb = cdb or VUI.SessionCharDB("Quality of Life", PERCHAR)
 
         -- ⚠ MUST run before any universal read below, or every feature acts on the pre-migration
         -- value for the whole session. Note MIGRATE_UNIVERSAL, not UNIVERSAL: the retired map-coordinate

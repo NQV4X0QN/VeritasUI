@@ -43,8 +43,7 @@ local pcall, ipairs, format = pcall, ipairs, string.format
 local function DB() return _G.VeritasUI_QualityOfLifeDB end
 local function CharKey()
     local ok, name = pcall(UnitName, "player")
-    local okR, realm = pcall(GetRealmName)
-    return format("%s-%s", okR and realm or "?", ok and name or "?")
+    return format("%s-%s", VUI.RealmName() or "?", ok and name or "?")
 end
 local function Level() local ok, l = pcall(UnitLevel, "player"); return ok and l or 0 end
 
