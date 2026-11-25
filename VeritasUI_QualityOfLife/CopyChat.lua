@@ -27,7 +27,9 @@ local pcall, type, ipairs = pcall, type, ipairs
 
 local function On()
     local db = _G.VeritasUI_QualityOfLifeDB
-    return not (type(db) == "table" and db.chatCopyButton == false)
+    if type(db) == "table" and db.chatCopyButton == false then return false end
+    -- Another AddOn has its own copy button (graceful conflicts, VeritasUI_Lib/Conflicts.lua).
+    return not (VUI.OptionUnavailable and VUI.OptionUnavailable("VeritasUI_QualityOfLife", "chatCopyButton"))
 end
 local function IsSecret(v) return issecretvalue and issecretvalue(v) or false end
 

@@ -72,7 +72,7 @@ local KINDS = {
 local shownFor
 
 local function OnLinkEnter(_, chatFrame, link)
-    if not On("chatItemTooltips") or type(link) ~= "string" or IsSecret(link) then return end
+    if not Live("chatItemTooltips") or type(link) ~= "string" or IsSecret(link) then return end
     local kind = link:match("^(%a+):")
     if not (kind and KINDS[kind]) or not GameTooltip then return end
     GameTooltip:SetOwner(chatFrame, "ANCHOR_CURSOR")
@@ -583,6 +583,7 @@ local function ShortenLine(cf, msg)
     -- Off by default, so an unseeded table must not read as on (On() treats nil as on; landmine 163).
     local db = DB()
     if not (type(db) == "table" and db.chatShortChannels == true) then return end
+    if VUI.OptionUnavailable and VUI.OptionUnavailable("VeritasUI_QualityOfLife", "chatShortChannels") then return end
     if type(msg) ~= "string" or IsSecret(msg) or not sfind(msg, "|Hchannel:", 1, true) then return end
     local short = ShortChannels(msg)
     if short == msg or not cf.TransformMessages then return end
@@ -629,7 +630,7 @@ local function EditBoxes()
 end
 
 local function RecordTyped(text)
-    if not On("chatRememberTyped") or type(text) ~= "string" or IsSecret(text) or text == "" then return end
+    if not Live("chatRememberTyped") or type(text) ~= "string" or IsSecret(text) or text == "" then return end
     local store = Store()
     local typed = type(store.typed) == "table" and store.typed or {}
     store.typed = typed

@@ -211,6 +211,7 @@ end)
 local function Light(stat, owner)
     Unlight()
     if not On("charStatHighlight") or not (C_Item and C_Item.GetItemStats) then return end
+    if VUI.OptionUnavailable and VUI.OptionUnavailable("VeritasUI_QualityOfLife", "charStatHighlight") then return end
     for _, name in ipairs(SLOTS) do
         local button = _G["Character" .. name .. "Slot"]
         local slot = button and button.GetID and button:GetID()

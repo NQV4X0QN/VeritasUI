@@ -335,13 +335,15 @@ SlashCmdList["VERITASUI_AO"] = function(msg)
         VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao elvui|r     — reset the settings ElvUI changes")
         VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao ellesmereui|r — reset the settings "
             .. "EllesmereUI changes")
+        VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao daylightui|r — reset the settings "
+            .. "DaylightUI changes")
         VUI.Print("Advanced Options", "  " .. VUI.COL.YELLOW .. "/ao changed|r   — every setting not at "
             .. "Blizzard's default")
 
-    elseif cmd == "elvui" or cmd == "ellesmereui" or cmd == "ellesmere" then
+    elseif cmd == "elvui" or cmd == "ellesmereui" or cmd == "ellesmere" or cmd == "daylightui" or cmd == "daylight" then
         -- The same confirm as the Featured tab's UI Replacements buttons (Browser.lua AO:AskSuiteReset).
         if AO.AskSuiteReset then
-            AO:AskSuiteReset(cmd == "elvui" and "elvui" or "ellesmere")
+            AO:AskSuiteReset(cmd == "elvui" and "elvui" or (cmd:find("^daylight") and "daylight") or "ellesmere")
         else
             VUI.Print("Advanced Options", VUI.COL.RED .. "Window failed to load. Try /reload|r")
         end

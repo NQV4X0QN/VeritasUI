@@ -27,7 +27,9 @@ local function BuildNativeSettingsPanel()
     -- guarantees AH.db exists; SeedDefaults above guarantees the keys exist).
     local store = AH.db and AH.db.settings
     if store then
-        local function AddCheckbox(key, default, name, tip)
+        -- `takenBy`: the key another AddOn has taken over (AH.Unavailable): the option is greyed, and its reason
+        -- is added to the tooltip (graceful conflicts, VeritasUI_Lib/Conflicts.lua). The saved value is kept.
+        local function AddCheckbox(key, default, name, tip, takenBy)
             local setting = Settings.RegisterAddOnSetting(
                 category, ADDON_NAME .. "_" .. key, key,
                 store, "boolean", name, default)
@@ -36,18 +38,23 @@ local function BuildNativeSettingsPanel()
                 -- hover — no /reload involved.
                 VUI.PrintOnOffLive(AH.TAG, name, value)
             end)
-            Settings.CreateCheckbox(category, setting, tip)
+            local why = takenBy and AH.Unavailable and AH.Unavailable(takenBy)
+            if type(why) == "string" then tip = tip .. "\n\n" .. VUI.COL.RED .. why .. "|r" end
+            local init = Settings.CreateCheckbox(category, setting, tip)
+            if why and init and init.AddModifyPredicate then
+                init:AddModifyPredicate(function() return false end)
+            end
         end
 
         AddCheckbox("ttShowPrice", true, "Show Auction Price in Tooltips",
             "Adds the item's auction price to its tooltip, anywhere in the game. "
-            .. "Scan at the Auction House to update prices.")
+            .. "Scan at the Auction House to update prices.", "ttShowPrice")
 
         AddCheckbox("ttShowQty", true, "Show Quantity Seen",
-            "Adds how many were listed at the last scan.")
+            "Adds how many were listed at the last scan.", "ttShowPrice")
 
         AddCheckbox("ttShowAge", true, "Show Price Age",
-            "Shows how many days old the price is, when it isn't from today.")
+            "Shows how many days old the price is, when it isn't from today.", "ttShowPrice")
 
         -- Not in WoW Forever: no crafting orders there (owner, 2026-11-06).
         if not VUI.IS_FOREVER then

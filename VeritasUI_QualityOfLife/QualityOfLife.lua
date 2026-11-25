@@ -1766,7 +1766,7 @@ end
 
 local function AFK_Enter()
     if afkActive or afkAwaitingServerClear then return end
-    if not db or not db.afkScreen then return end
+    if not db or not VUI.QoL_Live("afkScreen") then return end
     afkActive = true
 
     local overlay = AFK_CreateOverlay()
@@ -1856,7 +1856,7 @@ local afkPollTicker
 local function AFK_StartPoll()
     if afkPollTicker then return end
     afkPollTicker = C_Timer.NewTicker(5, function()
-        if not db or not db.afkScreen then return end
+        if not db or not VUI.QoL_Live("afkScreen") then return end
         local ok, afk = pcall(UnitIsAFK, "player")
         if not ok or (issecretvalue and issecretvalue(afk)) then return end
         if not afk then afkAwaitingServerClear = false end
@@ -4324,7 +4324,7 @@ local function OnUnitTooltip(tooltip, data)
         local line = _G.GameTooltipTextLeft1
         if c and line then line:SetTextColor(c.r, c.g, c.b) end
     end) end
-    if db.tooltipFactionColors then pcall(function()
+    if VUI.QoL_Live("tooltipFactionColors") then pcall(function()
         if not Read(UnitIsPlayer, unit) then return end
         local faction, localized = Read(_G.UnitFactionGroup, unit)
         if type(faction) ~= "string" or type(localized) ~= "string" or localized == "" then return end
@@ -4725,13 +4725,13 @@ local SetupCharacterSheet
         if not (btn and btn.GetID) then return end
         local slotID = btn:GetID()
         -- The enchant-and-gem status icon, beside the slot on the side facing the model.
-        if db and db.charEnchants then
+        if db and VUI.QoL_Live("charEnchants") then
             PaintStatus(btn, slotID)
         elseif btn._vui_status then
             btn._vui_status:Hide()
         end
         -- Durability %, top of the icon, only below 100%.
-        if db and db.charDurability then
+        if db and VUI.QoL_Live("charDurability") then
             local fs = SlotText(btn, "_vui_durability", "TOP", "TOP", 0, -2, "CENTER")
             local ok, cur, max = pcall(GetInventoryItemDurability, slotID)
             if ok and cur and max and max > 0 and cur < max then
@@ -5398,7 +5398,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
             self:RegisterEvent("MERCHANT_CLOSED")
         end
 
-        if db.afkScreen then AFK_StartPoll() end
+        if VUI.QoL_Live("afkScreen") then AFK_StartPoll() end
 
         -- Starts unconditionally when enabled: the ticker's own body is cheap and
         -- early-outs unless a Delve plaque is on screen, so there is nothing to

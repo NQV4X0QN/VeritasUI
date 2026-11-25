@@ -1,10 +1,12 @@
 ## Interface: 120105, 16001
 ## Title: VeritasUI Library
 ## Notes: Shared core for the VeritasUI suite, required by every module. |cFF808080Must load first.|r
-## Version: 1.89.5
+## Version: 1.90.0
 ## Author: NQV4X0QN
 ## SavedVariables: VeritasUI_LibDB
+## OptionalDeps: DaylightUI
 
 Lib.lua
 SettingsCoverDropdown.lua
 Conflicts.lua
+SuiteLook.lua

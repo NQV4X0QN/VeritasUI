@@ -36,6 +36,7 @@ globals = {
     "StaticPopupDialogs.VERITASUI_UNDO_COPY",
     "StaticPopupDialogs.VERITASUI_AO_RESET_ELVUI",   -- AdvancedOptions/ElvUIChanges.lua
     "StaticPopupDialogs.VERITASUI_AO_RESET_ELLESMEREUI", -- AdvancedOptions/EllesmereUIChanges.lua
+    "StaticPopupDialogs.VERITASUI_AO_RESET_DAYLIGHTUI", -- AdvancedOptions/DaylightUIChanges.lua
     "StaticPopupDialogs.VERITASUI_AO_SUITE_RESET",   -- AdvancedOptions/Browser.lua (UI Replacements confirm)
     "StaticPopupDialogs.VERITASUI_AO_RESET_SHOWN",   -- AdvancedOptions/Browser.lua ("Changed" filter)
     "StaticPopupDialogs.VERITASUI_AO_RESET_EVERYTHING", -- AdvancedOptions/Browser.lua (cvar_default)
@@ -158,7 +159,7 @@ read_globals = {
     "NORMAL_FONT_COLOR", "HIGHLIGHT_FONT_COLOR", "YELLOW_FONT_COLOR", "RED_FONT_COLOR", "GREEN_FONT_COLOR",
     "GRAY_FONT_COLOR", "DISABLED_FONT_COLOR", "ORANGE_FONT_COLOR", "LIGHTBLUE_FONT_COLOR", "BRIGHTBLUE_FONT_COLOR",
     "LIGHTGRAY_FONT_COLOR",
-    "GetRealmName", "UnitFullName",
+    "GetRealmName", "UnitFullName", "GetPhysicalScreenSize",
     "MoveViewRightStart", "MoveViewRightStop", "MinimapCluster",
     "NumberFontNormal", "NumberFontNormalRight",
     -- Auction House

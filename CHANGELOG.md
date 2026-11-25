@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.90.0] - 2026-11-25
+
+VeritasUI now works alongside DaylightUI on WoW Forever: it steps aside where DaylightUI already does the job, and its windows take DaylightUI's look.
+
+### Added
+
+- All modules — **works alongside DaylightUI (WoW Forever).** Where DaylightUI already does what a VeritasUI option does, VeritasUI's option is greyed out with the reason in its tooltip, naming the DaylightUI setting to turn off, and it doesn't run. Your setting comes back by itself once DaylightUI stops doing it. Covers the action bar, micro menu, bag bar, player frame, minimap, status bar, damage meter, buff, quest tracker and chat options in Interface; junk selling, repairs, the AFK screen, Train All, DELETE, cinematics, gossip, quest accept and turn-in, tooltip, chat and character sheet options in Quality of Life; Zone Quests when DaylightUI's quest tracker picks the quests itself; and the Auction House window and its tooltip prices
+- All modules — **DaylightUI's look for VeritasUI's windows.** With DaylightUI's Skins module on, Priority Rotation, Advanced Options and the trainer window look like DaylightUI's own windows: its window frame, the title at the top left, and page names across the top right instead of tabs down the side. Priority Rotation shows your class under its title, both in your class colour, and its spell slots use DaylightUI's bag-slot boxes. Advanced Options uses DaylightUI's sliders and reset arrows. The trainer list is laid out like DaylightUI's trainer page, with its class icons, and the trainer button goes into DaylightUI's minimap button drawer
+- Advanced Options — **reset what DaylightUI changes**: DaylightUI joins ElvUI and EllesmereUI under **UI Replacements**. **Reset Changes**, or /ao daylightui, puts the settings DaylightUI changes back to Blizzard's defaults, and **Changed by DaylightUI** on the All CVars tab lists just those
+
+### Changed
+
+- Quality of Life — **WoW Forever: the trainer window shows your class trainer's list only.** The Pet Trainer and Weapon Master tabs are gone, along with the lists they saved. Visiting a pet trainer or a Weapon Master still never replaces your class list
+
+
 ## [1.89.5] - 2026-11-24
 
 ### Fixed

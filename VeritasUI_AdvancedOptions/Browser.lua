@@ -308,6 +308,7 @@ local function EnumerateCVars()
     end
     for _, name in ipairs(AO.ELVUI_CVARS or {}) do extra[#extra + 1] = name end
     for _, name in ipairs(AO.ELLESMEREUI_CVARS or {}) do extra[#extra + 1] = name end
+    for _, name in ipairs(AO.DAYLIGHTUI_CVARS or {}) do extra[#extra + 1] = name end
     do
         for _, name in ipairs(extra) do
             if name and not cvarByName[strlower(name)] then
@@ -367,10 +368,12 @@ end
 -- Blizzard's default. Values are re-read first so a row reset a moment ago drops out.
 -- changedOnly: the "Changed" checkbox -- every indexed CVar that differs from its default, whoever
 -- changed it. ellesmereOnly: "Changed by EllesmereUI", as elvuiOnly for EllesmereUI's list
--- (EllesmereUIChanges.lua). The three are exclusive (the checkbox handlers clear each other).
+-- (EllesmereUIChanges.lua). daylightOnly: "Changed by DaylightUI" (DaylightUIChanges.lua). All four are exclusive
+-- (the checkbox handlers clear each other).
 local elvuiOnly = false
 local changedOnly = false
 local ellesmereOnly = false
+local daylightOnly = false
 
 local function ApplyFilter(searchText)
     filteredList = {}
@@ -383,7 +386,8 @@ local function ApplyFilter(searchText)
         local match = (query == "") or strfind(strlower(entry.name), query, 1, true)
         local suiteOnly = (elvuiOnly and AO.IsElvUICVar and AO:IsElvUICVar(entry.name))
             or (ellesmereOnly and AO.IsEllesmereUICVar and AO:IsEllesmereUICVar(entry.name))
-        if match and (elvuiOnly or ellesmereOnly) then
+            or (daylightOnly and AO.IsDaylightUICVar and AO:IsDaylightUICVar(entry.name))
+        if match and (elvuiOnly or ellesmereOnly or daylightOnly) then
             if suiteOnly then
                 RefreshEntry(entry)
                 match = entry.value ~= entry.default
@@ -543,6 +547,12 @@ AO.SUITES = {
         loaded  = function() return AO.EllesmereUILoaded and AO.EllesmereUILoaded() end,
         reset   = function() AO:ResetEllesmereUIChanges() end,
     },
+    daylight = {
+        name    = "DaylightUI",
+        changed = function() return AO:DaylightUIChangedCVars() end,
+        loaded  = function() return AO.DaylightUILoaded and AO.DaylightUILoaded() end,
+        reset   = function() AO:ResetDaylightUIChanges() end,
+    },
 }
 
 -- enabled, then either the number of settings to reset or the reason it cannot be pressed.
@@ -657,12 +667,22 @@ function AO:BuildBrowserContent(parent, buttonBar)
     local ellesmereTextW = (ellesmereLabel and tonumber(ellesmereLabel:GetStringWidth())) or 130
     ellesmereCheck:Hide()
 
+    local daylightCheck = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    daylightCheck:SetSize(24, 24)
+    local daylightLabel = daylightCheck.Text or daylightCheck.text
+    if daylightLabel then daylightLabel:SetText("Changed by DaylightUI") end
+    local daylightTextW = (daylightLabel and tonumber(daylightLabel:GetStringWidth())) or 130
+    daylightCheck:Hide()
+
     local function LayoutTop()
         local offerElv = elvuiOnly
         local offerEll = ellesmereOnly
+        local offerDay = daylightOnly
         elvuiCheck:SetShown(offerElv)
         ellesmereCheck:SetShown(offerEll)
+        daylightCheck:SetShown(offerDay)
         ellesmereCheck:ClearAllPoints()
+        daylightCheck:ClearAllPoints()
         local left = offerElv and elvuiCheck or nil
         if offerEll then
             if left then
@@ -671,6 +691,14 @@ function AO:BuildBrowserContent(parent, buttonBar)
                 ellesmereCheck:SetPoint("RIGHT", parent, "TOPRIGHT", -INSET - ellesmereTextW - 4, -INSET - 11)
             end
             left = ellesmereCheck
+        end
+        if offerDay then
+            if left then
+                daylightCheck:SetPoint("RIGHT", left, "LEFT", -daylightTextW - 12, 0)
+            else
+                daylightCheck:SetPoint("RIGHT", parent, "TOPRIGHT", -INSET - daylightTextW - 4, -INSET - 11)
+            end
+            left = daylightCheck
         end
         changedCheck:ClearAllPoints()
         if left then
@@ -774,6 +802,11 @@ function AO:BuildBrowserContent(parent, buttonBar)
                 if n > 0 then StaticPopup_Show("VERITASUI_AO_RESET_ELLESMEREUI", n, n == 1 and "" or "s") end
                 return
             end
+            if daylightOnly then
+                local n = #AO:DaylightUIChangedCVars()
+                if n > 0 then StaticPopup_Show("VERITASUI_AO_RESET_DAYLIGHTUI", n, n == 1 and "" or "s") end
+                return
+            end
             local n = #AO:ElvUIChangedCVars()
             if n > 0 then StaticPopup_Show("VERITASUI_AO_RESET_ELVUI", n, n == 1 and "" or "s") end
         end)
@@ -810,8 +843,9 @@ function AO:BuildBrowserContent(parent, buttonBar)
     local CHAT_HINT = format("Chat windows: right-click a chat tab, choose %s, then %s.",
         CHAT_CONFIGURATION or "Settings", CHAT_DEFAULTS or "Chat Defaults")
 
-    -- UI suites known to write CVars again when they load (ElvUIChanges.lua, EllesmereUIChanges.lua).
-    local REWRITERS = { "ElvUI", "EllesmereUI" }
+    -- UI suites known to write CVars again when they load (ElvUIChanges.lua, EllesmereUIChanges.lua,
+    -- DaylightUIChanges.lua).
+    local REWRITERS = { "ElvUI", "EllesmereUI", "DaylightUI" }
     local function RunningRewriter()
         if not (C_AddOns and C_AddOns.IsAddOnLoaded) then return nil end
         for _, name in ipairs(REWRITERS) do
@@ -821,7 +855,7 @@ function AO:BuildBrowserContent(parent, buttonBar)
     end
 
     local function UpdateFooter(shown)
-        local on = elvuiOnly or changedOnly or ellesmereOnly
+        local on = elvuiOnly or changedOnly or ellesmereOnly or daylightOnly
         footer:SetShown(on)
         -- Changed mode, nothing searched: Reset Everything (shown even when the list is empty -- it
         -- reaches CVars this list can't). Anything searched, or a suite filter: Reset All.
@@ -859,6 +893,17 @@ function AO:BuildBrowserContent(parent, buttonBar)
                 lead = "Everything EllesmereUI changes is back at Blizzard's defaults."
             else
                 lead = "EllesmereUI changes these, and they differ from Blizzard's defaults. Some may be your "
+                    .. "own choices: right-click a row to reset just that one."
+            end
+        elseif daylightOnly then
+            -- As EllesmereUI: no record of what DaylightUI wrote, and many are Blizzard's own options too.
+            if AO.DaylightUILoaded() then
+                lead = VUI.COL.RED .. "DaylightUI is running|r and sets some of these again when it loads. "
+                    .. "Turn it off in the AddOns list before resetting."
+            elseif shown == 0 then
+                lead = "Everything DaylightUI changes is back at Blizzard's defaults."
+            else
+                lead = "DaylightUI changes these, and they differ from Blizzard's defaults. Some may be your "
                     .. "own choices: right-click a row to reset just that one."
             end
         elseif AO.ElvUILoaded() then
@@ -1132,12 +1177,14 @@ function AO:BuildBrowserContent(parent, buttonBar)
         FullRefresh()
     end
 
-    -- Exactly one filter at a time: ticking one clears the other two.
+    -- Exactly one filter at a time: ticking one clears the others.
     local function OnlyFilter(which)
         elvuiOnly, changedOnly, ellesmereOnly = which == "elvui", which == "changed", which == "ellesmere"
+        daylightOnly = which == "daylight"
         elvuiCheck:SetChecked(elvuiOnly)
         changedCheck:SetChecked(changedOnly)
         ellesmereCheck:SetChecked(ellesmereOnly)
+        daylightCheck:SetChecked(daylightOnly)
     end
 
     elvuiCheck:SetScript("OnClick", function(self)
@@ -1155,6 +1202,11 @@ function AO:BuildBrowserContent(parent, buttonBar)
         AO:RefreshBrowser()
     end)
 
+    daylightCheck:SetScript("OnClick", function(self)
+        OnlyFilter(self:GetChecked() and "daylight" or nil)
+        AO:RefreshBrowser()
+    end)
+
     -- /ao changed: the All CVars tab with the "Changed" filter on.
     function AO:ShowChangedCVars()
         OnlyFilter("changed")
@@ -1164,7 +1216,7 @@ function AO:BuildBrowserContent(parent, buttonBar)
 
     -- Review from UI Replacements (AO:ReviewSuite): the All CVars tab showing just that suite's changed settings.
     function AO:ReviewSuite(key)
-        OnlyFilter(key == "elvui" and "elvui" or "ellesmere")
+        OnlyFilter(AO.SUITES[key] and key or "elvui")
         if AO.MainWindow then AO.MainWindow:ShowTab("browser") end
         AO:RefreshBrowser()
     end

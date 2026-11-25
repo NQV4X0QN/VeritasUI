@@ -180,7 +180,10 @@ local function CreateResetButton(parent, cvarName, onReset, label)
         for _, name in ipairs(names) do AO:ResetCVar(name) end
         if onReset then onReset() end
     end)
+    btn._hover = hover
     btn:UpdateState()
+    -- Built: another UI suite's look can redraw it (Lib SuiteLook.lua).
+    if VUI.AnnounceFrame then VUI.AnnounceFrame("AdvancedOptions.ResetButton", btn) end
     return btn
 end
 
@@ -331,6 +334,7 @@ local function FinishRow(row, cfg, Refresh, resetY, resetNames)
         Refresh(...)
         RowUpdate()
     end
+    row._resetBtn = resetBtn
     return row
 end
 
@@ -485,7 +489,12 @@ function AO:CreateSlider(parent, cfg)
         end)
     end)
 
-    return FinishRow(row, cfg, Refresh, SLIDER_RESET_RAISE)
+    -- Built: another UI suite's look can redraw it (Lib SuiteLook.lua).
+    -- After FinishRow: its value box reaches to the row's reset button.
+    FinishRow(row, cfg, Refresh, SLIDER_RESET_RAISE)
+    slider._valText, slider._resetBtn = valText, row._resetBtn
+    if VUI.AnnounceFrame then VUI.AnnounceFrame("AdvancedOptions.Slider", slider) end
+    return row
 end
 
 ----------------------------------------------------------------

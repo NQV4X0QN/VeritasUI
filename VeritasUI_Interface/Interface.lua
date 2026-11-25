@@ -2804,7 +2804,11 @@ local function InitializeOptions()
     local function CreateCheckboxRow(opt, setting)
         local canPair = opt.opacity and Settings.CreateSettingInitializer
             and layout and layout.AddInitializer
-        if not canPair then
+        -- An option another AddOn has taken over is a plain checkbox, no slider: the checkbox + slider row ignores
+        -- modify predicates (SettingsCheckboxSliderControlMixin:EvaluateState reads SettingsListElementMixin's
+        -- IsEnabled, which never asks them; Blizzard_SettingControls.lua:395-414, 1469-1476, Gethe forever branch),
+        -- so GreyIfUnavailable left it live with the red reason (owner, 2026-11-24).
+        if not canPair or Unavailable(opt.key) then
             return Settings.CreateCheckbox(category, setting, TipWithReason(opt.tip, opt.key))
         end
         local slider = Settings.RegisterAddOnSetting(
@@ -3122,10 +3126,11 @@ local function InitializeOptions()
                 if s then pcall(s.SetValue, s, value) else db[k] = value end
             end
         end)
-        Settings.CreateSlider(category, setting, OpacitySliderOptions(),
+        local baseInit = Settings.CreateSlider(category, setting, OpacitySliderOptions(), TipWithReason(
             "Sets every Faded Opacity slider on this page to this value at once, as a starting point. You can "
             .. "still change each one on its own afterwards. The objective tracker's Scenario, Event Objectives "
-            .. "and Bonus Objectives sections are left as they are. Applies at once.")
+            .. "and Bonus Objectives sections are left as they are. Applies at once.", "fadeOpacityBaseline"))
+        GreyIfUnavailable(baseInit, "fadeOpacityBaseline")
     end
 
     -- ── Fade Together — tick-box dropdown, UNIVERSAL (mask paired with fadeTogetherTypes), v1.76.0 (owner's
@@ -3152,6 +3157,24 @@ local function InitializeOptions()
         if PERCHAR[key] ~= nil then return cdb[key] == true end
         return db[key] == true
     end
+    -- Every fade on the page done by another AddOn (graceful conflicts): Fade Delay, All Faded Opacity and Fade
+    -- Together have nothing left to act on, so they step aside too, naming the AddOn(s) (owner, 2026-11-24). Run
+    -- before the All Fades section is built. While any one fade is still ours, they stay.
+    local function MarkAllFadesTaken()
+        local names, seen = {}, {}
+        local keys = { "fadeChatTabs" }
+        for _, f in ipairs(FADE_TOGETHER) do keys[#keys + 1] = f.id end
+        for _, k in ipairs(keys) do
+            if not Unavailable(k) then return end
+            local who = VUI.ConflictTitle and VUI.ConflictTitle(ADDON_NAME, k) or "Another AddOn"
+            if not seen[who] then seen[who] = true; names[#names + 1] = who end
+        end
+        local reason = table.concat(names, " and ") .. " does every fade on this page, so this has nothing to "
+            .. "change. Turn those off there and /reload to use this one."
+        for _, k in ipairs({ "fadeDelay", "fadeOpacityBaseline", "fadeTogether" }) do
+            VUI.SetOptionUnavailable(ADDON_NAME, k, reason)
+        end
+    end
     local function BuildFadeTogether()
         if VUI.SetFadeLinks then
             VUI.SetFadeLinks(function(key) return db.fadeTogetherTypes[key] == true and FadeIsOn(key) end,
@@ -3162,6 +3185,7 @@ local function InitializeOptions()
             owner = db,              -- UNIVERSAL: paired with fadeTogetherTypes
             setMask = function(v) db.fadeTogetherMask = v end,
             name = "Fade Together", items = FADE_TOGETHER, truth = db.fadeTogetherTypes,
+            unavailableKey = "fadeTogether",
             tip = "Pick fades that come in together: mouse over any of them and all the ones you picked come in, "
                .. "then fade out together when the mouse leaves them all. Only the mouse links them, and combat "
                .. "with Show in Combat below; the other reasons a fade comes in still bring in just that one. "
@@ -3172,10 +3196,11 @@ local function InitializeOptions()
         local setting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_fadeTogetherCombat",
             "fadeTogetherCombat", db, "boolean", "Show in Combat", UNIVERSAL.fadeTogetherCombat)
         setting:SetValueChangedCallback(function(_, value) VUI.PrintOnOffLive("Interface", "Show in Combat", value) end)
-        local cb = Settings.CreateCheckbox(category, setting,
+        local cb = Settings.CreateCheckbox(category, setting, TipWithReason(
             "While you are in combat, every fade picked above is shown, so a bar made of linked pieces stays whole "
             .. "in a fight. Off, combat brings in only the pieces that come in for combat on their own. Applies at "
-            .. "once.")
+            .. "once.", "fadeTogether"))
+        GreyIfUnavailable(cb, "fadeTogether")
         if init and cb and VUI.SettingsSubOption then
             VUI.SettingsSubOption(cb, ADDON_NAME .. "_fadeTogether",
                 function() return next(db.fadeTogetherTypes) ~= nil end)
@@ -3376,6 +3401,7 @@ local function InitializeOptions()
         { "Messages and Popups", { "hideErrorText", "hideTopBanners", "hideTalkingHead", "muteTalkingHead",
                                    "muteSounds" } },
     }
+    MarkAllFadesTaken()
     for _, section in ipairs(SECTIONS) do
         Header(section[1])
         local list = {}

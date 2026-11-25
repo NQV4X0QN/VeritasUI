@@ -669,6 +669,7 @@ end
 ----------------------------------------------------------------
 local function Build()
     if state.built or not AuctionHouseFrame then return end
+    if AH.Unavailable and AH.Unavailable("ahWindow") then return end
 
     local strip = CreateFrame("Frame", "VUIAHSellStrip", AuctionHouseFrame)
     strip:SetSize(STRIP_W, STRIP_H)

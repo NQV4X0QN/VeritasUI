@@ -371,6 +371,7 @@ end
 ----------------------------------------------------------------
 local function Build()
     if state.built or not AuctionHouseFrame then return end
+    if AH.Unavailable and AH.Unavailable("ahWindow") then return end
 
     local f = CreateFrame("Frame", "VUIAHScanProgress", AuctionHouseFrame)
     -- With the label above, the container must be tall enough for text + bar; the bar is

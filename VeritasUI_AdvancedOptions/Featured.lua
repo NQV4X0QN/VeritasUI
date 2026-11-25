@@ -477,6 +477,14 @@ AO.FEATURED_CATEGORIES = {
                 tooltip    = "Puts the settings EllesmereUI changes back to Blizzard's defaults, for when you have "
                           .. "stopped using it. Asks first, and Review lists them so you can keep any.",
             },
+            {
+                type       = "button",
+                suite      = "daylight",
+                label      = "DaylightUI",
+                buttonText = "Reset Changes",
+                tooltip    = "Puts the settings DaylightUI changes back to Blizzard's defaults, for when you have "
+                          .. "stopped using it. Asks first, and Review lists them so you can keep any.",
+            },
         },
     },
 }
