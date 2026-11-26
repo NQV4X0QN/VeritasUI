@@ -142,9 +142,6 @@ local function BuildMainWindow()
     specBadge:SetPoint("TOP", win, "TOP", 0, -30)
     specBadge:SetJustifyH("CENTER")
     specBadge:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
-    -- Where a suite lays the header out its own way (Lib SuiteLook.lua): the spec under the title, as its sub line,
-    -- both in your class colour.
-    win.suiteSub, win.suiteClassColor = specBadge, true
 
     -- Exposed on win so PR:RefreshUI() can call it without monkey-patching.
     -- Refreshes both the spec name and the portrait icon (spec changes trigger

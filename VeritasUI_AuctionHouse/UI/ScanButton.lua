@@ -222,7 +222,6 @@ end
 ----------------------------------------------------------------
 local function Build()
     if state.built or not _G.AuctionHouseFrame then return end
-    if AH.Unavailable and AH.Unavailable("ahWindow") then return end
     local parent = _G.AuctionHouseFrame
 
     local btn = CreateFrame("Button", "VUIAHScanButton", parent, "UIPanelButtonTemplate")

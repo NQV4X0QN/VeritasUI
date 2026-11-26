@@ -4,7 +4,7 @@
 ## Version: 1.90.0
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
-## OptionalDeps: Blizzard_WorldMap, DaylightUI
+## OptionalDeps: Blizzard_WorldMap
 ## SavedVariables: VeritasUI_QualityOfLifeDB
 ## SavedVariablesPerCharacter: VeritasUI_QualityOfLifeChatDB
 ## AddonCompartmentFunc: VeritasUI_QualityOfLife_OnAddonCompartmentClick

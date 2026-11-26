@@ -302,11 +302,6 @@ local function ClassIcon()
     local ok, _, classFile = pcall(UnitClass, "player")
     return "Interface\\Icons\\ClassIcon_" .. ((ok and classFile) or "WARRIOR")
 end
--- With DaylightUI's look on (Lib SuiteLook.lua), its own class icon in place of the game's (owner, 2026-11-25).
-local function ClassArt()
-    local ok, _, classFile = pcall(UnitClass, "player")
-    return (VUI.SuiteClassIcon and ok and VUI.SuiteClassIcon(classFile)) or ClassIcon()
-end
 
 -- ── The window ───────────────────────────────────────────────
 local WIN_NAME = "VUIQoLTrainerListFrame"
@@ -438,266 +433,9 @@ local function InitRow(row, e)
     end
 end
 
--- ── Another UI suite's look (DaylightUI) ─────────────────────
--- Owner, 2026-11-25: the window must match DaylightUI's own trainer page, not Blizzard's trainer window in its
--- colours. Laid out from that page's measurements (DaylightUI 2.2.7: Windows/Frame.lua:17-47, 162-210 header;
--- Windows/Parts.lua:411-462 headings, :598-725 rows; Npc/Train.lua:276-304, 370-402), drawn only with its public
--- API (VUI.SuiteAPI: Text, Colors, Accent, Media) and our own textures. Its words are not used: the headings and
--- notes here are ours. Lib SuiteLook.lua gives the window its shell and close X ("ownList").
-local suite              -- DaylightUI's API while the window wears its look; set once, when the window is built
-local S_EDGE, S_HEAD_H, S_ROW_H = 16, 56, 36
-local RULE_A = 0.06      -- its dividers and row hover: white at 6% (Parts.lua:49, :125)
-
-local function Ink(fs, key)
-    local c = suite.Colors()[key]
-    if c then fs:SetTextColor(c[1] or c.r, c[2] or c.g, c[3] or c.b) end
-end
-
--- Money as one line of text with its coin art, as its header and rows show it (Core.lua:77-110): zero parts
--- left out, 0 as copper.
-local function CoinText(copper)
-    copper = math.floor(tonumber(copper) or 0)
-    local g, s, c = math.floor(copper / 10000), math.floor(copper / 100) % 100, copper % 100
-    local function coin(n, file)
-        local path = suite.Media(file)
-        local num = (BreakUpLargeNumbers and BreakUpLargeNumbers(n)) or tostring(n)
-        if not path then return num end
-        return num .. "|T" .. path .. ":0:0:0:0:64:64:-4:60:0:64|t"
-    end
-    local parts = {}
-    if g > 0 then parts[#parts + 1] = coin(g, "coin-gold.png") end
-    if s > 0 then parts[#parts + 1] = coin(s, "coin-silver.png") end
-    if c > 0 or #parts == 0 then parts[#parts + 1] = coin(c, "coin-copper.png") end
-    return table.concat(parts, " ")
-end
-VUI.QoL_TrainerCoinText = function(api, copper) suite = suite or api; return CoinText(copper) end   -- for tests
-
--- A heading or a note. One kind of frame for both (the list reuses frames by type), each part shown as needed.
-local function SuitePiece(frame, d)
-    if not frame.headText then
-        frame.headText = suite.Text(frame, "small")
-        frame.headText:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 4)
-        local line = frame:CreateTexture(nil, "ARTWORK")
-        line:SetColorTexture(1, 1, 1, RULE_A)
-        line:SetHeight(1)
-        line:SetPoint("BOTTOMLEFT")
-        line:SetPoint("BOTTOMRIGHT")
-        frame.line = line
-        frame.noteText = suite.Text(frame, "body")
-        frame.noteText:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -6)
-        frame.noteText:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
-        frame.noteText:SetJustifyH("LEFT")
-        if frame.noteText.SetSpacing then frame.noteText:SetSpacing(3) end
-    end
-    local head = d.head ~= nil
-    frame.headText:SetShown(head)
-    frame.line:SetShown(head)
-    frame.noteText:SetShown(not head)
-    if head then
-        frame.headText:SetText(string.upper(d.head))
-        frame.headText:SetTextColor(suite.Accent())
-    else
-        frame.noteText:SetText(d.note)
-        Ink(frame.noteText, "LABEL")
-    end
-end
-
-local function SuiteRow(row, e)
-    if not row.icon then
-        row:SetScript("OnEnter", function(self)
-            if self.available then self.wash:Show() end
-            RowTooltip(self)
-        end)
-        row:SetScript("OnLeave", function(self) self.wash:Hide(); GameTooltip_Hide() end)
-        local wash = row:CreateTexture(nil, "BACKGROUND")
-        wash:SetColorTexture(1, 1, 1, RULE_A)
-        wash:SetAllPoints()
-        wash:Hide()
-        row.wash = wash
-        local frameSq = row:CreateTexture(nil, "ARTWORK")   -- a flat 1 px grey ring round the icon
-        frameSq:SetColorTexture(0.23, 0.23, 0.26, 1)
-        frameSq:SetSize(30, 30)
-        frameSq:SetPoint("LEFT", row, "LEFT", 4, 0)
-        local icon = row:CreateTexture(nil, "ARTWORK", nil, 1)
-        icon:SetSize(28, 28)
-        icon:SetPoint("CENTER", frameSq, "CENTER")
-        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        row.icon = icon
-        row.name = suite.Text(row, "body")
-        row.name:SetJustifyH("LEFT")
-        row.sub = suite.Text(row, "small")
-        row.sub:SetJustifyH("LEFT")
-        row.cost = suite.Text(row, "body")
-        row.cost:SetJustifyH("RIGHT")
-        row.cost:SetPoint("RIGHT", row, "RIGHT", -8, 0)
-        row.frameSq = frameSq
-    end
-    row.entry = e
-    if GameTooltip:IsOwned(row) then RowTooltip(row) end
-    local level = Level()
-    local available = (e.level or 0) <= level and ReqsMet(e)
-    row.available = available
-    row.icon:SetTexture(e.icon)
-    row.name:SetText(e.name)
-    Ink(row.name, available and "VALUE" or "OFF")
-    -- Name and second line one block, centred on the row (13 + 3 + 12); without a second line the name alone.
-    row.name:ClearAllPoints()
-    row.sub:ClearAllPoints()
-    if e.sub and e.sub ~= "" then
-        row.name:SetPoint("TOPLEFT", row.frameSq, "TOPRIGHT", 10, 1)
-        row.sub:SetPoint("TOPLEFT", row.name, "BOTTOMLEFT", 0, -3)
-        row.sub:SetText(e.sub)
-        Ink(row.sub, "LABEL")
-    else
-        row.name:SetPoint("LEFT", row.frameSq, "RIGHT", 10, 0)
-        row.sub:SetText("")
-    end
-    row.name:SetPoint("RIGHT", row.cost, "LEFT", -8, 0)
-    if e.cost and e.cost > 0 then
-        row.cost:SetText(CoinText(e.cost))
-        local okM, money = pcall(GetMoney)
-        Ink(row.cost, not available and "OFF" or ((okM and money or 0) >= e.cost and "MONEY" or "BAD"))
-    else
-        row.cost:SetText("")
-    end
-end
-
--- The list's pieces: a heading, a note, or a skill. Learn Now first (what you can learn at once), then the rest
--- under their level.
-local function SuitePieces(cache, shown)
-    if not cache then
-        return { { head = "Learn Now", first = true },
-                 { note = "Talk to your trainer once to see your skills here." } }
-    end
-    local pieces, learn, byLevel, levels = {}, {}, {}, {}
-    local level = Level()
-    for _, e in ipairs(shown or {}) do
-        if (e.level or 0) <= level and ReqsMet(e) then
-            learn[#learn + 1] = e
-        else
-            local l = e.level or 0
-            if not byLevel[l] then byLevel[l] = {}; levels[#levels + 1] = l end
-            byLevel[l][#byLevel[l] + 1] = e
-        end
-    end
-    table.sort(levels)
-    pieces[1] = { head = format("Learn Now · %d", #learn), first = true }
-    if #learn == 0 then
-        pieces[#pieces + 1] = { note = #levels == 0 and "Nothing left to learn from this trainer."
-            or "Nothing to learn at your level yet." }
-    end
-    for _, e in ipairs(learn) do pieces[#pieces + 1] = e end
-    for _, l in ipairs(levels) do
-        pieces[#pieces + 1] = { head = format("Level %d", l) }
-        for _, e in ipairs(byLevel[l]) do pieces[#pieces + 1] = e end
-    end
-    return pieces
-end
-VUI.QoL_TrainerSuitePieces = SuitePieces   -- for tests
-
-local function RefreshSuite(cache, shown, me)
-    local h = win.suiteHead
-    local okC, _, classFile = pcall(UnitClass, "player")
-    local tint = okC and classFile and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[classFile]
-    h.name:SetText(me or "")
-    if tint then h.name:SetTextColor(tint.r, tint.g, tint.b) else Ink(h.name, "VALUE") end
-    local sub = "Class Trainer"
-    if cache and type(cache.trainer) == "string" and cache.trainer ~= "" then sub = sub .. " · " .. cache.trainer end
-    h.sub:SetText(sub)
-    -- Your class: DaylightUI's own class icon, a little larger than the round opening so the ring crops it evenly
-    -- (Lib VUI.SuiteClassIcon); a class it has no icon for, the game's icon, cropped.
-    local art = VUI.SuiteClassIcon and VUI.SuiteClassIcon(okC and classFile or nil)
-    local size = art and math.floor(40 * VUI.SUITE_CLASS_ICON_FILL + 0.5) or 40
-    h.portrait:SetSize(size, size)
-    if art then
-        h.portrait:SetTexture(art)
-        h.portrait:SetTexCoord(0, 1, 0, 1)
-    else
-        h.portrait:SetTexture(ClassIcon())
-        h.portrait:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    end
-    local okM, money = pcall(GetMoney)
-    h.money:SetText(CoinText(okM and money or 0))
-    local provider = CreateDataProvider()
-    for _, p in ipairs(SuitePieces(cache, shown)) do provider:Insert(p) end
-    win.ScrollBox:SetDataProvider(provider, ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition)
-end
-
--- The header (portrait, name, sub line, money, divider) and the list, inside the shell SuiteLook gives the window.
-local function BuildSuiteLayout()
-    win:SetSize(440, 540)
-    -- The header on a child frame: the shell (Kit.Window) hides every texture the window itself owns, and its inset
-    -- would darken a box our list does not use.
-    if win.Inset then win.Inset:Hide() end
-    local top = CreateFrame("Frame", nil, win)
-    top:SetAllPoints(win)
-    top:SetFrameLevel(win:GetFrameLevel() + 10)
-    local h = {}
-    -- The round opening is fixed at 40; the picture is centred on it and may be larger (RefreshSuite).
-    local opening = CreateFrame("Frame", nil, top)
-    opening:SetSize(40, 40)
-    opening:SetPoint("TOPLEFT", win, "TOPLEFT", S_EDGE, -8)
-    local portrait = top:CreateTexture(nil, "ARTWORK")
-    portrait:SetSize(40, 40)
-    portrait:SetPoint("CENTER", opening, "CENTER")
-    portrait:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    local mask = top:CreateMaskTexture()
-    mask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-    mask:SetAllPoints(opening)
-    portrait:AddMaskTexture(mask)
-    local rimFile = suite.Media("portrait-rim.png")
-    if rimFile then
-        local rim = top:CreateTexture(nil, "OVERLAY")
-        rim:SetTexture(rimFile)
-        rim:SetPoint("TOPLEFT", opening, "TOPLEFT", -3, 3)
-        rim:SetPoint("BOTTOMRIGHT", opening, "BOTTOMRIGHT", 3, -3)
-        rim:SetVertexColor(0.10, 0.09, 0.065, 1)
-    end
-    h.portrait = portrait
-    h.name = suite.Text(top, "title")
-    h.name:SetPoint("TOPLEFT", win, "TOPLEFT", S_EDGE + 40 + 12, -12)
-    h.name:SetJustifyH("LEFT")
-    h.name:SetWordWrap(false)
-    h.sub = suite.Text(top, "small")
-    h.sub:SetPoint("TOPLEFT", h.name, "BOTTOMLEFT", 0, -4)
-    h.sub:SetJustifyH("LEFT")
-    h.sub:SetWordWrap(false)
-    Ink(h.sub, "LABEL")
-    h.money = suite.Text(top, "body")
-    h.money:SetJustifyH("RIGHT")
-    h.money:SetPoint("TOPRIGHT", win, "TOPRIGHT", -9 - 24 - 10, -20)
-    Ink(h.money, "MONEY")
-    h.name:SetPoint("RIGHT", h.money, "LEFT", -10, 0)
-    local divider = top:CreateTexture(nil, "ARTWORK")
-    divider:SetColorTexture(1, 1, 1, RULE_A)
-    divider:SetHeight(1)
-    divider:SetPoint("TOPLEFT", win, "TOPLEFT", S_EDGE, -S_HEAD_H)
-    divider:SetPoint("TOPRIGHT", win, "TOPRIGHT", -S_EDGE, -S_HEAD_H)
-    win.suiteHead = h
-
-    local box = CreateFrame("Frame", nil, win, "WowScrollBoxList")
-    box:SetPoint("TOPLEFT", win, "TOPLEFT", S_EDGE, -S_HEAD_H - 8)
-    box:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -S_EDGE - 12, S_EDGE)
-    win.ScrollBox = box
-    local bar = CreateFrame("EventFrame", nil, win, "MinimalScrollBar")
-    bar:SetPoint("TOPLEFT", box, "TOPRIGHT", 6, 0)
-    bar:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 6, 0)
-    local view = CreateScrollBoxListLinearView(0, 0, 0, 0, 2)
-    view:SetElementFactory(function(factory, d)
-        if d.head or d.note then factory("Frame", SuitePiece) else factory("Button", SuiteRow) end
-    end)
-    -- A heading is 22 high with 12 above it (none when first); rows 36; 2 between all of them (the view's spacing).
-    view:SetElementExtentCalculator(function(_, d)
-        if d.head then return d.first and 22 or 32 end
-        if d.note then return 24 end
-        return S_ROW_H
-    end)
-    ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, view)
-end
-
 local function RefreshWindow()
     if not (win and win:IsShown()) then return end
-    local cache, _, _, shown = Trainable()
+    local _, _, _, shown = Trainable()
     -- Titled with your character's name, not the trainer's: any of the class's trainers teaches this list
     -- (owner, 2026-11-05: naming one of them looked odd). First AND last name: Forever's UnitName returns the
     -- surname as a second value, and Blizzard joins them with NameUtil.FormatUnitNameForDisplay
@@ -707,10 +445,6 @@ local function RefreshWindow()
         okN, me = pcall(NameUtil.FormatUnitNameForDisplay, "player")
     end
     if not (okN and me) then okN, me = pcall(UnitName, "player") end
-    if suite then
-        RefreshSuite(cache, shown, okN and me or nil)
-        return
-    end
     if win.SetPortraitToClassIcon then
         local okC, _, classFile = pcall(UnitClass, "player")
         if okC and classFile then win:SetPortraitToClassIcon(classFile) end
@@ -734,53 +468,44 @@ local function BuildWindow()
     if win.CloseButton then
         win.CloseButton:SetScript("OnClick", function(self) VUI.CloseManagedPanel(self:GetParent()) end)
     end
-    -- DaylightUI's look, if the player uses it (Lib SuiteLook.lua): its own layout, decided once, here.
-    suite = VUI.SuiteAPI and VUI.SuiteAPI() or nil
-    if suite then
-        if win.SetTitle then win:SetTitle("") end
-        BuildSuiteLayout()
-    else
-        -- The trainer's own portrait needs the trainer present (SetPortraitTexture "npc"); the class icon stands in,
-        -- through Blizzard's PortraitFrameMixin:SetPortraitToClassIcon (Blizzard_SharedXML/PortraitFrame.lua:67).
-        local okC, _, classFile = pcall(UnitClass, "player")
-        if okC and classFile and win.SetPortraitToClassIcon then win:SetPortraitToClassIcon(classFile) end
-        if win.SetTitle then win:SetTitle(TRAINER or "Trainer") end
+    -- The trainer's own portrait needs the trainer present (SetPortraitTexture "npc"); the class icon stands in,
+    -- through Blizzard's PortraitFrameMixin:SetPortraitToClassIcon (Blizzard_SharedXML/PortraitFrame.lua:67).
+    local okC, _, classFile = pcall(UnitClass, "player")
+    if okC and classFile and win.SetPortraitToClassIcon then win:SetPortraitToClassIcon(classFile) end
+    if win.SetTitle then win:SetTitle(TRAINER or "Trainer") end
 
-        local moneyBg = win:CreateTexture(nil, "ARTWORK")
-        moneyBg:SetTexture("Interface\\MoneyFrame\\UI-MoneyFrame-Border")
-        moneyBg:SetSize(148, 34)
-        moneyBg:SetPoint("BOTTOMLEFT", 5, -9)
-        local money = CreateFrame("Frame", nil, win, "SmallMoneyFrameTemplate")
-        money:SetPoint("RIGHT", moneyBg, "RIGHT", 8, 6)
-        win.money = money
-    end
+    local moneyBg = win:CreateTexture(nil, "ARTWORK")
+    moneyBg:SetTexture("Interface\\MoneyFrame\\UI-MoneyFrame-Border")
+    moneyBg:SetSize(148, 34)
+    moneyBg:SetPoint("BOTTOMLEFT", 5, -9)
+    local money = CreateFrame("Frame", nil, win, "SmallMoneyFrameTemplate")
+    money:SetPoint("RIGHT", moneyBg, "RIGHT", 8, 6)
+    win.money = money
 
-    if not suite then
-        local box = CreateFrame("Frame", nil, win, "WowScrollBoxList")
-        box:SetSize(LIST_W, LIST_H)
-        box:SetPoint("TOPLEFT", win.Inset or win, "TOPLEFT", 5, -5)
-        win.ScrollBox = box
-        local bar = CreateFrame("EventFrame", nil, win, "MinimalScrollBar")
-        bar:SetPoint("TOPLEFT", box, "TOPRIGHT", 5, -2)
-        bar:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 5, -2)
+    local box = CreateFrame("Frame", nil, win, "WowScrollBoxList")
+    box:SetSize(LIST_W, LIST_H)
+    box:SetPoint("TOPLEFT", win.Inset or win, "TOPLEFT", 5, -5)
+    win.ScrollBox = box
+    local bar = CreateFrame("EventFrame", nil, win, "MinimalScrollBar")
+    bar:SetPoint("TOPLEFT", box, "TOPRIGHT", 5, -2)
+    bar:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 5, -2)
 
-        local bg = win:CreateTexture(nil, "BACKGROUND")
-        bg:SetTexture(TRAINER_TEX)
-        bg:SetTexCoord(0.00195313, 0.58593750, 0.00195313, 0.65429688)
-        bg:SetPoint("TOPLEFT", box, "TOPLEFT", -3, 4)
-        bg:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", 3, -4)
+    local bg = win:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture(TRAINER_TEX)
+    bg:SetTexCoord(0.00195313, 0.58593750, 0.00195313, 0.65429688)
+    bg:SetPoint("TOPLEFT", box, "TOPLEFT", -3, 4)
+    bg:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", 3, -4)
 
-        local view = CreateScrollBoxListLinearView(1, 1, 0, 1, 0)
-        view:SetElementExtent(ROW_H)
-        view:SetElementInitializer("Button", InitRow)
-        ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, view)
+    local view = CreateScrollBoxListLinearView(1, 1, 0, 1, 0)
+    view:SetElementExtent(ROW_H)
+    view:SetElementInitializer("Button", InitRow)
+    ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, view)
 
-        local empty = win:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        empty:SetPoint("CENTER", box, "CENTER")
-        empty:SetWidth(LIST_W - 40)
-        empty:SetText("Nothing left to learn from this trainer.")
-        win.empty = empty
-    end
+    local empty = win:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    empty:SetPoint("CENTER", box, "CENTER")
+    empty:SetWidth(LIST_W - 40)
+    empty:SetText("Nothing left to learn from this trainer.")
+    win.empty = empty
 
     win:SetScript("OnShow", RefreshWindow)
     -- The class trainer window's own sound (Blizzard_TrainerUI.lua:239/:273), after SetScript.
@@ -790,7 +515,7 @@ local function BuildWindow()
     win:RegisterEvent("PLAYER_MONEY")
     win:RegisterEvent("PLAYER_LEVEL_UP")
     win:SetScript("OnEvent", function() C_Timer.After(0, RefreshWindow) end)
-    -- Built: another UI suite's look can dress it (Lib SuiteLook.lua), as Priority Rotation's and Advanced Options'.
+    -- Built: an optional module can restyle it (Lib VUI.AnnounceFrame).
     if VUI.AnnounceFrame then VUI.AnnounceFrame("QualityOfLife.TrainerWindow", win) end
 end
 
@@ -804,7 +529,6 @@ VUI.QoL_TrainerWindowToggle = ToggleWindow
 local SIZE_W, SIZE_H, ICON, GAP = 23, 22, 11.5, 2
 local TRACK_GAP = 1   -- owner, in game: the trainer button's gap under tracking; the AddOn compartment follows it
 local button, watcher, anchoredTo
-local onSuiteMap = false   -- the button lives on another UI suite's minimap (Follow)
 local enabled, active, pendingLevel = false, false, nil
 local hasNow = false   -- something on the saved list is learnable at your level
 
@@ -832,18 +556,6 @@ end
 VUI.QoL_AlignCompartment = AlignCompartment   -- for qol_trainer_test
 
 local function Follow()
-    -- DaylightUI's minimap (its Info Panel): the button is a child of the map, so its addon drawer gathers it with
-    -- every other AddOn's minimap button (Drawer.lua:1-9, :122-130: a named, clickable map child at least 20 wide)
-    -- and skins it (Drawer.lua `skin`: `border` hidden, `icon` cropped). The game's indicator row it follows below
-    -- is parked there (Minimap.lua:1066-1131), so only shown or hidden is ours. Drawer off: the map's bottom-left.
-    if button and onSuiteMap then
-        if not active then
-            if button:IsShown() then button:Hide() end
-        elseif not button:IsShown() then
-            button:Show()
-        end
-        return
-    end
     AlignCompartment(false)
     local cluster = _G.MinimapCluster
     local ind = cluster and cluster.IndicatorFrame
@@ -889,7 +601,6 @@ local function Refresh()
     hasNow = now ~= nil and #now > 0
     active = enabled and (hasNow or always)
     if button and button.Icon then
-        if onSuiteMap then button.Icon:SetTexture(ClassArt()) end   -- DaylightUI's class icon, once its look is on
         button.Icon:SetDesaturated(not hasNow)
         button.Icon:SetAlpha(hasNow and 1 or 0.5)
     end
@@ -939,11 +650,9 @@ local function ShowTip(self)
 end
 
 local function Build()
-    local daylight = VUI.DaylightOn
-    local suiteMap = daylight and daylight("InfoPanel", "map.enabled") and _G.Minimap
-    button = CreateFrame("Button", "VUIQoLTrainerButton", suiteMap or UIParent)
+    button = CreateFrame("Button", "VUIQoLTrainerButton", UIParent)
     button:SetSize(SIZE_W, SIZE_H)
-    if not suiteMap then button:SetFrameStrata("MEDIUM") end
+    button:SetFrameStrata("MEDIUM")
     local frameTex = button:CreateTexture(nil, "ARTWORK")
     frameTex:SetAtlas("ui-hud-minimap-addon-indicator", true)
     frameTex:SetPoint("CENTER")
@@ -959,11 +668,6 @@ local function Build()
     add:SetBlendMode("ADD")
     add:SetAlpha(0)
     button.AddTexture = add
-    if suiteMap then
-        onSuiteMap = true
-        button.icon, button.border = icon, frameTex     -- the drawer's skin reads these keys
-        if not daylight("InfoPanel", "map.drawer") then button:SetPoint("BOTTOMLEFT", suiteMap, "BOTTOMLEFT", 4, 4) end
-    end
     button:Hide()
     button:SetScript("OnClick", ToggleWindow)
     button:SetScript("OnMouseDown", function() SetAdd(0.2) end)

@@ -100,7 +100,6 @@ local function BuildMainWindow()
     subtitle:SetJustifyH("CENTER")
     subtitle:SetTextColor(HIGHLIGHT_FONT_COLOR:GetRGB())
     subtitle:SetText("Featured Settings")
-    win.suiteSubtitle = subtitle   -- hidden where a suite names the page in the header instead (Lib SuiteLook.lua)
 
     -- Featured tab content container
     local contFeatured = CreateFrame("Frame", nil, CONTENT)

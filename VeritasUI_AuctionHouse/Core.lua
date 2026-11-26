@@ -15,13 +15,6 @@ if not VUI then
 end
 local COL = VUI.COL   -- Blizzard's named colours (Lib.lua)
 
--- Another AddOn does this part of the job (graceful conflicts, VeritasUI_Lib/Conflicts.lua): "ahWindow" = its
--- own Auction House window over the game's (our sell strip, Scan button and scan bar sit on the game's, so they
--- are not built); "ttShowPrice" = its own tooltip prices. The reason string, or nil.
-function AH.Unavailable(key)
-    return VUI.OptionUnavailable and VUI.OptionUnavailable(ADDON_NAME, key) or nil
-end
-
 ----------------------------------------------------------------
 --  Localize hot globals
 ----------------------------------------------------------------

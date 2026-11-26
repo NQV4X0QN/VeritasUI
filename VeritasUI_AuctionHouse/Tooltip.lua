@@ -175,7 +175,6 @@ local AGE_COLOR = VUI.COL.GRAY   -- grey, for the secondary "N seen · X days" l
 -- money-frame support).
 local function BuildPriceData(key)
     if not S("ttShowPrice") then return nil end
-    if AH.Unavailable and AH.Unavailable("ttShowPrice") then return nil end   -- another AddOn's tooltip prices
     if not (AH.DB and key) then return nil end
 
     local price = AH.DB.GetMarketPrice(key)

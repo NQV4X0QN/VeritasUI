@@ -855,28 +855,18 @@ end
 -- (UIParentPanelManager.lua:64/:950-965 forever). Without it, a window opened beside ours covered the tabs
 -- (owner, 2026-11-07). A plain number in our own UIPanelWindows entry: nothing of ours is called by the manager.
 VUI.SIDE_TAB_PANEL_PADDING = 82
--- A window whose tabs another UI suite has moved into its header (SuiteLook.lua) keeps no room for side tabs.
-VUI.HeaderTabWindows = {}
 function VUI.SetManagedPanelExtraWidth(frameName, width)
     local entry = type(frameName) == "string" and UIPanelWindows[frameName]
-    if VUI.HeaderTabWindows[frameName] then width = nil end
     if type(entry) == "table" then entry.extraWidth = width end
 end
--- win._sideTabs keeps the specs, the frames, onSelect and the pick, for a suite that lays the tabs out its own way
--- (SuiteLook.lua: DaylightUI has text tabs in the header). Its Pick(index) is called on every select.
 function VUI.CreateSideTabs(win, tabs, onSelect)
     local list = {}
     if win and win.GetName and win:GetName() then
         VUI.SetManagedPanelExtraWidth(win:GetName(), VUI.SIDE_TAB_PANEL_PADDING)
     end
-    local state = { specs = tabs, list = list, onSelect = onSelect }
-    if win then win._sideTabs = state end
     local function Select(index)
-        state.selected = index
-        if state.Pick then state.Pick(index) end
         for i, tab in ipairs(list) do
             if tab.SelectedTexture then tab.SelectedTexture:SetShown(i == index) end
-            if VUI.SuiteLookRepaint then VUI.SuiteLookRepaint(tab) end   -- another UI suite's look (SuiteLook.lua)
         end
     end
     for i, spec in ipairs(tabs) do

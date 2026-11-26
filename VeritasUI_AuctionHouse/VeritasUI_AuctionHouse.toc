@@ -4,7 +4,6 @@
 ## Version: 1.90.0
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
-## OptionalDeps: DaylightUI
 ## SavedVariables: VeritasUI_AuctionHouseDB
 
 Core.lua
