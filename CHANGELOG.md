@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.90.1] - 2026-11-25
+
+### Removed
+
+- All modules — **DaylightUI support has moved to its own plugin.** VeritasUI no longer greys out its options where DaylightUI does the same job, no longer draws its windows in DaylightUI's look, and the trainer button no longer goes into DaylightUI's minimap drawer. If you use DaylightUI, Priority Rotation (DaylightUI Plugin) on CurseForge carries the rotation, error message, sound and auto-equip options, in DaylightUI's look
+
+### Changed
+
+- Advanced Options — **the DaylightUI reset stays**: UI Replacements still puts the settings DaylightUI changes back to Blizzard's defaults, for when you stop using it
+
 ## [1.90.0] - 2026-11-25
 
 VeritasUI now works alongside DaylightUI on WoW Forever: it steps aside where DaylightUI already does the job, and its windows take DaylightUI's look.
