@@ -5675,6 +5675,10 @@ SlashCmdList["VERITASUI_QOL"] = function(msg)
         if VUI.QoL_EquipCheck then VUI.QoL_EquipCheck() end
         return
     end
+    if arg:lower() == "statsprobe" then   -- PROBE, test/gear-probe only
+        if VUI.QoL_StatsProbe then VUI.QoL_StatsProbe() end
+        return
+    end
     if arg:lower() == "trainable" then
         if VUI.QoL_TrainableProbe then VUI.QoL_TrainableProbe() end
         return

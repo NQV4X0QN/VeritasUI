@@ -554,3 +554,95 @@ reelFrame:SetScript("OnEvent", function(_, event, unit, _, spellID)
         StopReel()
     end
 end)
+
+----------------------------------------------------------------
+--  PROBE (test/gear-probe only, never merged): /qol statsprobe
+--  Measures what stat weights need from the game: the stat names GetItemStats reports for this
+--  game's items, how much each combat rating buys at the character's level
+--  (GetCombatRatingBonusForCombatRatingValue, PlayerScriptDocumentation.lua forever), and the
+--  character sheet numbers. Saved to VeritasUI_QualityOfLifeDB.gearProbe (written on /reload).
+----------------------------------------------------------------
+local function ProbeCall(fn, ...)
+    if type(fn) ~= "function" then return "n/a" end
+    local r = { pcall(fn, ...) }
+    if not r[1] then return "err" end
+    table.remove(r, 1)
+    for i = 1, #r do
+        local t = type(r[i])
+        if t ~= "number" and t ~= "string" and t ~= "boolean" then r[i] = tostring(r[i]) end
+    end
+    return r
+end
+
+function VUI.QoL_StatsProbe()
+    local db = DB()
+    if not db then return end
+    local out = { at = time(), level = UnitLevel("player"), class = select(2, UnitClass("player")),
+        race = select(2, _G.UnitRace("player")), ratings = {}, sheet = {}, items = {}, keys = {} }
+
+    for name, idx in pairs(_G) do
+        if type(name) == "string" and name:match("^CR_[A-Z_]+$") and type(idx) == "number" then
+            out.ratings[name] = {
+                index = idx,
+                per100 = ProbeCall(_G.GetCombatRatingBonusForCombatRatingValue, idx, 100),
+                have = ProbeCall(GetCombatRating, idx),
+                bonus = ProbeCall(_G.GetCombatRatingBonus, idx),
+            }
+        end
+    end
+
+    local s = out.sheet
+    for i = 1, 5 do s["stat" .. i] = ProbeCall(_G.UnitStat, "player", i) end
+    s.critMelee = ProbeCall(GetCritChance)
+    s.critRanged = ProbeCall(GetRangedCritChance)
+    for school = 1, 7 do s["critSpell" .. school] = ProbeCall(GetSpellCritChance, school) end
+    s.ap = ProbeCall(_G.UnitAttackPower, "player")
+    s.rap = ProbeCall(_G.UnitRangedAttackPower, "player")
+    s.spellDmg = ProbeCall(_G.GetSpellBonusDamage, 2)
+    s.heal = ProbeCall(_G.GetSpellBonusHealing)
+    s.hitMod = ProbeCall(_G.GetHitModifier)
+    s.spellHitMod = ProbeCall(_G.GetSpellHitModifier)
+    s.dodge = ProbeCall(_G.GetDodgeChance)
+    s.parry = ProbeCall(_G.GetParryChance)
+    s.block = ProbeCall(_G.GetBlockChance)
+    s.expertise = ProbeCall(_G.GetExpertise)
+    s.armor = ProbeCall(_G.UnitArmor, "player")
+    s.health = ProbeCall(_G.UnitHealthMax, "player")
+    s.mana = ProbeCall(_G.UnitPowerMax, "player", 0)
+    s.manaRegen = ProbeCall(_G.GetManaRegen)
+    s.defense = ProbeCall(_G.UnitDefense, "player")
+    s.haste = ProbeCall(_G.GetHaste)
+    s.meleeHaste = ProbeCall(_G.GetMeleeHaste)
+    s.rangedHaste = ProbeCall(_G.GetRangedHaste)
+
+    local function addItem(where, link)
+        if type(link) ~= "string" then return end
+        local ok, stats = pcall(C_Item.GetItemStats, link)
+        local entry = { where = where, link = link, stats = {} }
+        if ok and type(stats) == "table" then
+            for k, v in pairs(stats) do
+                entry.stats[k] = v
+                out.keys[k] = (out.keys[k] or 0) + 1
+            end
+        end
+        out.items[#out.items + 1] = entry
+    end
+    for slot = 1, 19 do addItem("equipped " .. slot, GetInventoryItemLink("player", slot)) end
+    for bag = 0, (NUM_BAG_SLOTS or 4) do
+        local n = C_Container.GetContainerNumSlots(bag) or 0
+        for slot = 1, n do
+            local link = C_Container.GetContainerItemLink(bag, slot)
+            if link then
+                local okE, eq = pcall(C_Item.IsEquippableItem, link)
+                if okE and eq then addItem(("bag %d/%d"):format(bag, slot), link) end
+            end
+        end
+    end
+
+    db.gearProbe = out
+    local nKeys, nRatings = 0, 0
+    for _ in pairs(out.keys) do nKeys = nKeys + 1 end
+    for _ in pairs(out.ratings) do nRatings = nRatings + 1 end
+    VUI.Print("Quality of Life", format("Stats probe saved: level %d, %d ratings, %d items, %d stat names. "
+        .. "Type /reload so it is written to disk.", out.level or 0, nRatings, #out.items, nKeys))
+end

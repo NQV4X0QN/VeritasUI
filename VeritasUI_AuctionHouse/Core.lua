@@ -1274,3 +1274,41 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
         PrintHelp()
     end
 end
+
+----------------------------------------------------------------
+--  PROBE (test/gear-probe only, never merged): /ahbuyprobe select|search <shift-clicked item>
+--  Can a list of OUR OWN hand the player to Blizzard's buy screen and still let them buy?
+--    select  AuctionHouseFrame:SelectBrowseResult({ itemKey, minPrice }) -- what Blizzard's own
+--            browse list calls on a row click (Blizzard_AuctionHouseBrowseResultsFrame.lua:166,
+--            Blizzard_AuctionHouseFrame.lua:683-695, forever). Our itemKey ends up stored in
+--            ItemBuyFrame.itemKey (ItemBuyFrame.lua:84): the taint question.
+--    search  AuctionHouseFrame.SearchBar:SetSearchText(name) + :StartSearch() -- fills Blizzard's
+--            own browse list; the player then clicks Blizzard's row (SearchBar.lua:194-207).
+--  Then buy something cheap through Blizzard's screen and watch for a "blocked" message.
+----------------------------------------------------------------
+_G.SLASH_VUIAHBUYPROBE1 = "/ahbuyprobe"
+SlashCmdList["VUIAHBUYPROBE"] = function(msg)
+    local mode, rest = (msg or ""):match("^%s*(%S+)%s*(.-)$")
+    local link = rest and rest:match("|H.-|h.-|h")
+    local itemID = link and tonumber(link:match("|Hitem:(%d+)"))
+    if not (AH.isOpen and _G.AuctionHouseFrame) then VUI.Print(AH.TAG, "Open the Auction House first."); return end
+    if not itemID or (mode ~= "select" and mode ~= "search") then
+        VUI.Print(AH.TAG, "Usage: /ahbuyprobe select|search, then shift-click an item.")
+        return
+    end
+    local f = _G.AuctionHouseFrame
+    if mode == "select" then
+        local okK, itemKey = pcall(C_AuctionHouse.MakeItemKey, itemID)
+        if not (okK and itemKey) then VUI.Print(AH.TAG, "MakeItemKey failed."); return end
+        local ok, err = pcall(f.SelectBrowseResult, f, { itemKey = itemKey, minPrice = 0 })
+        VUI.Print(AH.TAG, ok and "select: Blizzard's buy screen asked for " .. link
+            or ("select failed: " .. tostring(err)))
+    else
+        local name = link:match("|h%[(.-)%]|h")
+        local bar = f.SearchBar
+        if not (bar and name) then VUI.Print(AH.TAG, "No search bar."); return end
+        local ok, err = pcall(function() bar:SetSearchText(name); bar:StartSearch() end)
+        VUI.Print(AH.TAG, ok and ("search: searched Blizzard's list for " .. name)
+            or ("search failed: " .. tostring(err)))
+    end
+end
