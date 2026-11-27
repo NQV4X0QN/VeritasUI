@@ -539,6 +539,16 @@ function AH.Scan.SupportsRetry()
     return (e and e.SupportsRetry) and true or false
 end
 
+-- Has the running scan's request been declared LOST (no answer inside the engine's stall
+-- window)? Only then does the button offer "Retry Scan" (owner, 2026-11-26: "Retry Scan"
+-- reads as "something is wrong", so a healthy wait shows a greyed "Scanning…"). Engines
+-- that do not declare it never report a loss.
+function AH.Scan.RequestLost()
+    local r = AH.Replicate and AH.Replicate.RequestLost and AH.Replicate.RequestLost()
+    local b = AH.Browse    and AH.Browse.RequestLost    and AH.Browse.RequestLost()
+    return (r or b) and true or false
+end
+
 function AH.Scan.SecondsUntilReady()
     -- The floor is SHARED (one auction house, one sensible cadence) and both engines
     -- read/write AH.db.lastScan, so either accessor answers. Replicate owns the
@@ -671,6 +681,18 @@ local function PrintDiag()
                         tr.firstEventLatency, tr.firstEventAttempt or 1)
                     or COL.RED .. "never arrived|r",
                 tr.pulses or 0))
+            -- Gear wait (replicate, 2026-11-26): how many cold gear rows the scan had to
+            -- wait for, how many came back, and why the wait ended.
+            local g = tr.gear
+            if g and (g.deferred or 0) > 0 then
+                VUI.Print(AH.TAG, format("  gear wait:    %d of %d resolved, %s%d abandoned|r, ended %s "
+                    .. "after %.0fs / %d sweeps; item answers %d, loaded but no link %d, "
+                    .. "no-itemID %d, cannot load %d",
+                    g.resolved or 0, g.deferred or 0,
+                    (g.abandoned or 0) > 0 and COL.RED or COL.GREEN, g.abandoned or 0,
+                    tostring(g.ended), g.seconds or 0, g.sweeps or 0, g.answers or 0,
+                    g.loadedNoLink or 0, g.noID or 0, g.unloadable or 0))
+            end
             -- Throttled-message timeline — THE line that classifies a lost request.
             -- DROPPED present => Blizzard's throttle system ate the request, so a
             -- retry is the right recovery. Nothing at all => the request went out
@@ -839,9 +861,10 @@ SlashCmdList["VERITASUI_AH"] = function(msg)
             VUI.Print(AH.TAG, format("Scan engine: " .. COL.YELLOW .. "%s|r (%s)  (/ah engine browse | replicate)",
                 AH.Scan and AH.Scan.EngineName() or "?",
                 AH.Scan and AH.Scan.EngineIsPinned() and "pinned" or "default"))
-            VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "replicate|r — per-auction rows; fails the first scan most days.")
+            VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "replicate|r — "
+                .. "every auction, priced from its own buyout; the default.")
             VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "browse|r — "
-                .. "per-item summaries; the default.")
+                .. "per-item summaries; faster, but their lowest price can be wrong.")
             VUI.Print(AH.TAG, "  " .. COL.GRAY .. "A pin persists and overrides future default changes; "
                 .. "/ah engine default clears it.|r")
         elseif want == "default" then

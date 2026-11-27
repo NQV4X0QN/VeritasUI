@@ -42,59 +42,37 @@ local SETTING_DEFAULTS = {
     -- UI/CraftingOrder.lua — "Reagents Value:" on the Place Crafting Order form
     craftShowReagentValue = true,
     -- LiveSearch.lua — fold the AH's own per-item search results into the price DB.
-    -- The CORRECTION LAYER for the browse minPrice defect documented below: it sends no
+    -- Keeps an item you open on the Buy or Sell tab current between scans; it sends no
     -- query of its own (the client has already fetched the data to fill Blizzard's
-    -- suggested Unit Price) and makes the stored price exact for every item you open on
-    -- the Buy or Sell tab.
+    -- suggested Unit Price).
     liveSearchPrices = true,
     -- Which whole-AH scan engine the Scan button drives: "replicate" (Replicate.lua,
     -- C_AuctionHouse.ReplicateItems) or "browse" (Browse.lua, empty SendBrowseQuery).
-    -- DEFAULT IS BROWSE (v1.12.12, owner decision after the arithmetic below).
+    -- DEFAULT IS REPLICATE (2026-11-26, owner decision). History, newest first:
     --
-    -- ⚠ THE DEFAULT HAS MOVED THREE TIMES. Read this whole block before moving it again;
-    -- the two previous flips were each made on a number that had not been decomposed.
+    -- 2026-11-26 -> replicate. The two reasons browse won in v1.12.12 are gone or answered:
+    --   * Gear loss was the gear wait quitting on its first empty 3 s check. Rewritten to
+    --     follow the game's item answers; owner's scan: 48,966 of 48,966 gear rows priced,
+    --     0 abandoned, 77 s total (first data 44.1 s after the request).
+    --   * Browse's price is WRONG, not just laggy: minPrice read 7.7% and 41.8% below the
+    --     cheapest listing (/ah browseprobe, 2026-08-04 / 08-29) and lagged the listings
+    --     (Silverleaf 14 vs 19, Linen 20 vs 22, 2026-11-15). Replicate prices the auctions
+    --     themselves: on the same scan the AH's own per-item search matched 10 of 10 bag
+    --     items (live search "0 corrected"). The post-scan bag check that patched browse
+    --     prices was deleted with this change.
+    -- Known replicate risk, still present: after a long idle login the server can ignore
+    -- ReplicateItems for ~12 min (landmine 106); the stall message says to press Scan again.
+    -- Browse stays selectable (/ah engine browse) as the fallback.
     --
-    -- KNOWN DEFECT, NOT A REASON TO REVERT ON ITS OWN: browse's minPrice is not the live
-    -- lowest unit buyout. Measured twice with /ah browseprobe against Blizzard's ascending
-    -- Sell-tab ladder at the same moment:
-    --      2026-08-04  item 242639   browse 27500   cheapest listing 29800   ( -7.7%)
-    --      2026-08-29  item 237365   browse 204900  cheapest listing 352200  (-41.8%)
-    -- A minimum cannot sit below the cheapest thing on sale, so this is real. In both
-    -- captures the quantity and the derived key were CORRECT (2026-08-29: 187985 against
-    -- the tab's own 187986 Available, accurate to one unit, in the same payload as the bad
-    -- price), so browse reads the right POPULATION and only the PRICE is wrong. Probably a
-    -- server-side cached aggregate; still unverified.
-    --
-    -- ⚠ THE 7.7% CEILING WAS WRONG, AND THIS BLOCK ASSERTED IT FOR SEVENTEEN RELEASES.
-    -- What stood here was:
-    --      stored 2g11s vs market 2g64s (owner's first report)  = 20% gap
-    --      stored 2g11s vs market 2g98s (minutes later)         = 29% gap
-    --      browse minPrice vs market, SAME MOMENT               =  7.7% gap
-    -- and concluded "only the 7.7% is attributable to browse". The DECOMPOSITION METHOD is
-    -- sound and still the rule -- separate lag from staleness before acting, which is what
-    -- /ah browseprobe is for. The CEILING it produced was not: 7.7% was one sample, and
-    -- 237365 is 41.8% attributable to browse with the market provably still (the ladder
-    -- read 352200 continuously across a 13s probe). Do not quote 7.7% as a bound again.
-    --
-    -- WHY BROWSE ANYWAY: replicate fails the first scan of most days -- the original
-    -- complaint, unsolved for months, five hypotheses falsified. Browse completed in 10-15s
-    -- every attempt, priced 22,540 items against replicate's 15,828 in 55.9s, and abandons
-    -- no gear (replicate abandoned 38-67% of gear rows on two measured scans, which
-    -- silently froze both the price AND the age of those items). And the defect above is now
-    -- CORRECTED where it is felt: LiveSearch.lua rewrites the price of any item you open on
-    -- the Buy or Sell tab from the AH's own authoritative per-item search, for free.
-    -- ⚠ That correction is per-item and on-demand ONLY. It cannot cover the whole AH -- the
-    -- per-item search is rate-capped, which is why the scan exists -- so an item you have
-    -- never opened still carries whatever the scan stored.
+    -- v1.12.12 -> browse (replicate failed the first scan of most days and lost 38-67% of
+    -- gear rows). Before that the default flipped browse -> replicate -> browse on numbers
+    -- that had not been decomposed, AND every flip was inert because the key was seeded
+    -- (see SEED_EXEMPT below). Separate lag from staleness before moving it again.
     --
     -- ⚠ Deliberately NOT paired with a minutes-granularity age line. That was proposed and
     -- REJECTED by the owner: he reads the age line to decide whether to rescan, and
     -- per-minute noise on every tooltip is clutter, not signal. `seen` stays day-grained.
-    --
-    -- Escape hatch if prices feel wrong in use: /ah engine replicate. Spot-check any single
-    -- item with /ah browseprobe, which compares browse's raw return against the game's own
-    -- listing at the same moment; /ah live shows what the correction layer has fixed.
-    scanEngine = "browse",
+    scanEngine = "replicate",
 }
 
 local function S(key)
@@ -720,6 +698,13 @@ local function OnItemTooltip(tooltip, data)
 
     -- Pets are one per cage; everything else prices the whole held stack.
     local count = IsPetLink(link) and 1 or HeldStackCount(data, tooltip)
+    -- Shift held: the price of ONE (owner, 2026-11-26), to compare with the Buy tab's
+    -- per-item price. No event of ours is needed to switch: the bag tooltip is rebuilt every
+    -- TOOLTIP_UPDATE_TIME (0.2 s) -- GameTooltip_OnUpdate calls owner:UpdateTooltip
+    -- (GameTooltip.lua:451-458), which a bag button sets to its OnUpdate, which re-sets the
+    -- item (ContainerFrame.lua:1655, :1735) -- so this post-call reruns while hovering.
+    -- Gear stacks are 1, so Shift's item comparison is never changed by this.
+    if count > 1 and _G.IsShiftKeyDown and _G.IsShiftKeyDown() then count = 1 end
 
     if keyFromID then
         local k = AH.DB and AH.DB.MakeKeyFromItemID(keyFromID)

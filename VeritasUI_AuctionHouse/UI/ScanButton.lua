@@ -18,9 +18,10 @@
 -- synchronous because that is the simplest thing that works and nothing needs a
 -- defer — NOT because deferring is known to break the request.
 --
--- The button doubles as hung-scan recovery: during the pre-data wait it stays
--- ENABLED as "Retry Scan" (Start() clears a fired-but-never-arrived request and
--- re-fires); it disables only while rows actually drain (Progress() > 0).
+-- The button doubles as hung-scan recovery: once the engine declares the request LOST
+-- (AH.Scan.RequestLost, 60 s with no answer on replicate) it turns ENABLED "Retry Scan"
+-- (Start() clears a fired-but-never-arrived request and re-fires). Before that, and while
+-- rows drain, it is a greyed "Scanning…" (owner, 2026-11-26).
 --
 -- ⚠ CORRECTED v1.13.8. This used to claim that since v1.9.5's "persistent 60s retry
 -- chain a dropped request recovers with zero clicks, so this is the impatient path,
@@ -54,11 +55,9 @@
 --   button whenever IsScanning() was true — which INCLUDED the dropped-request state
 --   (scanning=true, Progress()==0 for as long as the server keeps refusing; ~12
 --   minutes in the v1.9.5 repro), the exact state StartManual() exists to recover.
---   The hang was therefore untestable. Now the button stays ENABLED through
---   the pre-data wait ("Retry Scan") and disables only during the actual row drain
---   (Progress() > 0). Misclicks during a HEALTHY wait are safe: StartManual() refuses
---   while a coroutine is draining, and a duplicate ReplicateItems() during the wait is
---   the same no-op the v1.7.9 10s retry already fired on every healthy scan.
+--   The hang was therefore untestable. The button became ENABLED through the whole
+--   pre-data wait; since 2026-11-26 only from the moment the request is declared lost,
+--   which still covers the hang (the drop lasts minutes, the stall window is 60 s).
 
 local _, AH = ...
 local VUI = _G.VeritasUI
@@ -165,22 +164,19 @@ local function RefreshLabel()
             -- Rows are actually draining — a real scan is in flight; hands off.
             btn:SetText("Scanning…")
             btn:Disable()
-        elseif AH.Scan.SupportsRetry and AH.Scan.SupportsRetry() then
-            -- Pre-data wait on an engine where retrying MEANS something: replicate's
-            -- ~28-40s snapshot wait, which can stretch indefinitely if the server drops
-            -- the request. Must stay clickable — Start() clears a fired-but-never-arrived
-            -- request and re-fires, and StartManual() refuses if a coroutine is live, so a
-            -- click during a healthy wait is a known no-op.
+        elseif AH.Scan.SupportsRetry and AH.Scan.SupportsRetry()
+               and AH.Scan.RequestLost and AH.Scan.RequestLost() then
+            -- The request was declared LOST (no answer inside the engine's stall window,
+            -- 60 s on replicate). Only now is the button a recovery: Start() clears a
+            -- fired-but-never-arrived request and re-fires.
+            -- ⚠ Owner, 2026-11-26: "Retry Scan" must mean something is wrong. Until
+            -- 2026-11-26 it showed through every healthy ~45 s wait, which read as a fault
+            -- and invited clicking; a healthy wait is now a greyed "Scanning…" below.
             btn:SetText("Retry Scan")
             btn:Enable()
         else
-            -- Pre-data wait on an engine with no retry path (browse, the default). This
-            -- window is one throttled send plus a server round trip, so "Retry Scan"
-            -- FLASHED on every scan and offered a recovery the engine cannot perform
-            -- (owner-reported 2026-08-24). It reads as one continuous scan instead.
-            -- ⚠ v1.14.17 removed the tooltip that EXPLAINED this recovery for exactly the
-            -- same reason but kept the label state, which left the misleading affordance
-            -- without its explanation. Half a fix; this is the other half.
+            -- Waiting for the first data, nothing wrong yet (or an engine with no retry
+            -- path: browse, where "Retry Scan" flashed on every scan, owner 2026-08-24).
             btn:SetText("Scanning…")
             btn:Disable()
         end

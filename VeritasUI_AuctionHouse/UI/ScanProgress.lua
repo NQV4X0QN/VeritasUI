@@ -236,6 +236,7 @@ local state = {
     phase     = nil,   -- "connect" | "requested" (which pre-% wait we're in)
     waitStart = nil,   -- GetTime() when the current wait began (for elapsed "(Ns)")
     finalizing = false, -- post-100% gear-residue retry phase (AH_SCAN_FINALIZING)
+    terminal  = nil,   -- { kind = "done"|"fail", committed } while a finished scan's bar lingers
 }
 
 -- Apply a PHASE entry, picking the branch that matches the art actually loaded and
@@ -369,10 +370,109 @@ end
 ----------------------------------------------------------------
 --  Build once (lazy — AuctionHouseFrame must exist, same gate as SellStrip)
 ----------------------------------------------------------------
+----------------------------------------------------------------
+--  Hover tooltip (owner, 2026-11-26): what the bar is doing and roughly how long it takes.
+--  Wording owner-approved. Times are from the owner's replicate scan of 2026-11-26 (first
+--  data 44.1 s; 257,974 auctions read in a few seconds; gear wait 26 s). Blizzard's tooltip
+--  helpers only (SharedTooltipTemplates.lua:128/142, both games). Refreshed every
+--  TIP_REFRESH while hovered so the live numbers move.
+----------------------------------------------------------------
+local TIP_REFRESH = 0.25
+
+local function Thousands(n)
+    n = floor(tonumber(n) or 0)
+    if BreakUpLargeNumbers then return BreakUpLargeNumbers(n) end
+    return tostring(n)
+end
+
+-- { title, line, line... } for what the bar shows now; nil when there is nothing to say.
+local function TooltipLines()
+    local t = state.terminal
+    if t and not (AH.Scan and AH.Scan.IsScanning()) then
+        if t.kind == "fail" then
+            return { "Scan Failed", "The scan stopped before any prices were saved. Press Scan to try again." }
+        end
+        local wait = (AH.Scan and AH.Scan.SecondsUntilReady and AH.Scan.SecondsUntilReady()) or 0
+        local nextLine = wait > 0
+            and format("Next scan in %d:%02d.", floor(wait / 60), wait % 60)
+            or "Next scan available now."
+        return { "Scan Complete", format("%s items priced. %s", Thousands(t.committed), nextLine) }
+    end
+    if not (AH.Scan and AH.Scan.IsScanning()) then return nil end
+
+    local p = (AH.Scan.Progress and AH.Scan.Progress()) or 0
+    if p <= 0 then
+        if AH.Scan.RequestLost and AH.Scan.RequestLost() then
+            return { "No Answer from the Auction House",
+                     "The request may have been lost. Press Retry Scan to ask again." }
+        end
+        local secs = state.waitStart and floor(GetTime() - state.waitStart) or 0
+        return { "Waiting for the Auction House",
+                 "Preparing a list of every auction. This usually takes 30 to 45 seconds; "
+                 .. "keep the Auction House open.",
+                 format("Waiting %d s.", secs) }
+    end
+    if state.finalizing then
+        local resolved, total
+        if AH.Replicate and AH.Replicate.FinalizeStatus then
+            resolved, total = AH.Replicate.FinalizeStatus()
+        end
+        local left = (total and resolved) and (total - resolved) or nil
+        return { "Loading Gear Details",
+                 left and format("%s of %s gear auctions still loading.", Thousands(left), Thousands(total))
+                     or "Gear auctions still loading.",
+                 "Usually under 30 seconds." }
+    end
+    local rows = AH.Replicate and AH.Replicate.RowsTotal and AH.Replicate.RowsTotal() or 0
+    return { "Reading Auctions",
+             rows > 0 and format("%d%% of %s auctions read.", floor(p * 100), Thousands(rows))
+                 or format("%d%% read.", floor(p * 100)),
+             "Usually under 15 seconds." }
+end
+
+local function ShowTip(owner)
+    local lines = TooltipLines()
+    if not lines then
+        if GameTooltip:IsOwned(owner) then GameTooltip:Hide() end
+        return
+    end
+    GameTooltip:SetOwner(owner, "ANCHOR_TOP")
+    GameTooltip_SetTitle(GameTooltip, lines[1])
+    for i = 2, #lines do GameTooltip_AddNormalLine(GameTooltip, lines[i], true) end
+    GameTooltip:Show()
+end
+
+local function TipOnUpdate(self, elapsed)
+    self.tipElapsed = (self.tipElapsed or 0) + elapsed
+    if self.tipElapsed < TIP_REFRESH then return end
+    self.tipElapsed = 0
+    if GameTooltip:IsOwned(self) then ShowTip(self) end
+end
+
+local function TipOnEnter(self)
+    self.tipElapsed = 0
+    ShowTip(self)
+    self:SetScript("OnUpdate", TipOnUpdate)
+end
+
+local function TipOnLeave(self)
+    self:SetScript("OnUpdate", nil)
+    if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+end
+
+AH.ScanProgress = AH.ScanProgress or {}
+AH.ScanProgress._TooltipLines = TooltipLines   -- headless suite seam
+
 local function Build()
     if state.built or not AuctionHouseFrame then return end
 
     local f = CreateFrame("Frame", "VUIAHScanProgress", AuctionHouseFrame)
+    -- Hover only: motion events for the tooltip, clicks pass through to nothing (the band
+    -- under the bar is empty art). EnableMouseMotion where the client has it.
+    if f.EnableMouseMotion then f:EnableMouseMotion(true) else f:EnableMouse(true) end
+    f:SetScript("OnEnter", TipOnEnter)
+    f:SetScript("OnLeave", TipOnLeave)
+    f:SetScript("OnHide", TipOnLeave)
     -- With the label above, the container must be tall enough for text + bar; the bar is
     -- then pinned to the container's BOTTOM so the extra height grows upward and the bar
     -- stays aligned to the money frame.
@@ -659,6 +759,7 @@ local function ShowScanning()
     state.phase      = "connect"     -- pre-REQUESTED default (zero-length since v1.8.0's synchronous fire)
     state.waitStart  = GetTime()     -- start the elapsed "(Ns)" clock
     state.finalizing = false
+    state.terminal   = nil
     state.bar:SetValue(0)
     ApplyPhase("wait")
     state.sweep:Hide()         -- the ticker re-shows it on the first Phase-1 frame
@@ -678,12 +779,13 @@ end
 -- own, so AH_SCAN_COMPLETE / AH_SCAN_FAILED cannot arrive after a close. Nor can
 -- a reopen inside HOLD_SEC surface a stale message: AH_CLOSED runs HideNow, which
 -- hides the frame and cancels the hide timer, and AH_OPEN only calls Build().
-local function ShowTerminal(text, phaseName, fill)
+local function ShowTerminal(text, phaseName, fill, terminal)
     if not state.built then return end
     StopTicking()
     state.phase      = nil
     state.waitStart  = nil
     state.finalizing = false
+    state.terminal   = terminal   -- what the hover tooltip says until the bar hides
     state.sweep:Hide()
     ApplyPhase(phaseName)
     state.bar:SetValue(fill)
@@ -702,6 +804,7 @@ local function HideNow()
     state.phase      = nil
     state.waitStart  = nil
     state.finalizing = false
+    state.terminal   = nil
     if state.frame then state.frame:Hide() end
 end
 
@@ -743,11 +846,11 @@ end)
 AH.Events.On("AH_SCAN_COMPLETE", function(committed, rows)
     ShowTerminal(
         format("Scan complete — %d priced.", committed or 0),
-        "done", 1)
+        "done", 1, { kind = "done", committed = committed or 0 })
 end)
 
 AH.Events.On("AH_SCAN_FAILED", function()
-    ShowTerminal("Scan failed.", "fail", 1)
+    ShowTerminal("Scan failed.", "fail", 1, { kind = "fail" })
 end)
 
 -- AH closing aborts any in-flight scan (Replicate's AH_CLOSED handler tears down);

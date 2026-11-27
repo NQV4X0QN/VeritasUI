@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.90.2] - 2026-11-26
+
+### Changed
+
+- Auction House — **scans read every auction.** Prices now come from each auction's own buyout instead of the auction house's summary list, which could lag behind the listings or read below the cheapest one. Gear whose details the game hasn't loaded yet is waited for instead of skipped, so gear prices and ages update with every scan. A scan takes a little over a minute, and your bags are no longer looked up one by one afterwards. If the auction house doesn't answer within 60 seconds, the button turns into Retry Scan
+
+### Added
+
+- Auction House — **the price of one with Shift**: hold Shift over a stack in your bags and the Auction line shows the price of one item, to compare with the Buy tab; let go for the whole stack again
+- Auction House — **scan progress tooltip**: hover the progress bar to see what the scan is doing (waiting for the auction house, reading auctions, loading gear details), with live counts and roughly how long each part takes
+
+
 ## [1.90.1] - 2026-11-25
 
 ### Removed

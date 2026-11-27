@@ -86,75 +86,26 @@ local REPLICATE_STALL_TIMEOUT = 60      -- seconds of total silence after which 
                                         -- the window is an unambiguous loss. This does NOT abort the scan (see
                                         -- the no-timeout rule above) — it only reports, and reports nothing
                                         -- about the cause beyond the recorded facts. See ArmStallDetector.
-local LINK_RETRY_WAIT       = 3         -- seconds between link retry passes (lets queued
-                                        -- item-record loads stream in; cold-cache coverage fix)
-local LINK_RETRY_BUDGET     = 120       -- hard cap (seconds) on the whole retry phase.
-                                        --
-                                        -- ⚠ RAISED 45 -> 120 in v1.12.9 because 45 was MEASURABLY
-                                        -- too small and was silently costing data. Owner's scan
-                                        -- 2026-08-03: "link-retried: 10165 of 16304 resolved over
-                                        -- 15 pass(es); dropped: 6139" — 15 passes x LINK_RETRY_WAIT
-                                        -- (3s) = 45s exactly, i.e. the cap, with 38% of gear rows
-                                        -- still unresolved and therefore ABANDONED. An abandoned
-                                        -- row gets no AH.DB.Record() call, so it updates neither
-                                        -- the price NOR `seen` — those items keep an old price and
-                                        -- an old age immediately after a successful scan, and
-                                        -- rescanning drops them again. The old figure assumed
-                                        -- ~1k records/3s and ~15k gear rows; the measured stream
-                                        -- ran ~677/pass against 16.3k rows, so the assumption was
-                                        -- wrong in both terms.
-                                        --
-                                        -- Raising this does NOT lengthen healthy scans: the phase
-                                        -- breaks on the first pass that resolves nothing
-                                        -- (quiescence, see passTouched below), so the cap only
-                                        -- binds while progress is still being made.
-                                        --
-                                        -- ⚠ AND RAISING IT DID NOT HELP. The very next scan
-                                        -- (2026-08-04) ran only 4 passes = 12s, nowhere near this
-                                        -- cap, exiting on QUIESCENCE with 10,609 of 15,894 gear
-                                        -- rows unresolved — worse than the 6,139 that motivated the
-                                        -- raise. So the budget was the binding constraint on ONE
-                                        -- scan and the quiescence break on the next; concluding
-                                        -- "the cap is the problem" from a single sample was wrong.
-                                        --
-                                        -- ⚠ CAUSE UNKNOWN. Do not fill this gap with a guess; two
-                                        -- have already been wrong.
-                                        --
-                                        -- RETRACTED (v1.12.10): v1.12.9 asserted here, in the
-                                        -- CHANGELOG and in a SKILL landmine that the cause was this
-                                        -- loop "passively re-polling instead of requesting item
-                                        -- data". That is FALSE and was written without reading the
-                                        -- loop. We request at deferral time (see the
-                                        -- RequestLoadItemDataByID call beside `requestedIDs`) AND
-                                        -- re-request every pass for any row still cold (see the
-                                        -- `elseif ent.id` branch in the retry loop). Another auction
-                                        -- AddOn's item-data loader does the same thing on a 0.4s ticker; we do it
-                                        -- on a LINK_RETRY_WAIT ticker. The mechanism claimed missing
-                                        -- is present in both places.
-                                        --
-                                        -- WHAT IS ACTUALLY KNOWN: on 2026-08-03 fifteen passes
-                                        -- resolved 10,165 rows and hit this cap; on 2026-08-04 four
-                                        -- passes resolved 5,285 and exited on QUIESCENCE with 10,609
-                                        -- outstanding. So the machinery demonstrably works and then
-                                        -- demonstrably stops, and the difference between the two runs
-                                        -- is unexplained. Candidates, all UNMEASURED: item-data
-                                        -- requests being throttled after a burst of ~16k; rows whose
-                                        -- itemID never calibrated, which are polled forever because
-                                        -- the re-request is gated on `ent.id`; and a quiescence break
-                                        -- that concludes the stream is dry after a SINGLE empty 3s
-                                        -- pass. The scan-end diagnostics added in v1.12.10 (id-less
-                                        -- row count, consecutive dry passes) exist to separate these.
-                                        --
-                                        -- Browse.lua is the default engine and has no deferred pile,
-                                        -- so this path is not on the critical path — but replicate is
-                                        -- KEPT as the fallback, and a fallback with an unexplained
-                                        -- data loss is not a fallback. Finish the measurement.
-                                        --
-                                        -- ⚠ This is a BAND-AID, not the fix. Browse.lua gets the
-                                        -- item level from the browse result's itemKey, so it has
-                                        -- no deferred pile, no budget and nothing to drop. Browse
-                                        -- has been the default since v1.12.12, so this constant
-                                        -- matters only on the fallback; do not tune it further.
+-- GEAR WAIT (rewritten 2026-11-26). Gear rows whose link was cold on the main drain wait
+-- here for their item data. The wait is judged by the GAME'S ANSWERS, not by our sweeps:
+-- ITEM_DATA_LOAD_RESULT / GET_ITEM_INFO_RECEIVED for an item still waited on restart the
+-- quiet clock. After ITEM_REASK_QUIET seconds with no answer every missing item is asked
+-- for again (deduped by itemID); only after ITEM_GIVEUP_QUIET seconds with no answer AT
+-- ALL is the rest abandoned. An item the game says cannot load leaves the pile at once.
+--
+-- WHY: the old loop swept every 3s and broke on the FIRST sweep that resolved nothing.
+-- Measured 2026-08-03: 6,139 of 16,304 gear rows abandoned at the 45s cap; 2026-08-04:
+-- 10,609 of 15,894 abandoned after 4 sweeps = 12s, on that single-empty-sweep break.
+-- An abandoned row records nothing, so the item keeps an old price AND an old age right
+-- after a scan. One quiet 3s window was the weakest of the three candidates the old
+-- notes listed; this design (another AddOn's, our own code) removes it. Whether it
+-- removes the LOSS is what the next real scan measures (`/ah diag` "gear wait:").
+local RETRY_TICK            = 1         -- seconds between sweeps of the pile (reads links only)
+local ITEM_REASK_QUIET      = 2         -- seconds with no item answer before re-asking the missing ones
+local ITEM_GIVEUP_QUIET     = 10        -- seconds with no item answer AND no row resolved before giving up
+local LINK_RETRY_BUDGET     = 300       -- hard cap (seconds) on the whole phase while answers keep
+                                        -- coming: a termination guarantee, not a tuning knob.
+                                        -- (45 -> 120 in v1.12.9 did not help; the cap was not the cause.)
 
 ----------------------------------------------------------------
 --  Throttled-message instrumentation (v1.12.6)
@@ -232,12 +183,18 @@ local co                    -- the active coroutine
 local driver               -- OnUpdate ticker frame
 local finder               -- OnUpdate ticker frame for /ah find, reused across calls
 local progress   = 0        -- 0..1
+local rowsTotal  = 0        -- auctions in the snapshot being read (for the bar's tooltip)
 local stallTimer            -- C_Timer handle watching for a lost ReplicateItems()
+local requestLost = false   -- the stall detector fired for the request now outstanding
 local fireTime              -- GetTime() at the moment ReplicateItems() was issued
 local finalizeResolved      -- live counters for the gear-residue retry phase;
 local finalizeTotal         -- nil outside the phase (backs FinalizeStatus())
 local noIDRows              -- deferred rows with no resolvable itemID (can never be re-requested)
-local dryPasses             -- consecutive retry passes that resolved NOTHING
+local gearWatch             -- the gear wait's item-answer record while it runs, nil otherwise:
+                            --   pending[id] = true  items still waited on
+                            --   arrived[id], failed[id]  the game's answers (failed = cannot load)
+                            --   lastAnswer  GetTime() of the newest answer for a pending item
+                            --   answers     how many such answers came
 local firstEventLogged      -- per-scan guard: trace only the FIRST event pulse, not every chunk
 local trace                 -- ALWAYS-ON diagnostic record of the current/most-recent scan
                             -- attempt chain (v1.9.5). The 2026-07-11 hang went dark because
@@ -265,6 +222,33 @@ local mainCommit            -- { kept, rows } once the phase-1 commit lands (set
                             -- AH_SCAN_FAILED) from a finalize-phase failure (main
                             -- results committed + scan floor running → report the
                             -- committed result; only late gear residue was lost).
+
+----------------------------------------------------------------
+--  Item answers for the gear wait (2026-11-26)
+--
+--  Registered only while the gear wait runs (WatchItemLoads / StopWatchingItemLoads),
+--  so ordinary play never pays for it. Each name pcall-registered: a client lacking one
+--  must not take the module down at load. Payload of both: itemID, success.
+----------------------------------------------------------------
+local ITEM_LOAD_EVENTS = { "ITEM_DATA_LOAD_RESULT", "GET_ITEM_INFO_RECEIVED" }
+local itemFrame = CreateFrame("Frame")
+itemFrame:SetScript("OnEvent", function(_, _, itemID, success)
+    local w = gearWatch
+    if not w or type(itemID) ~= "number" or not w.pending[itemID] then return end
+    w.lastAnswer = GetTime()
+    w.answers = w.answers + 1
+    if success == false then w.failed[itemID] = true else w.arrived[itemID] = true end
+end)
+
+local function WatchItemLoads(w)
+    gearWatch = w
+    for _, ev in ipairs(ITEM_LOAD_EVENTS) do pcall(itemFrame.RegisterEvent, itemFrame, ev) end
+end
+
+local function StopWatchingItemLoads()
+    gearWatch = nil
+    for _, ev in ipairs(ITEM_LOAD_EVENTS) do pcall(itemFrame.UnregisterEvent, itemFrame, ev) end
+end
 
 ----------------------------------------------------------------
 --  Scan lifecycle — why there is NO timeout (do not re-add one)
@@ -340,15 +324,26 @@ function AH.Replicate.IsScanning()
     return scanning
 end
 
+-- True from the moment the stall detector declares the request lost until data arrives, a
+-- new request goes out, or the AH closes. Read through AH.Scan.RequestLost by the button.
+function AH.Replicate.RequestLost()
+    return (scanning and not co and requestLost) and true or false
+end
+
 function AH.Replicate.Progress()
     return progress
+end
+
+-- How many auctions the snapshot being read holds (0 before the first data).
+function AH.Replicate.RowsTotal()
+    return rowsTotal
 end
 
 -- Live finalize-phase counters: (resolved, total) while the gear-residue retry
 -- phase runs, nil otherwise. Read by the ScanProgress label so the user sees
 -- real movement ("Finalizing gear… 2,980/14,682") instead of a static phase
 -- name. Deliberately NOT folded into Progress()'s 0..1: the residue total is
--- unknown until the main drain ends, and the phase can end early (quiescence /
+-- unknown until the main drain ends, and the phase can end early (no item answers /
 -- budget) — a merged percentage would stall or jump. Honest counts instead.
 function AH.Replicate.FinalizeStatus()
     if finalizeTotal then
@@ -595,12 +590,10 @@ local function ProcessAllRows()
                         else
                             local id = (type(rowItemID) == "number") and rowItemID or nil
                             deferred[#deferred + 1] = { row = i, id = id }
-                            -- ⚠ A deferred row with NO itemID can never be re-requested:
-                            -- the nudge in the retry loop is gated on `ent.id`. Such rows
-                            -- are polled forever and resolve only by luck. Counted so
-                            -- "the server stopped answering" can be told apart from
-                            -- "we never asked for these" — one of the three unmeasured
-                            -- candidates behind the early-quiescence exit.
+                            -- ⚠ A deferred row with NO itemID can never be re-requested
+                            -- and is never "waited on" by the item-answer clock; it resolves
+                            -- only if its link comes back during a sweep. Counted so the
+                            -- gear-wait report can tell "we never asked" from "no answer".
                             if not id then noIDRows = noIDRows + 1 end
                             if id and not requestedIDs[id]
                                and C_Item and C_Item.RequestLoadItemDataByID then
@@ -620,6 +613,7 @@ local function ProcessAllRows()
         if sliceCount >= ROWS_PER_SLICE
            or (debugprofilestop() - sliceStart) >= FRAME_BUDGET_MS then
             progress = (i + 1) / num
+            rowsTotal = num
             coroutine.yield()
             sliceStart = debugprofilestop()
             sliceCount = 0
@@ -684,86 +678,86 @@ local function ProcessAllRows()
     mainCommit = { kept = kept, rows = num }
 
     ----------------------------------------------------------------
-    --  RETRY PHASE — gear rows whose link was uncached on the main sweep.
+    --  GEAR WAIT — gear rows whose link was cold on the main sweep (2026-11-26).
     --
-    --  The main drain's link calls + RequestLoadItemDataByID queued background
-    --  record loads, which stream in at roughly ~1k records / 3s (measured
-    --  2026-07-02: 2,980 of 14,682 resolved across three 3s passes — fixed pass
-    --  counts are the wrong shape for a rate-limited stream). So: keep passing
-    --  WHILE passes make progress, re-requesting stragglers each pass, and stop
-    --  on quiescence (a pass in which not one row's link came back — the stream
-    --  is dry) or on the hard budget (scan must terminate). Resolved keys are
-    --  committed incrementally after each pass, so even an abort mid-phase keeps
-    --  them. NOTE: "resolves nothing" means nothing LEFT THE PILE, not nothing
-    --  was folded — see the two-counter comment in the pass loop below.
+    --  The main drain already asked for each item's data (RequestLoadItemDataByID,
+    --  beside `requestedIDs`). Here the pile is swept every RETRY_TICK for links that
+    --  came back, and the GAME'S ANSWERS decide when to stop (see the GEAR WAIT block at
+    --  the top of this file): re-ask after ITEM_REASK_QUIET quiet seconds, give up only
+    --  after ITEM_GIVEUP_QUIET seconds with no answer and no row resolved. Resolved keys
+    --  are committed after each sweep, so an abort mid-phase keeps them.
     ----------------------------------------------------------------
     local deferredTotal = #deferred
     local retryResolved = 0   -- rows whose link came back (NOT the fold count)
     local retryPasses   = 0
+    local endReason           -- "done" | "quiet" | "budget"
+    local unloadable    = 0   -- rows dropped because the game said their item cannot load
+    local answers, loadedNoLink = 0, 0
+    local phaseTime = 0
     if deferredTotal > 0 then
         -- Tell the progress UI we've entered the finalize phase (main results
         -- are already committed and usable; this is gear residue resolution).
         finalizeResolved, finalizeTotal = 0, deferredTotal
         AH.Events.Fire("AH_SCAN_FINALIZING", deferredTotal)
         local retryStart = GetTime()
-        while #deferred > 0
-              and (GetTime() - retryStart) < LINK_RETRY_BUDGET do
-            retryPasses = retryPasses + 1
-            local deadline = GetTime() + LINK_RETRY_WAIT
+        local watch = { pending = {}, arrived = {}, failed = {}, lastAnswer = retryStart, answers = 0 }
+        for d = 1, #deferred do
+            local id = deferred[d].id
+            if id then watch.pending[id] = true end
+        end
+        WatchItemLoads(watch)
+        local lastResolve, lastAsk = retryStart, retryStart
+        while true do
+            local deadline = GetTime() + RETRY_TICK
             while GetTime() < deadline do
                 coroutine.yield()
             end
+            retryPasses = retryPasses + 1
             local remaining   = {}
-            local lateTouched = {}   -- keys folded this pass -> recommit below
-            -- TWO counters, deliberately. A row leaves the pile the moment its
-            -- link resolves, but only a subset of resolved rows are FOLDED into
-            -- the aggregate (bid-only, zero count, unit 0 and nil-key rows are
-            -- legitimately skipped). The two quantities drive two different
-            -- decisions and one counter cannot serve both: passResolved gates
-            -- CommitKeys (calling it with an empty set is pointless), while
-            -- passTouched gates the quiescence break (a pass can drain rows
-            -- without folding any, and that is NOT a dry stream).
-            local passResolved = 0   -- rows folded into the aggregate this pass
-            local passTouched  = 0   -- rows that left the pile this pass
+            local lateTouched = {}   -- keys folded this sweep -> recommit below
+            -- TWO counters, deliberately: a row leaves the pile when its link resolves,
+            -- but only some resolved rows are FOLDED (bid-only, zero count, unit 0 and
+            -- nil-key rows are legitimately skipped). passResolved gates CommitKeys;
+            -- passTouched is progress for the quiet clock.
+            local passResolved = 0   -- rows folded into the aggregate this sweep
+            local passTouched  = 0   -- rows that left the pile this sweep
             sliceStart = debugprofilestop()
             sliceCount = 0
             for d = 1, #deferred do
                 local ent = deferred[d]
                 local resolved = false
-                pcall(function()
-                    local link = C_AuctionHouse.GetReplicateItemLink(ent.row)
-                    if link then
-                        resolved = true   -- link is back; row leaves the pile
-                        local _, _, count, _, _, _, _, _, _, buyoutPrice =
-                            C_AuctionHouse.GetReplicateItemInfo(ent.row)
-                        count = count or 1
-                        buyoutPrice = buyoutPrice or 0
-                        if buyoutPrice > 0 and count > 0 then
-                            local key = AH.DB.MakeKey(link)
-                            local unit = floor(buyoutPrice / count)
-                            if key and unit > 0 then
-                                Fold(key, unit, count)
-                                lateTouched[key] = true
-                                passResolved = passResolved + 1
+                if ent.id and watch.failed[ent.id] then
+                    -- The game said this item cannot load: no wait will bring its link.
+                    resolved = true
+                    unloadable = unloadable + 1
+                else
+                    pcall(function()
+                        local link = C_AuctionHouse.GetReplicateItemLink(ent.row)
+                        if link then
+                            resolved = true   -- link is back; row leaves the pile
+                            local _, _, count, _, _, _, _, _, _, buyoutPrice =
+                                C_AuctionHouse.GetReplicateItemInfo(ent.row)
+                            count = count or 1
+                            buyoutPrice = buyoutPrice or 0
+                            if buyoutPrice > 0 and count > 0 then
+                                local key = AH.DB.MakeKey(link)
+                                local unit = floor(buyoutPrice / count)
+                                if key and unit > 0 then
+                                    Fold(key, unit, count)
+                                    lateTouched[key] = true
+                                    passResolved = passResolved + 1
+                                end
                             end
                         end
-                    elseif ent.id and C_Item and C_Item.RequestLoadItemDataByID then
-                        -- Still cold — nudge the loader again for the next pass.
-                        pcall(C_Item.RequestLoadItemDataByID, ent.id)
-                    end
-                end)
+                    end)
+                end
                 if not resolved then
                     remaining[#remaining + 1] = ent
                 else
                     passTouched = passTouched + 1
-                    -- Live counter for the ScanProgress label. Counted here, on
-                    -- resolution, so the numerator measures the same population
-                    -- as the denominator (deferredTotal = rows deferred, not
-                    -- rows eligible to fold). Counting folds instead meant the
-                    -- label could never reach its own total even on a pass that
-                    -- fully drained the pile. The denominator is NOT the side to
-                    -- change: whether a row is bid-only is unknowable until its
-                    -- link resolves.
+                    -- Counted on leaving the pile, so the numerator measures the same
+                    -- population as the denominator (rows deferred): the label can reach
+                    -- its own total on a sweep that drains the pile.
                     finalizeResolved = (finalizeResolved or 0) + 1
                 end
                 sliceCount = sliceCount + 1
@@ -779,42 +773,68 @@ local function ProcessAllRows()
             if passResolved > 0 then
                 CommitKeys(lateTouched)   -- durable immediately, upsert-safe
             end
-            if passTouched == 0 then
-                -- Quiescent pass: not one row left the pile. Previously this tested the
-                -- FOLD count, which abandoned the remaining pile whenever a pass resolved
-                -- only skip-worthy rows — ordinary for a small bid-only tail, while the
-                -- stream was demonstrably still delivering.
-                --
-                -- ⚠ COUNTED, not acted on. Breaking here is still the behaviour; the
-                -- counter exists because ONE empty 3s window is thin evidence that
-                -- asynchronous item data has stopped arriving, and that is one of the
-                -- three unmeasured candidates for the 2026-08-04 early exit. If real
-                -- scans show the break firing at dryPasses == 1 while rows remain, the
-                -- fix is to require consecutive dry passes — but that is a change to make
-                -- ON EVIDENCE, after two wrong guesses, not before it.
-                dryPasses = (dryPasses or 0) + 1
+            -- Only items still in the pile count as waited on.
+            local stillPending = {}
+            for d = 1, #deferred do
+                local id = deferred[d].id
+                if id then stillPending[id] = true end
+            end
+            watch.pending = stillPending
+
+            local now = GetTime()
+            if passTouched > 0 then lastResolve = now end
+            local lastProgress = watch.lastAnswer > lastResolve and watch.lastAnswer or lastResolve
+            if #deferred == 0 then
+                endReason = "done"
                 break
-            else
-                dryPasses = 0
+            elseif now - lastProgress >= ITEM_GIVEUP_QUIET then
+                endReason = "quiet"
+                break
+            elseif now - retryStart >= LINK_RETRY_BUDGET then
+                endReason = "budget"
+                break
+            end
+            -- Quiet for ITEM_REASK_QUIET since the last answer, resolve or ask: ask again,
+            -- once per item. A re-ask does not restart the give-up clock; only an answer does.
+            local quietSince = lastAsk > lastProgress and lastAsk or lastProgress
+            if now - quietSince >= ITEM_REASK_QUIET and C_Item and C_Item.RequestLoadItemDataByID then
+                for id in pairs(stillPending) do
+                    pcall(C_Item.RequestLoadItemDataByID, id)
+                end
+                lastAsk = now
             end
         end
+        answers = watch.answers
+        for d = 1, #deferred do
+            local id = deferred[d].id
+            if id and watch.arrived[id] then loadedNoLink = loadedNoLink + 1 end
+        end
+        StopWatchingItemLoads()
+        phaseTime = GetTime() - retryStart
     end
 
-    -- Diagnostic tail: report WHY the retry phase ended, with the numbers that separate
-    -- the candidate causes. Always printed when rows were abandoned — an unexplained loss
-    -- that only shows under a debug flag is an unexplained loss nobody will ever explain.
-    if deferredTotal and deferredTotal > 0 and #deferred > 0 then
+    -- Always recorded for /ah diag "gear wait:", so the next scan answers whether the
+    -- loss is gone without anyone enabling debug first.
+    if trace then
+        trace.gear = {
+            deferred = deferredTotal, resolved = retryResolved, abandoned = #deferred,
+            ended = endReason, sweeps = retryPasses, seconds = phaseTime, answers = answers,
+            noID = noIDRows or 0, loadedNoLink = loadedNoLink, unloadable = unloadable,
+        }
+    end
+
+    -- Printed whenever rows were abandoned: an unexplained loss that only shows under a
+    -- debug flag is an unexplained loss nobody will ever explain.
+    if deferredTotal > 0 and #deferred > 0 then
         VUI.Print(AH.TAG, format(
-            "  " .. VUI.COL.RED .. "%d of %d gear rows abandoned.|r ended=%s  passes=%d  "
-            .. "no-itemID rows=%d (never re-requestable)",
+            "  " .. VUI.COL.RED .. "%d of %d gear rows abandoned.|r ended=%s  sweeps=%d  "
+            .. "item answers=%d  loaded but no link=%d  no-itemID rows=%d",
             #deferred, deferredTotal,
-            ((dryPasses or 0) > 0) and "quiescence (a pass resolved nothing)"
-                or "budget exhausted",
-            retryPasses or 0, noIDRows or 0))
-        VUI.Print(AH.TAG, "  Those rows updated neither price nor age. "
-            .. VUI.COL.YELLOW .. "/ah engine browse|r has no deferred pile.")
+            endReason == "quiet" and ("no item answer for " .. ITEM_GIVEUP_QUIET .. "s")
+                or "time cap",
+            retryPasses, answers, loadedNoLink, noIDRows or 0))
+        VUI.Print(AH.TAG, "  Those rows updated neither price nor age.")
     end
-
     finalizeResolved, finalizeTotal = nil, nil   -- phase over; FinalizeStatus() goes dark
 
     if VUI.debug then
@@ -844,6 +864,7 @@ local function EnsureDriver()
             co = nil
             driver:Hide()
             finalizeResolved, finalizeTotal = nil, nil
+            StopWatchingItemLoads()
             if mainCommit then
                 -- The error hit AFTER the phase-1 commit (gear-residue
                 -- finalize path): the main scan is durable and the 15-min
@@ -976,25 +997,26 @@ local function ArmStallDetector()
         -- Only report if: AH still open, scan flag still set, but the coroutine
         -- never started. co ~= nil means data arrived and we're processing.
         if not AH.isOpen or not scanning or co then return end
+        -- From here the button offers "Retry Scan" (AH.Scan.RequestLost).
+        requestLost = true
         -- Says only what is known. It does NOT quote a cooldown (v1.12.6 did, and the
         -- attempt-stamp behind it was reverted in v1.12.7 — see DoFire), and it does
         -- NOT prescribe a recovery: reopening and /reload are both confirmed useless,
         -- and no client-side signal distinguishes this from a slow-but-coming scan.
         VUI.Print(AH.TAG, format(
             VUI.COL.RED .. "No response after %ds — the request was lost.|r "
-            .. "You can press " .. VUI.COL.YELLOW .. "Scan|r again. Reopening the Auction House "
+            .. "You can press " .. VUI.COL.YELLOW .. "Retry Scan|r. Reopening the Auction House "
             .. "makes no difference, and neither does /reload.", REPLICATE_STALL_TIMEOUT))
     end)
 end
 
 local function DoFire()
     scanning = true          -- set ONLY here, at the real fire moment
+    requestLost = false      -- a new request is outstanding; the button greys out again
     fireTime = GetTime()     -- stamp for first-event / total-scan latency measurement
     firstEventLogged = false -- re-arm the one-line-per-scan trace for this attempt
-    -- Retry-phase diagnostics, reset per attempt. Initialised to 0 rather than left nil
-    -- because both are incremented, not assigned, at their use sites.
+    -- Gear-wait diagnostics, reset per attempt (incremented, not assigned, at the use site).
     noIDRows  = 0
-    dryPasses = 0
     mainCommit = nil         -- no durable commit yet for THIS attempt
     -- Trace chain continuity: a manual Retry click on a still-hung request
     -- (outcome "requesting" — no data ever arrived) CONTINUES the existing
@@ -1108,6 +1130,7 @@ function AH.Replicate.Start()
     end
 
     progress = 0
+    rowsTotal = 0
     AH.Events.Fire("AH_SCAN_START")
     DoFire()
     return true
@@ -1228,6 +1251,7 @@ AH.Events.On("AH_CLOSED", function()
         if driver then driver:Hide() end
         progress = 0
         finalizeResolved, finalizeTotal = nil, nil
+        StopWatchingItemLoads()
         mainCommit = nil
         CancelStallDetector()
         if trace and (trace.outcome == "requesting" or trace.outcome == "processing") then
