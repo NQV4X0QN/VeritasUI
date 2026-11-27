@@ -479,6 +479,19 @@ local function ProcessAllRows()
         end
     end
 
+    -- Gear listings for the Upgrades list (UI/Upgrades.lua, 2026-11-26): the cheapest auction of each piece of
+    -- gear, by item and NAME -- a random suffix ("of the Bear") is in the name and carries different stats, which
+    -- the price key (itemID:item level) folds together. Gear keys are the "i:<id>:<ilvl>" ones (MakeKey).
+    local gear = {}
+    local function NoteGear(key, link, unit)
+        local id = key:match("^i:(%d+):%d+$")
+        if not id then return end
+        local gk = id .. "|" .. (link:match("|h%[(.-)%]|h") or "")
+        local g = gear[gk]
+        if not g or unit < g.p then gear[gk] = { l = link, p = unit } end
+    end
+
+
     -- Cold-cache row coverage (2026-07-02): ~144k of ~270k rows have nil links at
     -- scan time and were historically skipped — over half the AH unpriced.
     --
@@ -572,7 +585,7 @@ local function ProcessAllRows()
                             end
                         end) end
                         local key = AH.DB.MakeKey(link)
-                        if key then Fold(key, unit, count) end
+                        if key then Fold(key, unit, count); NoteGear(key, link, unit) end
                     else
                         -- COLD-CACHE ROW (~half the snapshot, diagnosed 2026-07-02).
                         -- If calibration found the itemID slot, non-gear rows are
@@ -744,6 +757,7 @@ local function ProcessAllRows()
                                 local unit = floor(buyoutPrice / count)
                                 if key and unit > 0 then
                                     Fold(key, unit, count)
+                                    NoteGear(key, link, unit)
                                     lateTouched[key] = true
                                     passResolved = passResolved + 1
                                 end
@@ -844,6 +858,9 @@ local function ProcessAllRows()
             num, tostring(itemIDPos), nilLinkKeyed,
             retryResolved, deferredTotal, retryPasses, #deferred))
     end
+
+    -- Kept for the Upgrades list; replaced whole by each completed scan.
+    if AH.db then AH.db.gearListings, AH.db.gearListingsAt = gear, time() end
 
     return kept, num
 end

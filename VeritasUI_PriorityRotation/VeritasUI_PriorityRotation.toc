@@ -1,9 +1,11 @@
 ## Interface: 120105, 16001
 ## Title: VeritasUI — Priority Rotation
 ## Notes: One-button rotation: step through a spell list you build, per specialization. |cFF808080by NQV4X0QN|r
-## Version: 1.90.2
+## Version: 1.91.0
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
+## Group: VeritasUI_Lib
+## IconTexture: Interface\AddOns\VeritasUI_Lib\Media\VeritasUI
 ## SavedVariables: VeritasUI_PriorityRotationDB
 ## AddonCompartmentFunc: VeritasUI_PriorityRotation_OnAddonCompartmentClick
 

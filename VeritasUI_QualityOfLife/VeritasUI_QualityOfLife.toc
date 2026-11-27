@@ -1,9 +1,11 @@
 ## Interface: 120105, 16001
 ## Title: VeritasUI — Quality of Life
 ## Notes: Item levels, auto-repair and junk selling, /way waypoints, AFK screen and Delve helpers. |cFF808080by NQV4X0QN|r
-## Version: 1.90.2
+## Version: 1.91.0
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
+## Group: VeritasUI_Lib
+## IconTexture: Interface\AddOns\VeritasUI_Lib\Media\VeritasUI
 ## OptionalDeps: Blizzard_WorldMap
 ## SavedVariables: VeritasUI_QualityOfLifeDB
 ## SavedVariablesPerCharacter: VeritasUI_QualityOfLifeChatDB

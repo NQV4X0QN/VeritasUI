@@ -1,10 +1,13 @@
 ## Interface: 120105, 16001
-## Title: VeritasUI Library
+## Title: VeritasUI
 ## Notes: Shared core for the VeritasUI suite, required by every module. |cFF808080Must load first.|r
-## Version: 1.90.2
+## Version: 1.91.0
 ## Author: NQV4X0QN
+## IconTexture: Interface\AddOns\VeritasUI_Lib\Media\VeritasUI
 ## SavedVariables: VeritasUI_LibDB
 
 Lib.lua
 SettingsCoverDropdown.lua
+GearWeights.lua
+GearScore.lua
 Conflicts.lua

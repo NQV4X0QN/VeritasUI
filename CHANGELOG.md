@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.91.0] - 2026-11-27
+
+On WoW Forever, the Auction House can now list the gear for sale that would be an upgrade for you.
+
+### Added
+
+- Auction House — **Upgrades** (WoW Forever): a button on the Buy tab lists the gear from your last scan that beats what you're wearing, with its slot, how much better it is, its price and the gain for each gold. Sort by any column, click a piece to open it in the buy screen, and Back returns you to the list. The Filter button beside it sets a maximum price, a minimum gain and Best Armor Type Only, which is on by default
+
+### Changed
+
+- Quality of Life — **Auto Equip Upgrades scores your gear** (WoW Forever): each piece is scored by what its stats are worth to your class at your level, instead of by item level. Pick how you play each character with the new Playstyle option under it, such as Protection or Fury. /qol equipcheck shows the scores
+
+### Removed
+
+- Quality of Life — **Auto Equip Upgrades on Retail.** Its options no longer appear there
+
+### Other
+
+- Smaller fixes and interface improvements
+
+
 ## [1.90.2] - 2026-11-26
 
 ### Changed

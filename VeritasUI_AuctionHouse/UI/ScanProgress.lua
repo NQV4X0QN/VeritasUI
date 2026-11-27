@@ -436,7 +436,16 @@ local function ShowTip(owner)
         if GameTooltip:IsOwned(owner) then GameTooltip:Hide() end
         return
     end
-    GameTooltip:SetOwner(owner, "ANCHOR_TOP")
+    -- Opens up and to the right from the Scan button's top-right corner, the way Blizzard's tooltips open from
+    -- the corner of what they describe (owner, 2026-11-26: centred over the bar it covered the button's edge).
+    local scanBtn = _G.VUIAHScanButton
+    if scanBtn and scanBtn.IsShown and scanBtn:IsShown() then
+        GameTooltip:SetOwner(owner, "ANCHOR_NONE")
+        GameTooltip:ClearAllPoints()
+        GameTooltip:SetPoint("BOTTOMLEFT", scanBtn, "TOPRIGHT", 0, 0)
+    else
+        GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    end
     GameTooltip_SetTitle(GameTooltip, lines[1])
     for i = 2, #lines do GameTooltip_AddNormalLine(GameTooltip, lines[i], true) end
     GameTooltip:Show()

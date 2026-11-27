@@ -2,6 +2,11 @@
 -- Auto Equip Upgrades (owner's request, 2026-11-04, WoW Forever: grey leather in the bags beat the starter cloth).
 -- Kept out of QualityOfLife.lua, whose main chunk is near Lua's 200-locals limit.
 --
+-- WoW FOREVER ONLY (owner, 2026-11-26). The decision is a score from stat weights that exist for Forever alone
+-- (WoWSims); Retail's item-level rules were removed with the owner's "I don't want us using that system anymore",
+-- and Auto Equip is off and its options hidden on Retail until it has its own weights (open-work: PARKED Retail
+-- stat weights). The fishing pole below is not part of Auto Equip and is untouched.
+--
 -- Off until turned on (Quality of Life > Character and Gear). Then, out of combat, whenever your bags change and at
 -- login, the first upgrade found is equipped and named in chat; the next one follows on the next bag update. Which
 -- qualities count is one checkbox each: Poor and Common on, Uncommon, Rare, Epic, Legendary off (owner's spec).
@@ -16,21 +21,9 @@
 --     requirement -- armor or weapon type your class can't use (right side), a level above yours -- in red. An
 --     unreadable tooltip waits for the next bag update;
 --   * would not bind on equip (an unbound Bind on Equip item asks you to confirm; that stays your call);
---   * a main stat that is wrong for you (Strength / Agility / Intellect, C_Item.GetItemStats) only stops it when
---     what you wear has YOUR main stat and the new item is less than 5 item levels or 25% above it (whichever is
---     more); against gear with none (or an empty slot), or past that gap, the wrong stat counts for nothing and the
---     rest decides (v1.77.2, owner). Retail: the spec's
---     primaryStat (GetSpecializationInfo, 1 Strength, 2 Agility, 4 Intellect). WoW Forever has one "spec" per
---     class and it reported Intellect for the owner's Hunter (probe, 2026-11-04), so there the class decides:
---     Hunter and Rogue Agility, Warrior Strength, Mage, Priest and Warlock Intellect; hybrid classes get no check.
---     An item with no main stat (most greys) passes;
---   * better than what is worn: an empty slot; or stats first -- at least as much of every stat and more of one
---     wins, and the reverse never replaces, whatever the item levels (StatEdge); otherwise, for armor, a heavier
---     armor type at the same or higher item level, or the same type at a higher item level (never a lighter type);
---     for anything else, a higher item level. At equal item level, better quality wins, then more armor; the same
---     item never replaces itself.
---     Rings go to an empty ring slot, else replace the lower one. Weapons only replace a worn weapon of the same
---     kind (two-hander for two-hander, ranged for ranged), so a weapon and off-hand pair is never broken up.
+--   * better than what is worn: an empty slot, or a higher score (see Scores below), never a lighter armor type.
+--     Rings go to an empty ring slot, else replace the lower-scoring one. Weapons only replace a worn weapon of the
+--     same kind (two-hander for two-hander, ranged for ranged), so a weapon and off-hand pair is never broken up.
 
 local VUI = _G.VeritasUI
 if not VUI then return end
@@ -58,8 +51,6 @@ VUI.QoL_AutoEquipQualityKeys = {
     [3] = "autoEquipRare", [4] = "autoEquipEpic", [5] = "autoEquipLegendary",
 }
 
-local MAIN_STATS = { [1] = "ITEM_MOD_STRENGTH_SHORT", [2] = "ITEM_MOD_AGILITY_SHORT", [4] = "ITEM_MOD_INTELLECT_SHORT" }
-local FOREVER_CLASS_STAT = { HUNTER = 2, ROGUE = 2, WARRIOR = 1, MAGE = 4, PRIEST = 4, WARLOCK = 4 }
 
 local function QualityAllowed(q)
     local db = DB()
@@ -132,60 +123,9 @@ local function WornLink(slot)
     return ok and link or nil
 end
 
-local function WornQuality(slot)
-    local ok, q = pcall(GetInventoryItemQuality, "player", slot)
-    return ok and type(q) == "number" and not Secret(q) and q or nil
-end
-
--- Equal item level (owner, 2026-11-05: a white belt with 19 armor stayed in the bags behind a grey one with 18,
--- both item level 5): better quality wins, then more armor. Returns true or false and the reason.
-local function TieBreak(bag, slot, info, wornSlot, ilvl)
-    local wq = WornQuality(wornSlot)
-    if wq and type(info.quality) == "number" then
-        local q = info.quality
-        if q > wq then return true, format("item level %d, better quality (%d over %d)", ilvl, q, wq) end
-        if q < wq then return false, format("item level %d, lower quality (%d under %d)", ilvl, q, wq) end
-    end
-    local mine, src1 = ArmorValue(info.hyperlink, "GetBagItem", bag, slot)
-    local theirs, src2 = ArmorValue(WornLink(wornSlot), "GetInventoryItem", "player", wornSlot)
-    local how = format("armor %s vs %s, from %s/%s", tostring(mine), tostring(theirs), tostring(src1), tostring(src2))
-    if mine and theirs and mine > theirs then return true, format("item level %d, more armor (%s)", ilvl, how) end
-    return false, format("item level %d is not over %d (%s)", ilvl, ilvl, how)
-end
-
-local function SpecMainStat()
-    if VUI.IS_FOREVER then
-        local okC, _, classFile = pcall(UnitClass, "player")
-        return okC and FOREVER_CLASS_STAT[classFile] or nil
-    end
-    local okI, idx = pcall(C_SpecializationInfo.GetSpecialization)
-    if not okI or not idx then return nil end
-    local ok, _, _, _, _, _, stat = pcall(C_SpecializationInfo.GetSpecializationInfo, idx)
-    return ok and MAIN_STATS[stat] and stat or nil
-end
-
--- nil if there is nothing to check (no main stat known for you, or none on the item), else true when one of the
--- item's main stats is yours.
-local function MainStatFits(link, specStat)
-    if not specStat then return nil end
-    local ok, stats = pcall(C_Item.GetItemStats, link)
-    if not ok or type(stats) ~= "table" then return nil end
-    local any, fits = false, false
-    for stat, key in pairs(MAIN_STATS) do
-        if stats[key] then any = true; if stat == specStat then fits = true end end
-    end
-    if not any then return nil end
-    return fits
-end
-
--- Stats decide before item level when one item is at least as good in EVERY stat and better in one (owner,
--- 2026-11-05, WoW Forever: Hunter's Simple Cloak, item level 8, 8 Armor +1 Stamina, kept being swapped back to a
--- Handstitched Leather Cloak, item level 9, 8 Armor and nothing else). Every stat C_Item.GetItemStats reports
--- (armor is RESISTANCE0_NAME; weapon DPS, sockets and the rest count too), except a main stat that is not yours.
--- Returns 1 when `a` is better, -1 when `b` is, nil for equal stats, a trade-off (each better somewhere) or stats
--- that cannot be read -- those fall back to item level -- and a description for `/qol equipcheck`.
--- Armor comes from ArmorValue (the stats, else the tooltip's "N Armor" line: which one WoW Forever fills is
--- unmeasured), so an item whose armor only the tooltip shows is never beaten by a stat it lacks.
+-- The stats of an item, for its score: every stat C_Item.GetItemStats reports (armor is RESISTANCE0_NAME), nil when
+-- they cannot be read. Armor comes from ArmorValue (the stats, else the tooltip's "N Armor" line: which one WoW
+-- Forever fills is unmeasured), so an item whose armor only the tooltip shows is never scored without it.
 -- tip = { tooltip function name, arg1, arg2 } for that fallback.
 local function StatsOf(link, tip)
     if not link then return nil end
@@ -198,30 +138,6 @@ local function StatsOf(link, tip)
     end
     if copy.RESISTANCE0_NAME == nil and tip then copy.RESISTANCE0_NAME = ArmorValue(link, tip[1], tip[2], tip[3]) end
     return copy
-end
-local function StatEdge(a, b, specStat, tipA, tipB)
-    local sa, sb = StatsOf(a, tipA), StatsOf(b, tipB)
-    if not (sa and sb) then return nil, "stats unreadable" end
-    local skip = {}
-    if specStat then
-        for stat, key in pairs(MAIN_STATS) do if stat ~= specStat then skip[key] = true end end
-    end
-    local aBetter, bBetter = {}, {}
-    local function Walk(from, other, into)
-        for key, v in pairs(from) do
-            if not skip[key] and v > (other[key] or 0) then
-                local name = tostring(_G[key] or key)
-                into[#into + 1] = format("%s %s vs %s", name, tostring(v), tostring(other[key] or 0))
-            end
-        end
-    end
-    Walk(sa, sb, aBetter)
-    Walk(sb, sa, bBetter)
-    table.sort(aBetter); table.sort(bBetter)
-    if #aBetter > 0 and #bBetter == 0 then return 1, "more " .. table.concat(aBetter, ", ") end
-    if #bBetter > 0 and #aBetter == 0 then return -1, "less " .. table.concat(bBetter, ", ") end
-    if #aBetter > 0 then return nil, "stats trade off" end
-    return nil, "same stats"
 end
 
 -- Profession tools are never put on, and any real weapon of the same kind replaces one you wear (owner, 2026-11-04:
@@ -242,36 +158,63 @@ local function ArmorType(link, equipLoc)
     return nil
 end
 
+-- ── Scores (WoW Forever, 2026-11-26) ─────────────────────────
+-- The score ALONE decides (VeritasUI_Lib GearScore.lua: WoWSims stat weights for your class and playstyle, scaled
+-- to your level): the higher score wins, by at least SCORE_MARGIN so two near-equal pieces cannot swap back and
+-- forth as your damage changes. Nothing falls back to item level (owner, 2026-11-26: the old item-level rules were
+-- removed): stats that cannot be read yet wait for the next bag update, and two pieces with nothing your playstyle
+-- scores leave the worn one on.
+local SCORE_MARGIN = 0.01
+local HAND = { [16] = "mh", [17] = "oh", [18] = "ranged" }
+
+local function Weights()
+    if not (VUI.IS_FOREVER and VUI.GearScore and VUI.GearScore.Current) then return nil end
+    local ok, w = pcall(VUI.GearScore.Current)
+    return ok and w or nil
+end
+
+local function ScoreOf(link, tip, hand, W)
+    local st = StatsOf(link, tip)
+    if not st then return nil end
+    return VUI.GearScore.Score(st, hand, W)
+end
+
+-- true/false + reason. A score that cannot be read is false ("not readable yet": the next bag update tries again).
+local function ScoreDecides(newScore, oldScore)
+    if not (newScore and oldScore) then return false, "stats not readable yet" end
+    if newScore == 0 and oldScore == 0 then return false, "nothing your playstyle scores on either" end
+    local gain = oldScore > 0 and math.floor((newScore / oldScore - 1) * 100 + 0.5) or nil
+    local how = format("score %.1f vs %.1f%s", newScore, oldScore, gain and format(" (%+d%%)", gain) or "")
+    if newScore > oldScore * (1 + SCORE_MARGIN) + 1e-6 then return true, how end
+    return false, how
+end
+VUI.QoL_AutoEquipScoreDecides = ScoreDecides   -- headless suite seam
+
 -- The decision for one bag item: target slot (or nil) and the reason, for the probe.
-local function Decide(bag, slot, info, specStat)
+-- probe (/qol equipcheck only): a quality that is not ticked or a bind-on-equip piece is still compared, so its
+-- score can be read; the rule that stops it is named first and the piece is never reported as equippable.
+local probeStop
+local function DecideInner(bag, slot, info, W, probe)
     local link = info.hyperlink
     if not link then return nil, nil end
     local okE, equippable = pcall(C_Item.IsEquippableItem, link)
     if not (okE and equippable) then return nil, nil end   -- not gear: not listed at all
-    if not QualityAllowed(info.quality) then return nil, "quality " .. tostring(info.quality) .. " not chosen" end
+    if not QualityAllowed(info.quality) then
+        local why = "quality " .. tostring(info.quality) .. " not chosen"
+        if not probe then return nil, why end
+        probeStop = why
+    end
     local equipLoc, classID, subclassID = Info(link)
     if IsTool(classID, subclassID) then return nil, "profession tool" end
     local red, readable = RedLines(bag, slot)
     if not readable then return nil, "tooltip not readable yet" end
     if red and #red > 0 then return nil, "can't use: " .. table.concat(red, "; ") end
     local okB, bindType = pcall(function() return select(14, C_Item.GetItemInfo(link)) end)
-    if okB and bindType == 2 and not info.isBound then return nil, "binds when equipped" end
-    local fits = MainStatFits(link, specStat)
-    local ilvl = ItemLevel(link)
-    -- A main stat that is not yours only stops the swap when what you wear carries YOUR main stat (owner,
-    -- 2026-11-07, WoW Forever: Empyrean Treads, item level 15, 48 Armor +3 Intellect, stayed in the bags of a
-    -- Hunter wearing Handstitched Leather Boots, item level 8, 31 Armor and no stat). Otherwise the wrong stat is
-    -- worth nothing to you either way and the rest of the comparison decides (StatEdge already ignores it).
-    -- Even then, an item far enough above the worn one goes to the comparison too (owner: +3 Agility at item level
-    -- 15 should not beat item level 32): at least 5 item levels or 25% higher, whichever is more.
-    local function KeepsYours(worn)
-        if not (fits == false and worn ~= nil and MainStatFits(worn, specStat) == true) then return false end
-        local wl = ItemLevel(worn)
-        local need = wl + math.max(5, math.ceil(wl * 0.25))
-        if ilvl >= need then return false end
-        return true, format("main stat is not yours and what you wear has yours: item level %d is under the %d needed",
-            ilvl, need)
+    if okB and bindType == 2 and not info.isBound then
+        if not probe then return nil, "binds when equipped" end
+        probeStop = probeStop and (probeStop .. ", binds when equipped") or "binds when equipped"
     end
+    if not W then return nil, "no stat weights for your class" end
     local bagTip = { "GetBagItem", bag, slot }
     if WEAPONS[equipLoc] then
         for _, s in ipairs(WEAPON_SLOTS) do
@@ -282,52 +225,46 @@ local function Decide(bag, slot, info, specStat)
                 -- Priority Rotation puts the weapons back on the next rotation press (its Reequip.lua).
                 if wClass == 2 and wSub == 20 then return nil, "weapon: you are fishing" end
                 if IsTool(wClass, wSub) then return s, "weapon: replaces a profession tool" end
-                local keeps, why = KeepsYours(worn)
-                if keeps then return nil, "weapon: " .. why end
-                local edge, how = StatEdge(link, worn, specStat, bagTip, { "GetInventoryItem", "player", s })
-                if edge == 1 then return s, "weapon: " .. how end
-                if edge == -1 then return nil, "weapon: " .. how end
-                local wl = ItemLevel(worn)
-                if ilvl > wl then return s, format("weapon: item level %d over %d", ilvl, wl) end
-                return nil, format("weapon: item level %d is not over %d", ilvl, wl)
+                local hand = HAND[s]
+                local better, how = ScoreDecides(ScoreOf(link, bagTip, hand, W),
+                    ScoreOf(worn, { "GetInventoryItem", "player", s }, hand, W))
+                return better and s or nil, "weapon: " .. how
             end
         end
         return nil, "weapon: no worn weapon of the same kind"
     end
     local slots = SLOTS[equipLoc]
     if not slots then return nil, "slot left alone (" .. tostring(equipLoc) .. ")" end
-    local best, bestReason, lowestSlot, lowest
     for _, s in ipairs(slots) do
-        local worn = WornLink(s)
-        if not worn then return s, "empty slot" end
-        local wl = ItemLevel(worn)
-        if not lowest or wl < lowest then lowest, lowestSlot = wl, s end
+        if not WornLink(s) then return s, "empty slot" end
+    end
+    -- Two rings compare against the lower-scoring one.
+    local wornScores, low, lowestSlot = {}, nil, nil
+    for _, s in ipairs(slots) do
+        local sc = ScoreOf(WornLink(s), { "GetInventoryItem", "player", s }, nil, W)
+        if not sc then return nil, "stats not readable yet" end
+        wornScores[s] = sc
+        if not low or sc < low then low, lowestSlot = sc, s end
     end
     local worn = WornLink(lowestSlot)
-    local keeps, keepWhy = KeepsYours(worn)
-    if keeps then return nil, keepWhy end
-    local mine, theirs = ArmorType(link, equipLoc), ArmorType(worn, equipLoc)
-    local edge, how = nil, nil
-    if worn ~= link then
-        edge, how = StatEdge(link, worn, specStat, bagTip, { "GetInventoryItem", "player", lowestSlot })
+    local mineT, theirsT = ArmorType(link, equipLoc), ArmorType(worn, equipLoc)
+    if mineT and theirsT and mineT < theirsT then return nil, "lighter armor than what you wear" end
+    if worn == link then return nil, "same item" end
+    local better, how = ScoreDecides(ScoreOf(link, bagTip, nil, W), wornScores[lowestSlot])
+    return better and lowestSlot or nil, how
+end
+
+local function Decide(bag, slot, info, W, probe)
+    probeStop = nil
+    local target, reason = DecideInner(bag, slot, info, W, probe)
+    if probeStop then
+        local stop = probeStop
+        probeStop = nil
+        if reason == nil and target == nil then return nil, stop end
+        return nil, format("%s; otherwise %s%s", stop,
+            target and ("it would go in slot " .. target .. " -- ") or "", tostring(reason))
     end
-    if mine and theirs and mine < theirs then
-        return nil, "lighter armor than what you wear"
-    elseif edge == 1 then
-        best, bestReason = lowestSlot, how
-    elseif edge == -1 then
-        bestReason = how
-    elseif mine and theirs and mine > theirs and ilvl >= lowest then
-        best, bestReason = lowestSlot, format("heavier armor, item level %d vs %d", ilvl, lowest)
-    elseif ilvl > lowest then
-        best, bestReason = lowestSlot, format("item level %d over %d", ilvl, lowest)
-    elseif ilvl == lowest and worn ~= link then
-        local better, why = TieBreak(bag, slot, info, lowestSlot, ilvl)
-        best, bestReason = better and lowestSlot or nil, why
-    else
-        bestReason = format("item level %d is not over %d", ilvl, lowest)
-    end
-    return best, bestReason
+    return target, reason
 end
 
 -- Every bag (backpack and the four bag slots; not the reagent bag), item by item.
@@ -342,17 +279,37 @@ local function ForEachBagItem(fn)
 end
 
 VUI.QoL_EquipCheck = function()
-    local specStat = SpecMainStat()
-    VUI.Print("Quality of Life", format("Equip check (nothing is equipped). Main stat: %s; in combat: %s",
-        tostring(specStat and MAIN_STATS[specStat] or "any"), tostring(InCombatLockdown() and true or false)))
+    if not VUI.IS_FOREVER then
+        VUI.Print("Quality of Life", "Auto Equip is WoW Forever only for now.")
+        return
+    end
+    local W = Weights()
+    VUI.Print("Quality of Life", format("Equip check (nothing is equipped). In combat: %s",
+        tostring(InCombatLockdown() and true or false)))
+    if not W then
+        VUI.Print("Quality of Life", "  No stat weights for your class: nothing would be equipped.")
+    else
+        VUI.Print("Quality of Life", format("  Scoring for %s, level %d (percent stats x%.2f, avoidance x%.2f).",
+            W.profile.name, W.level, W.s or 1, W.h or 1))
+    end
     local n = 0
     ForEachBagItem(function(bag, slot, info)
-        local target, reason = Decide(bag, slot, info, specStat)
+        local target, reason = Decide(bag, slot, info, W, true)
         if reason or target then
             n = n + 1
-            VUI.Print("Quality of Life", format("  %s (q%s, ilvl %d): %s%s", tostring(info.hyperlink),
+            local unscored = ""
+            if W and info.hyperlink then
+                local _, un = VUI.GearScore.ScoreLink(info.hyperlink, nil, W)
+                if un then
+                    local names = {}
+                    for k in pairs(un) do names[#names + 1] = tostring(_G[k] or k) end
+                    table.sort(names)
+                    unscored = "; not scored: " .. table.concat(names, ", ")
+                end
+            end
+            VUI.Print("Quality of Life", format("  %s (q%s, ilvl %d): %s%s%s", tostring(info.hyperlink),
                 tostring(info.quality), info.hyperlink and ItemLevel(info.hyperlink) or 0,
-                target and ("WOULD EQUIP in slot " .. target .. " -- ") or "skip -- ", tostring(reason)))
+                target and ("WOULD EQUIP in slot " .. target .. " -- ") or "skip -- ", tostring(reason), unscored))
         end
     end)
     if n == 0 then VUI.Print("Quality of Life", "  no gear in your bags") end
@@ -365,7 +322,11 @@ end
 -- is on the cursor (you are moving an item yourself). An item tried in the last 5 s is not tried again, so a swap
 -- the game refuses cannot loop.
 local pending, tried = false, {}
-local function On() local db = DB(); return type(db) == "table" and db.autoEquip == true end
+-- Retail: off whatever the saved setting says (WoW Forever only, see the header).
+local function On()
+    local db = DB()
+    return VUI.IS_FOREVER and type(db) == "table" and db.autoEquip == true
+end
 
 local function Run()
     if not On() then pending = false; return end
@@ -375,10 +336,11 @@ local function Run()
     if okD and dead then return end
     local okC, cursor = pcall(GetCursorInfo)
     if okC and cursor then return end
-    local specStat, now, done = SpecMainStat(), GetTime(), false
+    local now, done = GetTime(), false
+    local W = Weights()
     ForEachBagItem(function(bag, slot, info)
         if done then return end
-        local target = Decide(bag, slot, info, specStat)
+        local target = Decide(bag, slot, info, W)
         local link = info.hyperlink
         if not target or (tried[link] and now - tried[link] < 5) then return end
         tried[link] = now

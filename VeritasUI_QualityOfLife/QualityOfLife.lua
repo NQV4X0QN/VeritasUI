@@ -275,6 +275,10 @@ local PERCHAR = {
     -- waypoint VeritasUI is watching for arrival ({ m = uiMapID, x, y }; false = none). The game keeps the waypoint
     -- through a /reload while our watch was lost, so it never cleared. Per-character: the waypoint is.
     wayWatch       = false,
+
+    -- A genuine per-character CHOICE (2026-11-26): the playstyle Auto Equip scores gear for (VeritasUI_Lib
+    -- GearScore.lua). Two characters of one class can play differently. "" = the class's first playstyle.
+    gearProfile    = "",
 }
 
 
@@ -4917,29 +4921,50 @@ local function InitializeOptions()
         .. "that has it.")
 
     -- AutoEquip.lua (v1.67.0, owner's request): one checkbox to turn it on, then one per quality under it.
-    local equipInit = AddCheckbox("autoEquip", "Auto Equip Upgrades",
-        "Puts on gear from your bags that beats what you're wearing in that slot, or fills an empty slot. "
-        .. "Stats come first: a piece with at least as much of every stat and more of one wins, and one with less "
-        .. "never replaces, whatever the item level. Otherwise a higher item level wins, or heavier armor your class "
-        .. "can wear at the same item level, never a lighter armor type. Only gear you can use, never gear that "
-        .. "would bind when equipped. A piece with the wrong main stat for you replaces gear with your main stat only "
-        .. "when it is at least 5 item levels or 25% higher, whichever is more. Trinkets are left alone, and weapons "
-        .. "only replace one of the same kind. Not in combat. Each swap is named in chat. Choose which qualities "
-        .. "count below.",
-        function(value) if value and VUI.QoL_AutoEquipRun then VUI.QoL_AutoEquipRun() end end)
-    local QUALITY_ROWS = {
-        { "autoEquipPoor",      "Poor (Grey)" },
-        { "autoEquipCommon",    "Common (White)" },
-        { "autoEquipUncommon",  "Uncommon (Green)" },
-        { "autoEquipRare",      "Rare (Blue)" },
-        { "autoEquipEpic",      "Epic (Purple)" },
-        { "autoEquipLegendary", "Legendary (Orange)" },
-    }
-    for _, q in ipairs(QUALITY_ROWS) do
-        local init = AddCheckbox(q[1], q[2], q[2] .. " gear counts as an upgrade.",
+    -- WoW Forever only (owner, 2026-11-26): pieces are compared by score (VeritasUI_Lib GearScore.lua), for the
+    -- playstyle below; on Retail the options are not shown until it has its own stat weights.
+    if VUI.IS_FOREVER then
+        local equipTip = "Puts on gear from your bags that beats what you're wearing in that slot, or fills an "
+            .. "empty slot. Each piece is scored by how much its stats are worth to your playstyle at your level, "
+            .. "and the higher score wins. Only gear you can use, never gear that would bind when equipped, never a "
+            .. "lighter armor type. Trinkets are left alone, and weapons only replace one of the same kind. Not in "
+            .. "combat. Each swap is named in chat. Choose which qualities count and your playstyle below."
+        local equipInit = AddCheckbox("autoEquip", "Auto Equip Upgrades", equipTip,
             function(value) if value and VUI.QoL_AutoEquipRun then VUI.QoL_AutoEquipRun() end end)
-        if init and equipInit and VUI.SettingsSubOption then
-            VUI.SettingsSubOption(init, ADDON_NAME .. "_autoEquip", function() return db.autoEquip end)
+        local QUALITY_ROWS = {
+            { "autoEquipPoor",      "Poor (Grey)" },
+            { "autoEquipCommon",    "Common (White)" },
+            { "autoEquipUncommon",  "Uncommon (Green)" },
+            { "autoEquipRare",      "Rare (Blue)" },
+            { "autoEquipEpic",      "Epic (Purple)" },
+            { "autoEquipLegendary", "Legendary (Orange)" },
+        }
+        for _, q in ipairs(QUALITY_ROWS) do
+            local init = AddCheckbox(q[1], q[2], q[2] .. " gear counts as an upgrade.",
+                function(value) if value and VUI.QoL_AutoEquipRun then VUI.QoL_AutoEquipRun() end end)
+            if init and equipInit and VUI.SettingsSubOption then
+                VUI.SettingsSubOption(init, ADDON_NAME .. "_autoEquip", function() return db.autoEquip end)
+            end
+        end
+        -- The playstyle Auto Equip scores for, per character (PERCHAR.gearProfile; "" = the first).
+        local gearProfiles = VUI.GearScore and VUI.GearScore.Profiles
+            and VUI.GearScore.Profiles(select(2, UnitClass("player")))
+        if gearProfiles and gearProfiles[1] and VUI.AddCoverDropdown and cdb then
+            local profSetting = Settings.RegisterAddOnSetting(category, ADDON_NAME .. "_gearProfile", "gearProfile",
+                cdb, "string", "Playstyle", PERCHAR.gearProfile)
+            profSetting:SetValueChangedCallback(function()
+                if db.autoEquip and VUI.QoL_AutoEquipRun then VUI.QoL_AutoEquipRun() end
+            end)
+            VUI.AddCoverDropdown(layout, { category = category, setting = profSetting, name = "Playstyle",
+                sub = true,
+                tooltip = "How you play this character. Auto Equip scores each piece by what its stats are worth "
+                    .. "to this playstyle at your level. Each character keeps its own.",
+                isEnabled = function() return db.autoEquip end,
+                getOptions = function()
+                    local c = Settings.CreateControlTextContainer()
+                    for i, p in ipairs(gearProfiles) do c:Add(i == 1 and "" or p.id, p.name) end
+                    return c:GetData()
+                end })
         end
     end
 
@@ -5337,6 +5362,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- read site below is unchanged; `cdb` holds repairFunding, afkUIDirty and mapNotes.
         db, cdb = VUI.BindScopedDB("VeritasUI_QualityOfLifeDB", UNIVERSAL, PERCHAR)
         cdb = cdb or VUI.SessionCharDB("Quality of Life", PERCHAR)
+        -- Gear scoring (VeritasUI_Lib GearScore.lua) reads this character's playstyle from here.
+        if VUI.GearScore then VUI.GearScore.GetChoice = function() return cdb and cdb.gearProfile end end
 
         -- ⚠ MUST run before any universal read below, or every feature acts on the pre-migration
         -- value for the whole session. Note MIGRATE_UNIVERSAL, not UNIVERSAL: the retired map-coordinate

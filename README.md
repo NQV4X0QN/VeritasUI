@@ -37,7 +37,7 @@ Settings: **Options → AddOns → VeritasUI → Interface**, or `/interface`, g
 
 ### Quality of Life — small conveniences
 - **Item levels** on gear in your bags, bank, warband bank, character panel and at merchants
-- **Auto equip upgrades** (off until you turn it on): puts on gear from your bags that beats what you're wearing (at least as much of every stat and more of one; otherwise higher item level, then better quality, then more armor), or fills an empty slot, out of combat, naming each swap in chat. Choose which qualities count: grey and white by default, green, blue, purple and orange if you tick them. Only gear you can use, never gear that would bind when equipped; gear with a main stat that isn't yours replaces what you wear only when that has none of yours, or when it is at least 5 item levels or 25% higher (whichever is more) and still wins the comparison; trinkets are left alone and weapons only replace one of the same kind. `/qol equipcheck` lists what it would do with each piece in your bags
+- **Auto equip upgrades** (WoW Forever, off until you turn it on): puts on gear from your bags that scores higher than what you're wearing, or fills an empty slot, out of combat, naming each swap in chat. Each piece is scored by what its stats are worth to your **Playstyle** at your level. Choose which qualities count: grey and white by default, green, blue, purple and orange if you tick them. Only gear you can use, never gear that would bind when equipped, never a lighter armor type; trinkets are left alone and weapons only replace one of the same kind. `/qol equipcheck` lists what it would do with each piece in your bags, with the scores
 - **Auto sell junk** and **auto repair** at merchants, with a choice of paying repairs from guild funds or your own gold. A bag you've set to ignore junk selling in its bag menu is left alone. **Junk Lists** (`/qol junk`, or the Open button under Auto Sell Junk): drag items from your bags onto **Never Sell** to keep a grey, or **Always Sell** to sell something that isn't grey (never while it can still be refunded or traded to your group); right-click one to take it off. **Keep Unbound Grey Gear** (off until you turn it on) keeps grey weapons and armor that aren't bound, for the Auction House
 - **`/way` waypoints** (on unless you turn it off) in the format most guides use, e.g. `/way #2351 45.2 56.3`, placing WoW's own map pin and arrow (if another AddOn you have handles `/way`, it keeps it)
 - **AFK screen** (off until you turn it on): a slow camera orbit with your name, level, item level and zone while you're away (in WoW Forever your guild rank and guild instead of item level), which also helps against screen burn-in. Windows you open while away (bags, character sheet, chat) show up, tooltips included, and so do tooltips for players, NPCs and objects you mouse over in the world
@@ -76,6 +76,7 @@ Settings: **Options → AddOns → VeritasUI → Quality of Life**, or `/qol`.
 - **Tooltip prices** on items and battle pets, anywhere in the game, styled like Blizzard's "Sell Price" line, for the whole stack when you hover one, or for one item while you hold Shift; soulbound and other bound items show none, since they can't be auctioned
 - A **sell strip** on the Sell tab lists your sellable bag items: right-click one to load it, then left-click it again to post (Shift-click hides an item from the strip). Your bags need to be open.
 - **Reagents value** on the Place Crafting Order form, so you can weigh a commission against the cost of materials
+- **Upgrades** (WoW Forever): lists the gear from your last scan that beats what you're wearing, sorted by how much better it is, the price or the gain for each gold. Click a piece to open it in the buy screen. Filter by maximum price, minimum gain and best armor type
 
 Settings: **Options → AddOns → VeritasUI → Auction House**, or `/ah`.
 
@@ -165,6 +166,10 @@ See [CHANGELOG.md](CHANGELOG.md) for what changed in each version. Problems can 
 ## For developers
 
 [PROBE_LIBRARY_AND_REFERENCE.md](PROBE_LIBRARY_AND_REFERENCE.md) is a development notebook of in-game measurement scripts and Blizzard values. Players don't need it.
+
+## Credits
+
+The WoW Forever stat weights are based on [WoWSims](https://github.com/wowsims/forever) (MIT License).
 
 ## License
 
