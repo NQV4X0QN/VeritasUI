@@ -182,6 +182,11 @@ local UNIVERSAL = {
     autoEquipRare = false,
     autoEquipEpic = false,
     autoEquipLegendary = false,
+    -- UpgradeMarks.lua (owner's request, 2026-11-27, WoW Forever only): display only, so on by default.
+    upgradeArrows = true,
+    upgradeGainTooltip = true,
+    -- LootSparkles.lua (owner's request, 2026-11-27): the game's own loot sparkle. Off unless the game shows it.
+    lootSparkles = false,
     -- Automation.lua (v1.52.0): OFF by default -- it uses up items in your bags. Warbound containers are
     -- kept for you unless the sub-option is turned off.
     autoOpenContainers = false,
@@ -4954,6 +4959,7 @@ local function InitializeOptions()
                 cdb, "string", "Playstyle", PERCHAR.gearProfile)
             profSetting:SetValueChangedCallback(function()
                 if db.autoEquip and VUI.QoL_AutoEquipRun then VUI.QoL_AutoEquipRun() end
+                if VUI.QoL_UpgradeMarksRefresh then VUI.QoL_UpgradeMarksRefresh() end
             end)
             VUI.AddCoverDropdown(layout, { category = category, setting = profSetting, name = "Playstyle",
                 sub = true,
@@ -4967,6 +4973,8 @@ local function InitializeOptions()
                 end })
         end
     end
+    -- UpgradeMarks.lua: Show Upgrade Arrows, Show Gain in Tooltips (WoW Forever only; it checks).
+    if VUI.QoL_UpgradeOptions then VUI.QoL_UpgradeOptions(AddCheckbox) end
 
     Header("Merchants and Trainers")
     -- Mid-session enable: MERCHANT_SHOW/CLOSED are registered at PLAYER_LOGIN
@@ -5224,6 +5232,8 @@ local function InitializeOptions()
     end
 
     Header("General")
+    -- LootSparkles.lua: only where the game has the setting (it checks).
+    if VUI.QoL_LootSparklesOption then VUI.QoL_LootSparklesOption(AddCheckbox) end
     AddCheckbox("afkScreen", "AFK Screen",
         "When you go AFK, hides the UI and slowly circles the camera, showing your name, level, "
             .. (VUI.IS_FOREVER and "guild rank" or "item level") .. " and zone. Also helps prevent screen burn-in.",

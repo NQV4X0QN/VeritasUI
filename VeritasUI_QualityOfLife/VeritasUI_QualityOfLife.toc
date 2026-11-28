@@ -1,7 +1,7 @@
 ## Interface: 120105, 16001
 ## Title: VeritasUI — Quality of Life
 ## Notes: Item levels, auto-repair and junk selling, /way waypoints, AFK screen and Delve helpers. |cFF808080by NQV4X0QN|r
-## Version: 1.91.1
+## Version: 1.92.0
 ## Author: NQV4X0QN
 ## RequiredDeps: VeritasUI_Lib
 ## Group: VeritasUI_Lib
@@ -18,6 +18,8 @@ Automation.lua
 Invites.lua
 JunkLists.lua
 AutoEquip.lua
+UpgradeMarks.lua
+LootSparkles.lua
 Trainer.lua
 CharacterStats.lua
 Chat.lua

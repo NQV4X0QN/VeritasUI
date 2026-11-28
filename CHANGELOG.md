@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.92.0] - 2026-11-27
+
+On WoW Forever, gear that would be an upgrade is marked in your bags and quest rewards, and every piece's tooltip says how much better it is.
+
+### Added
+
+- Quality of Life — **Upgrade Arrows** (WoW Forever): Blizzard's green arrow on gear in your bags and in quest rewards that beats what you're wearing, or fills an empty slot, scored for your playstyle at your level, the way Auto Equip Upgrades decides. Only gear you can use is marked
+- Quality of Life — **the best-selling quest reward** (WoW Forever): when none of a quest's choices is an upgrade, a gold coin marks the one that sells for the most
+- Quality of Life — **Gain in Tooltips** (WoW Forever): gear you can use shows how much better or worse it is than what you're wearing in that slot, the same Gain the Auction House's Upgrades list shows
+- Quality of Life — **Loot Sparkles**: lootable quest objects sparkle so they're easy to spot. It's the game's own sparkle, kept on when a graphics preset would turn it off. If the game already shows it for you, the option starts on
+
+
 ## [1.91.1] - 2026-11-27
 
 ### Fixed
