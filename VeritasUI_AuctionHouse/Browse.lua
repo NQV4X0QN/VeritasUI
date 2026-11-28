@@ -43,7 +43,9 @@
 -- data. (This engine became the default in v1.12.12 -- see below -- with the question
 -- still open; /ah browseprobe is the per-item check.)
 --
--- THE DEFAULT ENGINE (v1.12.12). Chosen because replicate fails the first scan of most
+-- THE DEFAULT ENGINE (v1.12.12 to v1.90.1). ⚠ NO LONGER: since v1.90.2 replicate is the default again and this
+-- engine is the fallback (`/ah engine browse`); the reasons are in Tooltip.lua SETTING_DEFAULTS. Chosen in v1.12.12
+-- because replicate failed the first scan of most
 -- days -- the original complaint, unsolved for months -- while this path completed in
 -- 10-15s on every attempt, priced 22,540 items against replicate's 15,828 in 55.9s, and
 -- abandons no gear (replicate dropped 38-67% of gear rows on two measured scans).

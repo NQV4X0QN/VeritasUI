@@ -178,17 +178,12 @@ end
 -- names, or nil if that entry is no longer in the list (stale link —
 -- kept in the data so re-adding the same ability reactivates it).
 -- `spells` is OPTIONAL: pass it when the caller already holds the list, so a
--- full editor repaint resolves the profile once instead of once per row. The
--- followBtn tooltip caller has no such local in scope, hence the fallback.
+-- full editor repaint resolves the profile once instead of once per row.
 local function FindEntryByKey(key, spells)
     if not key then return nil end
     for _, o in ipairs(spells or PR:CurrentProfile().spells) do
         if PR.EntryKey(o) == key then return o end
     end
-end
-
-local function EntryDisplayName(e)
-    return e and (e.spellName or e.macroName or e.itemName) or "?"
 end
 
 -- "After Eye Beam: Essence Break (only), Blade Dance" lines under the compiled sequence: held
@@ -338,8 +333,29 @@ function PR:BuildEditor(parent, contentWidth)
         block:SetAtlas("PetList-ButtonBackground")
         block:SetPoint("TOPLEFT",     row, "TOPLEFT",     BLOCK_X, 0)
         block:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0,       0)
-        -- No hover highlight (owner, 2026-10-30): the row's own controls take the mouse, so the
-        -- mount list's PetList-ButtonHighlight flickered off and on across the Frequency arrows.
+        -- Hover highlight: the mount list's PetList-ButtonHighlight (MountListButtonTemplate's HighlightTexture,
+        -- Blizzard_Collections/Classic/Blizzard_MountCollection.xml:177) over the block. Removed 2026-10-30 because
+        -- as the row's own HighlightTexture it went out over the Frequency arrows, After and Combat, which take the
+        -- mouse; back 2026-11-27 (owner) the way Advanced Options rows do it: lit while the frame under the mouse
+        -- is the row or anything inside it (VUI.MouseIsWithin), put out by a watcher only when it is not, so
+        -- moving across the row's controls never flickers it. An empty slot is under the spellbook overlay
+        -- (SpellbookOpener, not inside the row), which counts as the row while it sits over it.
+        local hover = row:CreateTexture(nil, "BORDER")
+        hover:SetAtlas("PetList-ButtonHighlight")
+        hover:SetAllPoints(block)
+        hover:Hide()
+        local function OnLine()
+            return VUI.MouseIsWithin(row) or (PR.SpellbookOpener and PR.SpellbookOpener.IsOver
+                and PR.SpellbookOpener.IsOver(row)) or false
+        end
+        local watch = CreateFrame("Frame", nil, row)
+        watch:Hide()
+        watch:SetScript("OnUpdate", function(self)
+            if not OnLine() then hover:Hide(); self:Hide() end
+        end)
+        local function Light() hover:Show(); watch:Show() end
+        row:HookScript("OnShow", function() hover:Hide(); watch:Hide() end)
+        row.hover, row.hoverWatch, row.LightHover = hover, watch, Light
         -- Drag-to-reorder target marker: the mount list's selected-row frame (PetList-ButtonSelect).
         local dropMark = row:CreateTexture(nil, "OVERLAY")
         dropMark:SetAtlas("PetList-ButtonSelect")
@@ -354,17 +370,9 @@ function PR:BuildEditor(parent, contentWidth)
         -- replaced the up/down arrows). The game's own drag events: OnDragStart once the mouse
         -- moves with the button held, OnDragStop on release, wherever the cursor is.
         row:RegisterForDrag("LeftButton")
-        -- Says so on hover, so the drag can be found (owner, 2026-10-30).
-        row:SetScript("OnEnter", function(self)
-            local e = PR:CurrentProfile().spells[i]
-            if not e then return end
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine(EntryDisplayName(e), HIGHLIGHT_FONT_COLOR:GetRGB())
-            GameTooltip:AddLine("Drag to move", HIGHLIGHT_FONT_COLOR:GetRGB())
-            GameTooltip:AddLine(VUI.COL.LIGHTBLUE .. "Right-click to remove|r")
-            GameTooltip:Show()
-        end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        -- No tooltip of its own (owner, 2026-11-27): the icon's tooltip already names the ability and says
+        -- Drag to move / Right-click to remove. Until then this row said the same thing again.
+        row:SetScript("OnEnter", Light)
         row:SetScript("OnDragStart", function() editor:StartReorder(i) end)
         row:SetScript("OnDragStop",  function() editor:FinishReorder() end)
 
@@ -395,6 +403,9 @@ function PR:BuildEditor(parent, contentWidth)
         iconTex:SetAllPoints()
         iconTex:Hide()
         iconBtn.tex = iconTex
+        -- Hover glow, filled or empty: the one bag slots, the sell strip and the mount list's icon use
+        -- (Interface\Buttons\ButtonHilight-Square, ADD; Blizzard_MountCollection.xml:152). Owner, 2026-11-27.
+        iconBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
 
         iconBtn:SetScript("OnReceiveDrag", function() HandleDrop(i) end)
         iconBtn:SetScript("OnClick", function(_, btn)
@@ -547,6 +558,7 @@ function PR:BuildEditor(parent, contentWidth)
         followTex:SetAllPoints()
         followTex:Hide()
         followBtn.tex = followTex
+        followBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")   -- as the icon's
 
         -- "Only after" badge: the LFG list's lock (17x21), half size in the bottom-right corner.
         local followLock = followBtn:CreateTexture(nil, "OVERLAY", nil, 7)
@@ -580,8 +592,8 @@ function PR:BuildEditor(parent, contentWidth)
                 end
                 if #cands == 0 and not e.follows then
                     VUI.Print("Priority Rotation",
-                        VUI.COL.YELLOW .. "After|r waits for a channelled spell in this rotation, such as Eye Beam."
-                        .. " Add one to the rotation first.")
+                        VUI.COL.YELLOW .. "After|r ties an ability to a channelled spell in the same rotation."
+                        .. " Add a channelled spell to this rotation first.")
                     return
                 end
                 local cur
@@ -599,41 +611,8 @@ function PR:BuildEditor(parent, contentWidth)
             end
             PR:SaveCurrentProfile(); editor:Refresh()
         end)
-        followBtn:SetScript("OnEnter", function(self)
-            local e = PR:CurrentProfile().spells[i]
-            if not e then return end
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            local target = FindEntryByKey(e.follows)
-            local me = EntryDisplayName(e)
-            if target and target.channel then
-                -- Blizzard's tooltip colours (owner, 2026-11-01): title white, description gold.
-                GameTooltip:SetText(e.followOnly and "Only After" or "Also After", HIGHLIGHT_FONT_COLOR:GetRGB())
-                GameTooltip:AddLine(format(e.followOnly
-                    and VUI.COL.HIGHLIGHT .. "%s|r is held until " .. VUI.COL.BRIGHTBLUE
-                        .. "%s|r finishes channelling, then cast"
-                        .. " on the next press. It is never cast on its own."
-                    or  VUI.COL.HIGHLIGHT .. "%s|r is cast on the next press after " .. VUI.COL.BRIGHTBLUE
-                        .. "%s|r finishes"
-                        .. " channelling, and also at its normal frequency.",
-                    me, EntryDisplayName(target)), NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-            elseif target then
-                GameTooltip:SetText("After", HIGHLIGHT_FONT_COLOR:GetRGB())
-                GameTooltip:AddLine(format("Not active: " .. VUI.COL.BRIGHTBLUE .. "%s|r is not a channelled spell,"
-                    .. " and only a channel can be waited for. If it is one, cast it once and the"
-                    .. " link turns on.", EntryDisplayName(target)),
-                        RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b, true)
-            else
-                GameTooltip:SetText("After", HIGHLIGHT_FONT_COLOR:GetRGB())
-                GameTooltip:AddLine("Not linked. Pick a channelled spell (such as Eye Beam) and this"
-                    .. " ability is cast right after it finishes.",
-                        NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-            end
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine(e.follows and "Click to change · Right-click: Also / Only After"
-                or "Click to pick", LIGHTBLUE_FONT_COLOR:GetRGB())
-            GameTooltip:Show()
-        end)
-        followBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        -- No tooltip on the After box or the Combat checkbox (owner, 2026-11-27): the column headers say what
+        -- they do. The box shows the linked spell's icon (and the lock for Only After).
         row.followBtn = followBtn
 
         -- "Combat" (combat-only) checkbox — compiles [combat] into this entry's
@@ -650,18 +629,17 @@ function PR:BuildEditor(parent, contentWidth)
             e.combatOnly = self:GetChecked() and true or nil
             PR:SaveCurrentProfile(); editor:Refresh()
         end)
-        combatChk:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine("Combat only", HIGHLIGHT_FONT_COLOR:GetRGB())
-            GameTooltip:AddLine(
-                "Checked: compiled with " .. VUI.COL.HIGHLIGHT .. "[combat]|r — this ability only"
-                .. " casts while in combat. Leave your opener unchecked so a key"
-                .. " press out of combat can start the fight.",
-                    NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
-            GameTooltip:Show()
-        end)
-        combatChk:SetScript("OnLeave", function() GameTooltip:Hide() end)
         row.combatChk = combatChk
+
+        -- Every frame in the row lights the bar on enter (the watcher above puts it out); each keeps its own
+        -- tooltip, if it has one. Hooked last, once all of them exist.
+        local function HookAll(f)
+            for _, c in ipairs({ f:GetChildren() }) do
+                if c ~= watch and c.HookScript then c:HookScript("OnEnter", Light) end
+                HookAll(c)
+            end
+        end
+        HookAll(row)
 
         rows[i] = row
         VUI.AnnounceFrame("PriorityRotation.EditorRow", row)
@@ -696,10 +674,13 @@ function PR:BuildEditor(parent, contentWidth)
                       .."presses of the same ability are collapsed, so a high frequency buys shorter gaps "
                       .."rather than more steps. A not-ready attempt is skipped harmlessly, so err on the "
                       .."high side for important abilities.",
-        After       = "Casts an ability on the next press after a channelled spell finishes, such as "
-                      .."Essence Break after Eye Beam. Click a slot's box to pick the spell. Right-click "
-                      .."for Only After (the lock): the ability is then held for it and never cast on "
-                      .."its own.",
+        -- General wording, no class's spells (owner, 2026-11-27: Eye Beam and Essence Break do not exist in WoW
+        -- Forever, and naming one class's abilities dates the text and means nothing to everyone else).
+        After       = "Ties this ability to a channelled spell in the same rotation. Click its box to choose "
+                      .."the spell; each click moves to the next channelled spell, then back to none. Your "
+                      .."next press after that spell finishes casts this ability, and it still comes up at "
+                      .."its own Frequency too. Right-click the box for Only After, shown by a lock: the "
+                      .."ability then waits for the channel and is never cast on its own.",
         Combat      = "Only cast in combat. Leave your opener unchecked so a key press can start the "
                       .."fight. Macros have no box: what they do is up to the macro.",
     }

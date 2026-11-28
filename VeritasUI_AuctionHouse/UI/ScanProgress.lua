@@ -72,7 +72,7 @@
 --   ⚠ READ WITH THE LABEL DEFAULT IN MIND: since v1.14.18 the label is OFF by default, so
 --   the phase TEXT described below is not normally on screen — the sweep and the fill carry
 --   the state. The text still exists and is correct under `/ah bartune label in|above`.
---   Phase 3 is replicate-only and replicate is not in practical use (see the label block).
+--   Phase 3 is replicate-only; replicate is the default engine since v1.90.2, so phase 3 runs on most scans.
 --   Phase 1 — WAITING: ReplicateItems() fired, REPLICATE_ITEM_LIST_UPDATE hasn't
 --     arrived. UNBOUNDED by design (§2.2: no timeout). Progress() is 0 and STAYS 0 —
 --     no denominator exists, so a frozen "0%" would be a lie. INDETERMINATE sweep +
@@ -294,10 +294,9 @@ end
 -- a cost of hiding the label. Phase 3 (FINALIZING, the gear-residue wait) is REPLICATE-ONLY
 -- and browse never fires AH_SCAN_FINALIZING at all (zero occurrences in Browse.lua). Browse
 -- keys gear off the result's own itemKey, so there is no deferred pile and nothing to
--- "finish resolving". Replicate is not in practical use: `scanEngine` defaults to "browse"
--- (Tooltip.lua:83) and is reachable only by an explicit `/ah engine replicate` pin or by
--- Browse.lua failing to load (which warns once per session). Do not weight phase 3 when
--- reasoning about this bar.
+-- "finish resolving". ⚠ CORRECTED 2026-11-27 (audit A3): this said replicate was not in practical use and to give
+-- phase 3 no weight. Since v1.90.2 replicate IS the default (Tooltip.lua SETTING_DEFAULTS), so phase 3 (Loading
+-- Gear) runs on most scans; with the label off it shows only in the bar's hover tooltip (TooltipLines).
 local function LabelPos()
     local v = AH.db and AH.db.settings and AH.db.settings.barLabelPos
     if v == "above" or v == "in" then return v end

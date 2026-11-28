@@ -41,7 +41,7 @@ end
 ----------------------------------------------------------------
 local VUI = {}
 _G.VeritasUI = VUI
-VUI.VERSION = "1.91.0"
+VUI.VERSION = "1.91.1"
 -- WoW Forever (game type camelot): one codebase serves both games, and a module drops what Forever lacks.
 -- MEASURED in Forever 1.60.1.70790 (owner's /vui forever probe, 2026-11-04): WOW_PROJECT_ID = 18 =
 -- WOW_PROJECT_CAMELOT (Blizzard_ProjectConstants/Camelot/ProjectConstants.lua:1-2). Retail defines only
@@ -54,6 +54,30 @@ VUI.IS_FOREVER = _G.WOW_PROJECT_CAMELOT ~= nil and _G.WOW_PROJECT_ID == _G.WOW_P
 -- toggle at runtime via /vui debug (or /ah debug, kept as an alias) or
 -- /run VeritasUI.debug = true, then reproduce the issue.
 VUI.debug = false
+
+-- Whether the frame under the mouse is `frame` or something inside it (any of the frames the game reports under
+-- the cursor, so one that passes mouse motion through still counts). For row highlights that must stay lit while
+-- the mouse moves across the row's own controls (Advanced Options and Priority Rotation rows, 2026-11-27).
+-- ⚠ Every GetParent is pcall'd and the walk is capped: the focus can be a forbidden object (House Editor pins,
+-- measured in Priority Rotation's SpellbookOpener, audit P1) whose widget calls raise from addon code.
+local FOCUS_WALK_MAX_DEPTH = 8
+function VUI.MouseIsWithin(frame)
+    if not frame then return false end
+    local foci = GetMouseFoci and GetMouseFoci()
+    if type(foci) ~= "table" then foci = { GetMouseFocus() } end
+    for _, f in ipairs(foci) do
+        local depth = 0
+        while f and depth < FOCUS_WALK_MAX_DEPTH do
+            if f == frame then return true end
+            if not f.GetParent then break end
+            local ok, parent = pcall(f.GetParent, f)
+            if not ok then break end
+            f = parent
+            depth = depth + 1
+        end
+    end
+    return false
+end
 
 ----------------------------------------------------------------
 --  Print helpers
@@ -1778,7 +1802,12 @@ VUI._charDBs = VUI._charDBs or {}
 --
 -- Table identity is stable across re-binds: Settings.RegisterAddOnSetting captures the
 -- table it is handed, so handing back a fresh table would silently detach the panel.
-function VUI.BindScopedDB(globalName, universalDefaults, perCharDefaults)
+--
+-- keepOnCopy (optional, audit 2026-11-27 L1): a list of per-character keys that are this character's DATA or
+-- state, not settings (Quality of Life's map notes, watched waypoint, AFK recovery flag). VUI.CopyCharSettings
+-- and its undo leave them as they are; until then Copy From... replaced this character's map notes with the
+-- other character's.
+function VUI.BindScopedDB(globalName, universalDefaults, perCharDefaults, keepOnCopy)
     universalDefaults = universalDefaults or {}
     perCharDefaults   = perCharDefaults   or {}
 
@@ -1795,7 +1824,12 @@ function VUI.BindScopedDB(globalName, universalDefaults, perCharDefaults)
     -- Registered with the PER-CHARACTER defaults only. VUI.CopyCharSettings re-seeds from
     -- this table, so registering the universal set would make /vui copy write
     -- account-wide values into a character's slot.
-    VUI._charDBs[globalName] = { defaults = perCharDefaults }
+    local keep
+    if type(keepOnCopy) == "table" then
+        keep = {}
+        for _, k in ipairs(keepOnCopy) do keep[k] = true end
+    end
+    VUI._charDBs[globalName] = { defaults = perCharDefaults, keep = keep }
 
     local root = _G[globalName]
     if type(root) ~= "table" then root = {}; _G[globalName] = root end
@@ -1994,9 +2028,11 @@ end
 
 -- Rewrite `slot` in place to hold exactly `values`, then re-seed anything missing
 -- from `defaults`. Table identity is preserved; see the section header.
-local function OverwriteSlot(slot, values, defaults)
-    for k in pairs(slot) do slot[k] = nil end
-    for k, v in pairs(values) do slot[k] = VUI.DeepCopy(v) end
+-- `keep` (the module's keepOnCopy set): keys left exactly as they are in `slot`.
+local function OverwriteSlot(slot, values, defaults, keep)
+    keep = keep or {}
+    for k in pairs(slot) do if not keep[k] then slot[k] = nil end end
+    for k, v in pairs(values) do if not keep[k] then slot[k] = VUI.DeepCopy(v) end end
     if defaults then
         for k, v in pairs(defaults) do
             if slot[k] == nil then slot[k] = VUI.DeepCopy(v) end
@@ -2021,7 +2057,7 @@ function VUI.CopyCharSettings(sourceKey)
         -- settings that character never expressed an opinion about.
         if src and dest then
             snapshot[globalName] = VUI.DeepCopy(dest)
-            OverwriteSlot(dest, src, info and info.defaults)
+            OverwriteSlot(dest, src, info and info.defaults, info and info.keep)
             copied = copied + 1
         end
     end
@@ -2058,7 +2094,7 @@ function VUI.UndoCharSettingsCopy()
         local dest = root and root.chars and root.chars[last.dest]
         if dest then
             local info = VUI._charDBs[globalName]
-            OverwriteSlot(dest, values, info and info.defaults)
+            OverwriteSlot(dest, values, info and info.defaults, info and info.keep)
             restored = restored + 1
         end
     end

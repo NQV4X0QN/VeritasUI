@@ -548,6 +548,7 @@ local function BuildNativeSettingsPanel()
             VUI.Print("Priority Rotation", VUI.COL.GREEN .. "Enabled.|r")
         else
             PR:ClearOverride()
+            PR:CompileSequence()   -- empties the button too: the macro's /click still reaches it
             VUI.Print("Priority Rotation", VUI.COL.RED .. "Disabled.|r")
         end
     end)

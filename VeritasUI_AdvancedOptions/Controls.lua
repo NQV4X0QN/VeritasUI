@@ -224,10 +224,11 @@ end
 -- (2026-11-14) after a tooltip came up over blank space: the row's own tooltip area runs from its left edge to 80 px
 -- short of its middle; while the mouse is there a white 10% band lights the row (HoverBackgroundTemplate,
 -- :5-11) and the tooltip sits ANCHOR_RIGHT of that area at -10 (DefaultTooltipMixin,
--- Blizzard_SettingControls.lua:15-38). Each control shows the same tooltip on itself. The rest of the row shows none.
+-- Blizzard_SettingControls.lua:15-38). Each control shows the same tooltip on itself. The rest of the row shows no
+-- tooltip (since 2026-11-27 it does light the band; see the note above LABEL_PAD).
 -- Until v1.89.0 the whole row, edge to edge, carried the tooltip, with no band.
--- The row keeps the mouse and its hit rect is cut to the area (re-cut on every resize: Featured.lua re-anchors rows);
--- `zone` only marks the area and owns the tooltip, it takes no mouse.
+-- The row keeps the mouse over its whole width (cut to the band's height); `zone` marks the area and owns the
+-- tooltip, with mouse motion of its own (re-fitted on every resize: Featured.lua re-anchors rows).
 -- ⚠ Owner, 2026-11-14 (first in-game look): the band must be ONE height on every row, as Blizzard's is, and must
 -- not stop inside the reset button. So it is ROW_HEIGHT tall, centred on the row's line -- `lineY` is the same
 -- raise the reset button gets (a slider row's line sits above its centre, SLIDER_RESET_RAISE) -- and runs to the
@@ -238,17 +239,38 @@ end
 -- between the "b" and the "a"). The area now reaches the end of the name plus LABEL_PAD, whichever is further, and
 -- never past the label's own box (`row._label` / `row._labelX`, set by each factory), so it stops short of the control.
 -- Re-measured on show: a name's width is only reliable once its font has loaded.
+-- ⚠ Owner, 2026-11-27: the band must stay up wherever the mouse is on the line -- the blank middle, the slider,
+-- the checkbox, the dropdown, the reset button -- and the tooltips stay exactly where they were. Blizzard does it
+-- by giving every hoverable piece of a row its own row-wide HoverBackground (SettingsCheckboxTemplate,
+-- Blizzard_SettingControls.xml:4-11, :82-86; DefaultTooltipMixin:OnEnter/OnLeave, .lua:26-51). Here one band
+-- serves them all: the row takes the mouse over its whole width (no tooltip there), `zone` takes mouse motion
+-- for the name's tooltip, and every frame in the row lights the band on enter. A watcher puts it out once the
+-- frame under the mouse is no longer the row or something inside it, so moving between pieces never flickers it
+-- and pieces nested inside a control keep it lit without a leave of their own.
+-- ⚠ Not the band's box (build 1, owner 2026-11-27: no highlight moving onto a slider or from one reset button
+-- down to the next). The reset button's mouse area reaches 6 px past its art (CreateResetButton), 3 px past the
+-- band's 26, so a cursor coming from above or below entered it outside the box, the watcher put the band straight
+-- out, and no further enter came while inside it. The slider's case looks the same; its mouse area is unmeasured.
 local LABEL_PAD = 8
 local function AttachRowTooltip(row, showTip, controls, lineY)
     lineY = lineY or 0
     local zone = CreateFrame("Frame", nil, row)
     zone:SetHeight(ROW_HEIGHT)
+    if zone.SetMouseMotionEnabled then zone:SetMouseMotionEnabled(true) else zone:EnableMouse(true) end
     local band = row:CreateTexture(nil, "BACKGROUND")
     band:SetPoint("LEFT", row, "LEFT", -10, lineY)
     band:SetPoint("RIGHT", row, "RIGHT", 8, lineY)
     band:SetHeight(ROW_HEIGHT)
     band:SetColorTexture(1, 1, 1, 0.1)
     band:Hide()
+    -- Lib's walk: pcall'd and capped, since the focus can be a forbidden object.
+    local function OnLine() return VUI.MouseIsWithin(row) end
+    local watch = CreateFrame("Frame", nil, row)
+    watch:Hide()
+    watch:SetScript("OnUpdate", function(self)
+        if not OnLine() then band:Hide(); self:Hide() end
+    end)
+    local function Light() band:Show(); watch:Show() end
     local function AreaWidth(w)
         local area = w / 2 - 80
         local label, x = row._label, row._labelX or 0
@@ -260,26 +282,45 @@ local function AttachRowTooltip(row, showTip, controls, lineY)
         end
         return math_max(0, math_min(area, w))
     end
+    -- The zone starts at the name, not the row's edge: with mouse motion of its own it would otherwise sit over a
+    -- checkbox and take its clicks. ANCHOR_RIGHT reads only its right and top, so the tooltip has not moved.
     local function Fit(self, w, h)
         w = tonumber(w) or tonumber((self:GetWidth())) or 0
         h = tonumber(h) or tonumber((self:GetHeight())) or ROW_HEIGHT
         local area = AreaWidth(w)
+        local x = math_min(row._labelX or 0, area)
         zone:ClearAllPoints()
-        zone:SetPoint("LEFT", row, "LEFT", 0, lineY)
-        zone:SetWidth(math_max(1, area))
+        zone:SetPoint("LEFT", row, "LEFT", x, lineY)
+        zone:SetWidth(math_max(1, area - x))
         local spare = math_max(0, (h - ROW_HEIGHT) / 2)
-        self:SetHitRectInsets(0, math_max(0, w - area), math_max(0, spare - lineY), math_max(0, spare + lineY))
+        self:SetHitRectInsets(0, 0, math_max(0, spare - lineY), math_max(0, spare + lineY))
     end
     row:EnableMouse(true)
     Fit(row)
     row:SetScript("OnSizeChanged", Fit)
-    row:HookScript("OnShow", function(self) Fit(self) end)
-    row:SetScript("OnEnter", function(self) Fit(self); band:Show(); showTip(zone, -10) end)
-    row:SetScript("OnLeave", function() band:Hide(); GameTooltip:Hide() end)
+    row:HookScript("OnShow", function(self) band:Hide(); watch:Hide(); Fit(self) end)
+    row:SetScript("OnEnter", function(self) Fit(self); Light() end)
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    zone:SetScript("OnEnter", function() Light(); showTip(zone, -10) end)
+    zone:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row._zone = zone
+    local isControl = {}
     for _, c in ipairs(controls or {}) do
-        c:HookScript("OnEnter", function(self) showTip(self, 0) end)
+        isControl[c] = true
+        c:HookScript("OnEnter", function(self) Light(); showTip(self, 0) end)
         c:HookScript("OnLeave", function() GameTooltip:Hide() end)
     end
+    -- Every other frame in the row (the reset button, a slider's arrows, an action button): the band only; each
+    -- keeps its own tooltip.
+    local function HookAll(f)
+        for _, c in ipairs({ f:GetChildren() }) do
+            if c ~= zone and c ~= watch then
+                if not isControl[c] and c.HookScript then c:HookScript("OnEnter", Light) end
+                HookAll(c)
+            end
+        end
+    end
+    HookAll(row)
 end
 
 -- Trailing furniture shared by all three factories: reset button on the far

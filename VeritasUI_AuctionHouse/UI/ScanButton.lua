@@ -29,7 +29,8 @@
 -- the two stale retry comments: there is no automatic retry (DoFire has one caller,
 -- Replicate.lua:1074; see Replicate.lua:247-250), so a dropped request recovers ONLY
 -- when the user clicks this button. It is not the impatient path — it is the only
--- path. Which is precisely why it stays enabled through the wait.
+-- path. (Since 2026-11-26 the button is enabled only once the request is declared lost; a
+-- healthy wait is a greyed "Scanning…" -- see RefreshLabel. Corrected, audit 2026-11-27 A3.)
 --
 -- ISOLATION (suite rule #4: one module never edits another)
 --   Pure VIEW + controller over the SCAN FACADE's public api: AH.Scan.StartManual(),

@@ -33,7 +33,7 @@ Hides or fades the parts of the interface you don't need most of the time. On a 
 - **Hide Transforms**: takes costumes and transformations off you as soon as they land, picked by group: profession gear (so your own outfit stays while you craft, gather or fish), holiday costumes, toys and consumables (in WoW Forever: holiday costumes and consumables, the ones it has). Not in combat; they come off when it ends. If one still shows, `/interface gear` lists what you're wearing
 - Hides red error text — all of it, or only the kinds you pick (combat, spells and cooldowns, items and bags, mail/vendors/bank, looting, mounts and flight paths), so "Internal mail database error." can go while "You are too far away!" stays
 
-Settings: **Options → AddOns → VeritasUI → Interface**, or `/interface`, grouped by where things sit on screen: **All Fades**, **Action Bars**, **Micro Menu and Bags**, **Player**, **Chat**, **Minimap**, **Trackers and Meters** and **Messages and Popups**. Every dropdown of choices has **None** and **All** at the top. Changes apply after a `/reload`, except Fade Delay, the opacity sliders, Hide Transforms, Fade Minimap Buttons, Fade Action Bars and the Action Bar 1, buffs and debuffs, minimap alerts, damage meter, objective tracker and reputation bar fades, which apply at once.
+Settings: **Options → AddOns → VeritasUI → Interface**, or `/interface`, grouped by where things sit on screen: **All Fades**, **Action Bars**, **Micro Menu and Bags**, **Player**, **Chat**, **Minimap**, **Trackers and Meters** and **Messages and Popups**. Every dropdown of choices has **None** and **All** at the top. Changes apply after a `/reload`, except Fade Delay, the opacity sliders, Fade Together, Hide Transforms, Mute Sounds, Hide Keybind Text, Out of Range on Icons, Fade Minimap Buttons, Fade Action Bars and the Action Bar 1, buffs and debuffs, minimap alerts, damage meter, objective tracker and reputation bar fades, which apply at once.
 
 ### Quality of Life — small conveniences
 - **Item levels** on gear in your bags, bank, warband bank, character panel and at merchants
@@ -76,7 +76,7 @@ Settings: **Options → AddOns → VeritasUI → Quality of Life**, or `/qol`.
 - **Tooltip prices** on items and battle pets, anywhere in the game, styled like Blizzard's "Sell Price" line, for the whole stack when you hover one, or for one item while you hold Shift; soulbound and other bound items show none, since they can't be auctioned
 - A **sell strip** on the Sell tab lists your sellable bag items: right-click one to load it, then left-click it again to post (Shift-click hides an item from the strip). Your bags need to be open.
 - **Reagents value** on the Place Crafting Order form, so you can weigh a commission against the cost of materials
-- **Upgrades** (WoW Forever): lists the gear from your last scan that beats what you're wearing, sorted by how much better it is, the price or the gain for each gold. Click a piece to open it in the buy screen. Filter by maximum price, minimum gain and best armor type
+- **Upgrades** (WoW Forever): lists the gear from your last scan that beats what you're wearing, with its price, how much better it is and its slot. Sort by any column and click a piece to open it in the buy screen. Opens while Scan is counting down. Filter by maximum price, minimum gain and best armor type
 
 Settings: **Options → AddOns → VeritasUI → Auction House**, or `/ah`.
 
@@ -86,7 +86,7 @@ Shows only quests for the zone you're in, updating as you travel. In a dungeon o
 Settings: **Options → AddOns → VeritasUI → Zone Quests**, or `/zq`.
 
 ### Priority Rotation — one-button play
-An accessibility tool: press one key, or hold it with your keyboard or mouse software's key repeat, to step through a list of spells, macros and trinkets that **you** choose. You decide how often each ability comes up, which ones wait for a channelled spell such as Eye Beam (cast right after it, or held for it and never cast on their own), and which only fire in combat. Each specialization keeps its own list. A new list starts with Blizzard's **Single-Button Assistant**, so one key plays a full rotation from the start, with channelled spells such as Eye Beam no longer cut short by the next press; add, remove or reorder abilities whenever you like.
+An accessibility tool: press one key, or hold it with your keyboard or mouse software's key repeat, to step through a list of spells, macros and trinkets that **you** choose. You decide how often each ability comes up, which ones wait for one of your channelled spells (cast right after it, or held for it and never cast on their own), and which only fire in combat. Each specialization keeps its own list. In Retail, a new list starts with Blizzard's **Single-Button Assistant**, so one key plays a full rotation from the start, with channelled spells no longer cut short by the next press; add, remove or reorder abilities whenever you like.
 
 To set it up, open `/pr`, click **Create / Update Macro**, drag the `Attack` macro onto any action bar (1–8), bind a key to it, and click **Scan & Bind** at the bottom of the Settings tab. On the Rotation tab, drag a slot up or down to change the order, and hover a column's heading to see what it does.
 

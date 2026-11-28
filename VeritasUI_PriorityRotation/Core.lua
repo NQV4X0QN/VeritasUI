@@ -668,7 +668,13 @@ function PR:CompileSequence()
     local cap = {}
     for i, t in ipairs(seq) do if capText[t] then cap[i] = capText[t] end end
     self.compiledCaps = cap
-    self:InjectSequence(seq, links, skip, cap)
+    -- Off in Options: the Attack macro on a bar still clicks rotBtn (its /click line), so the button gets an empty
+    -- rotation rather than relying on the dropped key override. The editor preview keeps the compiled list.
+    if self:IsEnabled() then
+        self:InjectSequence(seq, links, skip, cap)
+    else
+        self:InjectSequence({}, {}, {}, {})
+    end
     self:ScheduleScan(0.5)
     -- The editor redraws the instant a change is made, but the compile it triggers is debounced
     -- (ScheduleCompile, 0.3 s), so without this the preview showed the PREVIOUS sequence until
@@ -874,6 +880,10 @@ function PR:ScanAndOverrideBarButton(macroName, verbose)
             -- Drop any binding left from when the name was still ours (body edited mid-session).
             self:ClearOverride(macroName)
             if verbose then VUI.Print("Priority Rotation", FOREIGN_ATTACK_MSG) end
+        elseif self.overrides[macroName] then
+            -- The macro was deleted or renamed: its old slot's key is the player's again, as when
+            -- the macro is taken off every bar below.
+            self:ClearOverride(macroName)
         end
         return
     end

@@ -5351,7 +5351,8 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         -- into the account root, which is the mechanism behind the pinning defect (audit D8), so
         -- it had to go rather than sit alongside the binder. It also deep-copies, where this loop
         -- assigned table defaults by reference.
-        db = VUI.BindScopedDB("VeritasUI_QualityOfLifeDB", UNIVERSAL, PERCHAR)
+        db = VUI.BindScopedDB("VeritasUI_QualityOfLifeDB", UNIVERSAL, PERCHAR,
+            { "mapNotes", "wayWatch", "afkUIDirty" })   -- not settings: Copy From... leaves them (audit L1)
         -- InitializeOptions moved to PLAYER_LOGIN: Settings.RegisterAddOnSetting
         -- captures the table it is handed, so it must receive the per-character
         -- slot, which does not exist yet here.
@@ -5360,7 +5361,10 @@ frame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "PLAYER_LOGIN" then
         -- Identity is available: bind BOTH tables. `db` is account-wide, so every universal
         -- read site below is unchanged; `cdb` holds repairFunding, afkUIDirty and mapNotes.
-        db, cdb = VUI.BindScopedDB("VeritasUI_QualityOfLifeDB", UNIVERSAL, PERCHAR)
+        -- This character's map notes, watched waypoint and AFK recovery flag are its own, not settings: Lib's
+        -- Copy From... and its Undo leave them as they are (audit 2026-11-27 L1).
+        db, cdb = VUI.BindScopedDB("VeritasUI_QualityOfLifeDB", UNIVERSAL, PERCHAR,
+            { "mapNotes", "wayWatch", "afkUIDirty" })
         cdb = cdb or VUI.SessionCharDB("Quality of Life", PERCHAR)
         -- Gear scoring (VeritasUI_Lib GearScore.lua) reads this character's playstyle from here.
         if VUI.GearScore then VUI.GearScore.GetChoice = function() return cdb and cdb.gearProfile end end

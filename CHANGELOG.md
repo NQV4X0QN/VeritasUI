@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.91.1] - 2026-11-27
+
+### Fixed
+
+- Auction House — **Upgrades lists every upgrade, every time.** It was leaving out gear whose details the game hadn't loaded yet, so the list changed each time you opened it. It now reads every piece first, showing Reading Item Details while it does, and the list is the same every time you open it
+- Auction House — **Upgrades never offers an older scan's list.** After a scan that didn't read the gear for sale, Upgrades stays greyed and its tooltip says to scan again
+- Quality of Life — **Copy From… keeps your map notes.** Copying settings from another character no longer replaces this character's map notes and the waypoint it is watching
+- Priority Rotation — **deleting or renaming the Attack macro frees its key** at once. Until now the key kept casting the rotation until you reloaded, even with something else on that bar slot
+- Priority Rotation — **unticking Enable Priority Rotation stops it.** The Attack macro on your bar no longer casts the rotation while it's off
+- Advanced Options — **Show Help Tips changed during a fight is kept** after your next login
+- Advanced Options — **rows highlight wherever the mouse is on them**, including over the slider, checkbox, dropdown and reset button
+- Priority Rotation — **rows highlight again, wherever the mouse is on them**, without flickering over the Frequency arrows, the After box or the Combat box
+
+### Changed
+
+- Auction House — **Upgrades opens while Scan is counting down.** Its list comes from your last scan, so it's greyed while a new scan can run or is running, and its tooltip says why
+- Auction House — **Upgrades columns are Price, Name, Gain and Slot**, laid out like the auction house's own list. Gain sorts by the percentage it shows, with empty slots first. The Gain per Gold column is gone
+- Priority Rotation — **fewer tooltips.** The After box, the Combat box and the row no longer have their own; hover a column's heading to see what it does, or the icon for the ability
+
+### Other
+
+- Smaller fixes and interface improvements
+
+
 ## [1.91.0] - 2026-11-27
 
 On WoW Forever, the Auction House can now list the gear for sale that would be an upgrade for you.

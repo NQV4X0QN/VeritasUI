@@ -223,16 +223,10 @@ end)
 AH.Events.On("AH_SCAN_START", function()
     -- Auto-scan removed (2026-07-02): all scans are user-initiated, one wording.
     --
-    -- ⚠ THE ENGINE NAME IS PART OF THE MESSAGE, DELIBERATELY. Until v1.12.13 this
-    -- read "Full scan started…" with no engine, and there were TWO engines with
-    -- materially different failure modes. The owner's v1.12.12 browse trial silently
-    -- ran on replicate for its whole duration, and the only reason he noticed was
-    -- that he recognised replicate's 60s "request was lost" line -- i.e. the system
-    -- was diagnosed by a failure message that happens to be engine-specific, which
-    -- is luck, not observability. An unobservable engine selection is
-    -- indistinguishable from the right one (same rule as the counted browse skips).
-    VUI.Print(AH.TAG, format("Full scan started… " .. COL.GRAY .. "(%s)|r",
-        AH.Scan.EngineName()))
+    -- v1.12.13 to v1.91.0 added the engine name in grey, "(replicate)", so a scan on the wrong engine could be
+    -- seen (the owner's v1.12.12 browse trial silently ran on replicate). Owner, 2026-11-27: "What does that even
+    -- mean to a player?" It is gone; `/ah diag` and `/ah engine` still name the engine and whether it is pinned.
+    VUI.Print(AH.TAG, "Full scan started…")
 end)
 
 -- `sourceUnit` is the noun for the second number, supplied by the firing engine, or
@@ -314,8 +308,9 @@ end
 ----------------------------------------------------------------
 -- Gear keys carry an item level ("i:<id>:<ilvl>"); commodities do not ("i:<id>"); pets
 -- are "p:<species>". The split matters: replicate can only key gear via a loaded link,
--- so gear is exactly the population its retry budget abandons — which means a
--- discrepancy concentrated in gear supports "stored gear is stale", while one spread
+-- so gear was the population its old retry budget abandoned (the v1.90.2 gear wait measured
+-- 0 abandoned) — a discrepancy concentrated in gear may still mean stored gear is older,
+-- while one spread
 -- evenly across commodities would point at browse pricing something different.
 local function KeyClass(key)
     if key:byte(1) == 112 then return "pet" end            -- "p:"
@@ -404,8 +399,8 @@ local function ReportComparison()
         VUI.Print(AH.TAG, "    real-gap examples: " .. table.concat(gapExamples, ", "))
     end
     VUI.Print(AH.TAG, "  " .. COL.YELLOW .. "Reading:|r commodities should be near-identical — both engines take "
-        .. "the min of the same listings. Gear mismatches are EXPECTED while replicate is "
-        .. "the engine, because its retry budget abandons gear rows so stored gear is old. "
+        .. "the min of the same listings. Gear can differ where a stored gear price is older "
+        .. "than the latest scan (see /ah diag \"gear wait\" for abandoned gear rows). "
         .. "A real problem would be commodities disagreeing, or a nonzero real gap.")
 end
 

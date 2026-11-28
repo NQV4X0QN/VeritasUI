@@ -170,6 +170,12 @@ function PR.SpellbookOpener.AddTarget(frame, opts)
     targets[#targets + 1] = { frame = frame, opts = opts }
 end
 
+-- Whether the overlay is up over `frame` right now: it sits above the target, outside it, so a hover highlight on
+-- the target counts it as the target (Editor.lua's row highlight, 2026-11-27).
+function PR.SpellbookOpener.IsOver(frame)
+    return overlay ~= nil and overlay:IsShown() and overlay.current ~= nil and overlay.current.frame == frame
+end
+
 -- True once the overlay exists. Callers keep a fallback for when it cannot (no micro button).
 function PR.SpellbookOpener.Ready()
     return Build()

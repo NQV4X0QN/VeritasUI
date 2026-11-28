@@ -3610,7 +3610,8 @@ SlashCmdList["VERITASUI_INTERFACE"] = function(msg)
     if strtrim(msg or ""):lower() == "gear" then PrintGearDiag(); return end
     if strtrim(msg or ""):lower() == "tracker" then
         -- Which tracker sections are shown, and their alpha: if an event's objective still fades,
-        -- this names the section it is in, so it can be added to OT_EVENT_MODULES.
+        -- this names the section it is in. A frame name missing from OT_SECTIONS is a module Blizzard added: it
+        -- fades with the header (`extras`) and has no slider until it gets an entry there.
         local otf = _G.ObjectiveTrackerFrame
         if not (otf and otf.GetChildren) then VUI.Print("Interface", "no objective tracker"); return end
         for _, c in ipairs({ otf:GetChildren() }) do

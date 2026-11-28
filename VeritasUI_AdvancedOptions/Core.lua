@@ -177,6 +177,9 @@ function AO:SetCVar(name, value)
             local ok, err = pcall(C_CVar.SetCVar, name, value)
             if ok then
                 if cdb then cdb.cvarCache[name] = value end
+                -- An AddOn-made CVar is put back from here at each load, so a change made in combat is saved
+                -- here too, or the next login restores the old choice.
+                if err ~= false and db and db.addonCVars[name] ~= nil then db.addonCVars[name] = tostring(value) end
             else
                 VUI.Print("Advanced Options",
                     format(VUI.COL.RED .. "Failed to set %s:|r %s", name, tostring(err)))

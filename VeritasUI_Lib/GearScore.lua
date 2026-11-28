@@ -239,7 +239,10 @@ end
 --  against the lower-scoring one, weapons only against a worn weapon of the same kind, trinkets/shirt/tabard/bags
 --  left out, never a lighter armor type than the one worn. Whether the character can USE the item (level, armor
 --  or weapon skill) is the caller's to check.
---  GS.AgainstWorn(link, weights) -> slot, newScore, wornScore (wornScore nil = empty slot), or nil + reason.
+--  GS.AgainstWorn(link, weights, stats) -> slot, newScore, wornScore (wornScore nil = empty slot), or nil + reason.
+--  stats (optional): the new item's GetItemStats table, read earlier. The Auction House list passes it because the
+--  game does not keep details for tens of thousands of items loaded at once (measured 2026-11-27: of 25,006 gear
+--  listings, 13,830-14,396 unloaded on each opening, a different set each time), so a live read misses at random.
 ----------------------------------------------------------------
 local ARMOR_SLOTS = {
     INVTYPE_HEAD = { 1 }, INVTYPE_NECK = { 2 }, INVTYPE_SHOULDER = { 3 }, INVTYPE_CHEST = { 5 },
@@ -272,9 +275,24 @@ local function ArmorType(link, equipLoc)
     return nil
 end
 
-function GS.AgainstWorn(link, weights)
+-- statsOf (optional): function(link) -> GetItemStats-style table, used for the WORN items too (the AH list keeps what
+-- it has read). A worn piece whose score cannot be read is "worn gear unreadable", never an empty slot (owner,
+-- 2026-11-27: every Gain read Empty Slot with shields equipped -- the weapon path returned a nil worn score, which the
+-- list shows as nothing worn).
+function GS.AgainstWorn(link, weights, stats, statsOf)
     weights = weights or GS.Current()
     if not (link and weights) then return nil, "no scores" end
+    local function Mine(hand)
+        if type(stats) == "table" then return GS.Score(stats, hand, weights) end
+        return GS.ScoreLink(link, hand, weights)
+    end
+    local function Worn(l, hand)
+        if statsOf then
+            local st = statsOf(l)
+            if type(st) == "table" then return GS.Score(st, hand, weights) end
+        end
+        return GS.ScoreLink(l, hand, weights)
+    end
     local equipLoc = Instant(link)
     if WEAPON_LOCS[equipLoc] then
         for s = 16, 18 do
@@ -282,8 +300,9 @@ function GS.AgainstWorn(link, weights)
             if worn and Instant(worn) == equipLoc then
                 local _, wClass, wSub = Instant(worn)
                 if wClass == 2 and (wSub == 14 or wSub == 20) then return nil, "a tool in that hand" end
-                local mine = GS.ScoreLink(link, HANDS[s], weights)
-                return s, mine, GS.ScoreLink(worn, HANDS[s], weights)
+                local wornScore = Worn(worn, HANDS[s])
+                if wornScore == nil then return nil, "worn gear unreadable" end
+                return s, Mine(HANDS[s]), wornScore
             end
         end
         return nil, "no worn weapon of the same kind"
@@ -293,12 +312,12 @@ function GS.AgainstWorn(link, weights)
     local lowSlot, low
     for _, s in ipairs(slots) do
         local worn = WornLink(s)
-        if not worn then return s, GS.ScoreLink(link, nil, weights), nil end
-        local sc = GS.ScoreLink(worn, nil, weights)
+        if not worn then return s, Mine(nil), nil end
+        local sc = Worn(worn, nil)
         if sc and (not low or sc < low) then low, lowSlot = sc, s end
     end
     if not lowSlot then return nil, "worn gear unreadable" end
     local mineT, theirsT = ArmorType(link, equipLoc), ArmorType(WornLink(lowSlot), equipLoc)
     if mineT and theirsT and mineT < theirsT then return nil, "lighter armor" end
-    return lowSlot, GS.ScoreLink(link, nil, weights), low
+    return lowSlot, Mine(nil), low
 end

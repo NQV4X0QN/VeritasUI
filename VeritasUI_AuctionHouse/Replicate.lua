@@ -26,9 +26,9 @@
 -- taint, readiness, fire-context or rate-limit difference — all five of which were
 -- investigated and falsified (see ArmStallDetector and the SKILL landmines).
 --
--- Root cause of the replicate failure is still UNKNOWN and is no longer the priority: the
--- browse-summary scan (Browse.lua) was added in v1.12.9 and has been the DEFAULT engine
--- since v1.12.12. This engine is the fallback, reached only by `/ah engine replicate`.
+-- Root cause of the replicate failure is still UNKNOWN. The browse-summary scan (Browse.lua) was added in v1.12.9
+-- and was the default engine from v1.12.12 to v1.90.1. ⚠ SINCE v1.90.2 (2026-11-26) THIS ENGINE IS THE DEFAULT
+-- again (Tooltip.lua SETTING_DEFAULTS scanEngine, with the reasons); browse is the fallback, `/ah engine browse`.
 -- ⚠ Do not "simplify" that away as duplication if both paths end up present.
 --
 -- Flow:
@@ -291,7 +291,7 @@ end
 -- 0 disables OUR floor entirely. ⚠ That does NOT remove Blizzard's own throttling:
 -- `ReplicateItems` has a server-side cooldown of its own, so on the replicate engine a
 -- disabled floor mostly means the request is refused or returns the same snapshot. On
--- the BROWSE engine (the default since v1.12.12) there is no such fixed cooldown — the
+-- the BROWSE engine (the default v1.12.12-v1.90.1, now `/ah engine browse`) there is no such fixed cooldown — the
 -- send queue gates on IsThrottledMessageSystemReady — so repeat scans do genuinely work.
 -- Added v1.14.18 for iteration on the scan bar's appearance: waiting 15 minutes to see a
 -- cosmetic change once is not a workable test loop.
